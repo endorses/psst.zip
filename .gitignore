@@ -1,0 +1,24 @@
+# Go
+backend/tmp/
+backend/data/
+
+# Node
+web/node_modules/
+web/build/
+web/.svelte-kit/
+
+# KMP / Gradle
+shared/.gradle/
+shared/build/
+shared/local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

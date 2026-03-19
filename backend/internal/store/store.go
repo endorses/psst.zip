@@ -1,0 +1,25 @@
+package store
+
+import "io"
+
+// FileStore abstracts file storage operations. Implementations may store
+// files on local disk, S3, or any other backend.
+type FileStore interface {
+	// Save writes data from r into the store under the given key.
+	Save(key string, r io.Reader) error
+
+	// SaveAt writes data from r starting at the given byte offset.
+	SaveAt(key string, r io.Reader, offset int64) (int64, error)
+
+	// Load returns a ReadCloser for the file identified by key.
+	Load(key string) (io.ReadCloser, error)
+
+	// Size returns the current size of the stored file, or 0 if it does not exist.
+	Size(key string) (int64, error)
+
+	// Delete removes the file identified by key.
+	Delete(key string) error
+
+	// DeleteAll removes all files whose keys start with the given prefix.
+	DeleteAll(prefix string) error
+}
