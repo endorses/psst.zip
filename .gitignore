@@ -7,10 +7,21 @@ web/node_modules/
 web/build/
 web/.svelte-kit/
 
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
 # KMP / Gradle
 shared/.gradle/
 shared/build/
 shared/local.properties
+
+# iOS
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
 
 # IDE
 .idea/

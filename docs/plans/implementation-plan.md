@@ -136,30 +136,30 @@ The business logic layer shared between Android and iOS.
 Native Android app with Jetpack Compose, share sheet integration, and QR display.
 
 ### 4.1 Project scaffolding
-- [ ] Android project setup, KMP shared module dependency
-- [ ] Min SDK, target SDK, permissions (INTERNET, storage access)
-- [ ] Material 3 theming
+- [x] Android project setup, KMP shared module dependency
+- [x] Min SDK, target SDK, permissions (INTERNET, storage access)
+- [x] Material 3 theming
 
 ### 4.2 Core screens
-- [ ] **Server config screen**: enter/edit backend URL, connection test
-- [ ] **Home screen**: two actions — "Share files" and "Receive files"
-- [ ] **Transfer detail screen**: QR code display, share link button, transfer status, expiry countdown
+- [x] **Server config screen**: enter/edit backend URL, connection test
+- [x] **Home screen**: two actions — "Share files" and "Receive files"
+- [x] **Transfer detail screen**: QR code display, share link button, transfer status, expiry countdown
 
 ### 4.3 Send flow
-- [ ] Share sheet receiver (`Intent` filter for all file types)
-- [ ] Also: in-app file picker
-- [ ] Generate encryption key → encrypt files via KMP module → upload via tus → display QR code with link
-- [ ] Upload progress with cancel support
+- [x] Share sheet receiver (`Intent` filter for all file types)
+- [x] Also: in-app file picker
+- [x] Generate encryption key → encrypt files via KMP module → upload via tus → display QR code with link
+- [x] Upload progress with cancel support
 
 ### 4.4 Receive flow
-- [ ] Create drop slot via KMP module → display QR code with upload link
-- [ ] SSE listener for incoming file notifications
-- [ ] Download & decrypt received files
-- [ ] Save to device storage / share to other apps
+- [x] Create drop slot via KMP module → display QR code with upload link
+- [x] SSE listener for incoming file notifications
+- [x] Download & decrypt received files
+- [x] Save to device storage / share to other apps
 
 ### 4.5 History & management
-- [ ] List of recent transfers (sent and received), stored locally
-- [ ] Delete / expire transfers manually
+- [x] List of recent transfers (sent and received), stored locally
+- [x] Delete / expire transfers manually
 
 ### 4.6 Testing
 - [ ] UI tests (Compose testing)
@@ -173,33 +173,33 @@ Native Android app with Jetpack Compose, share sheet integration, and QR display
 Native iOS app with SwiftUI, share extension, and QR display.
 
 ### 5.1 Project scaffolding
-- [ ] Xcode project setup, KMP framework dependency (via SPM or CocoaPods)
-- [ ] SKIE integration verified (async/await, sealed classes)
-- [ ] App Group configured (shared data between main app and share extension)
+- [x] Xcode project setup, KMP framework dependency (via SPM or CocoaPods)
+- [x] SKIE integration verified (async/await, sealed classes)
+- [x] App Group configured (shared data between main app and share extension)
 
 ### 5.2 Core screens
-- [ ] **Server config screen**: enter/edit backend URL, connection test
-- [ ] **Home screen**: two actions — "Share files" and "Receive files"
-- [ ] **Transfer detail screen**: QR code display (CoreImage `CIQRCodeGenerator`), share link button, status, expiry
+- [x] **Server config screen**: enter/edit backend URL, connection test
+- [x] **Home screen**: two actions — "Share files" and "Receive files"
+- [x] **Transfer detail screen**: QR code display (CoreImage `CIQRCodeGenerator`), share link button, status, expiry
 
 ### 5.3 Send flow
-- [ ] Share extension (App Extension target)
+- [x] Share extension (App Extension target)
   - Receives files from share sheet
   - Encrypts and uploads within extension memory limits (~120MB)
   - Shows progress UI in the extension
   - Hands off to main app for QR display
-- [ ] In-app file picker (document picker)
-- [ ] Generate key → encrypt → upload via tus → display QR
+- [x] In-app file picker (document picker)
+- [x] Generate key → encrypt → upload via tus → display QR
 
 ### 5.4 Receive flow
-- [ ] Create drop slot → display QR with upload link
-- [ ] SSE listener for incoming files
-- [ ] Download & decrypt received files
-- [ ] Save to Files app / share to other apps
+- [x] Create drop slot → display QR with upload link
+- [x] SSE listener for incoming files
+- [x] Download & decrypt received files
+- [x] Save to Files app / share to other apps
 
 ### 5.5 History & management
-- [ ] List of recent transfers, stored locally (Core Data or SwiftData)
-- [ ] Delete / expire transfers manually
+- [x] List of recent transfers, stored locally (Core Data or SwiftData)
+- [x] Delete / expire transfers manually
 
 ### 5.6 Testing
 - [ ] UI tests (XCTest)
