@@ -14,7 +14,7 @@ The foundation everything else depends on. A working Go server with REST API, fi
 - [x] Go module init, directory structure (`cmd/`, `internal/`, `api/`, `store/`)
 - [x] Makefile / Taskfile with build, test, lint targets
 - [x] Dockerfile (multi-stage build → single binary)
-- [ ] CI pipeline (GitHub Actions: lint, test, build)
+- [x] CI pipeline (GitHub Actions: lint, test, build)
 - [x] Apache 2.0 LICENSE file
 
 ### 1.2 Configuration & storage
@@ -218,10 +218,10 @@ Native iOS app with SwiftUI, share extension, and QR display.
 - [ ] Interrupted upload resume testing on all clients
 
 ### 6.2 Deployment & docs
-- [ ] Docker Compose example with reverse proxy (Caddy/nginx)
-- [ ] README with setup instructions, screenshots, architecture overview
-- [ ] CHANGELOG
-- [ ] GitHub releases with pre-built binaries (goreleaser)
+- [x] Docker Compose example with reverse proxy (Caddy/nginx)
+- [x] README with setup instructions, screenshots, architecture overview
+- [x] CHANGELOG
+- [x] GitHub releases with pre-built binaries (goreleaser)
 
 ### 6.3 Security
 - [ ] Security review of crypto implementation

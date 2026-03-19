@@ -14,6 +14,15 @@ type Config struct {
 	MaxFileSize     int64
 	DefaultExpiry   time.Duration
 	CleanupInterval time.Duration
+
+	// Security settings
+	CORSOrigin             string  // Allowed CORS origin (default "*")
+	RateLimitGlobal        float64 // Global requests per second per IP (default 20)
+	RateLimitCreation      float64 // Creation endpoint requests per second per IP (default 2)
+	RateLimitBurst         int     // Global burst size (default 40)
+	RateLimitCreationBurst int     // Creation burst size (default 5)
+	MaxManifestSize        int64   // Max manifest upload size in bytes (default 10 MB)
+	MaxFilesPerTransfer    int     // Max number of files per transfer (default 100)
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -25,6 +34,14 @@ func Load() Config {
 		MaxFileSize:     envOrDefaultInt64("MAX_FILE_SIZE", 5*1024*1024*1024), // 5 GB
 		DefaultExpiry:   envOrDefaultDuration("DEFAULT_EXPIRY", 24*time.Hour),
 		CleanupInterval: envOrDefaultDuration("CLEANUP_INTERVAL", 5*time.Minute),
+
+		CORSOrigin:             envOrDefault("CORS_ORIGIN", "*"),
+		RateLimitGlobal:        envOrDefaultFloat64("RATE_LIMIT_GLOBAL", 20),
+		RateLimitCreation:      envOrDefaultFloat64("RATE_LIMIT_CREATION", 2),
+		RateLimitBurst:         int(envOrDefaultInt64("RATE_LIMIT_BURST", 40)),
+		RateLimitCreationBurst: int(envOrDefaultInt64("RATE_LIMIT_CREATION_BURST", 5)),
+		MaxManifestSize:        envOrDefaultInt64("MAX_MANIFEST_SIZE", 10*1024*1024), // 10 MB
+		MaxFilesPerTransfer:    int(envOrDefaultInt64("MAX_FILES_PER_TRANSFER", 100)),
 	}
 }
 
@@ -45,6 +62,18 @@ func envOrDefaultInt64(key string, fallback int64) int64 {
 		return fallback
 	}
 	return n
+}
+
+func envOrDefaultFloat64(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
 }
 
 func envOrDefaultDuration(key string, fallback time.Duration) time.Duration {

@@ -40,11 +40,19 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
-	r.Use(corsMiddleware)
+	r.Use(securityHeadersMiddleware)
+	r.Use(s.corsMiddleware)
+
+	// Global rate limiter (looser).
+	globalRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
+	r.Use(rateLimitMiddleware(globalRL))
+
+	// Stricter rate limiter for creation endpoints.
+	creationRL := newRateLimiter(s.cfg.RateLimitCreation, s.cfg.RateLimitCreationBurst)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Transfer endpoints (send flow)
-		r.Post("/transfers", s.createTransfer)
+		r.With(rateLimitMiddleware(creationRL)).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
 		r.Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.Post("/transfers/{transferID}/manifest", s.uploadManifest)
@@ -60,23 +68,32 @@ func (s *Server) Router() http.Handler {
 		r.Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
-		r.Post("/slots", s.createSlot)
+		r.With(rateLimitMiddleware(creationRL)).Post("/slots", s.createSlot)
 		r.Get("/slots/{slotID}", s.getSlot)
 		r.Get("/slots/{slotID}/events", s.slotEvents)
 
 		// Slot-scoped transfer creation
-		r.Post("/slots/{slotID}/transfers", s.createSlotTransfer)
+		r.With(rateLimitMiddleware(creationRL)).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
 	})
 
 	return r
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+// corsMiddleware sets CORS headers using the configured origin.
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := s.cfg.CORSOrigin
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, HEAD, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Tus-Resumable, Upload-Length, Upload-Offset, Upload-Metadata")
 		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension")
+
+		if origin != "*" {
+			w.Header().Set("Vary", "Origin")
+		}
 
 		next.ServeHTTP(w, r)
 	})

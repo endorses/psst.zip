@@ -1,0 +1,13 @@
+{$PSST_DOMAIN:localhost} {
+	# API requests go to the backend
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	# Serve the web app static files
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -150,6 +150,16 @@ func (q *Queries) ListFiles(transferID string) ([]File, error) {
 	return files, rows.Err()
 }
 
+// FileCount returns the number of files for a transfer.
+func (q *Queries) FileCount(transferID string) (int, error) {
+	row := q.db.QueryRow(`SELECT COUNT(*) FROM files WHERE transfer_id = ?`, transferID)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (q *Queries) FileCountAndSize(transferID string) (int, int64, error) {
 	row := q.db.QueryRow(
 		`SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE transfer_id = ?`, transferID,

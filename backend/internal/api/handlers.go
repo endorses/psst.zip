@@ -40,6 +40,11 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	if !isValidUUID(id) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
+
 	t, err := s.queries.GetTransfer(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -73,6 +78,11 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	if !isValidUUID(id) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
+
 	if err := s.queries.CompleteTransfer(id); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -82,15 +92,26 @@ func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	if !isValidUUID(id) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
 
 	if _, err := s.queries.GetTransfer(id); err != nil {
 		writeError(w, http.StatusNotFound, "transfer not found")
 		return
 	}
 
-	data, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
+	// Limit request body size for manifest uploads.
+	maxSize := s.cfg.MaxManifestSize
+	if maxSize <= 0 {
+		maxSize = 10 * 1024 * 1024 // 10 MB fallback
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
+
+	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read body")
+		writeError(w, http.StatusRequestEntityTooLarge, "manifest too large")
 		return
 	}
 	defer r.Body.Close()
@@ -105,6 +126,10 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) downloadManifest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	if !isValidUUID(id) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
 
 	data, err := s.queries.GetManifest(id)
 	if err != nil {
@@ -124,6 +149,10 @@ func (s *Server) downloadManifest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	transferID := chi.URLParam(r, "transferID")
 	fileID := chi.URLParam(r, "fileID")
+	if !isValidUUID(transferID) || !isValidUUID(fileID) {
+		writeError(w, http.StatusBadRequest, "invalid ID format")
+		return
+	}
 
 	// Check download limits.
 	t, err := s.queries.GetTransfer(transferID)
@@ -166,17 +195,47 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 	transferID := chi.URLParam(r, "transferID")
+	if !isValidUUID(transferID) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
+
+	// Validate the transfer exists.
+	if _, err := s.queries.GetTransfer(transferID); err != nil {
+		writeError(w, http.StatusNotFound, "transfer not found")
+		return
+	}
+
+	// Validate max files per transfer.
+	if s.cfg.MaxFilesPerTransfer > 0 {
+		count, err := s.queries.FileCount(transferID)
+		if err == nil && count >= s.cfg.MaxFilesPerTransfer {
+			writeError(w, http.StatusBadRequest, "maximum file count reached for this transfer")
+			return
+		}
+	}
+
 	s.tusH.ServeCreate(w, r, transferID)
 }
 
 func (s *Server) tusHead(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "fileID")
+	if !isValidUUID(fileID) {
+		writeError(w, http.StatusBadRequest, "invalid file ID")
+		return
+	}
+
 	s.tusH.ServeOffset(w, r, fileID)
 }
 
 func (s *Server) tusPatch(w http.ResponseWriter, r *http.Request) {
 	transferID := chi.URLParam(r, "transferID")
 	fileID := chi.URLParam(r, "fileID")
+	if !isValidUUID(transferID) || !isValidUUID(fileID) {
+		writeError(w, http.StatusBadRequest, "invalid ID format")
+		return
+	}
+
 	storageKey := fmt.Sprintf("%s/%s", transferID, fileID)
 	s.tusH.ServePatch(w, r, fileID, storageKey)
 }
@@ -210,6 +269,10 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 	slotID := chi.URLParam(r, "slotID")
+	if !isValidUUID(slotID) {
+		writeError(w, http.StatusBadRequest, "invalid slot ID")
+		return
+	}
 
 	slot, err := s.queries.GetSlot(slotID)
 	if err != nil {
@@ -244,6 +307,10 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	slotID := chi.URLParam(r, "slotID")
+	if !isValidUUID(slotID) {
+		writeError(w, http.StatusBadRequest, "invalid slot ID")
+		return
+	}
 
 	if _, err := s.queries.GetSlot(slotID); err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")

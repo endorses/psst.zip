@@ -43,11 +43,18 @@ func setup(t *testing.T) *testEnv {
 	}
 
 	cfg := config.Config{
-		ListenAddr:    ":0",
-		StoragePath:   storagePath,
-		DBPath:        dbPath,
-		MaxFileSize:   100 * 1024 * 1024,
-		DefaultExpiry: 24 * time.Hour,
+		ListenAddr:             ":0",
+		StoragePath:            storagePath,
+		DBPath:                 dbPath,
+		MaxFileSize:            100 * 1024 * 1024,
+		DefaultExpiry:          24 * time.Hour,
+		CORSOrigin:             "*",
+		RateLimitGlobal:        1000, // High limits for tests
+		RateLimitCreation:      1000,
+		RateLimitBurst:         2000,
+		RateLimitCreationBurst: 2000,
+		MaxManifestSize:        10 * 1024 * 1024,
+		MaxFilesPerTransfer:    100,
 	}
 
 	queries := database.NewQueries(db)
@@ -140,7 +147,8 @@ func TestGetTransfer(t *testing.T) {
 func TestGetTransferNotFound(t *testing.T) {
 	env := setup(t)
 
-	resp, err := http.Get(env.url("/api/v1/transfers/nonexistent"))
+	// Use a valid UUID that doesn't exist.
+	resp, err := http.Get(env.url("/api/v1/transfers/00000000-0000-0000-0000-000000000000"))
 	if err != nil {
 		t.Fatalf("get transfer: %v", err)
 	}
@@ -148,6 +156,20 @@ func TestGetTransferNotFound(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetTransferInvalidID(t *testing.T) {
+	env := setup(t)
+
+	resp, err := http.Get(env.url("/api/v1/transfers/not-a-uuid"))
+	if err != nil {
+		t.Fatalf("get transfer: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 
