@@ -13,23 +13,22 @@ import zip.psst.shared.model.EncryptedManifest
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.TransferLimits
 import zip.psst.shared.model.UrlHelper
+import java.io.ByteArrayOutputStream
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
-data class FileInfo(
-    val uri: Uri,
-    val name: String,
-    val size: Long,
-    val mimeType: String,
-)
+data class FileInfo(val uri: Uri, val name: String, val size: Long, val mimeType: String)
 
 data class SendUiState(
     val files: List<FileInfo> = emptyList(),
@@ -52,20 +51,15 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addFiles(uris: List<Uri>) {
         val context = getApplication<PsstApplication>()
-        val newFiles = uris.mapNotNull { uri ->
-            resolveFileInfo(context, uri)
-        }
-        _uiState.value = _uiState.value.copy(
-            files = _uiState.value.files + newFiles,
-            error = null,
-        )
+        val newFiles = uris.mapNotNull { uri -> resolveFileInfo(context, uri) }
+        _uiState.update { it.copy(files = _uiState.value.files + newFiles, error = null) }
     }
 
     fun removeFile(index: Int) {
         val files = _uiState.value.files.toMutableList()
         if (index in files.indices) {
             files.removeAt(index)
-            _uiState.value = _uiState.value.copy(files = files)
+            _uiState.update { it.copy(files = files) }
         }
     }
 
@@ -73,125 +67,145 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     fun startUpload() {
         val files = _uiState.value.files
         if (files.isEmpty()) return
-
-        val serverUrl = app.prefs.getServerUrl()
-        if (serverUrl.isBlank()) {
-            _uiState.value = _uiState.value.copy(error = "Server URL not configured")
+        if (files.any { it.size > TransferLimits.MAX_FILE_BYTES }) {
+            _uiState.update { it.copy(error = "Files up to 25 MiB are supported") }
             return
         }
 
-        _uiState.value = _uiState.value.copy(isUploading = true, error = null, uploadProgress = 0f)
+        val serverUrl = app.prefs.getServerUrl()
+        if (serverUrl.isBlank()) {
+            _uiState.update { it.copy(error = "Server URL not configured") }
+            return
+        }
 
-        uploadJob = viewModelScope.launch {
-            try {
+        _uiState.update { it.copy(isUploading = true, error = null, uploadProgress = 0f) }
+
+        uploadJob =
+            viewModelScope.launch(Dispatchers.IO) {
                 val client = ApiClient(ServerConfig(serverUrl))
-                val key = CryptoProvider.generateKey()
-                val base64Key = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
+                try {
+                    val key = CryptoProvider.generateKey()
+                    val base64Key =
+                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
 
-                // Create transfer
-                val transfer = client.transfers.create()
-                _uiState.value = _uiState.value.copy(transferId = transfer.id)
+                    // Create transfer
+                    val transfer = client.transfers.create()
+                    _uiState.update { it.copy(transferId = transfer.id) }
 
-                val context = getApplication<PsstApplication>()
-                val fileMetadataList = mutableListOf<FileMetadata>()
-                val totalBytes = files.sumOf { it.size }
-                var uploadedBytes = 0L
+                    val context = getApplication<PsstApplication>()
+                    val fileMetadataList = mutableListOf<FileMetadata>()
+                    val totalBytes = files.sumOf { it.size }
+                    var uploadedBytes = 0L
 
-                // Encrypt and upload each file
-                for ((index, fileInfo) in files.withIndex()) {
-                    _uiState.value = _uiState.value.copy(currentFileIndex = index)
+                    // Encrypt and upload each file
+                    for ((index, fileInfo) in files.withIndex()) {
+                        _uiState.update { it.copy(currentFileIndex = index) }
 
-                    val inputStream = context.contentResolver.openInputStream(fileInfo.uri)
-                        ?: throw Exception("Cannot read file: ${fileInfo.name}")
+                        val inputStream =
+                            context.contentResolver.openInputStream(fileInfo.uri)
+                                ?: throw Exception("Cannot read file: ${fileInfo.name}")
 
-                    val plaintext = inputStream.use { it.readBytes() }
+                        val plaintext =
+                            inputStream.use { input ->
+                                val output = ByteArrayOutputStream()
+                                val buffer = ByteArray(8192)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count == -1) break
+                                    require(
+                                        output.size() + count <= TransferLimits.MAX_FILE_BYTES
+                                    ) {
+                                        "Files up to 25 MiB are supported"
+                                    }
+                                    output.write(buffer, 0, count)
+                                }
+                                output.toByteArray()
+                            }
 
-                    // Encrypt the file
-                    val nonce = CryptoProvider.generateNonce()
-                    val ciphertext = CryptoProvider.encrypt(key, nonce, plaintext)
-                    val encryptedData = nonce + ciphertext
+                        // Encrypt the file
+                        val nonce = CryptoProvider.generateNonce()
+                        val ciphertext = CryptoProvider.encrypt(key, nonce, plaintext)
+                        val encryptedData = nonce + ciphertext
 
-                    // Upload via tus
-                    val resourceUrl = client.uploadFile(
-                        transferId = transfer.id,
-                        data = encryptedData,
-                        metadata = mapOf("filename" to fileInfo.name),
-                    ) { uploaded ->
-                        val progress = (uploadedBytes + uploaded).toFloat() / totalBytes.toFloat()
-                        _uiState.value = _uiState.value.copy(
-                            uploadProgress = progress.coerceIn(0f, 1f),
+                        // Upload via tus
+                        val resourceUrl =
+                            client.uploadFile(transferId = transfer.id, data = encryptedData) {
+                                uploaded ->
+                                val progress =
+                                    (uploadedBytes + uploaded).toFloat() / totalBytes.toFloat()
+                                _uiState.update {
+                                    it.copy(uploadProgress = progress.coerceIn(0f, 1f))
+                                }
+                            }
+
+                        uploadedBytes += fileInfo.size
+
+                        // Extract blob ID from resource URL
+                        val blobId = resourceUrl.substringAfterLast("/")
+                        fileMetadataList.add(
+                            FileMetadata(
+                                name = fileInfo.name,
+                                size = plaintext.size.toLong(),
+                                mimeType = fileInfo.mimeType,
+                                blobId = blobId,
+                            )
                         )
                     }
 
-                    uploadedBytes += fileInfo.size
+                    // Create and upload encrypted manifest
+                    val manifest = Manifest(files = fileMetadataList)
+                    val manifestJson = Json.encodeToString(manifest)
+                    val manifestNonce = CryptoProvider.generateNonce()
+                    val manifestCiphertext =
+                        CryptoProvider.encrypt(key, manifestNonce, manifestJson.encodeToByteArray())
+                    val encryptedManifest =
+                        EncryptedManifest(ciphertext = manifestCiphertext, nonce = manifestNonce)
+                    client.transfers.uploadManifest(transfer.id, encryptedManifest.toBytes())
 
-                    // Extract blob ID from resource URL
-                    val blobId = resourceUrl.substringAfterLast("/")
-                    fileMetadataList.add(
-                        FileMetadata(
-                            name = fileInfo.name,
-                            size = fileInfo.size,
-                            mimeType = fileInfo.mimeType,
-                            blobId = blobId,
-                        ),
-                    )
+                    // Complete the transfer
+                    client.transfers.complete(transfer.id)
+
+                    val downloadUrl = UrlHelper.buildDownloadUrl(serverUrl, transfer.id, key)
+
+                    _uiState.update {
+                        it.copy(
+                            isUploading = false,
+                            uploadProgress = 1f,
+                            encryptionKey = base64Key,
+                            downloadUrl = downloadUrl,
+                        )
+                    }
+
+                    // Save to history
+                    app.database
+                        .transferHistoryDao()
+                        .insert(
+                            TransferHistoryEntity(
+                                id = transfer.id,
+                                type = "sent",
+                                fileCount = files.size,
+                                totalSize = totalBytes,
+                                serverUrl = serverUrl,
+                                encryptionKey = base64Key,
+                                status = "complete",
+                                expiresAt = null,
+                            )
+                        )
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    _uiState.update {
+                        it.copy(isUploading = false, error = e.message ?: "Upload failed")
+                    }
+                } finally {
+                    client.close()
                 }
-
-                // Create and upload encrypted manifest
-                val manifest = Manifest(files = fileMetadataList)
-                val manifestJson = Json.encodeToString(manifest)
-                val manifestNonce = CryptoProvider.generateNonce()
-                val manifestCiphertext = CryptoProvider.encrypt(
-                    key,
-                    manifestNonce,
-                    manifestJson.encodeToByteArray(),
-                )
-                val encryptedManifest = EncryptedManifest(
-                    ciphertext = manifestCiphertext,
-                    nonce = manifestNonce,
-                )
-                client.transfers.uploadManifest(transfer.id, encryptedManifest.toBytes())
-
-                // Complete the transfer
-                client.transfers.complete(transfer.id)
-                client.close()
-
-                val downloadUrl = UrlHelper.buildDownloadUrl(serverUrl, transfer.id, key)
-
-                _uiState.value = _uiState.value.copy(
-                    isUploading = false,
-                    uploadProgress = 1f,
-                    encryptionKey = base64Key,
-                    downloadUrl = downloadUrl,
-                )
-
-                // Save to history
-                app.database.transferHistoryDao().insert(
-                    TransferHistoryEntity(
-                        id = transfer.id,
-                        type = "sent",
-                        fileCount = files.size,
-                        totalSize = totalBytes,
-                        serverUrl = serverUrl,
-                        encryptionKey = base64Key,
-                        status = "complete",
-                        expiresAt = null,
-                    ),
-                )
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _uiState.value = _uiState.value.copy(
-                    isUploading = false,
-                    error = e.message ?: "Upload failed",
-                )
             }
-        }
     }
 
     fun cancelUpload() {
         uploadJob?.cancel()
         uploadJob = null
-        _uiState.value = _uiState.value.copy(isUploading = false, uploadProgress = 0f)
+        _uiState.update { it.copy(isUploading = false, uploadProgress = 0f) }
     }
 
     private fun resolveFileInfo(context: android.content.Context, uri: Uri): FileInfo? {

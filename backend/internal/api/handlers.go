@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/endorses/psst.zip/backend/internal/database"
 )
 
 // --- Transfer handlers ---
@@ -55,6 +56,10 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !time.Now().Before(t.ExpiresAt) {
+		writeError(w, http.StatusGone, "transfer expired")
+		return
+	}
 	fileCount, totalSize, _ := s.queries.FileCountAndSize(id)
 	hasManifest, _ := s.queries.HasManifest(id)
 
@@ -78,27 +83,37 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	defer s.lockTransfer(id)()
 	if !isValidUUID(id) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
 	}
 
+	if s.activeTransfer(w, id, true) == nil {
+		return
+	}
 	if err := s.queries.CompleteTransfer(id); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	slotIDs, err := s.queries.TransferSlotIDs(id)
+	if err == nil {
+		for _, slotID := range slotIDs {
+			s.sseHub.Send(slotID, fmt.Sprintf(`{"event":"transfer_complete","transfer_id":"%s"}`, id))
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
+	defer s.lockTransfer(id)()
 	if !isValidUUID(id) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
 	}
 
-	if _, err := s.queries.GetTransfer(id); err != nil {
-		writeError(w, http.StatusNotFound, "transfer not found")
+	if s.activeTransfer(w, id, true) == nil {
 		return
 	}
 
@@ -131,6 +146,9 @@ func (s *Server) downloadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.downloadableTransfer(w, id) == nil {
+		return
+	}
 	data, err := s.queries.GetManifest(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -154,14 +172,7 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check download limits.
-	t, err := s.queries.GetTransfer(transferID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "transfer not found")
-		return
-	}
-	if t.MaxDownloads > 0 && t.DownloadCount >= t.MaxDownloads {
-		writeError(w, http.StatusGone, "download limit reached")
+	if s.downloadableTransfer(w, transferID) == nil {
 		return
 	}
 
@@ -184,7 +195,15 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 
-	_ = s.queries.IncrementDownloadCount(transferID)
+	allowed, err := s.queries.ReserveFileDownload(transferID, fileID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to count download")
+		return
+	}
+	if !allowed {
+		writeError(w, http.StatusGone, "download limit reached")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
@@ -195,14 +214,14 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 	transferID := chi.URLParam(r, "transferID")
+	defer s.lockTransfer(transferID)()
 	if !isValidUUID(transferID) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
 	}
 
 	// Validate the transfer exists.
-	if _, err := s.queries.GetTransfer(transferID); err != nil {
-		writeError(w, http.StatusNotFound, "transfer not found")
+	if s.activeTransfer(w, transferID, true) == nil {
 		return
 	}
 
@@ -219,25 +238,62 @@ func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) tusHead(w http.ResponseWriter, r *http.Request) {
-	fileID := chi.URLParam(r, "fileID")
-	if !isValidUUID(fileID) {
-		writeError(w, http.StatusBadRequest, "invalid file ID")
+	transferID, fileID := chi.URLParam(r, "transferID"), chi.URLParam(r, "fileID")
+	if !s.validUpload(w, transferID, fileID, false) {
 		return
 	}
-
 	s.tusH.ServeOffset(w, r, fileID)
 }
 
 func (s *Server) tusPatch(w http.ResponseWriter, r *http.Request) {
-	transferID := chi.URLParam(r, "transferID")
-	fileID := chi.URLParam(r, "fileID")
-	if !isValidUUID(transferID) || !isValidUUID(fileID) {
-		writeError(w, http.StatusBadRequest, "invalid ID format")
+	transferID, fileID := chi.URLParam(r, "transferID"), chi.URLParam(r, "fileID")
+	defer s.lockTransfer(transferID)()
+	if !s.validUpload(w, transferID, fileID, true) {
 		return
 	}
+	s.tusH.ServePatch(w, r, fileID, fmt.Sprintf("%s/%s", transferID, fileID))
+}
 
-	storageKey := fmt.Sprintf("%s/%s", transferID, fileID)
-	s.tusH.ServePatch(w, r, fileID, storageKey)
+func (s *Server) validUpload(w http.ResponseWriter, transferID, fileID string, mutable bool) bool {
+	if !isValidUUID(transferID) || !isValidUUID(fileID) {
+		writeError(w, http.StatusBadRequest, "invalid ID format")
+		return false
+	}
+	if s.activeTransfer(w, transferID, mutable) == nil {
+		return false
+	}
+	f, err := s.queries.GetFile(fileID)
+	if err != nil || f.TransferID != transferID {
+		writeError(w, http.StatusNotFound, "file not found")
+		return false
+	}
+	return true
+}
+
+func (s *Server) activeTransfer(w http.ResponseWriter, id string, mutable bool) *database.Transfer {
+	t, err := s.queries.GetTransfer(id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "transfer not found")
+		return nil
+	}
+	if !time.Now().Before(t.ExpiresAt) {
+		writeError(w, http.StatusGone, "transfer expired")
+		return nil
+	}
+	if mutable && t.Status != "pending" {
+		writeError(w, http.StatusConflict, "transfer is complete")
+		return nil
+	}
+	return t
+}
+
+func (s *Server) downloadableTransfer(w http.ResponseWriter, id string) *database.Transfer {
+	t := s.activeTransfer(w, id, false)
+	if t != nil && t.Status != "complete" {
+		writeError(w, http.StatusConflict, "transfer not complete")
+		return nil
+	}
+	return t
 }
 
 // --- Slot handlers ---
@@ -284,10 +340,17 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired")
+		return
+	}
 	transfers, _ := s.queries.ListSlotTransfers(slotID)
 
-	var infos []SlotTransferInfo
+	infos := make([]SlotTransferInfo, 0, len(transfers))
 	for _, t := range transfers {
+		if !time.Now().Before(t.ExpiresAt) {
+			continue
+		}
 		fc, _, _ := s.queries.FileCountAndSize(t.ID)
 		infos = append(infos, SlotTransferInfo{
 			TransferID: t.ID,
@@ -312,11 +375,16 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.queries.GetSlot(slotID); err != nil {
+	slot, err := s.queries.GetSlot(slotID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
 
+	if !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired")
+		return
+	}
 	var req CreateTransferRequest
 	if err := decodeJSON(r, &req); err != nil {
 		req = CreateTransferRequest{}
@@ -330,6 +398,9 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
+	if expiresAt.After(slot.ExpiresAt) {
+		expiresAt = slot.ExpiresAt
+	}
 	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transfer")
 		return

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -65,11 +66,22 @@ func (h *SSEHub) Send(key string, msg string) {
 func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 	slotID := chi.URLParam(r, "slotID")
 
-	if _, err := s.queries.GetSlot(slotID); err != nil {
+	if !isValidUUID(slotID) {
+		writeError(w, http.StatusBadRequest, "invalid slot ID")
+		return
+	}
+	slot, err := s.queries.GetSlot(slotID)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
 
+	if !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired")
+		return
+	}
+	expires := time.NewTimer(time.Until(slot.ExpiresAt))
+	defer expires.Stop()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -91,6 +103,8 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	for {
 		select {
+		case <-expires.C:
+			return
 		case <-ctx.Done():
 			return
 		case msg, ok := <-ch:

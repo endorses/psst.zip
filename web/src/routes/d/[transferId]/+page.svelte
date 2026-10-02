@@ -4,7 +4,9 @@
   import { importKey, decrypt, decryptManifest } from "$lib/crypto";
   import { getTransferInfo, downloadManifest, downloadFile } from "$lib/api";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
-  import { zipSync, strToU8 } from "fflate";
+  import { zipSync } from "fflate";
+
+  import { assertFileSize, MAX_BUFFERED_BYTES } from "$lib/limits";
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
@@ -16,7 +18,7 @@
   let downloadProgress = $state<Record<string, number>>({});
 
   onMount(async () => {
-    transferId = $page.params.transferId;
+    transferId = $page.params.transferId ?? "";
     keyStr = window.location.hash.slice(1);
 
     if (!keyStr) {
@@ -34,7 +36,7 @@
       status = "ready";
     } catch (err) {
       status = "error";
-      if (err instanceof Error && err.message.includes("404")) {
+      if (err instanceof Error && (err.message.includes("404") || err.message.includes("410"))) {
         errorMessage = "This transfer has expired or does not exist.";
       } else {
         errorMessage = err instanceof Error ? err.message : "Failed to load transfer";
@@ -61,20 +63,21 @@
 
   async function downloadSingleFile(entry: FileManifestEntry) {
     try {
-      downloadProgress = { ...downloadProgress, [entry.fileId]: 0 };
+      assertFileSize(entry.size);
+      downloadProgress = { ...downloadProgress, [entry.blob_id]: 0 };
       const key = await importKey(keyStr);
 
-      downloadProgress = { ...downloadProgress, [entry.fileId]: 50 };
-      const encrypted = await downloadFile(transferId, entry.fileId);
+      downloadProgress = { ...downloadProgress, [entry.blob_id]: 50 };
+      const encrypted = await downloadFile(transferId, entry.blob_id);
 
-      downloadProgress = { ...downloadProgress, [entry.fileId]: 80 };
+      downloadProgress = { ...downloadProgress, [entry.blob_id]: 80 };
       const plaintext = await decrypt(key, encrypted);
 
-      downloadProgress = { ...downloadProgress, [entry.fileId]: 100 };
-      triggerDownload(plaintext, entry.name, entry.type);
+      downloadProgress = { ...downloadProgress, [entry.blob_id]: 100 };
+      triggerDownload(plaintext, entry.name, entry.mime_type);
 
       setTimeout(() => {
-        const { [entry.fileId]: _, ...rest } = downloadProgress;
+        const { [entry.blob_id]: _, ...rest } = downloadProgress;
         downloadProgress = rest;
       }, 1000);
     } catch (err) {
@@ -89,17 +92,21 @@
     status = "downloading";
     try {
       const key = await importKey(keyStr);
-      const zipData: Record<string, Uint8Array> = {};
+      if (manifest.files.reduce((sum, file) => sum + file.size, 0) > MAX_BUFFERED_BYTES) {
+        throw new Error("ZIP downloads are limited to 25 MiB total. Download files individually.");
+      }
+      const zipData: Record<string, Uint8Array> = Object.create(null);
 
       for (let i = 0; i < manifest.files.length; i++) {
         const entry = manifest.files[i];
-        const encrypted = await downloadFile(transferId, entry.fileId);
+        const encrypted = await downloadFile(transferId, entry.blob_id);
         const plaintext = await decrypt(key, encrypted);
-        zipData[entry.name] = new Uint8Array(plaintext);
+        const name = entry.name.split(/[\\/]/).pop() || "file";
+        zipData[`${i + 1}-${name}`] = new Uint8Array(plaintext);
       }
 
       const zipped = zipSync(zipData);
-      triggerDownload(zipped.buffer, "files.zip", "application/zip");
+      triggerDownload(new Uint8Array(zipped).buffer, "files.zip", "application/zip");
       status = "ready";
     } catch (err) {
       status = "error";
@@ -145,10 +152,10 @@
           <button
             class="btn"
             onclick={() => downloadSingleFile(entry)}
-            disabled={entry.fileId in downloadProgress}
+            disabled={entry.blob_id in downloadProgress}
           >
-            {#if entry.fileId in downloadProgress}
-              {downloadProgress[entry.fileId]}%
+            {#if entry.blob_id in downloadProgress}
+              {downloadProgress[entry.blob_id]}%
             {:else}
               Download
             {/if}

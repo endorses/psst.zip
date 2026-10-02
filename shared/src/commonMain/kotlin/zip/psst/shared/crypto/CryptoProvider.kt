@@ -1,12 +1,7 @@
 package zip.psst.shared.crypto
 
-/**
- * Result of an encryption operation.
- */
-data class EncryptionResult(
-    val ciphertext: ByteArray,
-    val nonce: ByteArray,
-) {
+/** Result of an encryption operation. */
+data class EncryptionResult(val ciphertext: ByteArray, val nonce: ByteArray) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || other !is EncryptionResult) return false
@@ -28,15 +23,11 @@ data class EncryptionResult(
  * - iOS: CryptoKit.AES.GCM
  */
 expect object CryptoProvider {
-    /**
-     * Generate a random 256-bit (32-byte) AES key.
-     */
-    fun generateKey(): ByteArray
+    /** Generate a random 256-bit (32-byte) AES key. */
+    @Throws(Exception::class) fun generateKey(): ByteArray
 
-    /**
-     * Generate a random 96-bit (12-byte) GCM nonce.
-     */
-    fun generateNonce(): ByteArray
+    /** Generate a random 96-bit (12-byte) GCM nonce. */
+    @Throws(Exception::class) fun generateNonce(): ByteArray
 
     /**
      * Encrypt a plaintext chunk using AES-256-GCM.
@@ -46,6 +37,7 @@ expect object CryptoProvider {
      * @param plaintext data to encrypt
      * @return ciphertext with appended GCM authentication tag
      */
+    @Throws(Exception::class)
     fun encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray
 
     /**
@@ -57,5 +49,6 @@ expect object CryptoProvider {
      * @return decrypted plaintext
      * @throws Exception if authentication fails or data is corrupted
      */
+    @Throws(Exception::class)
     fun decrypt(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray
 }

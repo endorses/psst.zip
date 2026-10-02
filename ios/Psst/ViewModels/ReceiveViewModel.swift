@@ -1,7 +1,6 @@
 import Foundation
 import Shared
 
-/// States for the receive (drop slot) flow.
 enum ReceiveState: Equatable {
     case idle
     case creating
@@ -12,200 +11,113 @@ enum ReceiveState: Equatable {
     case failed(String)
 }
 
-/// Manages the receive flow: create drop slot -> display QR -> listen for uploads -> download & decrypt.
+/// Poll completed child transfers; a slot ID is never a transfer ID.
 @Observable
+@MainActor
 final class ReceiveViewModel {
     private(set) var state: ReceiveState = .idle
     private(set) var uploadURL: String?
     private(set) var expiresAt: Date?
     private(set) var receivedFileURLs: [URL] = []
 
-    private var slotId: String?
-    private var encryptionKey: KotlinByteArray?
     private let serverConfig: ServerConfigManager
     private let historyStore: TransferHistoryStore
-    private var sseTask: Task<Void, Never>?
+    private var receiveTask: Task<Void, Never>?
 
-    init(
-        serverConfig: ServerConfigManager,
-        historyStore: TransferHistoryStore
-    ) {
+    init(serverConfig: ServerConfigManager, historyStore: TransferHistoryStore) {
         self.serverConfig = serverConfig
         self.historyStore = historyStore
     }
 
-    deinit {
-        sseTask?.cancel()
-    }
+    deinit { receiveTask?.cancel() }
 
-    /// Create a drop slot on the server, generate a key, and start listening for uploads.
-    @MainActor
     func createDropSlot() async {
         guard serverConfig.isConfigured else {
             state = .failed("Server not configured")
             return
         }
-
+        receiveTask?.cancel()
+        receivedFileURLs = []
         state = .creating
-
         let client = serverConfig.makeApiClient()
-
         do {
-            // Generate encryption key
-            let key = CryptoProvider.shared.generateKey()
-            self.encryptionKey = key.toKotlinByteArray()
-
-            // Create slot
+            let key = try CryptoProvider.shared.generateKey()
             let slot = try await client.slots.create()
-            self.slotId = slot.id
-
-            // Build upload URL
-            let url = UrlHelper.shared.buildUploadUrl(
-                baseUrl: serverConfig.serverURL,
-                slotId: slot.id,
-                key: key.toKotlinByteArray()
+            uploadURL = UrlHelper.shared.buildUploadUrl(
+                baseUrl: serverConfig.serverURL, slotId: slot.id, key: key
             )
-            self.uploadURL = url
-
-            // Parse expiry
-            if let expiresAtString = slot.expiresAt {
-                expiresAt = ISO8601DateFormatter().date(from: expiresAtString)
-            }
-
+            expiresAt = slot.expiresAt.flatMap { ISO8601DateFormatter().date(from: $0) }
             state = .waiting
-
-            // Start SSE listener for upload notifications
-            startListening(client: client, slotId: slot.id)
-
-        } catch {
-            client.close()
-            state = .failed(error.localizedDescription)
-        }
-    }
-
-    private func startListening(client: ApiClient, slotId: String) {
-        sseTask = Task { [weak self] in
-            do {
-                for try await event in client.slots.events(slotId: slotId).asAsyncSequence() {
-                    guard !Task.isCancelled else { break }
-                    if event.event == "upload_complete" || event.event == "file_uploaded" {
-                        await self?.handleUploadNotification(client: client, slotId: slotId)
+            receiveTask = Task { [weak self] in
+                defer { client.close() }
+                do {
+                    while !Task.isCancelled {
+                        let status = try await client.slots.get(slotId: slot.id)
+                        if !status.completedTransfers.isEmpty {
+                            try await self?.download(client: client, transfers: status.completedTransfers, key: key)
+                            return
+                        }
+                        try await Task.sleep(for: .seconds(3))
                     }
+                } catch is CancellationError {
+                    // A new slot or dismissal cancelled this receive operation.
+                } catch {
+                    self?.state = .failed(error.localizedDescription)
                 }
-            } catch {
-                // SSE stream ended or errored. Fall back to polling.
-                await self?.pollForUploads(client: client, slotId: slotId)
             }
-        }
-    }
-
-    @MainActor
-    private func handleUploadNotification(client: ApiClient, slotId: String) async {
-        guard let encryptionKey else { return }
-
-        state = .downloading(progress: 0.0)
-
-        do {
-            // Get slot status to find uploaded files
-            let slot = try await client.slots.get(slotId: slotId)
-
-            guard slot.fileCount > 0 else { return }
-
-            // Download the manifest
-            // For drop slots, the manifest endpoint is at the slot level.
-            // The uploader uses the same transfer structure scoped to the slot.
-            let manifestBytes = try await client.transfers.downloadManifest(transferId: slotId)
-            let manifestData = Data(manifestBytes)
-
-            state = .decrypting
-
-            // Parse nonce + ciphertext from manifest
-            let nonce = manifestData.prefix(12)
-            let ciphertext = manifestData.dropFirst(12)
-
-            let decryptedManifestBytes = CryptoProvider.shared.decrypt(
-                key: encryptionKey,
-                nonce: Data(nonce).toKotlinByteArray(),
-                ciphertext: Data(ciphertext).toKotlinByteArray()
-            )
-            let manifestJSON = String(data: Data(decryptedManifestBytes), encoding: .utf8) ?? ""
-            guard let manifest = ManifestSerializer.decode(json: manifestJSON) else {
-                state = .failed("Failed to parse file manifest")
-                return
-            }
-
-            // Download and decrypt each file
-            var savedURLs: [URL] = []
-            let tempDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("psst-received-\(slotId)")
-            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-            for (index, file) in manifest.files.enumerated() {
-                let progress = Double(index) / Double(manifest.files.count)
-                state = .downloading(progress: progress)
-
-                let encryptedData = try await client.transfers.downloadFile(
-                    transferId: slotId,
-                    fileId: file.blobId
-                )
-                let blob = Data(encryptedData)
-                let fileNonce = blob.prefix(12)
-                let fileCiphertext = blob.dropFirst(12)
-
-                let decrypted = CryptoProvider.shared.decrypt(
-                    key: encryptionKey,
-                    nonce: Data(fileNonce).toKotlinByteArray(),
-                    ciphertext: Data(fileCiphertext).toKotlinByteArray()
-                )
-
-                let fileURL = tempDir.appendingPathComponent(file.name)
-                try Data(decrypted).write(to: fileURL)
-                savedURLs.append(fileURL)
-            }
-
-            receivedFileURLs = savedURLs
-
-            // Save to history
-            historyStore.add(TransferRecord(
-                id: slotId,
-                direction: .received,
-                state: .complete,
-                createdAt: Date(),
-                expiresAt: expiresAt,
-                fileCount: manifest.files.count,
-                totalSize: manifest.files.reduce(0) { $0 + $1.size },
-                shareURL: nil
-            ))
-
-            state = .complete
-            client.close()
-
         } catch {
+            client.close()
             state = .failed(error.localizedDescription)
         }
     }
 
-    private func pollForUploads(client: ApiClient, slotId: String) async {
-        while !Task.isCancelled {
-            do {
-                let slot = try await client.slots.get(slotId: slotId)
-                if slot.status == .hasUploads && slot.fileCount > 0 {
-                    await handleUploadNotification(client: client, slotId: slotId)
-                    return
-                }
-                try await Task.sleep(for: .seconds(3))
-            } catch {
-                break
-            }
+    private func decrypt(_ bytes: KotlinByteArray, key: KotlinByteArray) throws -> Data {
+        let blob = bytes.toData()
+        guard blob.count >= 28 else {
+            throw NSError(domain: "Psst", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid encrypted file"])
         }
+        return try CryptoProvider.shared.decrypt(
+            key: key,
+            nonce: Data(blob.prefix(12)).toKotlinByteArray(),
+            ciphertext: Data(blob.dropFirst(12)).toKotlinByteArray()
+        ).toData()
     }
-}
 
-// MARK: - SKIE Flow bridge
-
-/// Extension to bridge Kotlin Flow<SlotEvent> to Swift AsyncSequence via SKIE.
-/// SKIE automatically provides this, but we declare the usage pattern here.
-extension Shared.SlotApi {
-    // SKIE generates: func events(slotId:) -> some AsyncSequence<SlotEvent>
-    // The actual bridge is handled by the SKIE Gradle plugin at compile time.
+    private func download(client: ApiClient, transfers: [SlotTransfer], key: KotlinByteArray) async throws {
+        var savedURLs: [URL] = []
+        for transfer in transfers {
+            state = .decrypting
+            let bytes = try await client.transfers.downloadManifest(transferId: transfer.transferId)
+            let json = try String(decoding: decrypt(bytes, key: key), as: UTF8.self)
+            guard let manifest = ManifestSerializer.decode(json: json) else {
+                throw NSError(domain: "Psst", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid file manifest"])
+            }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("psst-received-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for (index, file) in manifest.files.enumerated() {
+                try Task.checkCancellation()
+                guard file.size <= Int64(BufferedUpload.maxFileBytes) else {
+                    throw NSError(domain: "Psst", code: 4, userInfo: [NSLocalizedDescriptionKey: "Files must be no larger than 25 MiB."])
+                }
+                state = .downloading(progress: Double(index) / Double(max(1, manifest.files.count)))
+                let encrypted = try await client.transfers.downloadFile(transferId: transfer.transferId, fileId: file.blobId)
+                let plaintext = try decrypt(encrypted, key: key)
+                guard plaintext.count == file.size else {
+                    throw NSError(domain: "Psst", code: 5, userInfo: [NSLocalizedDescriptionKey: "File size does not match manifest"])
+                }
+                // Prefix each basename so duplicates cannot overwrite files or escape the directory.
+                let basename = (file.name.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+                let destination = directory.appendingPathComponent("\(index + 1)-\(basename)")
+                try plaintext.write(to: destination, options: .atomic)
+                savedURLs.append(destination)
+            }
+            historyStore.add(TransferRecord(
+                id: transfer.transferId, direction: .received, state: .complete,
+                createdAt: Date(), expiresAt: expiresAt, fileCount: manifest.files.count,
+                totalSize: manifest.files.reduce(0) { $0 + $1.size }, shareURL: nil
+            ))
+        }
+        receivedFileURLs = savedURLs
+        state = .complete
+    }
 }

@@ -14,42 +14,31 @@ import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
-/**
- * Represents a Server-Sent Event from the slot events endpoint.
- */
-data class SlotEvent(
-    val event: String,
-    val data: String,
-)
+/** Represents a Server-Sent Event from the slot events endpoint. */
+data class SlotEvent(val event: String, val data: String)
 
-/**
- * API operations for drop slots (receive flow).
- */
-class SlotApi(
-    private val httpClient: HttpClient,
-    private val config: ServerConfig,
-) {
-    /**
-     * Create a new drop slot. Returns the slot with its server-assigned ID.
-     */
+/** API operations for drop slots (receive flow). */
+class SlotApi(private val httpClient: HttpClient, private val config: ServerConfig) {
+    /** Create a new drop slot. Returns the slot with its server-assigned ID. */
+    @Throws(Exception::class)
     suspend fun create(): DropSlot {
-        val response = httpClient.post("${config.apiBaseUrl}/slots") {
-            contentType(ContentType.Application.Json)
-        }
+        val response =
+            httpClient.post("${config.apiBaseUrl}/slots") {
+                contentType(ContentType.Application.Json)
+            }
         return response.body()
     }
 
-    /**
-     * Get drop slot status including list of uploaded files.
-     */
+    /** Get drop slot status including list of uploaded files. */
+    @Throws(Exception::class)
     suspend fun get(slotId: String): DropSlot {
         val response = httpClient.get("${config.apiBaseUrl}/slots/$slotId")
         return response.body()
     }
 
     /**
-     * Subscribe to real-time upload notifications via Server-Sent Events.
-     * Returns a Flow that emits SlotEvents as they arrive.
+     * Subscribe to real-time upload notifications via Server-Sent Events. Returns a Flow that emits
+     * SlotEvents as they arrive.
      *
      * @param slotId the drop slot ID
      * @return a Flow of SSE events

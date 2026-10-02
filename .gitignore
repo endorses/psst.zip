@@ -33,3 +33,10 @@ ios/*.xcodeproj/xcuserdata/
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated native tooling state
+android/.kotlin/
+shared/.kotlin/
+ios/Psst.xcodeproj/
+web/test-results/
+web/playwright-report/

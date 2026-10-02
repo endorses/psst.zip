@@ -1,16 +1,18 @@
 package zip.psst.shared.api
 
 import io.ktor.client.HttpClient
+import io.ktor.client.request.head
 import io.ktor.client.request.headers
 import io.ktor.client.request.patch
-import io.ktor.client.request.head
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLBuilder
 import io.ktor.http.contentType
+import io.ktor.http.takeFrom
 
 /**
  * Minimal tus (resumable upload) protocol client built on Ktor.
@@ -21,9 +23,7 @@ import io.ktor.http.contentType
  *
  * @see <a href="https://tus.io/protocols/resumable-upload">tus protocol</a>
  */
-class TusClient(
-    private val httpClient: HttpClient,
-) {
+class TusClient(private val httpClient: HttpClient) {
     companion object {
         const val TUS_VERSION = "1.0.0"
         private val TUS_CONTENT_TYPE = ContentType("application", "offset+octet-stream")
@@ -37,36 +37,41 @@ class TusClient(
      * @param metadata optional metadata key-value pairs (base64 encoded values)
      * @return the Location header value (URL of the created upload resource)
      */
+    @Throws(Exception::class)
     suspend fun create(
         uploadUrl: String,
         totalSize: Long,
         metadata: Map<String, String> = emptyMap(),
     ): String {
-        val metadataHeader = if (metadata.isNotEmpty()) {
-            metadata.entries.joinToString(",") { (k, v) ->
-                val encoded = v.encodeToByteArray().toBase64()
-                "$k $encoded"
+        val metadataHeader =
+            if (metadata.isNotEmpty()) {
+                metadata.entries.joinToString(",") { (k, v) ->
+                    val encoded = v.encodeToByteArray().toBase64()
+                    "$k $encoded"
+                }
+            } else {
+                null
             }
-        } else {
-            null
-        }
 
-        val response: HttpResponse = httpClient.post(uploadUrl) {
-            headers {
-                append("Tus-Resumable", TUS_VERSION)
-                append("Upload-Length", totalSize.toString())
-                if (metadataHeader != null) {
-                    append("Upload-Metadata", metadataHeader)
+        val response: HttpResponse =
+            httpClient.post(uploadUrl) {
+                headers {
+                    append("Tus-Resumable", TUS_VERSION)
+                    append("Upload-Length", totalSize.toString())
+                    if (metadataHeader != null) {
+                        append("Upload-Metadata", metadataHeader)
+                    }
                 }
             }
-        }
 
         require(response.status == HttpStatusCode.Created) {
             "tus creation failed with status ${response.status}"
         }
 
-        return response.headers[HttpHeaders.Location]
-            ?: throw IllegalStateException("tus creation response missing Location header")
+        val location =
+            response.headers[HttpHeaders.Location]
+                ?: throw IllegalStateException("tus creation response missing Location header")
+        return URLBuilder(uploadUrl).takeFrom(location).buildString()
     }
 
     /**
@@ -78,6 +83,7 @@ class TusClient(
      * @param chunkSize size of each upload chunk (default 1 MB)
      * @param onProgress callback with bytes uploaded so far
      */
+    @Throws(Exception::class)
     suspend fun upload(
         resourceUrl: String,
         data: ByteArray,
@@ -85,27 +91,32 @@ class TusClient(
         chunkSize: Int = 1024 * 1024,
         onProgress: ((uploaded: Long) -> Unit)? = null,
     ) {
+        require(chunkSize > 0) { "Chunk size must be positive" }
+        require(offset in 0..data.size.toLong()) { "Invalid upload offset" }
         var currentOffset = offset
 
         while (currentOffset < data.size) {
             val end = minOf(currentOffset + chunkSize, data.size.toLong())
             val chunk = data.copyOfRange(currentOffset.toInt(), end.toInt())
 
-            val response: HttpResponse = httpClient.patch(resourceUrl) {
-                headers {
-                    append("Tus-Resumable", TUS_VERSION)
-                    append("Upload-Offset", currentOffset.toString())
+            val response: HttpResponse =
+                httpClient.patch(resourceUrl) {
+                    headers {
+                        append("Tus-Resumable", TUS_VERSION)
+                        append("Upload-Offset", currentOffset.toString())
+                    }
+                    contentType(TUS_CONTENT_TYPE)
+                    setBody(chunk)
                 }
-                contentType(TUS_CONTENT_TYPE)
-                setBody(chunk)
-            }
 
             require(response.status == HttpStatusCode.NoContent) {
                 "tus upload failed with status ${response.status}"
             }
 
-            val newOffset = response.headers["Upload-Offset"]?.toLongOrNull()
-                ?: (currentOffset + chunk.size)
+            val newOffset =
+                response.headers["Upload-Offset"]?.toLongOrNull()
+                    ?: throw IllegalStateException("tus response missing Upload-Offset")
+            require(newOffset == end) { "Unexpected tus upload offset: $newOffset" }
 
             currentOffset = newOffset
             onProgress?.invoke(currentOffset)
@@ -113,18 +124,15 @@ class TusClient(
     }
 
     /**
-     * Get the current upload offset for a tus resource.
-     * Used for resuming interrupted uploads.
+     * Get the current upload offset for a tus resource. Used for resuming interrupted uploads.
      *
      * @param resourceUrl the URL of the tus upload resource
      * @return current byte offset
      */
+    @Throws(Exception::class)
     suspend fun getOffset(resourceUrl: String): Long {
-        val response: HttpResponse = httpClient.head(resourceUrl) {
-            headers {
-                append("Tus-Resumable", TUS_VERSION)
-            }
-        }
+        val response: HttpResponse =
+            httpClient.head(resourceUrl) { headers { append("Tus-Resumable", TUS_VERSION) } }
 
         require(response.status == HttpStatusCode.OK) {
             "tus HEAD failed with status ${response.status}"

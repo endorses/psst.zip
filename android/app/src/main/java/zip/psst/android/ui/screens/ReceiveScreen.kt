@@ -61,13 +61,10 @@ fun ReceiveScreen(
                     }
                 },
             )
-        },
+        }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -86,9 +83,7 @@ fun ReceiveScreen(
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = { viewModel.createSlot() }) {
-                        Text("Retry")
-                    }
+                    Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
                 }
 
                 state.downloadComplete -> {
@@ -100,7 +95,7 @@ fun ReceiveScreen(
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = "Files saved to Downloads/Psst",
+                        text = "Files saved to Downloads",
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
@@ -124,10 +119,7 @@ fun ReceiveScreen(
                         tint = MaterialTheme.colorScheme.primary,
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = "Files received!",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Text(text = "Files received!", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "Someone has uploaded files to your drop slot.",
@@ -148,7 +140,8 @@ fun ReceiveScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Show this QR code to someone and they can upload files to you from their browser.",
+                        text =
+                            "Show this QR code to someone and they can upload files to you from their browser.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,

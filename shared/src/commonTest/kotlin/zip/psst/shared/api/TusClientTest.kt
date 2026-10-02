@@ -3,14 +3,15 @@ package zip.psst.shared.api
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.runTest
 
 class TusClientTest {
 
@@ -31,21 +32,17 @@ class TusClientTest {
         val client = HttpClient(engine)
         val tus = TusClient(client)
         val location = tus.create("https://example.com/uploads", 100L)
-        assertEquals("/uploads/abc123", location)
+        assertEquals("https://example.com/uploads/abc123", location)
     }
 
     @Test
     fun createFailsWithoutLocationHeader() = runTest {
-        val engine = MockEngine {
-            respond(content = "", status = HttpStatusCode.Created)
-        }
+        val engine = MockEngine { respond(content = "", status = HttpStatusCode.Created) }
 
         val client = HttpClient(engine)
         val tus = TusClient(client)
 
-        assertFailsWith<IllegalStateException> {
-            tus.create("https://example.com/uploads", 100L)
-        }
+        assertFailsWith<IllegalStateException> { tus.create("https://example.com/uploads", 100L) }
     }
 
     @Test
@@ -137,11 +134,7 @@ class TusClientTest {
 
         val client = HttpClient(engine)
         val tus = TusClient(client)
-        tus.create(
-            "https://example.com/uploads",
-            100L,
-            metadata = mapOf("filename" to "test.txt"),
-        )
+        tus.create("https://example.com/uploads", 100L, metadata = mapOf("filename" to "test.txt"))
 
         // Metadata header should be present and contain the key
         assertEquals(true, metadataHeader?.contains("filename"))

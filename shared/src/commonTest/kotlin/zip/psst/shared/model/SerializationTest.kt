@@ -1,8 +1,9 @@
 package zip.psst.shared.model
 
-import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 class SerializationTest {
     private val json = Json {
@@ -12,14 +13,15 @@ class SerializationTest {
 
     @Test
     fun transferSerializationRoundTrip() {
-        val transfer = Transfer(
-            id = "xfer-1",
-            fileCount = 3,
-            totalSize = 1024,
-            status = TransferStatus.COMPLETE,
-            expiresAt = "2026-01-01T00:00:00Z",
-            createdAt = "2025-12-31T00:00:00Z",
-        )
+        val transfer =
+            Transfer(
+                id = "xfer-1",
+                fileCount = 3,
+                totalSize = 1024,
+                status = TransferStatus.COMPLETE,
+                expiresAt = "2026-01-01T00:00:00Z",
+                createdAt = "2025-12-31T00:00:00Z",
+            )
         val jsonStr = json.encodeToString(Transfer.serializer(), transfer)
         val decoded = json.decodeFromString(Transfer.serializer(), jsonStr)
         assertEquals(transfer, decoded)
@@ -27,7 +29,8 @@ class SerializationTest {
 
     @Test
     fun transferDeserialization() {
-        val jsonStr = """
+        val jsonStr =
+            """
             {
                 "id": "abc",
                 "file_count": 2,
@@ -35,7 +38,8 @@ class SerializationTest {
                 "status": "pending",
                 "expires_at": null
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         val transfer = json.decodeFromString(Transfer.serializer(), jsonStr)
         assertEquals("abc", transfer.id)
         assertEquals(2, transfer.fileCount)
@@ -49,19 +53,29 @@ class SerializationTest {
         val jsonComplete = """{"id":"b","status":"complete"}"""
         val jsonExpired = """{"id":"c","status":"expired"}"""
 
-        assertEquals(TransferStatus.PENDING, json.decodeFromString(Transfer.serializer(), jsonPending).status)
-        assertEquals(TransferStatus.COMPLETE, json.decodeFromString(Transfer.serializer(), jsonComplete).status)
-        assertEquals(TransferStatus.EXPIRED, json.decodeFromString(Transfer.serializer(), jsonExpired).status)
+        assertEquals(
+            TransferStatus.PENDING,
+            json.decodeFromString(Transfer.serializer(), jsonPending).status,
+        )
+        assertEquals(
+            TransferStatus.COMPLETE,
+            json.decodeFromString(Transfer.serializer(), jsonComplete).status,
+        )
+        assertEquals(
+            TransferStatus.EXPIRED,
+            json.decodeFromString(Transfer.serializer(), jsonExpired).status,
+        )
     }
 
     @Test
     fun dropSlotSerializationRoundTrip() {
-        val slot = DropSlot(
-            id = "slot-1",
-            status = DropSlotStatus.HAS_UPLOADS,
-            fileCount = 5,
-            expiresAt = "2026-01-01T00:00:00Z",
-        )
+        val slot =
+            DropSlot(
+                id = "slot-1",
+                status = DropSlotStatus.HAS_UPLOADS,
+                transfers = listOf(SlotTransfer("transfer-1", TransferStatus.COMPLETE, 5)),
+                expiresAt = "2026-01-01T00:00:00Z",
+            )
         val jsonStr = json.encodeToString(DropSlot.serializer(), slot)
         val decoded = json.decodeFromString(DropSlot.serializer(), jsonStr)
         assertEquals(slot, decoded)
@@ -69,13 +83,15 @@ class SerializationTest {
 
     @Test
     fun dropSlotDeserialization() {
-        val jsonStr = """
+        val jsonStr =
+            """
             {
                 "id": "slot-x",
                 "status": "waiting",
                 "file_count": 0
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         val slot = json.decodeFromString(DropSlot.serializer(), jsonStr)
         assertEquals("slot-x", slot.id)
         assertEquals(DropSlotStatus.WAITING, slot.status)
@@ -83,26 +99,47 @@ class SerializationTest {
     }
 
     @Test
+    fun slotUsesCompletedTransferIdsAndIgnoresPendingUploads() {
+        val slot =
+            json.decodeFromString<DropSlot>(
+                """
+                {"id":"slot-1","status":"has_uploads","transfers":[
+                    {"transfer_id":"pending-1","status":"pending","file_count":9},
+                    {"transfer_id":"complete-1","status":"complete","file_count":2}
+                ]}
+                """
+                    .trimIndent()
+            )
+        assertEquals(listOf("complete-1"), slot.completedTransfers.map { it.transferId })
+        assertEquals(2, slot.fileCount)
+    }
+
+    @Test
     fun fileMetadataSerializationRoundTrip() {
-        val meta = FileMetadata(
-            name = "photo.jpg",
-            size = 2048,
-            mimeType = "image/jpeg",
-            blobId = "blob-1",
-        )
+        val meta =
+            FileMetadata(
+                name = "photo.jpg",
+                size = 2048,
+                mimeType = "image/jpeg",
+                blobId = "blob-1",
+            )
         val jsonStr = json.encodeToString(FileMetadata.serializer(), meta)
         val decoded = json.decodeFromString(FileMetadata.serializer(), jsonStr)
         assertEquals(meta, decoded)
+        assertTrue(jsonStr.contains("\"mime_type\":\"image/jpeg\""))
+        assertTrue(jsonStr.contains("\"blob_id\":\"blob-1\""))
     }
 
     @Test
     fun manifestSerializationRoundTrip() {
-        val manifest = Manifest(
-            files = listOf(
-                FileMetadata(name = "a.txt", size = 100),
-                FileMetadata(name = "b.png", size = 200, mimeType = "image/png"),
-            ),
-        )
+        val manifest =
+            Manifest(
+                files =
+                    listOf(
+                        FileMetadata(name = "a.txt", size = 100),
+                        FileMetadata(name = "b.png", size = 200, mimeType = "image/png"),
+                    )
+            )
         val jsonStr = json.encodeToString(Manifest.serializer(), manifest)
         val decoded = json.decodeFromString(Manifest.serializer(), jsonStr)
         assertEquals(manifest, decoded)

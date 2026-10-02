@@ -11,20 +11,24 @@ import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.SlotEvent
 import zip.psst.shared.crypto.CryptoProvider
-import zip.psst.shared.model.DropSlotStatus
 import zip.psst.shared.model.EncryptedManifest
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.UrlHelper
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 data class ReceiveUiState(
     val isCreatingSlot: Boolean = false,
@@ -47,106 +51,105 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     private var sseJob: Job? = null
     private var encryptionKeyBytes: ByteArray? = null
+    private var slotClient: ApiClient? = null
+    private var pollJob: Job? = null
 
     @OptIn(ExperimentalEncodingApi::class)
     fun createSlot() {
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
-            _uiState.value = _uiState.value.copy(error = "Server URL not configured")
+            _uiState.update { it.copy(error = "Server URL not configured") }
             return
         }
 
-        _uiState.value = _uiState.value.copy(isCreatingSlot = true, error = null)
+        sseJob?.cancel()
+        pollJob?.cancel()
+        slotClient?.close()
+        _uiState.value = ReceiveUiState(isCreatingSlot = true)
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = ApiClient(ServerConfig(serverUrl))
+                slotClient = client
                 val slot = client.slots.create()
                 val key = CryptoProvider.generateKey()
                 encryptionKeyBytes = key
                 val base64Key = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
                 val uploadUrl = UrlHelper.buildUploadUrl(serverUrl, slot.id, key)
 
-                _uiState.value = _uiState.value.copy(
-                    isCreatingSlot = false,
-                    slotId = slot.id,
-                    encryptionKey = base64Key,
-                    uploadUrl = uploadUrl,
-                )
+                _uiState.update {
+                    it.copy(
+                        isCreatingSlot = false,
+                        slotId = slot.id,
+                        encryptionKey = base64Key,
+                        uploadUrl = uploadUrl,
+                    )
+                }
 
                 // Save to history
-                app.database.transferHistoryDao().insert(
-                    TransferHistoryEntity(
-                        id = slot.id,
-                        type = "received",
-                        fileCount = 0,
-                        totalSize = 0,
-                        serverUrl = serverUrl,
-                        encryptionKey = base64Key,
-                        status = "waiting",
-                        expiresAt = null,
-                    ),
-                )
+                app.database
+                    .transferHistoryDao()
+                    .insert(
+                        TransferHistoryEntity(
+                            id = slot.id,
+                            type = "received",
+                            fileCount = 0,
+                            totalSize = 0,
+                            serverUrl = serverUrl,
+                            encryptionKey = base64Key,
+                            status = "waiting",
+                            expiresAt = null,
+                        )
+                    )
 
                 // Start listening for SSE events
                 listenForEvents(client, slot.id)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isCreatingSlot = false,
-                    error = e.message ?: "Failed to create drop slot",
-                )
+                if (e is CancellationException) throw e
+                slotClient?.close()
+                _uiState.update {
+                    it.copy(
+                        isCreatingSlot = false,
+                        error = e.message ?: "Failed to create drop slot",
+                    )
+                }
             }
         }
     }
 
     private fun listenForEvents(client: ApiClient, slotId: String) {
         sseJob?.cancel()
-        sseJob = viewModelScope.launch {
-            try {
-                client.slots.events(slotId).collect { event: SlotEvent ->
-                    when (event.event) {
-                        "upload_complete", "file_uploaded" -> {
-                            _uiState.value = _uiState.value.copy(slotStatus = "has_uploads")
-                            // Refresh slot status to get file list
-                            refreshSlot(client, slotId)
-                        }
+        pollJob?.cancel()
+        sseJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    // Backend sends event names inside JSON data. Refresh on every message,
+                    // including connected, so only completed transfer summaries enable downloads.
+                    client.slots.events(slotId).collect { _: SlotEvent ->
+                        refreshSlot(client, slotId)
                     }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    // Polling below covers disconnects and missed SSE notifications.
                 }
-            } catch (_: Exception) {
-                // SSE connection closed or error; fall back to polling
-                pollSlotStatus(client, slotId)
             }
-        }
+        pollJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    refreshSlot(client, slotId)
+                    delay(3000L)
+                }
+            }
     }
 
     private suspend fun refreshSlot(client: ApiClient, slotId: String) {
         try {
             val slot = client.slots.get(slotId)
-            if (slot.status == DropSlotStatus.HAS_UPLOADS) {
-                _uiState.value = _uiState.value.copy(
-                    slotStatus = "has_uploads",
-                )
-                // Update history
-                app.database.transferHistoryDao().updateStatus(slotId, "has_uploads")
-            }
-        } catch (_: Exception) {
-            // Ignore refresh errors
-        }
-    }
-
-    private suspend fun pollSlotStatus(client: ApiClient, slotId: String) {
-        while (true) {
-            try {
-                val slot = client.slots.get(slotId)
-                if (slot.status == DropSlotStatus.HAS_UPLOADS) {
-                    _uiState.value = _uiState.value.copy(slotStatus = "has_uploads")
-                    app.database.transferHistoryDao().updateStatus(slotId, "has_uploads")
-                    break
-                }
-            } catch (_: Exception) {
-                // Ignore and retry
-            }
-            kotlinx.coroutines.delay(3000L)
+            val status = if (slot.completedTransfers.isNotEmpty()) "has_uploads" else "waiting"
+            _uiState.update { it.copy(slotStatus = status) }
+            app.database.transferHistoryDao().updateStatus(slotId, status)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
         }
     }
 
@@ -155,37 +158,37 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         val key = encryptionKeyBytes ?: return
         val serverUrl = app.prefs.getServerUrl()
 
-        _uiState.value = _uiState.value.copy(isDownloading = true, error = null)
+        _uiState.update { it.copy(isDownloading = true, error = null) }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
+            val client = ApiClient(ServerConfig(serverUrl))
             try {
-                val client = ApiClient(ServerConfig(serverUrl))
+                val transfers = client.slots.get(slotId).completedTransfers
+                require(transfers.isNotEmpty()) { "No completed uploads yet" }
+                val received = mutableListOf<Pair<String, FileMetadata>>()
+                for (transfer in transfers) {
+                    val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
+                    val encManifest = EncryptedManifest.fromBytes(manifestBytes)
+                    val manifestPlaintext =
+                        CryptoProvider.decrypt(key, encManifest.nonce, encManifest.ciphertext)
+                    val manifest =
+                        Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
 
-                // The slot acts like a transfer on the server side for file downloads.
-                // Download the manifest first.
-                val manifestBytes = client.transfers.downloadManifest(slotId)
-                val encManifest = EncryptedManifest.fromBytes(manifestBytes)
-                val manifestPlaintext = CryptoProvider.decrypt(
-                    key,
-                    encManifest.nonce,
-                    encManifest.ciphertext,
-                )
-                val manifest = Json.decodeFromString<Manifest>(
-                    manifestPlaintext.decodeToString(),
-                )
-
-                _uiState.value = _uiState.value.copy(receivedFiles = manifest.files)
+                    received += manifest.files.map { transfer.transferId to it }
+                }
+                _uiState.update { it.copy(receivedFiles = received.map { it.second }) }
 
                 val context = getApplication<PsstApplication>()
-                val totalFiles = manifest.files.size
+                val totalFiles = received.size
 
                 // Download and decrypt each file
-                for ((index, fileMeta) in manifest.files.withIndex()) {
-                    _uiState.value = _uiState.value.copy(
-                        downloadProgress = index.toFloat() / totalFiles.toFloat(),
-                    )
+                for ((index, receivedFile) in received.withIndex()) {
+                    val (transferId, fileMeta) = receivedFile
+                    _uiState.update {
+                        it.copy(downloadProgress = index.toFloat() / totalFiles.toFloat())
+                    }
 
-                    val encryptedData = client.transfers.downloadFile(slotId, fileMeta.blobId)
+                    val encryptedData = client.transfers.downloadFile(transferId, fileMeta.blobId)
 
                     // Decrypt: first 12 bytes are nonce, rest is ciphertext
                     val nonce = encryptedData.copyOfRange(0, 12)
@@ -193,38 +196,34 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val plaintext = CryptoProvider.decrypt(key, nonce, ciphertext)
 
                     // Save to Downloads via MediaStore
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
-                        put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
-                        put(
-                            MediaStore.Downloads.RELATIVE_PATH,
-                            Environment.DIRECTORY_DOWNLOADS + "/Psst",
-                        )
-                    }
+                    val contentValues =
+                        ContentValues().apply {
+                            put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
+                            put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
+                            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                        }
 
-                    val uri = context.contentResolver.insert(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                        contentValues,
-                    ) ?: throw Exception("Failed to create file in Downloads")
+                    val uri =
+                        context.contentResolver.insert(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            contentValues,
+                        ) ?: throw Exception("Failed to create file in Downloads")
 
                     context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                         outputStream.write(plaintext)
                     } ?: throw Exception("Failed to write file")
                 }
 
-                client.close()
-
-                _uiState.value = _uiState.value.copy(
-                    isDownloading = false,
-                    downloadProgress = 1f,
-                    downloadComplete = true,
-                )
+                _uiState.update {
+                    it.copy(isDownloading = false, downloadProgress = 1f, downloadComplete = true)
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _uiState.value = _uiState.value.copy(
-                    isDownloading = false,
-                    error = e.message ?: "Download failed",
-                )
+                _uiState.update {
+                    it.copy(isDownloading = false, error = e.message ?: "Download failed")
+                }
+            } finally {
+                client.close()
             }
         }
     }
@@ -232,5 +231,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         super.onCleared()
         sseJob?.cancel()
+        pollJob?.cancel()
+        slotClient?.close()
     }
 }

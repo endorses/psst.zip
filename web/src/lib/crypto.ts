@@ -98,8 +98,8 @@ export async function decrypt(key: CryptoKey, data: ArrayBuffer): Promise<ArrayB
 export interface FileManifestEntry {
   name: string;
   size: number;
-  type: string;
-  fileId: string;
+  mime_type: string;
+  blob_id: string;
 }
 
 export interface Manifest {
@@ -115,5 +115,21 @@ export async function encryptManifest(key: CryptoKey, manifest: Manifest): Promi
 export async function decryptManifest(key: CryptoKey, data: ArrayBuffer): Promise<Manifest> {
   const plaintext = await decrypt(key, data);
   const json = new TextDecoder().decode(plaintext);
-  return JSON.parse(json) as Manifest;
+  const manifest = JSON.parse(json) as Manifest;
+  if (
+    !manifest ||
+    !Array.isArray(manifest.files) ||
+    manifest.files.some(
+      (file) =>
+        !file ||
+        typeof file.name !== "string" ||
+        typeof file.mime_type !== "string" ||
+        typeof file.blob_id !== "string" ||
+        !/^[0-9a-f-]{36}$/i.test(file.blob_id) ||
+        !Number.isSafeInteger(file.size) ||
+        file.size < 0,
+    )
+  )
+    throw new Error("Invalid file manifest");
+  return manifest;
 }

@@ -54,6 +54,7 @@ func (w *Worker) sweepTransfers() {
 	for _, id := range ids {
 		if err := w.files.DeleteAll(id); err != nil {
 			log.Printf("cleanup: delete files for transfer %s: %v", id, err)
+			continue
 		}
 		if err := w.queries.DeleteTransfer(id); err != nil {
 			log.Printf("cleanup: delete transfer %s: %v", id, err)

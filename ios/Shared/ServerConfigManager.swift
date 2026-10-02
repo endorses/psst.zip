@@ -15,7 +15,7 @@ final class ServerConfigManager {
     }
 
     init() {
-        self.serverURL = AppConstants.sharedDefaults.string(forKey: AppConstants.serverURLKey) ?? ""
+        serverURL = AppConstants.sharedDefaults.string(forKey: AppConstants.serverURLKey) ?? ""
     }
 
     /// Build a KMP ServerConfig from the current URL.
@@ -38,7 +38,7 @@ final class ServerConfigManager {
             // A simple GET to the base URL would be better, but we use what the API offers.
             // We'll just try a GET to a non-existent transfer and check we get a proper HTTP error
             // rather than a network error.
-            let _ = try await client.transfers.get(transferId: "__ping__")
+            let _ = try await client.transfers.get(transferId: "00000000-0000-0000-0000-000000000000")
             return true
         } catch {
             // A 404 is fine — it means the server is reachable.

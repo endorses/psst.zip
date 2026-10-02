@@ -6,7 +6,8 @@ pluginManagement {
     }
 }
 
-dependencyResolution {
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -19,7 +20,5 @@ include(":app")
 
 // Include the KMP shared module as a composite build
 includeBuild("../shared") {
-    dependencySubstitution {
-        substitute(module("zip.psst:shared")).using(project(":"))
-    }
+    dependencySubstitution { substitute(module("zip.psst:shared")).using(project(":")) }
 }

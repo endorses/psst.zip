@@ -8,13 +8,14 @@ import kotlinx.serialization.json.Json
 
 actual fun createPlatformHttpClient(): HttpClient {
     return HttpClient(Darwin) {
+        expectSuccess = true
         install(ContentNegotiation) {
             json(
                 Json {
                     ignoreUnknownKeys = true
                     isLenient = true
                     encodeDefaults = true
-                },
+                }
             )
         }
     }

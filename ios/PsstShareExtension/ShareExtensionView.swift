@@ -49,7 +49,7 @@ struct ShareExtensionView: View {
                     .font(.headline)
             }
 
-        case .uploading(let progress):
+        case let .uploading(progress):
             VStack(spacing: 12) {
                 ProgressView(value: progress)
                     .progressViewStyle(.linear)
@@ -61,7 +61,7 @@ struct ShareExtensionView: View {
                     .foregroundStyle(.secondary)
             }
 
-        case .complete(let shareURL):
+        case let .complete(shareURL):
             VStack(spacing: 16) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 60))
@@ -96,7 +96,7 @@ struct ShareExtensionView: View {
                     .padding(.horizontal)
             }
 
-        case .failed(let error):
+        case let .failed(error):
             VStack(spacing: 12) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 60))

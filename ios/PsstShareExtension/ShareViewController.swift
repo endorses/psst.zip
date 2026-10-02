@@ -1,7 +1,7 @@
-import UIKit
-import SwiftUI
-import UniformTypeIdentifiers
 import Shared
+import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 /// The share extension's root view controller.
 /// Presents a SwiftUI-based progress UI and coordinates the encrypt-and-upload flow.
@@ -73,7 +73,7 @@ class ShareViewController: UIViewController {
         for type in fileTypes {
             if provider.hasItemConformingToTypeIdentifier(type.identifier) {
                 do {
-                    let url = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                    return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                         provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, error in
                             if let error {
                                 continuation.resume(throwing: error)
@@ -95,7 +95,6 @@ class ShareViewController: UIViewController {
                             }
                         }
                     }
-                    return url
                 } catch {
                     continue
                 }

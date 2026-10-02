@@ -1,7 +1,9 @@
 package api
 
 import (
+	"hash/fnv"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,11 +16,12 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	cfg       config.Config
-	queries   *database.Queries
-	fileStore store.FileStore
-	tusH      *tus.Handler
-	sseHub    *SSEHub
+	cfg           config.Config
+	queries       *database.Queries
+	fileStore     store.FileStore
+	tusH          *tus.Handler
+	sseHub        *SSEHub
+	mutationLocks [256]sync.Mutex
 }
 
 // NewServer creates a Server with all dependencies wired up.
@@ -95,6 +98,22 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 		}
 
+		// Browsers preflight JSON creation, manifest uploads, and tus PATCH routes.
+		// These requests do not reach the endpoint's method-specific handler.
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+			tus.ServeOptions(w, r)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// lockTransfer serializes mutation of one transfer (including completion) without
+// retaining an unbounded map of mutexes for expired resources.
+func (s *Server) lockTransfer(id string) func() {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	mu := &s.mutationLocks[h.Sum32()%uint32(len(s.mutationLocks))]
+	mu.Lock()
+	return mu.Unlock
 }

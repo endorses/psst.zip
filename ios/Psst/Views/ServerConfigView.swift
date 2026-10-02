@@ -46,7 +46,7 @@ struct ServerConfigView: View {
                     case .success:
                         Label("Connection successful", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                    case .failure(let message):
+                    case let .failure(message):
                         Label(message, systemImage: "xmark.circle.fill")
                             .foregroundStyle(.red)
                     }

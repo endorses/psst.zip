@@ -1,9 +1,17 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
+  let mounted = $state(false);
+  onMount(() => {
+    mounted = true;
+  });
   import { generateKey, exportKey, encrypt, encryptManifest } from "$lib/crypto";
   import { createTransfer, uploadManifest, completeTransfer, tusEndpoint } from "$lib/api";
   import type { FileManifestEntry, Manifest } from "$lib/crypto";
   import * as tus from "tus-js-client";
   import QRCode from "qrcode";
+
+  import { assertFileSize, FILE_SIZE_NOTICE } from "$lib/limits";
 
   type Status = "idle" | "uploading" | "done" | "error";
 
@@ -51,10 +59,7 @@
     return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
   }
 
-  async function uploadFile(
-    endpoint: string,
-    encryptedData: ArrayBuffer,
-  ): Promise<string> {
+  async function uploadFile(endpoint: string, encryptedData: ArrayBuffer): Promise<string> {
     return new Promise((resolve, reject) => {
       const blob = new Blob([encryptedData]);
       const upload = new tus.Upload(blob, {
@@ -84,10 +89,11 @@
     uploadProgress = 0;
 
     try {
+      selectedFiles.forEach((file) => assertFileSize(file.size));
       const key = await generateKey();
       const keyStr = await exportKey(key);
 
-      const { transferId } = await createTransfer();
+      const { id: transferId } = await createTransfer();
       const endpoint = tusEndpoint(transferId);
 
       const manifestEntries: FileManifestEntry[] = [];
@@ -102,8 +108,8 @@
         manifestEntries.push({
           name: file.name,
           size: file.size,
-          type: file.type || "application/octet-stream",
-          fileId,
+          mime_type: file.type || "application/octet-stream",
+          blob_id: fileId,
         });
 
         uploadProgress = Math.round(((i + 1) / totalFiles) * 100);
@@ -164,8 +170,15 @@
       ondragover={handleDragOver}
       ondragleave={handleDragLeave}
     >
+      <p>{FILE_SIZE_NOTICE}</p>
       <p class="dropzone-text">Drop files here or click to browse</p>
-      <input type="file" multiple onchange={handleFileSelect} class="file-input" />
+      <input
+        type="file"
+        multiple
+        disabled={!mounted}
+        onchange={handleFileSelect}
+        class="file-input"
+      />
     </div>
 
     {#if selectedFiles.length > 0}

@@ -1,6 +1,7 @@
 package tus
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -76,7 +77,7 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 	}
 
 	w.Header().Set("Tus-Resumable", tusVersion)
-	w.Header().Set("Location", id)
+	w.Header().Set("Location", strings.TrimSuffix(r.URL.Path, "/")+"/"+id)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -146,15 +147,27 @@ func (h *Handler) ServePatch(w http.ResponseWriter, r *http.Request, fileID stri
 		return
 	}
 
+	// Bound both fixed-length and chunked requests before they reach storage.
+	remaining := info.Size - offset
+	if remaining < 0 || (h.maxSize > 0 && info.Size > h.maxSize) || r.ContentLength > remaining {
+		http.Error(w, "chunk exceeds upload length", http.StatusRequestEntityTooLarge)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, remaining)
 	// Write data to file store at the current offset.
 	n, err := h.fileStore.SaveAt(storageKey, r.Body, offset)
 	if err != nil {
-		http.Error(w, "failed to save data", http.StatusInternalServerError)
+		var limitError *http.MaxBytesError
+		if errors.As(err, &limitError) {
+			http.Error(w, "chunk exceeds upload length", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "failed to save data", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	newOffset := offset + n
-	complete := newOffset >= info.Size
+	complete := newOffset == info.Size
 
 	if err := h.store.UpdateOffset(fileID, newOffset, complete); err != nil {
 		http.Error(w, "failed to update offset", http.StatusInternalServerError)

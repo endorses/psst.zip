@@ -13,18 +13,21 @@ actual object CryptoProvider {
 
     private val secureRandom = SecureRandom()
 
+    @Throws(Exception::class)
     actual fun generateKey(): ByteArray {
         val key = ByteArray(AES_KEY_SIZE)
         secureRandom.nextBytes(key)
         return key
     }
 
+    @Throws(Exception::class)
     actual fun generateNonce(): ByteArray {
         val nonce = ByteArray(GCM_NONCE_SIZE)
         secureRandom.nextBytes(nonce)
         return nonce
     }
 
+    @Throws(Exception::class)
     actual fun encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
         require(key.size == AES_KEY_SIZE) { "Key must be $AES_KEY_SIZE bytes" }
         require(nonce.size == GCM_NONCE_SIZE) { "Nonce must be $GCM_NONCE_SIZE bytes" }
@@ -37,6 +40,7 @@ actual object CryptoProvider {
         return cipher.doFinal(plaintext)
     }
 
+    @Throws(Exception::class)
     actual fun decrypt(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
         require(key.size == AES_KEY_SIZE) { "Key must be $AES_KEY_SIZE bytes" }
         require(nonce.size == GCM_NONCE_SIZE) { "Nonce must be $GCM_NONCE_SIZE bytes" }

@@ -1,9 +1,9 @@
 [versions]
-kotlin = "2.1.10"
+kotlin = "2.3.21"
 ktor = "3.1.1"
 kotlinx-coroutines = "1.10.1"
 kotlinx-serialization = "1.8.0"
-skie = "0.10.1"
+skie = "0.10.12"
 android-minSdk = "26"
 android-compileSdk = "35"
 
@@ -26,4 +26,4 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 skie = { id = "co.touchlab.skie", version.ref = "skie" }
-android-library = { id = "com.android.library", version = "8.7.3" }
+android-library = { id = "com.android.library", version = "8.13.2" }

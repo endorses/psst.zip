@@ -37,13 +37,12 @@ private struct SendTransferDetailContent: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    @ViewBuilder
     private var statusSection: some View {
         VStack(spacing: 8) {
             switch viewModel.state {
             case .encrypting:
                 ProgressView("Encrypting files...")
-            case .uploading(let progress):
+            case let .uploading(progress):
                 VStack {
                     Text("Uploading...")
                     ProgressView(value: progress)
@@ -56,7 +55,7 @@ private struct SendTransferDetailContent: View {
                 Label("Upload complete", systemImage: "checkmark.circle.fill")
                     .font(.headline)
                     .foregroundStyle(.green)
-            case .failed(let error):
+            case let .failed(error):
                 Label("Upload failed", systemImage: "xmark.circle.fill")
                     .font(.headline)
                     .foregroundStyle(.red)
@@ -115,7 +114,6 @@ private struct ReceiveTransferDetailContent: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    @ViewBuilder
     private var statusSection: some View {
         VStack(spacing: 8) {
             switch viewModel.state {
@@ -129,7 +127,7 @@ private struct ReceiveTransferDetailContent: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-            case .downloading(let progress):
+            case let .downloading(progress):
                 VStack {
                     Text("Downloading received files...")
                     ProgressView(value: progress)
@@ -144,7 +142,7 @@ private struct ReceiveTransferDetailContent: View {
                 Label("Files received", systemImage: "checkmark.circle.fill")
                     .font(.headline)
                     .foregroundStyle(.green)
-            case .failed(let error):
+            case let .failed(error):
                 Label("Failed", systemImage: "xmark.circle.fill")
                     .font(.headline)
                     .foregroundStyle(.red)

@@ -4,14 +4,7 @@ package zip.psst.shared.crypto
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
 import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.value
-import platform.CoreCrypto.CCCryptorGCMDecrypt
-import platform.CoreCrypto.CCCryptorGCMEncrypt
-import platform.CoreCrypto.CCCryptorGCMFinalize
 import platform.CoreCrypto.CCCryptorGCMOneshotDecrypt
 import platform.CoreCrypto.CCCryptorGCMOneshotEncrypt
 import platform.CoreCrypto.kCCAlgorithmAES
@@ -25,10 +18,12 @@ actual object CryptoProvider {
     private const val GCM_NONCE_SIZE = 12
     private const val GCM_TAG_SIZE = 16
 
-    actual fun generateKey(): ByteArray = secureRandomBytes(AES_KEY_SIZE)
+    @Throws(Exception::class) actual fun generateKey(): ByteArray = secureRandomBytes(AES_KEY_SIZE)
 
+    @Throws(Exception::class)
     actual fun generateNonce(): ByteArray = secureRandomBytes(GCM_NONCE_SIZE)
 
+    @Throws(Exception::class)
     actual fun encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
         require(key.size == AES_KEY_SIZE) { "Key must be $AES_KEY_SIZE bytes" }
         require(nonce.size == GCM_NONCE_SIZE) { "Nonce must be $GCM_NONCE_SIZE bytes" }
@@ -41,38 +36,42 @@ actual object CryptoProvider {
                 tag.usePinned { tagPinned ->
                     if (plaintext.isEmpty()) {
                         // Handle empty plaintext
-                        val status = CCCryptorGCMOneshotEncrypt(
-                            alg = kCCAlgorithmAES,
-                            key = keyPinned.addressOf(0),
-                            keyLength = key.size.toULong(),
-                            iv = noncePinned.addressOf(0),
-                            ivLen = nonce.size.toULong(),
-                            aad = null,
-                            aadLen = 0u,
-                            dataIn = null,
-                            dataInLength = 0u,
-                            cipherOut = null,
-                            tag = tagPinned.addressOf(0),
-                            tagLength = GCM_TAG_SIZE.toULong(),
-                        )
-                        require(status == kCCSuccess) { "CCCryptorGCMOneshotEncrypt failed: $status" }
+                        val status =
+                            CCCryptorGCMOneshotEncrypt(
+                                alg = kCCAlgorithmAES,
+                                key = keyPinned.addressOf(0),
+                                keyLength = key.size.toULong(),
+                                iv = noncePinned.addressOf(0),
+                                ivLen = nonce.size.toULong(),
+                                aad = null,
+                                aadLen = 0u,
+                                dataIn = null,
+                                dataInLength = 0u,
+                                cipherOut = null,
+                                tag = tagPinned.addressOf(0),
+                                tagLength = GCM_TAG_SIZE.toULong(),
+                            )
+                        require(status == kCCSuccess) {
+                            "CCCryptorGCMOneshotEncrypt failed: $status"
+                        }
                     } else {
                         plaintext.usePinned { ptPinned ->
                             ciphertext.usePinned { ctPinned ->
-                                val status = CCCryptorGCMOneshotEncrypt(
-                                    alg = kCCAlgorithmAES,
-                                    key = keyPinned.addressOf(0),
-                                    keyLength = key.size.toULong(),
-                                    iv = noncePinned.addressOf(0),
-                                    ivLen = nonce.size.toULong(),
-                                    aad = null,
-                                    aadLen = 0u,
-                                    dataIn = ptPinned.addressOf(0),
-                                    dataInLength = plaintext.size.toULong(),
-                                    cipherOut = ctPinned.addressOf(0),
-                                    tag = tagPinned.addressOf(0),
-                                    tagLength = GCM_TAG_SIZE.toULong(),
-                                )
+                                val status =
+                                    CCCryptorGCMOneshotEncrypt(
+                                        alg = kCCAlgorithmAES,
+                                        key = keyPinned.addressOf(0),
+                                        keyLength = key.size.toULong(),
+                                        iv = noncePinned.addressOf(0),
+                                        ivLen = nonce.size.toULong(),
+                                        aad = null,
+                                        aadLen = 0u,
+                                        dataIn = ptPinned.addressOf(0),
+                                        dataInLength = plaintext.size.toULong(),
+                                        cipherOut = ctPinned.addressOf(0),
+                                        tag = tagPinned.addressOf(0),
+                                        tagLength = GCM_TAG_SIZE.toULong(),
+                                    )
                                 require(status == kCCSuccess) {
                                     "CCCryptorGCMOneshotEncrypt failed: $status"
                                 }
@@ -87,6 +86,7 @@ actual object CryptoProvider {
         return ciphertext + tag
     }
 
+    @Throws(Exception::class)
     actual fun decrypt(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
         require(key.size == AES_KEY_SIZE) { "Key must be $AES_KEY_SIZE bytes" }
         require(nonce.size == GCM_NONCE_SIZE) { "Nonce must be $GCM_NONCE_SIZE bytes" }
@@ -101,40 +101,42 @@ actual object CryptoProvider {
             nonce.usePinned { noncePinned ->
                 tag.usePinned { tagPinned ->
                     if (ct.isEmpty()) {
-                        val status = CCCryptorGCMOneshotDecrypt(
-                            alg = kCCAlgorithmAES,
-                            key = keyPinned.addressOf(0),
-                            keyLength = key.size.toULong(),
-                            iv = noncePinned.addressOf(0),
-                            ivLen = nonce.size.toULong(),
-                            aad = null,
-                            aadLen = 0u,
-                            dataIn = null,
-                            dataInLength = 0u,
-                            dataOut = null,
-                            tag = tagPinned.addressOf(0),
-                            tagLength = GCM_TAG_SIZE.toULong(),
-                        )
+                        val status =
+                            CCCryptorGCMOneshotDecrypt(
+                                alg = kCCAlgorithmAES,
+                                key = keyPinned.addressOf(0),
+                                keyLength = key.size.toULong(),
+                                iv = noncePinned.addressOf(0),
+                                ivLen = nonce.size.toULong(),
+                                aad = null,
+                                aadLen = 0u,
+                                dataIn = null,
+                                dataInLength = 0u,
+                                dataOut = null,
+                                tag = tagPinned.addressOf(0),
+                                tagLength = GCM_TAG_SIZE.toULong(),
+                            )
                         require(status == kCCSuccess) {
                             "CCCryptorGCMOneshotDecrypt failed: $status (authentication failure or corrupted data)"
                         }
                     } else {
                         ct.usePinned { ctPinned ->
                             plaintext.usePinned { ptPinned ->
-                                val status = CCCryptorGCMOneshotDecrypt(
-                                    alg = kCCAlgorithmAES,
-                                    key = keyPinned.addressOf(0),
-                                    keyLength = key.size.toULong(),
-                                    iv = noncePinned.addressOf(0),
-                                    ivLen = nonce.size.toULong(),
-                                    aad = null,
-                                    aadLen = 0u,
-                                    dataIn = ctPinned.addressOf(0),
-                                    dataInLength = ct.size.toULong(),
-                                    dataOut = ptPinned.addressOf(0),
-                                    tag = tagPinned.addressOf(0),
-                                    tagLength = GCM_TAG_SIZE.toULong(),
-                                )
+                                val status =
+                                    CCCryptorGCMOneshotDecrypt(
+                                        alg = kCCAlgorithmAES,
+                                        key = keyPinned.addressOf(0),
+                                        keyLength = key.size.toULong(),
+                                        iv = noncePinned.addressOf(0),
+                                        ivLen = nonce.size.toULong(),
+                                        aad = null,
+                                        aadLen = 0u,
+                                        dataIn = ctPinned.addressOf(0),
+                                        dataInLength = ct.size.toULong(),
+                                        dataOut = ptPinned.addressOf(0),
+                                        tag = tagPinned.addressOf(0),
+                                        tagLength = GCM_TAG_SIZE.toULong(),
+                                    )
                                 require(status == kCCSuccess) {
                                     "CCCryptorGCMOneshotDecrypt failed: $status (authentication failure or corrupted data)"
                                 }

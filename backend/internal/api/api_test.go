@@ -2,17 +2,21 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/endorses/psst.zip/backend/internal/api"
+	"github.com/endorses/psst.zip/backend/internal/cleanup"
 	"github.com/endorses/psst.zip/backend/internal/config"
 	"github.com/endorses/psst.zip/backend/internal/database"
 	"github.com/endorses/psst.zip/backend/internal/store"
@@ -197,7 +201,7 @@ func TestFullTransferFlow(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
 	}
-	fileID := resp.Header.Get("Location")
+	fileID := path.Base(resp.Header.Get("Location"))
 	resp.Body.Close()
 	if fileID == "" {
 		t.Fatal("expected file ID in Location header")
@@ -304,7 +308,7 @@ func TestTusResumeUpload(t *testing.T) {
 	tusReq.Header.Set("Tus-Resumable", "1.0.0")
 	tusReq.Header.Set("Upload-Length", fmt.Sprintf("%d", len(fullData)))
 	resp, _ = client.Do(tusReq)
-	fileID := resp.Header.Get("Location")
+	fileID := path.Base(resp.Header.Get("Location"))
 	resp.Body.Close()
 
 	// Upload first 10 bytes.
@@ -402,7 +406,7 @@ func TestDownloadLimit(t *testing.T) {
 	tusReq.Header.Set("Tus-Resumable", "1.0.0")
 	tusReq.Header.Set("Upload-Length", fmt.Sprintf("%d", len(fileData)))
 	resp, _ = client.Do(tusReq)
-	fileID := resp.Header.Get("Location")
+	fileID := path.Base(resp.Header.Get("Location"))
 	resp.Body.Close()
 
 	patchReq, _ := http.NewRequest("PATCH",
@@ -544,10 +548,19 @@ func TestCleanupExpiredTransfers(t *testing.T) {
 		t.Fatalf("update expires_at: %v", err)
 	}
 
-	// Run cleanup by deleting expired transfers directly.
-	_, err = env.db.Exec("DELETE FROM transfers WHERE expires_at <= ?", time.Now())
+	// Run the same worker that production starts, including its immediate sweep.
+	fs, err := store.NewDiskStore(env.dataDir + "/files")
 	if err != nil {
-		t.Fatalf("cleanup: %v", err)
+		t.Fatal(err)
+	}
+	if err := fs.Save(created.ID+"/blob", strings.NewReader("expired bytes")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cleanup.NewWorker(env.queries, fs, time.Hour).Run(ctx)
+	if _, err := os.Stat(env.dataDir + "/files/" + created.ID); !os.IsNotExist(err) {
+		t.Fatalf("expired files still exist: %v", err)
 	}
 
 	// Transfer should be gone.

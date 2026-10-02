@@ -6,15 +6,9 @@ struct ContentView: View {
     var body: some View {
         if serverConfig.isConfigured {
             TabView {
-                Tab("Home", systemImage: "house") {
-                    HomeView()
-                }
-                Tab("History", systemImage: "clock") {
-                    HistoryView()
-                }
-                Tab("Settings", systemImage: "gear") {
-                    ServerConfigView()
-                }
+                HomeView().tabItem { Label("Home", systemImage: "house") }
+                HistoryView().tabItem { Label("History", systemImage: "clock") }
+                ServerConfigView().tabItem { Label("Settings", systemImage: "gear") }
             }
         } else {
             NavigationStack {

@@ -1,6 +1,7 @@
 package zip.psst.shared.api
 
 import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.TransferLimits
 import zip.psst.shared.model.TransferStatus
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -12,31 +13,44 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 
 class TransferApiTest {
     private val config = ServerConfig(baseUrl = "https://example.com")
 
-    private fun createMockClient(handler: MockEngine.() -> Unit = {}): Pair<HttpClient, MockEngine> {
+    private fun createMockClient(
+        handler: MockEngine.() -> Unit = {}
+    ): Pair<HttpClient, MockEngine> {
         val engine = MockEngine { request ->
             when {
                 request.url.encodedPath == "/api/v1/transfers" &&
                     request.method == HttpMethod.Post -> {
                     respond(
-                        content = """{"id":"test-xfer","file_count":0,"total_size":0,"status":"pending"}""",
+                        content =
+                            """{"id":"test-xfer","file_count":0,"total_size":0,"status":"pending"}""",
                         status = HttpStatusCode.Created,
-                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                        headers =
+                            headersOf(
+                                HttpHeaders.ContentType,
+                                ContentType.Application.Json.toString(),
+                            ),
                     )
                 }
                 request.url.encodedPath == "/api/v1/transfers/test-xfer" &&
                     request.method == HttpMethod.Get -> {
                     respond(
-                        content = """{"id":"test-xfer","file_count":2,"total_size":1024,"status":"complete"}""",
+                        content =
+                            """{"id":"test-xfer","file_count":2,"total_size":1024,"status":"complete"}""",
                         status = HttpStatusCode.OK,
-                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                        headers =
+                            headersOf(
+                                HttpHeaders.ContentType,
+                                ContentType.Application.Json.toString(),
+                            ),
                     )
                 }
                 request.url.encodedPath == "/api/v1/transfers/test-xfer/manifest" &&
@@ -44,39 +58,35 @@ class TransferApiTest {
                     respond(
                         content = ByteArray(32) { it.toByte() }.decodeToString(),
                         status = HttpStatusCode.OK,
-                        headers = headersOf(
-                            HttpHeaders.ContentType,
-                            ContentType.Application.OctetStream.toString(),
-                        ),
+                        headers =
+                            headersOf(
+                                HttpHeaders.ContentType,
+                                ContentType.Application.OctetStream.toString(),
+                            ),
                     )
                 }
                 request.url.encodedPath == "/api/v1/transfers/test-xfer/complete" &&
                     request.method == HttpMethod.Post -> {
-                    respond(
-                        content = "",
-                        status = HttpStatusCode.NoContent,
-                    )
+                    respond(content = "", status = HttpStatusCode.NoContent)
                 }
                 else -> {
-                    respond(
-                        content = "Not found",
-                        status = HttpStatusCode.NotFound,
-                    )
+                    respond(content = "Not found", status = HttpStatusCode.NotFound)
                 }
             }
         }
 
-        val client = HttpClient(engine) {
-            install(ContentNegotiation) {
-                json(
-                    Json {
-                        ignoreUnknownKeys = true
-                        isLenient = true
-                        encodeDefaults = true
-                    },
-                )
+        val client =
+            HttpClient(engine) {
+                install(ContentNegotiation) {
+                    json(
+                        Json {
+                            ignoreUnknownKeys = true
+                            isLenient = true
+                            encodeDefaults = true
+                        }
+                    )
+                }
             }
-        }
 
         return Pair(client, engine)
     }
@@ -101,6 +111,39 @@ class TransferApiTest {
         assertEquals(2, transfer.fileCount)
         assertEquals(1024L, transfer.totalSize)
         assertEquals(TransferStatus.COMPLETE, transfer.status)
+    }
+
+    @Test
+    fun downloadRejectsOversizedManifest() = runTest {
+        val client =
+            HttpClient(
+                MockEngine {
+                    respond(
+                        content = ByteArray(TransferLimits.MAX_MANIFEST_BYTES + 1),
+                        status = HttpStatusCode.OK,
+                    )
+                }
+            )
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                TransferApi(client, config).downloadManifest("test-xfer")
+            }
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun downloadRejectsErrorResponse() = runTest {
+        val client =
+            HttpClient(MockEngine { respond(content = "expired", status = HttpStatusCode.Gone) })
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                TransferApi(client, config).downloadFile("test-xfer", "blob")
+            }
+        } finally {
+            client.close()
+        }
     }
 
     @Test

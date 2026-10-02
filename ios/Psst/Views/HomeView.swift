@@ -75,7 +75,7 @@ struct HomeView: View {
     }
 
     private func handlePickedFiles(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        guard case let .success(urls) = result, !urls.isEmpty else { return }
         let vm = SendViewModel(
             fileURLs: urls,
             serverConfig: serverConfig,

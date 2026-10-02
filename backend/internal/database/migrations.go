@@ -53,6 +53,8 @@ var migrations = []string{
 		FOREIGN KEY (slot_id) REFERENCES slots(id) ON DELETE CASCADE,
 		FOREIGN KEY (transfer_id) REFERENCES transfers(id) ON DELETE CASCADE
 	)`,
+	// Migration 6: download quotas apply independently to each file.
+	`ALTER TABLE files ADD COLUMN download_count INTEGER NOT NULL DEFAULT 0`,
 }
 
 func runMigrations(db *sql.DB) error {

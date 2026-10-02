@@ -1,54 +1,42 @@
 import Foundation
 import Shared
 
-/// Convenience extensions for bridging between Swift Data types and Kotlin byte arrays.
-/// The KMP Shared framework (via SKIE) exposes Kotlin classes to Swift.
+// Convenience extensions for bridging between Swift Data types and Kotlin byte arrays.
+// The KMP Shared framework (via SKIE) exposes Kotlin classes to Swift.
 
 // MARK: - CryptoProvider convenience
 
 extension CryptoProvider {
     /// Generate a key and return it as Swift Data.
-    func generateKeyData() -> Data {
-        generateKey().toData()
+    func generateKeyData() throws -> Data {
+        try generateKey().toData()
     }
 
     /// Generate a nonce and return it as Swift Data.
-    func generateNonceData() -> Data {
-        generateNonce().toData()
+    func generateNonceData() throws -> Data {
+        try generateNonce().toData()
     }
 
     /// Encrypt with Swift Data types.
-    func encrypt(key: Data, nonce: Data, plaintext: Data) -> Data {
-        let result = encrypt(
+    func encrypt(key: Data, nonce: Data, plaintext: Data) throws -> Data {
+        let result = try encrypt(
             key: key.toKotlinByteArray(),
             nonce: nonce.toKotlinByteArray(),
             plaintext: plaintext.toKotlinByteArray()
         )
-        return Data(result)
+        return result.toData()
     }
 
     /// Decrypt with Swift Data types.
-    func decrypt(key: Data, nonce: Data, ciphertext: Data) -> Data {
-        let result = decrypt(
+    func decrypt(key: Data, nonce: Data, ciphertext: Data) throws -> Data {
+        let result = try decrypt(
             key: key.toKotlinByteArray(),
             nonce: nonce.toKotlinByteArray(),
             ciphertext: ciphertext.toKotlinByteArray()
         )
-        return Data(result)
+        return result.toData()
     }
 }
-
-// MARK: - Flow bridging
-
-/// Helper to convert a Kotlin Flow to Swift AsyncSequence.
-/// SKIE handles this automatically; this type alias documents the pattern.
-///
-/// Usage:
-///   for try await event in client.slots.events(slotId: id).asAsyncSequence() {
-///       // handle event
-///   }
-///
-/// SKIE generates the `asAsyncSequence()` method on Kotlin Flow types.
 
 // MARK: - Encrypted blob format helpers
 

@@ -50,7 +50,7 @@ func NewQueries(db *sql.DB) *Queries {
 func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int) error {
 	_, err := q.db.Exec(
 		`INSERT INTO transfers (id, status, expires_at, max_downloads) VALUES (?, 'pending', ?, ?)`,
-		id, expiresAt, maxDownloads,
+		id, expiresAt.UTC(), maxDownloads,
 	)
 	return err
 }
@@ -92,9 +92,33 @@ func (q *Queries) CompleteTransfer(id string) error {
 	return nil
 }
 
-func (q *Queries) IncrementDownloadCount(id string) error {
-	_, err := q.db.Exec(`UPDATE transfers SET download_count = download_count + 1 WHERE id = ?`, id)
-	return err
+// ReserveFileDownload atomically consumes one GET allowance for this file.
+// Each file gets max_downloads attempts, so a multi-file transfer remains usable.
+// Transfer download_count is the minimum across its files: complete file sets.
+func (q *Queries) ReserveFileDownload(transferID, fileID string) (bool, error) {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE files SET download_count = download_count + 1
+ WHERE id = ? AND transfer_id = ? AND upload_complete = 1
+ AND EXISTS (SELECT 1 FROM transfers t WHERE t.id = files.transfer_id
+ AND t.status = 'complete'
+ AND (t.max_downloads <= 0 OR files.download_count < t.max_downloads))`, fileID, transferID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	_, err = tx.Exec(`UPDATE transfers SET download_count =
+ (SELECT MIN(download_count) FROM files WHERE transfer_id = ?) WHERE id = ?`, transferID, transferID)
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // --- Files ---
@@ -205,7 +229,7 @@ func (q *Queries) HasManifest(transferID string) (bool, error) {
 func (q *Queries) CreateSlot(id string, expiresAt time.Time) error {
 	_, err := q.db.Exec(
 		`INSERT INTO slots (id, status, expires_at) VALUES (?, 'waiting', ?)`,
-		id, expiresAt,
+		id, expiresAt.UTC(),
 	)
 	return err
 }
@@ -257,22 +281,25 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 // ExpiredTransferIDs returns IDs of transfers that have passed their expiry
 // time or exceeded their download limit.
 func (q *Queries) ExpiredTransferIDs() ([]string, error) {
-	rows, err := q.db.Query(
-		`SELECT id FROM transfers WHERE expires_at < CURRENT_TIMESTAMP
-		 OR (max_downloads > 0 AND download_count >= max_downloads)`,
-	)
+	// Compare parsed times, since historical rows use Go timestamp strings with
+	// different timezone offsets, which SQLite cannot order chronologically.
+	rows, err := q.db.Query(`SELECT id, expires_at, max_downloads, download_count FROM transfers`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
+	now := time.Now()
 	var ids []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var expiresAt time.Time
+		var limit, count int
+		if err := rows.Scan(&id, &expiresAt, &limit, &count); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		if !now.Before(expiresAt) || (limit > 0 && count >= limit) {
+			ids = append(ids, id)
+		}
 	}
 	return ids, rows.Err()
 }
@@ -284,12 +311,37 @@ func (q *Queries) DeleteTransfer(id string) error {
 
 // ExpiredSlotIDs returns IDs of slots past their expiry time.
 func (q *Queries) ExpiredSlotIDs() ([]string, error) {
-	rows, err := q.db.Query(`SELECT id FROM slots WHERE expires_at < CURRENT_TIMESTAMP`)
+	rows, err := q.db.Query(`SELECT id, expires_at FROM slots`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	now := time.Now()
+	var ids []string
+	for rows.Next() {
+		var id string
+		var expiresAt time.Time
+		if err := rows.Scan(&id, &expiresAt); err != nil {
+			return nil, err
+		}
+		if !now.Before(expiresAt) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
 
+func (q *Queries) DeleteSlot(id string) error {
+	_, err := q.db.Exec(`DELETE FROM slots WHERE id = ?`, id)
+	return err
+}
+
+func (q *Queries) TransferSlotIDs(transferID string) ([]string, error) {
+	rows, err := q.db.Query(`SELECT slot_id FROM slot_transfers WHERE transfer_id = ?`, transferID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -299,9 +351,4 @@ func (q *Queries) ExpiredSlotIDs() ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-func (q *Queries) DeleteSlot(id string) error {
-	_, err := q.db.Exec(`DELETE FROM slots WHERE id = ?`, id)
-	return err
 }
