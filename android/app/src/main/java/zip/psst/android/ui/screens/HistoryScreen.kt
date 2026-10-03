@@ -27,14 +27,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.historyStatusLabel
 import zip.psst.android.viewmodel.HistoryViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,6 +53,21 @@ fun HistoryScreen(
     viewModel: HistoryViewModel = viewModel(),
 ) {
     val history by viewModel.history.collectAsState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.refresh()
+                Lifecycle.Event.ON_STOP -> viewModel.stopRefreshing()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            viewModel.stopRefreshing()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -59,13 +79,11 @@ fun HistoryScreen(
                     }
                 },
             )
-        },
+        }
     ) { padding ->
         if (history.isEmpty()) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize().padding(padding),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -84,10 +102,7 @@ fun HistoryScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(history, key = { it.id }) { entity ->
@@ -103,27 +118,19 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryItem(
-    entity: TransferHistoryEntity,
-    onClick: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+private fun HistoryItem(entity: TransferHistoryEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = if (entity.type == "sent") {
-                    Icons.AutoMirrored.Filled.Send
-                } else {
-                    Icons.Default.Download
-                },
+                imageVector =
+                    if (entity.type == "sent") {
+                        Icons.AutoMirrored.Filled.Send
+                    } else {
+                        Icons.Default.Download
+                    },
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.primary,
@@ -137,11 +144,13 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = "${entity.fileCount} file(s)" + if (entity.totalSize > 0) {
-                        " - ${formatFileSize(entity.totalSize)}"
-                    } else {
-                        ""
-                    },
+                    text =
+                        "${entity.fileCount} file(s)" +
+                            if (entity.totalSize > 0) {
+                                " - ${formatFileSize(entity.totalSize)}"
+                            } else {
+                                ""
+                            },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -155,13 +164,15 @@ private fun HistoryItem(
             }
 
             Text(
-                text = entity.status,
+                text = historyStatusLabel(entity.type, entity.status),
                 style = MaterialTheme.typography.labelSmall,
-                color = when (entity.status) {
-                    "complete", "has_uploads" -> MaterialTheme.colorScheme.primary
-                    "expired" -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                color =
+                    when (entity.status) {
+                        "complete",
+                        "has_uploads" -> MaterialTheme.colorScheme.primary
+                        "expired" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
             )
 
             Spacer(Modifier.width(8.dp))

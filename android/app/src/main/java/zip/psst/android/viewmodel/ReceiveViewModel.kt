@@ -7,7 +7,12 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.data.ReceivedChild
+import zip.psst.android.data.ReceivedSnapshot
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.parseHistoryExpiry
+import zip.psst.android.data.receivedSnapshot
+import zip.psst.android.data.savedTransferIds
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.SlotEvent
 import zip.psst.shared.crypto.CryptoProvider
@@ -28,6 +33,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
 data class ReceiveUiState(
@@ -53,6 +60,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     private var encryptionKeyBytes: ByteArray? = null
     private var slotClient: ApiClient? = null
     private var pollJob: Job? = null
+    private val historyMutex = Mutex()
 
     @OptIn(ExperimentalEncodingApi::class)
     fun createSlot() {
@@ -98,7 +106,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             serverUrl = serverUrl,
                             encryptionKey = base64Key,
                             status = "waiting",
-                            expiresAt = null,
+                            expiresAt = parseHistoryExpiry(slot.expiresAt),
                         )
                     )
 
@@ -145,9 +153,20 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun refreshSlot(client: ApiClient, slotId: String) {
         try {
             val slot = client.slots.get(slotId)
-            val status = if (slot.completedTransfers.isNotEmpty()) "has_uploads" else "waiting"
-            _uiState.update { it.copy(slotStatus = status) }
-            app.database.transferHistoryDao().updateStatus(slotId, status)
+            val snapshot = slot.receivedSnapshot()
+            historyMutex.withLock {
+                val row = app.database.transferHistoryDao().mergeReceived(slotId, snapshot)
+                if (row != null) {
+                    _uiState.update {
+                        if (it.slotId == slotId)
+                            it.copy(
+                                slotStatus = row.status,
+                                downloadComplete = row.status == "complete",
+                            )
+                        else it
+                    }
+                }
+            }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
         }
@@ -156,15 +175,26 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     fun downloadReceivedFiles() {
         val slotId = _uiState.value.slotId ?: return
         val key = encryptionKeyBytes ?: return
-        val serverUrl = app.prefs.getServerUrl()
+        if (_uiState.value.isDownloading) return
 
-        _uiState.update { it.copy(isDownloading = true, error = null) }
+        _uiState.update { it.copy(isDownloading = true, error = null, downloadComplete = false) }
 
         viewModelScope.launch(Dispatchers.IO) {
-            val client = ApiClient(ServerConfig(serverUrl))
+            val dao = app.database.transferHistoryDao()
+            val row = dao.getById(slotId)
+            if (row == null) {
+                _uiState.update {
+                    it.copy(isDownloading = false, error = "Receive history entry is missing")
+                }
+                return@launch
+            }
+            val client = ApiClient(ServerConfig(row.serverUrl))
             try {
-                val transfers = client.slots.get(slotId).completedTransfers
-                require(transfers.isNotEmpty()) { "No completed uploads yet" }
+                val slot = client.slots.get(slotId)
+                val latest = dao.mergeReceived(slotId, slot.receivedSnapshot()) ?: row
+                val transfers =
+                    slot.completedTransfers.filter { it.transferId !in latest.savedTransferIds() }
+                require(transfers.isNotEmpty()) { "No new completed uploads to save" }
                 val received = mutableListOf<Pair<String, FileMetadata>>()
                 for (transfer in transfers) {
                     val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
@@ -174,12 +204,20 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val manifest =
                         Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
 
+                    require(manifest.files.size == transfer.fileCount) {
+                        "Manifest file count mismatch"
+                    }
                     received += manifest.files.map { transfer.transferId to it }
                 }
                 _uiState.update { it.copy(receivedFiles = received.map { it.second }) }
 
                 val context = getApplication<PsstApplication>()
                 val totalFiles = received.size
+                require(totalFiles == transfers.sumOf { it.fileCount }) {
+                    "Manifest file count mismatch"
+                }
+                val savedBytes = mutableMapOf<String, Long>()
+                val remainingFiles = received.groupingBy { it.first }.eachCount().toMutableMap()
 
                 // Download and decrypt each file
                 for ((index, receivedFile) in received.withIndex()) {
@@ -194,6 +232,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val nonce = encryptedData.copyOfRange(0, 12)
                     val ciphertext = encryptedData.copyOfRange(12, encryptedData.size)
                     val plaintext = CryptoProvider.decrypt(key, nonce, ciphertext)
+                    require(plaintext.size.toLong() == fileMeta.size) {
+                        "Manifest file size mismatch"
+                    }
 
                     // Save to Downloads via MediaStore
                     val contentValues =
@@ -212,10 +253,40 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                         outputStream.write(plaintext)
                     } ?: throw Exception("Failed to write file")
+                    savedBytes[transferId] = (savedBytes[transferId] ?: 0L) + plaintext.size
+                    remainingFiles[transferId] = remainingFiles.getValue(transferId) - 1
+                    if (remainingFiles.getValue(transferId) == 0) {
+                        val child = transfers.first { it.transferId == transferId }
+                        historyMutex.withLock {
+                            dao.mergeReceived(
+                                slotId,
+                                ReceivedSnapshot(
+                                    mapOf(
+                                        transferId to
+                                            ReceivedChild(
+                                                child.fileCount,
+                                                savedBytes.getValue(transferId),
+                                            )
+                                    )
+                                ),
+                                saved = true,
+                            )
+                        }
+                    }
                 }
 
-                _uiState.update {
-                    it.copy(isDownloading = false, downloadProgress = 1f, downloadComplete = true)
+                historyMutex.withLock {
+                    val updated = dao.getById(slotId)
+                    _uiState.update {
+                        if (it.slotId == slotId)
+                            it.copy(
+                                isDownloading = false,
+                                downloadProgress = 1f,
+                                slotStatus = updated?.status ?: "has_uploads",
+                                downloadComplete = updated?.status == "complete",
+                            )
+                        else it
+                    }
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

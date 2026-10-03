@@ -48,6 +48,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import zip.psst.android.data.historyStatusLabel
 import zip.psst.android.ui.components.ExpiryCountdown
 import zip.psst.android.ui.components.QrCodeImage
 import zip.psst.android.viewmodel.TransferDetailViewModel
@@ -130,7 +131,7 @@ fun TransferDetailScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Status: ${state.status}",
+                    text = "Status: ${historyStatusLabel(state.type, state.status)}",
                     style = MaterialTheme.typography.titleSmall,
                     color = statusColor,
                 )

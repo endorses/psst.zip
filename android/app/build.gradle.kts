@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
@@ -65,6 +66,12 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.ktor:ktor-client-mock:3.1.1")
+    testImplementation("io.ktor:ktor-client-content-negotiation:3.1.1")
+    testImplementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
 
     // QR code generation
     implementation(libs.zxing.core)

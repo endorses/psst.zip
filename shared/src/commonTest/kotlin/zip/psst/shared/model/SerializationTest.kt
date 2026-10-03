@@ -21,6 +21,7 @@ class SerializationTest {
                 status = TransferStatus.COMPLETE,
                 expiresAt = "2026-01-01T00:00:00Z",
                 createdAt = "2025-12-31T00:00:00Z",
+                downloadCount = 2,
             )
         val jsonStr = json.encodeToString(Transfer.serializer(), transfer)
         val decoded = json.decodeFromString(Transfer.serializer(), jsonStr)
@@ -45,6 +46,24 @@ class SerializationTest {
         assertEquals(2, transfer.fileCount)
         assertEquals(500L, transfer.totalSize)
         assertEquals(TransferStatus.PENDING, transfer.status)
+        assertEquals(0, transfer.downloadCount)
+    }
+
+    @Test
+    fun completedTransferDistinguishesUploadFromDownloadRequests() {
+        val ready =
+            json.decodeFromString<Transfer>(
+                """{"id":"ready","status":"complete","download_count":0}"""
+            )
+        val requested =
+            json.decodeFromString<Transfer>(
+                """{"id":"requested","status":"complete","download_count":1}"""
+            )
+
+        assertEquals(TransferStatus.COMPLETE, ready.status)
+        assertEquals(0, ready.downloadCount)
+        assertEquals(TransferStatus.COMPLETE, requested.status)
+        assertEquals(1, requested.downloadCount)
     }
 
     @Test

@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Represents a file transfer created by the sender.
- * The server stores encrypted blobs; the encryption key is never sent to the server.
+ * Represents a file transfer created by the sender. The server stores encrypted blobs; the
+ * encryption key is never sent to the server.
  */
 @Serializable
 data class Transfer(
@@ -15,16 +15,13 @@ data class Transfer(
     val status: TransferStatus = TransferStatus.PENDING,
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
+    // Counts requested file sets, not confirmed saves on the recipient's device.
+    @SerialName("download_count") val downloadCount: Int = 0,
 )
 
 @Serializable
 enum class TransferStatus {
-    @SerialName("pending")
-    PENDING,
-
-    @SerialName("complete")
-    COMPLETE,
-
-    @SerialName("expired")
-    EXPIRED,
+    @SerialName("pending") PENDING,
+    @SerialName("complete") COMPLETE,
+    @SerialName("expired") EXPIRED,
 }
