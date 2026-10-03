@@ -127,12 +127,15 @@
             >{formatSize(file.size)}</span
           ><button
             aria-label={`Remove ${file.name}`}
-            onclick={() => (job.files = job.files.filter((_, index) => index !== i))}>×</button
+            onclick={() => (job.files = job.files.filter((_, index) => index !== i))}
+            ><Icon name="Close" size={18} /></button
           >
         </li>{/each}
     </ul>
     <button class="primary" onclick={start}
-      >{job.state === "error" ? "Retry upload" : "Send files"}</button
+      ><Icon name={job.state === "error" ? "Refresh" : "Send"} size={18} />{job.state === "error"
+        ? "Retry upload"
+        : "Send files"}</button
     >{:else}<p class="encryption-note">
       <Icon name="Lock" size={16} />Encrypted on your device. Only people with the link can open
       your files.

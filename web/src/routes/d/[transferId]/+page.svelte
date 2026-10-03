@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { beforeNavigate } from "$app/navigation";
   import { BRAND } from "$lib/brand";
   import { page } from "$app/stores";
@@ -233,7 +234,7 @@
       onclick={() => {
         status = "loading";
         void load();
-      }}>Reconnect</button
+      }}><Icon name="Refresh" size={18} />Reconnect</button
     >
   </section>
 {:else if status === "downloading"}
@@ -262,6 +263,7 @@
             onclick={() => downloadSingleFile(entry)}
             disabled={Object.keys(downloadProgress).length > 0}
           >
+            <Icon name="Download" size={18} />
             {#if entry.blob_id in downloadProgress}
               {downloadProgress[entry.blob_id]}%
             {:else}
@@ -280,7 +282,7 @@
         class="primary"
         disabled={Object.keys(downloadProgress).length > 0 ||
           manifest.files.reduce((n, f) => n + f.size, 0) > MAX_BUFFERED_BYTES}
-        onclick={downloadAllAsZip}>Save all as ZIP</button
+        onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
       >
     {/if}
 
@@ -300,7 +302,9 @@
           <p>Sender notified.</p>
         {:else if confirmation === "failed"}
           <p>Files downloaded, but the sender could not be notified.</p>
-          <button class="btn" onclick={confirmDownload}>Retry confirmation</button>
+          <button class="btn" onclick={confirmDownload}
+            ><Icon name="Refresh" size={18} />Retry confirmation</button
+          >
         {/if}
       </div>
     {/if}

@@ -37,7 +37,10 @@ that would stop an active upload requires confirmation. The apps do not promise
 background transfers after the OS or share extension stops them. Failed cleanup
 remains actionable so a partially created resource can still be revoked.
 
-The interface follows system light/dark appearance, using deep teal primary
+The web header offers **System**, **Light**, and **Dark** appearance on every page,
+including login and public links. The choice is saved in that browser; System
+follows the browser/device preference. Native apps follow system appearance.
+The interface uses deep teal primary
 actions, neutral surfaces, and dark-on-white QR codes in both themes. Statuses
 also use text, including the distinction between files received by the server,
 files saved locally, and a recipient-confirmed download.
@@ -204,7 +207,11 @@ use local ports 8080 and 4173. CI also assembles Android and runs shared tests.
 To run the same browser tests against an isolated Docker deployment, set
 `PSST_TEST_BASE_URL` to its origin and run
 `npx playwright test --config playwright.deployment.config.ts` from `web/`.
-This suite creates and downloads test transfers; use a disposable deployment.
+Optional `PSST_TEST_USERNAME` and `PSST_TEST_PASSWORD` select the test account;
+`PSST_EXPECT_INSECURE_CONTEXT=1` enables the LAN HTTP assertion. The previous
+`PSST_` names remain accepted as fallbacks; the corresponding `PSST_` value takes
+precedence when set. This suite creates and downloads test transfers; use a
+disposable deployment.
 
 ## Current limits and protocol
 
@@ -295,6 +302,11 @@ Docker Compose also accepts:
 | `PSST_DOMAIN` | `:80`   | Caddy site address; default serves LAN HTTP, a domain enables automatic HTTPS |
 | `HTTP_PORT`   | `80`    | Host port mapped to Caddy HTTP                                                |
 | `HTTPS_PORT`  | `443`   | Host port mapped to Caddy HTTPS                                               |
+
+Compose still accepts `PSST_DOMAIN` as a compatibility fallback when
+`PSST_DOMAIN` is unset or empty. A nonempty `PSST_DOMAIN` takes precedence.
+When running Caddy directly with the supplied Caddyfile, set `PSST_DOMAIN`.
+Existing Docker volumes and database paths retain their names to preserve stored data.
 
 ## Security model
 

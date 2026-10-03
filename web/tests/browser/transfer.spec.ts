@@ -10,7 +10,7 @@ const files = [
 
 test("LAN deployment runs without a secure context or Web Crypto", async ({ page }) => {
   test.skip(
-    process.env.PSST_EXPECT_INSECURE_CONTEXT !== "1",
+    (process.env.PSST_EXPECT_INSECURE_CONTEXT ?? process.env.PSST_EXPECT_INSECURE_CONTEXT) !== "1",
     "Only required for LAN HTTP deployment checks",
   );
   await page.goto("/");

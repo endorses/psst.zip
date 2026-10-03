@@ -69,7 +69,7 @@ async function prepareDownload(
 
 async function downloadIndividual(page: Page, index: number) {
   const button = page.locator(".file-list li").nth(index).getByRole("button");
-  await expect(button).toHaveText(/^(Save file|Save again)$/);
+  await expect(button).toHaveAccessibleName(/^(Save file|Save again)$/);
   const download = page.waitForEvent("download");
   await button.click();
   await download;

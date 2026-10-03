@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
   import { importKey } from "$lib/crypto";
@@ -46,8 +47,10 @@
 <section class="panel">
   {#if error}<h1>Cannot open receive link</h1>
     <p role="alert" class="error">{error}</p>
-    {#if reconnect}<button onclick={load}>Reconnect</button>{/if}{:else if ready}<SendPanel
-      slotId={$page.params.slotId}
-      keyString={key}
-    />{:else}<p role="status">Opening receive link…</p>{/if}
+    {#if reconnect}<button onclick={load}><Icon name="Refresh" size={18} />Reconnect</button
+      >{/if}{:else if ready}<SendPanel slotId={$page.params.slotId} keyString={key} />{:else}<p
+      role="status"
+    >
+      Opening receive link…
+    </p>{/if}
 </section>

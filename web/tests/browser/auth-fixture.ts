@@ -1,12 +1,14 @@
 import { test as base, expect, type Page, type APIResponse } from "@playwright/test";
 export const credentials = {
-  username: process.env.PSST_TEST_USERNAME ?? "admin",
-  password: process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
+  username: process.env.PSST_TEST_USERNAME ?? process.env.PSST_TEST_USERNAME ?? "admin",
+  password:
+    process.env.PSST_TEST_PASSWORD ?? process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
 };
 export const test = base.extend<{}, { apiToken: string }>({
   apiToken: [
     async ({ playwright }, use) => {
-      const baseURL = process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173";
+      const baseURL =
+        process.env.PSST_TEST_BASE_URL ?? process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173";
       const context = await playwright.request.newContext({ baseURL });
       const response = await retryAuth(() =>
         context.post("/api/v1/auth/login", {

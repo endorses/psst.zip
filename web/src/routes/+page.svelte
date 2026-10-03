@@ -501,11 +501,9 @@
 {#if loading}<p role="status">Loading your account…</p>
 {:else if !user}
   <section class="panel login">
-    <p class="eyebrow">YOUR PRIVATE TRANSFER SERVER</p>
+    <div class="login-mark"><Icon name="Shield" size={26} /></div>
     <h1>Sign in to {BRAND}</h1>
-    <p class="muted">
-      Share files and create receive links. People using your links do not need an account.
-    </p>
+    <p class="muted login-intro">Your private space to send and receive files.</p>
     {#if setupRequired}<p class="notice">
         This server needs its first administrator. The server operator must configure ADMIN_USERNAME
         and ADMIN_PASSWORD, then restart the server.
@@ -516,31 +514,46 @@
           void login();
         }}
       >
-        <label
-          >Username<input
-            bind:value={username}
-            autocomplete="username"
-            required
-            disabled={busy}
-          /></label
-        ><label
-          >Password<input
+        <label for="login-username">Username</label>
+        <input
+          id="login-username"
+          name="username"
+          bind:value={username}
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck={false}
+          required
+          disabled={busy}
+        />
+        <label for="login-password">Password</label>
+        <div class="password-field">
+          <input
+            id="login-password"
+            name="password"
             bind:value={password}
             type={showPassword ? "text" : "password"}
             autocomplete="current-password"
             required
             disabled={busy}
-          /></label
-        ><button
-          type="button"
-          aria-pressed={showPassword}
-          onclick={() => (showPassword = !showPassword)}
-          >{showPassword ? "Hide password" : "Show password"}</button
-        ><button class="primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          />
+          <button
+            class="password-visibility"
+            type="button"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            aria-controls="login-password"
+            onclick={() => (showPassword = !showPassword)}
+            ><Icon name={showPassword ? "EyeOff" : "Eye"} /></button
+          >
+        </div>
+        <button class="primary login-submit" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}<Icon name="Arrow" size={18} />
+        </button>
       </form>
-      <p class="muted small">
-        Need an account or password reset? Contact your server administrator.
+      <p class="muted small login-help">
+        Need an account or password reset?<br />Contact your server administrator.
       </p>{/if}
+    <p class="muted small login-note">People using your shared links do not need an account.</p>
     {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
         class="notice"
         role="status"
@@ -586,7 +599,7 @@
                 localStorage.setItem("psst.auth-change", String(Date.now()));
               } catch {}
               clearAccount();
-            })}>Sign out</button
+            })}><Icon name="SignOut" size={17} />Sign out</button
         >
       </div>
     </aside>
@@ -647,7 +660,7 @@
               url={receiveUrl}
               label="Receive link — share it with someone to get files."
             /><button disabled={busy} onclick={() => checkReceived(receiveId)}
-              >Refresh received files</button
+              ><Icon name="Refresh" size={17} />Refresh received files</button
             >
             <p class="muted small" role="status">
               {received.length
@@ -663,7 +676,9 @@
           >
         {:else if tab === "History"}<div class="heading">
             <h1>{allResources ? "All server resources" : "Your transfers"}</h1>
-            <button disabled={busy} onclick={() => select("History")}>Refresh</button>
+            <button disabled={busy} onclick={() => select("History")}
+              ><Icon name="Refresh" size={17} />Refresh</button
+            >
           </div>
           <label
             >Show<select bind:value={historyFilter}
@@ -713,7 +728,8 @@
                   </p>{/if}
               </div>
               <div class="actions">
-                {#if links[item.id]}<button onclick={() => copy(links[item.id])}>Copy link</button
+                {#if links[item.id]}<button onclick={() => copy(links[item.id])}
+                    ><Icon name="Copy" size={17} />Copy link</button
                   >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
                     >{:else}<button disabled={busy} onclick={() => openReceive(item.id)}
                       >View files</button
@@ -723,7 +739,7 @@
                   onclick={() => {
                     error = "";
                     pendingDelete = { id: item.id, kind: item.kind };
-                  }}>Revoke</button
+                  }}><Icon name="Revoke" size={17} />Revoke</button
                 >
               </div>
             </article>{/each}
@@ -762,7 +778,9 @@
               This code has expired. Generate a new code.
             </p>{/if}
           <button class="primary" disabled={busy} onclick={pair}
-            >{pairingId ? "Generate new code" : "Show login QR code"}</button
+            ><Icon name="QRCode" size={18} />{pairingId
+              ? "Generate new code"
+              : "Show login QR code"}</button
           >
           <h2>Connected devices</h2>
           <p class="muted">Revoke a session to sign that device out.</p>
@@ -934,13 +952,82 @@
 
 <style>
   .login {
-    max-width: 480px;
-    margin: 1rem auto;
+    max-width: 440px;
+    margin: clamp(1rem, 5vh, 3rem) auto;
+    padding: clamp(1.5rem, 4vw, 2.5rem);
+    border-radius: 20px;
   }
-  .eyebrow {
-    font-size: 0.7rem;
-    letter-spacing: 0.1em;
+  .login-mark {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 15px;
+    background: var(--accent);
+    color: var(--primary);
+    margin-bottom: 1.5rem;
+  }
+  .login h1 {
+    font-size: clamp(1.6rem, 3vw, 1.9rem);
+    margin-bottom: 0.65rem;
+  }
+  .login-intro {
+    margin-bottom: 1.75rem;
+    font-size: 0.95rem;
+  }
+  .login form {
+    gap: 0.5rem;
+    margin: 0;
+  }
+  .login label {
+    font-size: 0.85rem;
+    font-weight: 550;
+  }
+  .login label:not(:first-child) {
+    margin-top: 0.6rem;
+  }
+  .login input {
+    min-height: 48px;
+    border-radius: 10px;
+    padding-inline: 0.8rem;
+  }
+  .password-field {
+    position: relative;
+  }
+  .password-field input {
+    padding-right: 3.4rem;
+  }
+  .password-visibility {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--muted);
+  }
+  .password-visibility:active:not(:disabled) {
+    transform: translateY(-50%);
+  }
+  .login-submit {
+    margin-top: 1rem;
+    min-height: 48px;
+    gap: 0.65rem;
+  }
+  .login-help {
+    text-align: center;
+    margin: 1.5rem 0 0;
+    font-size: 0.8rem;
+  }
+  .login-note {
+    border-top: 1px solid var(--divider);
+    padding-top: 1.25rem;
+    margin: 1.25rem 0 0;
+    text-align: center;
+    font-size: 0.78rem;
   }
   .workspace {
     display: grid;

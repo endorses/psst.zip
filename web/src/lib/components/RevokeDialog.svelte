@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
 
   let {
@@ -59,7 +60,7 @@
   <div class="actions">
     <button disabled={busy} onclick={oncancel}>Cancel</button>
     <button class="danger" disabled={busy} onclick={onconfirm}
-      >{busy ? "Revoking…" : "Revoke and delete"}</button
+      ><Icon name="Revoke" size={18} />{busy ? "Revoking…" : "Revoke and delete"}</button
     >
   </div>
 </dialog>

@@ -5,7 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="psst-web" content="1" />
     <link rel="icon" href="%sveltekit.assets%/favicon.png" />
-    <title>Secure File Transfer</title>
+    <title>psst.zip</title>
+    <script>
+      // Apply the saved appearance before styles render to avoid a theme flash.
+      try {
+        const appearance = localStorage.getItem("psst.theme");
+        document.documentElement.dataset.theme =
+          appearance === "light" || appearance === "dark" ? appearance : "system";
+      } catch {
+        document.documentElement.dataset.theme = "system";
+      }
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-prerender="false">

@@ -2,6 +2,7 @@
   import { page } from "$app/stores";
   import type { Snippet } from "svelte";
   import "$lib/theme.css";
+  import ThemePicker from "$lib/components/ThemePicker.svelte";
   import { BRAND } from "$lib/brand";
   let { children }: { children: Snippet } = $props();
 </script>
@@ -9,9 +10,11 @@
 <div class="app" class:workspace-shell={$page.url.pathname === "/"}>
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
-    <a href="/" class="logo" aria-label={`${BRAND} home`}>{BRAND}</a><span class="muted small"
-      >Quietly share something.</span
-    >
+    <a href="/" class="logo" aria-label={`${BRAND} home`}>{BRAND}</a>
+    <div class="header-tools">
+      <span class="tagline muted small">Quietly share something.</span>
+      <ThemePicker />
+    </div>
   </header>
   <main id="main">
     {#key $page.url.pathname}{@render children()}{/key}
@@ -31,8 +34,14 @@
     background: var(--surface);
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 1rem;
     align-items: center;
+  }
+  .header-tools {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
   }
   .logo {
     font-weight: 750;
@@ -72,8 +81,8 @@
     font-size: 0.8rem;
     color: var(--muted);
   }
-  @media (max-width: 400px) {
-    header span {
+  @media (max-width: 600px) {
+    .tagline {
       display: none;
     }
   }
