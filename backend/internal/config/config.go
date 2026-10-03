@@ -15,6 +15,8 @@ type Config struct {
 	DefaultExpiry   time.Duration
 	CleanupInterval time.Duration
 
+	AllowLegacyDeletion bool // ID-only deletion for pre-token links; disabled by default.
+
 	// Security settings
 	CORSOrigin             string  // Allowed CORS origin (default "*")
 	RateLimitGlobal        float64 // Global requests per second per IP (default 20)
@@ -35,6 +37,7 @@ func Load() Config {
 		DefaultExpiry:   envOrDefaultDuration("DEFAULT_EXPIRY", 24*time.Hour),
 		CleanupInterval: envOrDefaultDuration("CLEANUP_INTERVAL", 5*time.Minute),
 
+		AllowLegacyDeletion:    envOrDefaultBool("ALLOW_LEGACY_DELETION", false),
 		CORSOrigin:             envOrDefault("CORS_ORIGIN", "*"),
 		RateLimitGlobal:        envOrDefaultFloat64("RATE_LIMIT_GLOBAL", 20),
 		RateLimitCreation:      envOrDefaultFloat64("RATE_LIMIT_CREATION", 2),
@@ -86,4 +89,12 @@ func envOrDefaultDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func envOrDefaultBool(key string, fallback bool) bool {
+	value, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return fallback
+	}
+	return value
 }

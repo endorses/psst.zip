@@ -179,7 +179,7 @@ Native Android app with Jetpack Compose, share sheet integration, and QR display
 ### 4.5 History & management
 
 - [x] List of recent transfers (sent and received), stored locally
-- [ ] Delete / expire server transfers manually (history deletion is local only)
+- [x] Revoke server transfers and receive slots when deleting history, retaining entries if revocation fails
 
 ### 4.6 Testing
 

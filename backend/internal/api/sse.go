@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"sync"
@@ -70,14 +71,17 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid slot ID")
 		return
 	}
+	ch := s.sseHub.Subscribe(slotID)
+	defer s.sseHub.Unsubscribe(slotID, ch)
+
 	slot, err := s.queries.GetSlot(slotID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
 
-	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired")
+	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
 	expires := time.NewTimer(time.Until(slot.ExpiresAt))
@@ -93,16 +97,23 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
-	ch := s.sseHub.Subscribe(slotID)
-	defer s.sseHub.Unsubscribe(slotID, ch)
-
 	// Send initial connected event.
 	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", slotID)
 	flusher.Flush()
 
+	check := time.NewTicker(time.Second)
+	defer check.Stop()
 	ctx := r.Context()
 	for {
 		select {
+		case <-check.C:
+			current, err := s.queries.GetSlot(slotID)
+			if err == nil && current.Status != "revoked" && time.Now().Before(current.ExpiresAt) {
+				continue
+			}
+			if err == nil || err == sql.ErrNoRows {
+				return
+			}
 		case <-expires.C:
 			return
 		case <-ctx.Done():
@@ -113,6 +124,9 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()
+			if msg == slotDeletedEvent {
+				return
+			}
 		}
 	}
 }

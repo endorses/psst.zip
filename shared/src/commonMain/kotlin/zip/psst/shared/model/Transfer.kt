@@ -15,6 +15,8 @@ data class Transfer(
     val status: TransferStatus = TransferStatus.PENDING,
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
+    // Owner capability returned only at creation; never include it in a shared URL.
+    @SerialName("delete_token") val deleteToken: String? = null,
     // Counts requested file sets, not confirmed saves on the recipient's device.
     @SerialName("download_count") val downloadCount: Int = 0,
     @SerialName("downloaded_at") val downloadedAt: String? = null,

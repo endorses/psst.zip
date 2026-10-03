@@ -57,6 +57,9 @@ var migrations = []string{
 	`ALTER TABLE files ADD COLUMN download_count INTEGER NOT NULL DEFAULT 0`,
 	// Migration 7: explicit recipient-reported completion, separate from GET attempts.
 	`ALTER TABLE transfers ADD COLUMN downloaded_at DATETIME`,
+	// Legacy rows stay NULL and require explicit compatibility opt-in to delete.
+	`ALTER TABLE transfers ADD COLUMN delete_token_hash BLOB`,
+	`ALTER TABLE slots ADD COLUMN delete_token_hash BLOB`,
 }
 
 func runMigrations(db *sql.DB) error {

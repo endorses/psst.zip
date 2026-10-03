@@ -29,6 +29,12 @@ class SlotApi(private val httpClient: HttpClient, private val config: ServerConf
         return response.body()
     }
 
+    /** Revoke the link and stored uploads. Missing resources are already revoked. */
+    @Throws(Exception::class)
+    suspend fun delete(slotId: String, deleteToken: String? = null) {
+        deleteLink(httpClient, "${config.apiBaseUrl}/slots/$slotId", deleteToken)
+    }
+
     /** Get drop slot status including list of uploaded files. */
     @Throws(Exception::class)
     suspend fun get(slotId: String): DropSlot {

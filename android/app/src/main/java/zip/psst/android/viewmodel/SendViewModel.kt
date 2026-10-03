@@ -83,18 +83,36 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         uploadJob =
             viewModelScope.launch(Dispatchers.IO) {
                 val client = ApiClient(ServerConfig(serverUrl))
+                var createdTransferId: String? = null
                 try {
                     val key = CryptoProvider.generateKey()
                     val base64Key =
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
 
+                    val totalBytes = files.sumOf { it.size }
+
                     // Create transfer
                     val transfer = client.transfers.create()
+                    createdTransferId = transfer.id
+                    // Retain the owner capability even if uploading is interrupted.
+                    app.database
+                        .transferHistoryDao()
+                        .insert(
+                            TransferHistoryEntity(
+                                id = transfer.id,
+                                type = "sent",
+                                fileCount = files.size,
+                                totalSize = totalBytes,
+                                serverUrl = serverUrl,
+                                encryptionKey = base64Key,
+                                status = "pending",
+                                deletionToken = transfer.deleteToken,
+                            )
+                        )
                     _uiState.update { it.copy(transferId = transfer.id) }
 
                     val context = getApplication<PsstApplication>()
                     val fileMetadataList = mutableListOf<FileMetadata>()
-                    val totalBytes = files.sumOf { it.size }
                     var uploadedBytes = 0L
 
                     // Encrypt and upload each file
@@ -176,23 +194,12 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
 
-                    // Save to history
-                    app.database
-                        .transferHistoryDao()
-                        .insert(
-                            TransferHistoryEntity(
-                                id = transfer.id,
-                                type = "sent",
-                                fileCount = files.size,
-                                totalSize = totalBytes,
-                                serverUrl = serverUrl,
-                                encryptionKey = base64Key,
-                                status = "complete",
-                                expiresAt = null,
-                            )
-                        )
+                    app.database.transferHistoryDao().updateStatus(transfer.id, "complete")
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
+                    createdTransferId?.let {
+                        app.database.transferHistoryDao().updateStatus(it, "failed")
+                    }
                     _uiState.update {
                         it.copy(isUploading = false, error = e.message ?: "Upload failed")
                     }

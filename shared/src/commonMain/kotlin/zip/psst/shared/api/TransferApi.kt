@@ -29,6 +29,12 @@ class TransferApi(private val httpClient: HttpClient, private val config: Server
         return response.body()
     }
 
+    /** Revoke the link and stored uploads. Missing resources are already revoked. */
+    @Throws(Exception::class)
+    suspend fun delete(transferId: String, deleteToken: String? = null) {
+        deleteLink(httpClient, "${config.apiBaseUrl}/transfers/$transferId", deleteToken)
+    }
+
     /** Get transfer metadata (status, file count, sizes, expiry). */
     @Throws(Exception::class)
     suspend fun get(transferId: String): Transfer {

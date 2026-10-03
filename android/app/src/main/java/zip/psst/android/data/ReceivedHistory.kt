@@ -7,6 +7,7 @@ import zip.psst.shared.model.EncryptedManifest
 import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.Transfer
+import zip.psst.shared.model.TransferStatus
 import java.time.Instant
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CancellationException
@@ -79,6 +80,7 @@ internal fun sentHistoryStatus(transfer: Transfer, previousStatus: String? = nul
     when {
         previousStatus == "downloaded" || transfer.downloadedAt != null -> "downloaded"
         previousStatus == "download_started" || transfer.downloadCount > 0 -> "download_started"
+        previousStatus == "failed" && transfer.status == TransferStatus.PENDING -> "failed"
         else -> transfer.status.name.lowercase()
     }
 
@@ -152,6 +154,7 @@ internal fun historyStatusLabel(type: String, status: String): String =
         "has_uploads" -> "Uploads received"
         "waiting" -> "Waiting for files"
         "pending" -> "In progress"
+        "failed" -> "Upload failed"
         "expired" -> "Expired"
         else -> "Unknown"
     }

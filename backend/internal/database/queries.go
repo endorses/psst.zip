@@ -8,14 +8,15 @@ import (
 
 // Transfer represents a row in the transfers table.
 type Transfer struct {
-	ID            string
-	Status        string
-	ExpiresAt     time.Time
-	MaxDownloads  int
-	DownloadCount int
-	CreatedAt     time.Time
-	CompletedAt   sql.NullTime
-	DownloadedAt  sql.NullTime
+	ID              string
+	Status          string
+	ExpiresAt       time.Time
+	MaxDownloads    int
+	DownloadCount   int
+	CreatedAt       time.Time
+	CompletedAt     sql.NullTime
+	DownloadedAt    sql.NullTime
+	DeleteTokenHash []byte
 }
 
 // File represents a row in the files table.
@@ -31,10 +32,11 @@ type File struct {
 
 // Slot represents a row in the slots table.
 type Slot struct {
-	ID        string
-	Status    string
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID              string
+	Status          string
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
+	DeleteTokenHash []byte
 }
 
 // Queries wraps a *sql.DB and provides typed query methods.
@@ -49,20 +51,20 @@ func NewQueries(db *sql.DB) *Queries {
 
 // --- Transfers ---
 
-func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int) error {
+func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int, deleteTokenHash []byte) error {
 	_, err := q.db.Exec(
-		`INSERT INTO transfers (id, status, expires_at, max_downloads) VALUES (?, 'pending', ?, ?)`,
-		id, expiresAt.UTC(), maxDownloads,
+		`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash) VALUES (?, 'pending', ?, ?, ?)`,
+		id, expiresAt.UTC(), maxDownloads, deleteTokenHash,
 	)
 	return err
 }
 
 func (q *Queries) GetTransfer(id string) (*Transfer, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at FROM transfers WHERE id = ?`, id,
+		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash FROM transfers WHERE id = ?`, id,
 	)
 	t := &Transfer{}
-	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -228,20 +230,20 @@ func (q *Queries) HasManifest(transferID string) (bool, error) {
 
 // --- Slots ---
 
-func (q *Queries) CreateSlot(id string, expiresAt time.Time) error {
+func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []byte) error {
 	_, err := q.db.Exec(
-		`INSERT INTO slots (id, status, expires_at) VALUES (?, 'waiting', ?)`,
-		id, expiresAt.UTC(),
+		`INSERT INTO slots (id, status, expires_at, delete_token_hash) VALUES (?, 'waiting', ?, ?)`,
+		id, expiresAt.UTC(), deleteTokenHash,
 	)
 	return err
 }
 
 func (q *Queries) GetSlot(id string) (*Slot, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, created_at FROM slots WHERE id = ?`, id,
+		`SELECT id, status, expires_at, created_at, delete_token_hash FROM slots WHERE id = ?`, id,
 	)
 	s := &Slot{}
-	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt); err != nil {
+	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.DeleteTokenHash); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -257,7 +259,7 @@ func (q *Queries) LinkSlotTransfer(slotID, transferID string) error {
 
 func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 	rows, err := q.db.Query(
-		`SELECT t.id, t.status, t.expires_at, t.max_downloads, t.download_count, t.created_at, t.completed_at, t.downloaded_at
+		`SELECT t.id, t.status, t.expires_at, t.max_downloads, t.download_count, t.created_at, t.completed_at, t.downloaded_at, t.delete_token_hash
 		 FROM transfers t
 		 JOIN slot_transfers st ON st.transfer_id = t.id
 		 WHERE st.slot_id = ?`, slotID,
@@ -270,7 +272,7 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 	var transfers []Transfer
 	for rows.Next() {
 		var t Transfer
-		if err := rows.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash); err != nil {
 			return nil, err
 		}
 		transfers = append(transfers, t)
@@ -280,12 +282,12 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 
 // --- Expiry / Cleanup ---
 
-// ExpiredTransferIDs returns transfers whose TTL has elapsed. Exhausting a
+// ExpiredTransferIDs returns expired or revoked transfers. Exhausting a
 // download quota removes payloads separately, keeping acknowledgement metadata.
 func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 	// Compare parsed times, since historical rows use Go timestamp strings with
 	// different timezone offsets, which SQLite cannot order chronologically.
-	rows, err := q.db.Query(`SELECT id, expires_at FROM transfers`)
+	rows, err := q.db.Query(`SELECT id, expires_at, status FROM transfers`)
 	if err != nil {
 		return nil, err
 	}
@@ -295,10 +297,11 @@ func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 	for rows.Next() {
 		var id string
 		var expiresAt time.Time
-		if err := rows.Scan(&id, &expiresAt); err != nil {
+		var status string
+		if err := rows.Scan(&id, &expiresAt, &status); err != nil {
 			return nil, err
 		}
-		if !now.Before(expiresAt) {
+		if status == "revoked" || !now.Before(expiresAt) {
 			ids = append(ids, id)
 		}
 	}
@@ -331,9 +334,9 @@ func (q *Queries) DeleteTransfer(id string) error {
 	return err
 }
 
-// ExpiredSlotIDs returns IDs of slots past their expiry time.
+// ExpiredSlotIDs returns IDs of expired or revoked slots.
 func (q *Queries) ExpiredSlotIDs() ([]string, error) {
-	rows, err := q.db.Query(`SELECT id, expires_at FROM slots`)
+	rows, err := q.db.Query(`SELECT id, expires_at, status FROM slots`)
 	if err != nil {
 		return nil, err
 	}
@@ -343,10 +346,11 @@ func (q *Queries) ExpiredSlotIDs() ([]string, error) {
 	for rows.Next() {
 		var id string
 		var expiresAt time.Time
-		if err := rows.Scan(&id, &expiresAt); err != nil {
+		var status string
+		if err := rows.Scan(&id, &expiresAt, &status); err != nil {
 			return nil, err
 		}
-		if !now.Before(expiresAt) {
+		if status == "revoked" || !now.Before(expiresAt) {
 			ids = append(ids, id)
 		}
 	}
@@ -388,4 +392,70 @@ func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
 	}
 	count, err := res.RowsAffected()
 	return count > 0, err
+}
+
+// CreateSlotTransfer is called while holding the slot mutation lock. The
+// transaction prevents an unlinked transfer from surviving a failed create.
+func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, maxDownloads int, hash []byte) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash)
+ SELECT ?, 'pending', ?, ?, ? FROM slots WHERE id = ? AND status != 'revoked'`, id, expiresAt.UTC(), maxDownloads, hash, slotID)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.Exec(`INSERT INTO slot_transfers (slot_id, transfer_id) VALUES (?, ?)`, slotID, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (q *Queries) RevokeTransfer(id string) error {
+	_, err := q.db.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ?`, id)
+	return err
+}
+
+// RevokeSlot closes the slot and every linked transfer atomically before disk
+// cleanup. Retaining these rows on cleanup failure keeps revocation retryable.
+func (q *Queries) RevokeSlot(id string) ([]string, error) {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE slots SET status = 'revoked' WHERE id = ?`, id); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id IN (SELECT transfer_id FROM slot_transfers WHERE slot_id = ?)`, id); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(`SELECT transfer_id FROM slot_transfers WHERE slot_id = ?`, id)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var child string
+		if err := rows.Scan(&child); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, child)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return ids, tx.Commit()
 }

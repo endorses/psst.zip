@@ -34,8 +34,9 @@ type TransferResponse struct {
 
 // CreateTransferResponse is returned by POST /api/v1/transfers.
 type CreateTransferResponse struct {
-	ID        string    `json:"id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID          string    `json:"id"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	DeleteToken string    `json:"delete_token"`
 }
 
 // FileInfo describes a file (blob) belonging to a transfer.
@@ -64,8 +65,9 @@ type SlotTransferInfo struct {
 
 // CreateSlotResponse is returned by POST /api/v1/slots.
 type CreateSlotResponse struct {
-	ID        string    `json:"id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID          string    `json:"id"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	DeleteToken string    `json:"delete_token"`
 }
 
 // ErrorResponse is a generic error body.

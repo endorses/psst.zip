@@ -1,9 +1,7 @@
 package api
 
 import (
-	"hash/fnv"
 	"net/http"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,12 +14,11 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	cfg           config.Config
-	queries       *database.Queries
-	fileStore     store.FileStore
-	tusH          *tus.Handler
-	sseHub        *SSEHub
-	mutationLocks [256]sync.Mutex
+	cfg       config.Config
+	queries   *database.Queries
+	fileStore store.FileStore
+	tusH      *tus.Handler
+	sseHub    *SSEHub
 }
 
 // NewServer creates a Server with all dependencies wired up.
@@ -59,6 +56,7 @@ func (s *Server) Router() http.Handler {
 		// Transfer endpoints (send flow)
 		r.With(rateLimitMiddleware(creationRL)).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
+		r.Delete("/transfers/{transferID}", s.deleteTransfer)
 		r.Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
 		r.Post("/transfers/{transferID}/manifest", s.uploadManifest)
@@ -76,6 +74,7 @@ func (s *Server) Router() http.Handler {
 		// Slot endpoints (receive flow)
 		r.With(rateLimitMiddleware(creationRL)).Post("/slots", s.createSlot)
 		r.Get("/slots/{slotID}", s.getSlot)
+		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.Get("/slots/{slotID}/events", s.slotEvents)
 
 		// Slot-scoped transfer creation
@@ -93,8 +92,8 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 			origin = "*"
 		}
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, HEAD, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Tus-Resumable, Upload-Length, Upload-Offset, Upload-Metadata")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, HEAD, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Tus-Resumable, Upload-Length, Upload-Offset, Upload-Metadata")
 		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension")
 
 		if origin != "*" {
@@ -113,10 +112,4 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 
 // lockTransfer serializes mutation of one transfer (including completion) without
 // retaining an unbounded map of mutexes for expired resources.
-func (s *Server) lockTransfer(id string) func() {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(id))
-	mu := &s.mutationLocks[h.Sum32()%uint32(len(s.mutationLocks))]
-	mu.Lock()
-	return mu.Unlock
-}
+func (s *Server) lockTransfer(id string) func() { return store.LockTransfer(id) }

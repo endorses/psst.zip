@@ -108,6 +108,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             encryptionKey = base64Key,
                             status = "waiting",
                             expiresAt = parseHistoryExpiry(slot.expiresAt),
+                            deletionToken = slot.deleteToken,
                         )
                     )
 

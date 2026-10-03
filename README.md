@@ -151,8 +151,26 @@ its allowance, cleanup removes the encrypted file blobs; transfer metadata and t
 encrypted manifest remain until the original expiry so download confirmations can
 still be recorded and read.
 Expired resources are rejected immediately and their stored data is removed periodically.
-History deletion currently removes local records only; server-side manual deletion
-is not implemented.
+Deleting Android history revokes the transfer on its original server before
+removing the local record. Deleting a receive entry revokes its upload slot and
+all child transfers. A failed request keeps the entry so deletion can be retried.
+Files already saved by a recipient are unaffected, and an already-open download
+may finish; subsequent requests through the shared link are rejected.
+
+New transfer, slot, and slot-upload creation responses include a private
+`delete_token`. Store it separately from the encryption key and never include it
+in a shared link. Revocation uses `DELETE /api/v1/transfers/{id}` or
+`DELETE /api/v1/slots/{id}` with `Authorization: Bearer <delete_token>`. Successful
+deletion returns `204`; `404` means the resource is already gone. Only a hash of
+the deletion token is stored on the server, and GET responses never expose it.
+If payload removal fails, revocation remains in force and cleanup retries it.
+
+Transfers created before deletion tokens were introduced cannot establish owner
+identity. Operators may set `ALLOW_LEGACY_DELETION=true` to allow deletion of
+those older resources by ID; anyone with an old link can then revoke it. This
+compatibility option defaults to `false` and never bypasses token checks on new
+resources. Older client versions that discard creation tokens cannot later revoke
+their protected transfers. iOS history removal currently remains local.
 
 After downloading and successfully decrypting every file, a receiver sends
 `POST /api/v1/transfers/{id}/downloaded` with an empty body. This idempotent endpoint
@@ -175,14 +193,15 @@ send confirmations, so their downloads may remain **Download started**.
 
 All backend settings are controlled via environment variables.
 
-| Variable           | Default             | Description                                   |
-| ------------------ | ------------------- | --------------------------------------------- |
-| `LISTEN_ADDR`      | `:8080`             | Address the backend listens on                |
-| `STORAGE_PATH`     | `./data/files`      | Directory for encrypted file blobs            |
-| `DB_PATH`          | `./data/psst.db`    | Path to the SQLite database                   |
-| `MAX_FILE_SIZE`    | `5368709120` (5 GB) | Maximum upload size in bytes                  |
-| `DEFAULT_EXPIRY`   | `24h`               | Transfer expiry duration (Go duration syntax) |
-| `CLEANUP_INTERVAL` | `5m`                | How often the cleanup worker runs             |
+| Variable                | Default             | Description                                                      |
+| ----------------------- | ------------------- | ---------------------------------------------------------------- |
+| `LISTEN_ADDR`           | `:8080`             | Address the backend listens on                                   |
+| `STORAGE_PATH`          | `./data/files`      | Directory for encrypted file blobs                               |
+| `DB_PATH`               | `./data/psst.db`    | Path to the SQLite database                                      |
+| `MAX_FILE_SIZE`         | `5368709120` (5 GB) | Maximum upload size in bytes                                     |
+| `DEFAULT_EXPIRY`        | `24h`               | Transfer expiry duration (Go duration syntax)                    |
+| `CLEANUP_INTERVAL`      | `5m`                | How often the cleanup worker runs                                |
+| `ALLOW_LEGACY_DELETION` | `false`             | Allow deletion by ID for older resources without deletion tokens |
 
 Docker Compose also accepts:
 

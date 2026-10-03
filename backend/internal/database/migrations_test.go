@@ -25,7 +25,7 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 		}
 	}
 	q := NewQueries(legacy)
-	if err := q.CreateTransfer("existing-transfer", time.Now().Add(time.Hour), 1); err != nil {
+	if _, err := legacy.Exec(`INSERT INTO transfers (id, expires_at, max_downloads) VALUES (?, ?, ?)`, "existing-transfer", time.Now().Add(time.Hour).UTC(), 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.CreateFile("existing-file", "existing-transfer", 4); err != nil {
@@ -43,6 +43,9 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 	if allowed, err := q.ReserveFileDownload("existing-transfer", "existing-file"); err != nil || !allowed {
 		t.Fatalf("reserve existing: %v %v", allowed, err)
 	}
+	if _, err := legacy.Exec(`INSERT INTO slots (id, expires_at) VALUES (?, ?)`, "existing-slot", time.Now().Add(time.Hour).UTC()); err != nil {
+		t.Fatal(err)
+	}
 	if err := legacy.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +61,13 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 	}
 	if transfer.Status != "complete" || transfer.DownloadCount != 1 || transfer.DownloadedAt.Valid {
 		t.Fatalf("migration changed existing facts: %+v", transfer)
+	}
+	if len(transfer.DeleteTokenHash) != 0 {
+		t.Fatal("migration invented a legacy transfer token")
+	}
+	slot, err := q.GetSlot("existing-slot")
+	if err != nil || slot.Status != "waiting" || len(slot.DeleteTokenHash) != 0 {
+		t.Fatalf("migration changed legacy slot: %+v %v", slot, err)
 	}
 	file, err := q.GetFile("existing-file")
 	if err != nil || file.DownloadCount != 1 || !file.UploadComplete {

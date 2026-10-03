@@ -12,6 +12,16 @@ class SerializationTest {
     }
 
     @Test
+    fun ownerDeletionTokenIsOptionalAndUsesCreationWireName() {
+        val created = """{"id":"owned","delete_token":"owner-secret"}"""
+        assertEquals("owner-secret", json.decodeFromString<Transfer>(created).deleteToken)
+        assertEquals("owner-secret", json.decodeFromString<DropSlot>(created).deleteToken)
+        val fetched = """{"id":"owned"}"""
+        assertEquals(null, json.decodeFromString<Transfer>(fetched).deleteToken)
+        assertEquals(null, json.decodeFromString<DropSlot>(fetched).deleteToken)
+    }
+
+    @Test
     fun downloadAcknowledgementTimestampIsOptional() {
         val acknowledged =
             json.decodeFromString<Transfer>("""{"id":"a","downloaded_at":"2026-10-03T16:00:00Z"}""")

@@ -9,6 +9,7 @@ services:
       MAX_FILE_SIZE: "${MAX_FILE_SIZE:-5368709120}"
       DEFAULT_EXPIRY: "${DEFAULT_EXPIRY:-24h}"
       CLEANUP_INTERVAL: "${CLEANUP_INTERVAL:-5m}"
+      ALLOW_LEGACY_DELETION: "${ALLOW_LEGACY_DELETION:-false}"
     volumes:
       - psst-data:/app/data
 

@@ -14,6 +14,8 @@ data class DropSlot(
     val transfers: List<SlotTransfer> = emptyList(),
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
+    // Owner capability returned only at creation; never include it in a shared URL.
+    @SerialName("delete_token") val deleteToken: String? = null,
 ) {
     val fileCount: Int
         get() = completedTransfers.sumOf { it.fileCount }

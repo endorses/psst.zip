@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/endorses/psst.zip/backend/internal/database"
+	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
 // --- Transfer handlers ---
@@ -25,17 +26,24 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
 	}
 
+	token, hash, err := newDeleteToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate deletion token")
+		return
+	}
+
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads); err != nil {
+	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transfer")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, CreateTransferResponse{
-		ID:        id,
-		ExpiresAt: expiresAt,
+		ID:          id,
+		ExpiresAt:   expiresAt,
+		DeleteToken: token,
 	})
 }
 
@@ -56,8 +64,8 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !time.Now().Before(t.ExpiresAt) {
-		writeError(w, http.StatusGone, "transfer expired")
+	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
+		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return
 	}
 	fileCount, totalSize, _ := s.queries.FileCountAndSize(id)
@@ -295,8 +303,8 @@ func (s *Server) activeTransfer(w http.ResponseWriter, id string, mutable bool) 
 		writeError(w, http.StatusNotFound, "transfer not found")
 		return nil
 	}
-	if !time.Now().Before(t.ExpiresAt) {
-		writeError(w, http.StatusGone, "transfer expired")
+	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
+		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return nil
 	}
 	if mutable && t.Status != "pending" {
@@ -328,17 +336,24 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
 	}
 
+	token, hash, err := newDeleteToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate deletion token")
+		return
+	}
+
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateSlot(id, expiresAt); err != nil {
+	if err := s.queries.CreateSlot(id, expiresAt, hash); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create slot")
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, CreateSlotResponse{
-		ID:        id,
-		ExpiresAt: expiresAt,
+		ID:          id,
+		ExpiresAt:   expiresAt,
+		DeleteToken: token,
 	})
 }
 
@@ -359,15 +374,15 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired")
+	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
 	transfers, _ := s.queries.ListSlotTransfers(slotID)
 
 	infos := make([]SlotTransferInfo, 0, len(transfers))
 	for _, t := range transfers {
-		if !time.Now().Before(t.ExpiresAt) {
+		if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
 			continue
 		}
 		fc, _, _ := s.queries.FileCountAndSize(t.ID)
@@ -394,14 +409,15 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer store.LockSlot(slotID)()
 	slot, err := s.queries.GetSlot(slotID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
 
-	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired")
+	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
 	var req CreateTransferRequest
@@ -414,19 +430,20 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
 	}
 
+	token, hash, err := newDeleteToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate deletion token")
+		return
+	}
+
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
 	if expiresAt.After(slot.ExpiresAt) {
 		expiresAt = slot.ExpiresAt
 	}
-	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create transfer")
-		return
-	}
-
-	if err := s.queries.LinkSlotTransfer(slotID, id); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to link transfer to slot")
+	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create transfer in slot")
 		return
 	}
 
@@ -434,8 +451,9 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	s.sseHub.Send(slotID, fmt.Sprintf(`{"event":"transfer_created","transfer_id":"%s"}`, id))
 
 	writeJSON(w, http.StatusCreated, CreateTransferResponse{
-		ID:        id,
-		ExpiresAt: expiresAt,
+		ID:          id,
+		ExpiresAt:   expiresAt,
+		DeleteToken: token,
 	})
 }
 
