@@ -1,240 +1,149 @@
 package zip.psst.android.ui.screens
 
+import android.app.DownloadManager
 import android.content.Intent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.HourglassTop
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import zip.psst.android.ui.components.QrCodeImage
+import zip.psst.android.R
+import zip.psst.android.ui.components.AccountIndicator
+import zip.psst.android.ui.components.LinkPanel
+import zip.psst.android.viewmodel.ReceiveRetry
 import zip.psst.android.viewmodel.ReceiveViewModel
+import zip.psst.android.viewmodel.retryAction
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiveScreen(
-    onSlotCreated: (slotId: String, encryptionKey: String) -> Unit,
+    onSlotCreated: (String, String) -> Unit,
     onBack: () -> Unit,
     onSignIn: () -> Unit,
+    existingId: String? = null,
     viewModel: ReceiveViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
-    var linkCopied by remember(state.uploadUrl) { mutableStateOf(false) }
-    var showLink by remember(state.uploadUrl) { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        if (state.slotId == null && !state.isCreatingSlot) viewModel.createSlot()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(existingId) {
+        if (existingId != null) viewModel.openExisting(existingId)
+        else if (state.slotId == null && !state.isCreatingSlot) viewModel.createSlot()
     }
-
+    DisposableEffect(lifecycle, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.setVisible(true)
+            if (event == Lifecycle.Event.ON_STOP) viewModel.setVisible(false)
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            viewModel.setVisible(false)
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Receive Files") },
+                title = { Text(stringResource(R.string.receive_link)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 },
             )
         }
     ) { padding ->
-        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
-            val qrSize = minOf(220.dp, maxWidth - 80.dp, (maxHeight * 0.4f).coerceAtLeast(140.dp))
-            Column(
-                modifier =
-                    Modifier.fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp, 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                val status =
+        Column(
+            Modifier.fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AccountIndicator()
+            Text(
+                stringResource(
                     when {
-                        state.isCreatingSlot -> "Creating drop slot…"
-                        state.error != null -> "Unable to receive files"
-                        state.downloadComplete -> "Files saved to Downloads"
-                        state.isDownloading -> "Downloading and decrypting…"
-                        state.slotStatus == "has_uploads" -> "Files received"
-                        else -> "Waiting for upload"
+                        state.slotStatus == "unavailable" -> R.string.link_unavailable
+                        state.isCreatingSlot -> R.string.creating_link
+                        state.isDownloading -> R.string.saving_files
+                        state.downloadComplete -> R.string.saved_downloads
+                        state.slotStatus == "has_uploads" -> R.string.files_received
+                        else -> R.string.waiting_files
                     }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (state.isCreatingSlot || state.isDownloading) {
-                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        val icon =
-                            when {
-                                state.error != null -> Icons.Default.ErrorOutline
-                                state.downloadComplete -> Icons.Default.CheckCircle
-                                state.slotStatus == "has_uploads" -> Icons.Default.Download
-                                else -> Icons.Default.HourglassTop
+                ),
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (state.isCreatingSlot) CircularProgressIndicator()
+            state.uploadUrl?.let { LinkPanel(it) }
+            if (state.connectionError) {
+                Text(
+                    stringResource(R.string.offline_retained),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = viewModel::reconnect) {
+                    Text(stringResource(R.string.reconnect))
+                }
+            }
+            if (state.error != null) {
+                Text(
+                    state.error.orEmpty(),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+                if (!state.keyUnavailable)
+                    Button(
+                        onClick = {
+                            when (state.retryAction(existingId)) {
+                                ReceiveRetry.SIGN_IN -> onSignIn()
+                                ReceiveRetry.SAVE -> viewModel.downloadReceivedFiles()
+                                ReceiveRetry.REOPEN -> viewModel.openExisting(existingId!!)
+                                ReceiveRetry.CREATE -> viewModel.createSlot()
                             }
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
-                    Text(status, style = MaterialTheme.typography.titleMedium)
-                }
-
-                state.uploadUrl?.let { uploadUrl ->
-                    val copyLink = {
-                        clipboardManager.setText(AnnotatedString(uploadUrl))
-                        linkCopied = true
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    QrCodeImage(data = uploadUrl, size = qrSize)
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        }
                     ) {
-                        OutlinedButton(onClick = copyLink, modifier = Modifier.weight(1f)) {
-                            Text("Copy Link")
-                        }
-                        FilledTonalButton(
-                            onClick = {
-                                val intent =
-                                    Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, uploadUrl)
-                                    }
-                                context.startActivity(
-                                    Intent.createChooser(intent, "Share upload link")
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("Share Link")
-                        }
-                    }
-                    if (linkCopied) {
                         Text(
-                            "Link copied",
-                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                            style = MaterialTheme.typography.bodySmall,
+                            stringResource(
+                                if (state.requiresLogin) R.string.sign_in
+                                else if (state.slotId != null) R.string.retry_saving
+                                else R.string.retry
+                            )
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        uploadUrl,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    TextButton(onClick = { showLink = true }) { Text("View link") }
-
-                    if (showLink) {
-                        AlertDialog(
-                            onDismissRequest = { showLink = false },
-                            title = { Text("Upload link") },
-                            text = {
-                                Column {
-                                    SelectionContainer {
-                                        Text(
-                                            uploadUrl,
-                                            modifier =
-                                                Modifier.heightIn(max = 280.dp)
-                                                    .verticalScroll(rememberScrollState()),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                        )
-                                    }
-                                    if (linkCopied) {
-                                        Text(
-                                            "Link copied",
-                                            modifier =
-                                                Modifier.semantics {
-                                                    liveRegion = LiveRegionMode.Polite
-                                                },
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { showLink = false }) { Text("Done") }
-                            },
-                            dismissButton = { TextButton(onClick = copyLink) { Text("Copy Link") } },
-                        )
-                    }
+            } else if (state.isDownloading) {
+                LinearProgressIndicator(
+                    progress = { state.downloadProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else if (state.slotStatus == "has_uploads") {
+                Button(onClick = viewModel::downloadReceivedFiles) {
+                    Text(stringResource(R.string.save_files))
                 }
-
-                when {
-                    state.error != null -> {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            state.error ?: "Unknown error",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                        )
-                        if (state.requiresLogin) {
-                            Button(onClick = onSignIn) { Text("Sign in") }
-                        } else {
-                            Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
+            }
+            if (state.downloadComplete || state.savedFileCount > 0) {
+                Text(stringResource(R.string.saved_count, state.savedFileCount))
+                OutlinedButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
                         }
                     }
-                    state.isDownloading -> {
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { state.downloadProgress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    state.slotStatus == "has_uploads" && !state.downloadComplete -> {
-                        Button(onClick = { viewModel.downloadReceivedFiles() }) {
-                            Text("Download & Decrypt")
-                        }
-                    }
+                ) {
+                    Text(stringResource(R.string.open_downloads))
                 }
             }
         }

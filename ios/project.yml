@@ -48,8 +48,22 @@ targets:
         INFOPLIST_FILE: PsstShareExtension/Info.plist
         CODE_SIGN_ENTITLEMENTS: PsstShareExtension/PsstShareExtension.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
+  PsstTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PsstTests
+    dependencies:
+      - target: Psst
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: zip.psst.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Psst:
     build:
       targets:
         Psst: all
+    test:
+      targets:
+        - PsstTests

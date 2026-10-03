@@ -68,6 +68,12 @@ var migrations = []string{
 	`ALTER TABLE slots ADD COLUMN upload_count INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE slots ADD COLUMN reserved_bytes INTEGER NOT NULL DEFAULT 0`,
 	`UPDATE slots SET upload_count=(SELECT COUNT(*) FROM slot_transfers WHERE slot_id=slots.id), reserved_bytes=(SELECT COALESCE(SUM(f.size),0) FROM files f JOIN slot_transfers st ON st.transfer_id=f.transfer_id WHERE st.slot_id=slots.id)`,
+	// Pairing identifiers are public tracking handles, separate from login secrets.
+	`ALTER TABLE pairings ADD COLUMN id TEXT`,
+	`UPDATE pairings SET id=lower(hex(randomblob(16))) WHERE id IS NULL`,
+	`CREATE UNIQUE INDEX pairing_id ON pairings(id)`,
+	`ALTER TABLE pairings ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','connected','canceled'))`,
+	`ALTER TABLE pairings ADD COLUMN device_name TEXT NOT NULL DEFAULT ''`,
 }
 
 func runMigrations(db *sql.DB) error {

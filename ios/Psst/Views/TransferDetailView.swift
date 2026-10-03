@@ -1,245 +1,141 @@
+import QuickLook
 import SwiftUI
-import UIKit
 
 struct TransferDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     var sendViewModel: SendViewModel?
     var receiveViewModel: ReceiveViewModel?
-
-    var body: some View {
-        if let sendViewModel {
-            SendTransferDetailContent(viewModel: sendViewModel)
-        } else if let receiveViewModel {
-            ReceiveTransferDetailContent(viewModel: receiveViewModel)
-        }
+    @State private var stopping = false
+    @State private var leaveAfterStop = false
+    @State private var preview: URL?
+    var active: Bool {
+        sendViewModel?.active == true || receiveViewModel?.isSaving == true
     }
-}
-
-// MARK: - Send Detail
-
-private struct SendTransferDetailContent: View {
-    @Bindable var viewModel: SendViewModel
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                statusSection
-                if let url = viewModel.shareURL {
-                    qrCodeSection(url: url)
-                    ShareLinkSection(url: url)
+            VStack(spacing: 16) {
+                if let vm = sendViewModel {
+                    sendStatus(vm)
+                    Text(String(format: String(localized: "%lld files · %@"), Int64(vm.fileURLs.count), ByteCountFormatter.string(fromByteCount: vm.selectionSize, countStyle: .file))).font(.caption)
+                    if let url = vm.shareURL {
+                        LinkCard(url: url)
+                    }
+                    DisclosureGroup("Files") {
+                        ForEach(Array(vm.fileNames.enumerated()), id: \.offset) { _, name in Text(verbatim: name).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4) }
+                    }
+                    if let expiry = vm.expiresAt {
+                        expiryLabel(expiry)
+                    }
                 }
-                fileListSection
-                if let expiresAt = viewModel.expiresAt {
-                    expirySection(expiresAt: expiresAt)
-                }
-            }
-            .padding()
-        }
-        .navigationTitle("Share Files")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var statusSection: some View {
-        VStack(spacing: 8) {
-            switch viewModel.state {
-            case .encrypting:
-                ProgressView("Encrypting files...")
-            case let .uploading(progress):
-                VStack {
-                    Text("Uploading...")
-                    ProgressView(value: progress)
-                        .progressViewStyle(.linear)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            case .complete:
-                Label("Upload complete", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
-            case let .failed(error):
-                Label("Upload failed", systemImage: "xmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.red)
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Retry") {
-                    Task { await viewModel.startUpload() }
-                }
-                .buttonStyle(.borderedProminent)
-            case .idle:
-                EmptyView()
-            }
-        }
-    }
-
-    private var fileListSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Files")
-                .font(.headline)
-            ForEach(viewModel.fileNames, id: \.self) { name in
-                HStack {
-                    Image(systemName: "doc")
-                    Text(name)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                }
-                .font(.subheadline)
-            }
-        }
-    }
-}
-
-// MARK: - Receive Detail
-
-private struct ReceiveTransferDetailContent: View {
-    @Bindable var viewModel: ReceiveViewModel
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                statusSection
-                if let url = viewModel.uploadURL {
-                    qrCodeSection(url: url)
-                    ShareLinkSection(url: url)
-                }
-                receivedFilesSection
-                if let expiresAt = viewModel.expiresAt {
-                    expirySection(expiresAt: expiresAt)
-                }
-            }
-            .padding()
-        }
-        .navigationTitle("Receive Files")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var statusSection: some View {
-        VStack(spacing: 8) {
-            switch viewModel.state {
-            case .creating:
-                ProgressView("Creating drop slot...")
-            case .waiting:
-                Label("Waiting for files...", systemImage: "antenna.radiowaves.left.and.right")
-                    .font(.headline)
-                    .foregroundStyle(.orange)
-                Text("Share the QR code or link so someone can upload files to you.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            case let .downloading(progress):
-                VStack {
-                    Text("Downloading received files...")
-                    ProgressView(value: progress)
-                        .progressViewStyle(.linear)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            case .decrypting:
-                ProgressView("Decrypting files...")
-            case .complete:
-                Label("Files received", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.green)
-            case let .failed(error):
-                Label("Failed", systemImage: "xmark.circle.fill")
-                    .font(.headline)
-                    .foregroundStyle(.red)
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Retry") {
-                    Task { await viewModel.createDropSlot() }
-                }
-                .buttonStyle(.borderedProminent)
-            case .idle:
-                EmptyView()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var receivedFilesSection: some View {
-        if !viewModel.receivedFileURLs.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Received Files")
-                    .font(.headline)
-                ForEach(viewModel.receivedFileURLs, id: \.absoluteString) { url in
-                    HStack {
-                        Image(systemName: "doc.fill")
-                        Text(url.lastPathComponent)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
+                if let vm = receiveViewModel {
+                    receiveStatus(vm)
+                    if let url = vm.uploadURL {
+                        LinkCard(url: url)
+                    }
+                    if vm.canSave, !vm.isSaving {
+                        Button(LocalizedStringKey(vm.savingError == nil ? "Save files" : "Retry saving")) { vm.save() }.buttonStyle(PrimaryAction())
+                    }
+                    if let message = vm.savingError {
+                        Text(message).foregroundStyle(PsstTheme.error)
+                    }
+                    if let message = vm.connectionError {
+                        Text(message).foregroundStyle(PsstTheme.warning)
+                    }
+                    if let updated = vm.lastUpdated {
+                        HStack { Text("Last updated")
+                            Text(updated, style: .relative)
+                        }.font(.caption).foregroundStyle(PsstTheme.secondary)
+                    }
+                    Button("Reconnect") { Task { _ = await vm.refresh() } }.disabled(vm.isSaving)
+                    if !vm.receivedFileURLs.isEmpty {
+                        Text(String(format: String(localized: "%lld files saved in psst.zip Documents"), Int64(vm.receivedFileURLs.count))).font(.headline)
+                        ForEach(vm.receivedFileURLs, id: \.absoluteString) { url in
+                            HStack {
+                                Button { preview = url } label: { Label(url.lastPathComponent, systemImage: "doc").lineLimit(2).frame(minHeight: 44) }.accessibilityHint("Open file")
+                                Spacer()
+                                ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Export file")
+                            }
                         }
                     }
-                    .font(.subheadline)
+                    if let expiry = vm.expiresAt {
+                        expiryLabel(expiry)
+                    }
+                }
+                if active {
+                    Button("Stop", role: .destructive) { leaveAfterStop = false
+                        stopping = true
+                    }.frame(minHeight: 44)
+                }
+            }.padding().frame(maxWidth: 600)
+        }
+        .navigationTitle(LocalizedStringKey(sendViewModel == nil ? "Receive link" : "Send files"))
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Back") {
+            if active {
+                leaveAfterStop = true
+                stopping = true
+            } else {
+                dismiss()
+            }
+        } } }
+        .confirmationDialog(LocalizedStringKey(sendViewModel?.active == true ? "Stop upload?" : "Stop saving?"), isPresented: $stopping, titleVisibility: .visible) {
+            Button("Stop", role: .destructive) {
+                sendViewModel?.stop()
+                receiveViewModel?.cancelSaving()
+                if leaveAfterStop {
+                    dismiss()
                 }
             }
-        }
-    }
-}
-
-// MARK: - Common Components
-
-private func qrCodeSection(url: String) -> some View {
-    VStack(spacing: 12) {
-        if let image = QRCodeGenerator.generate(from: url, size: 250) {
-            Image(uiImage: image)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 250, height: 250)
-                .padding()
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-}
-
-private struct ShareLinkSection: View {
-    let url: String
-    @State private var copiedURL: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: url)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                UIPasteboard.general.string = url
-                copiedURL = url
-            } label: {
-                Label(copiedURL == url ? "Link Copied" : "Copy Link", systemImage: copiedURL == url ? "checkmark" : "doc.on.doc")
-                    .frame(maxWidth: .infinity)
+            Button("Keep going", role: .cancel) {}
+        } message: { Text("Files already saved remain available. Unfinished uploads stay in History so you can revoke them.") }
+        .task(id: scenePhase) {
+            if scenePhase == .active {
+                await receiveViewModel?.monitor()
             }
-            .buttonStyle(.bordered)
-            .accessibilityHint("Copies the complete link to share with someone remotely.")
+        }
+        .quickLookPreview($preview)
+        .modifier(PsstStyle())
+    }
 
-            ShareLink(item: url) {
-                Label("Share Link", systemImage: "link")
-                    .frame(maxWidth: .infinity)
+    @ViewBuilder private func sendStatus(_ vm: SendViewModel) -> some View {
+        switch vm.state {
+        case .idle: Text("Ready to send")
+        case .encrypting: ProgressView("Preparing files")
+            Text(verbatim: vm.currentFile).font(.caption)
+        case let .uploading(value):
+            ProgressView("Uploading", value: value)
+            if let progress = vm.progress {
+                Text(verbatim: progress.name).font(.caption)
+                Text(ByteCountFormatter.string(fromByteCount: progress.sent, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: progress.total, countStyle: .file)).font(.caption)
             }
-            .buttonStyle(.bordered)
+        case .complete: Label("Ready to download", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+        case let .failed(message):
+            Text(message).foregroundStyle(PsstTheme.error)
+            Button("Retry upload") { vm.start() }.buttonStyle(PrimaryAction())
         }
     }
-}
 
-private func expirySection(expiresAt: Date) -> some View {
-    HStack {
-        Image(systemName: "clock")
-        Text("Expires")
-        Spacer()
-        Text(expiresAt, style: .relative)
-            .foregroundStyle(.secondary)
+    @ViewBuilder private func receiveStatus(_ vm: ReceiveViewModel) -> some View {
+        switch vm.state {
+        case .idle, .creating: ProgressView("Creating link")
+        case .waiting: Text(vm.record?.statusText ?? String(localized: "Waiting for files")).font(.headline)
+        case .downloading: ProgressView("Saving files") // Download byte progress is not exposed by the shared API.
+        case .decrypting: ProgressView("Preparing files")
+        case .complete: Label("Files saved locally", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+        case let .failed(message):
+            Text(message).foregroundStyle(PsstTheme.error)
+            if vm.record == nil {
+                Button("Retry creating link") { Task { await vm.createDropSlot() } }
+            }
+        }
     }
-    .font(.subheadline)
+
+    private func expiryLabel(_ date: Date) -> some View {
+        HStack { Text("Expires")
+            Text(date, style: .relative)
+        }.font(.caption).foregroundStyle(PsstTheme.secondary)
+    }
 }

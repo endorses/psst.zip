@@ -11,6 +11,7 @@ import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class TusClientTest {
@@ -118,6 +119,58 @@ class TusClientTest {
         }
 
         assertEquals(listOf(100L, 200L), progressValues)
+    }
+
+    @Test
+    fun uploadReportsBytesWithinOnePatchBeforeServerAcknowledgement() = runTest {
+        val progress = mutableListOf<Long>()
+        val data = ByteArray(128 * 1024) { it.toByte() }
+        val engine = MockEngine { request ->
+            val body = request.body.toByteArray()
+            assertEquals(data.size, body.size)
+            assertTrue(
+                progress.any { it > 0 && it < data.size },
+                "No intermediate byte progress before response",
+            )
+            respond("", HttpStatusCode.NoContent, headersOf("Upload-Offset", data.size.toString()))
+        }
+        val client = HttpClient(engine)
+        try {
+            TusClient(client).upload("https://example.com/uploads/one", data) { progress.add(it) }
+            assertEquals(data.size.toLong(), progress.last())
+            assertTrue(progress.zipWithNext().all { (a, b) -> b > a })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun resumedProgressIncludesExistingOffsetAcrossPatchBoundaries() = runTest {
+        val offset = 16 * 1024L
+        val data = ByteArray(256 * 1024)
+        val progress = mutableListOf<Long>()
+        val engine = MockEngine { request ->
+            val base = request.headers["Upload-Offset"]!!.toLong()
+            val end = base + request.body.toByteArray().size
+            respond("", HttpStatusCode.NoContent, headersOf("Upload-Offset", end.toString()))
+        }
+        val client = HttpClient(engine)
+        try {
+            TusClient(client).upload(
+                "https://example.com/uploads/resume",
+                data,
+                offset = offset,
+                chunkSize = 64 * 1024,
+            ) {
+                progress.add(it)
+            }
+            assertTrue(progress.all { it > offset && it <= data.size })
+            assertTrue(progress.any { it < offset + 64 * 1024 })
+            assertTrue(progress.zipWithNext().all { (a, b) -> b > a })
+            assertEquals(data.size.toLong(), progress.last())
+        } finally {
+            client.close()
+        }
     }
 
     @Test

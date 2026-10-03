@@ -27,7 +27,11 @@ suspend fun revokeHistoryEntry(
         require(currentAccess() == access) { "Your account changed. Open History again." }
         dao.delete(id)
     } catch (error: LinkDeletionException) {
-        if (row.deletionToken == null && error.statusCode in listOf(401, 403)) {
+        if (
+            row.accountId == null &&
+                row.deletionToken == null &&
+                error.statusCode in listOf(401, 403)
+        ) {
             throw LinkDeletionException(
                 "This older transfer has no deletion token. Ask the server administrator to remove it or enable legacy deletion, then retry. The history entry has been kept.",
                 error.statusCode,

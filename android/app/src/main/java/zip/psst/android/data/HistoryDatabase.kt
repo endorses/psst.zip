@@ -30,6 +30,8 @@ data class TransferHistoryEntity(
     val expiresAt: Long? = null,
     val deletionToken: String? = null,
     val accountId: String? = null,
+    val title: String? = null,
+    @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
 )
@@ -47,6 +49,39 @@ interface TransferHistoryDao {
     suspend fun updateStatus(id: String, status: String)
 
     @Update suspend fun update(entity: TransferHistoryEntity)
+
+    @Query("UPDATE transfer_history SET title = :title WHERE id = :id AND title IS NULL")
+    suspend fun setTitleIfEmpty(id: String, title: String)
+
+    @Transaction
+    suspend fun mergeAccountResource(
+        incoming: TransferHistoryEntity,
+        access: HistoryAccess,
+        snapshot: ReceivedSnapshot? = null,
+    ) {
+        val current = getById(incoming.id)
+        val merged =
+            zip.psst.android.data.mergeAccountResource(current, incoming, access, snapshot) ?: return
+        if (current == null) insert(merged) else if (merged != current) update(merged)
+    }
+
+    @Transaction
+    suspend fun recordSavedFile(id: String, fileId: String) {
+        val current = getById(id) ?: return
+        val saved =
+            kotlinx.serialization.json.Json.decodeFromString<Set<String>>(current.savedFileIdsJson)
+        update(
+            current.copy(
+                savedFileIdsJson =
+                    kotlinx.serialization.json.Json.encodeToString(
+                        kotlinx.serialization.builtins.SetSerializer(
+                            kotlinx.serialization.serializer<String>()
+                        ),
+                        saved + fileId,
+                    )
+            )
+        )
+    }
 
     @Transaction
     suspend fun mergeReceived(
@@ -72,7 +107,7 @@ interface TransferHistoryDao {
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 4, exportSchema = false)
+@Database(entities = [TransferHistoryEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
@@ -103,13 +138,23 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_4_5 =
+            object : Migration(4, 5) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE transfer_history ADD COLUMN title TEXT")
+                    db.execSQL(
+                        "ALTER TABLE transfer_history ADD COLUMN savedFileIdsJson TEXT NOT NULL DEFAULT '[]'"
+                    )
+                }
+            }
+
         fun create(context: Context): AppDatabase {
             return Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "psst-history.db",
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
         }
     }

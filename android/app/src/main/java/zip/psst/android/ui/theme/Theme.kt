@@ -1,67 +1,65 @@
 package zip.psst.android.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF5B5FE6),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE0E0FF),
-    onPrimaryContainer = Color(0xFF1A1B4B),
-    secondary = Color(0xFF5C5D72),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE1E0F9),
-    onSecondaryContainer = Color(0xFF191A2C),
-    tertiary = Color(0xFF7A5369),
-    onTertiary = Color.White,
-    surface = Color(0xFFFCFCFF),
-    onSurface = Color(0xFF1B1B21),
-    surfaceVariant = Color(0xFFE4E1EC),
-    onSurfaceVariant = Color(0xFF46464F),
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFBFC1FF),
-    onPrimary = Color(0xFF2C2F7A),
-    primaryContainer = Color(0xFF4345CD),
-    onPrimaryContainer = Color(0xFFE0E0FF),
-    secondary = Color(0xFFC5C4DD),
-    onSecondary = Color(0xFF2E2F42),
-    secondaryContainer = Color(0xFF444559),
-    onSecondaryContainer = Color(0xFFE1E0F9),
-    tertiary = Color(0xFFEBB8CF),
-    onTertiary = Color(0xFF482538),
-    surface = Color(0xFF131318),
-    onSurface = Color(0xFFE4E1E9),
-    surfaceVariant = Color(0xFF46464F),
-    onSurfaceVariant = Color(0xFFC7C5D0),
-)
+private val LightColorScheme =
+    lightColorScheme(
+        primary = Color(0xFF0F766E),
+        onPrimary = Color.White,
+        primaryContainer = Color(0xFFDDF4EC),
+        onPrimaryContainer = Color(0xFF172B2A),
+        secondary = Color(0xFF526561),
+        onSecondary = Color.White,
+        secondaryContainer = Color(0xFFDDF4EC),
+        onSecondaryContainer = Color(0xFF172B2A),
+        tertiary = Color(0xFF735600),
+        onTertiary = Color.White,
+        background = Color(0xFFF6F8F7),
+        onBackground = Color(0xFF172B2A),
+        surface = Color.White,
+        onSurface = Color(0xFF172B2A),
+        surfaceVariant = Color(0xFFE8EFEC),
+        onSurfaceVariant = Color(0xFF526561),
+        surfaceContainer = Color(0xFFF0F5F2),
+        surfaceContainerHigh = Color(0xFFE8EFEC),
+        outline = Color(0xFF62756F),
+        outlineVariant = Color(0xFF62756F),
+        error = Color(0xFFB3261E),
+        onError = Color.White,
+    )
+private val DarkColorScheme =
+    darkColorScheme(
+        primary = Color(0xFF5EEAD4),
+        onPrimary = Color(0xFF172B2A),
+        primaryContainer = Color(0xFF21443E),
+        onPrimaryContainer = Color(0xFFDDF4EC),
+        secondary = Color(0xFFBDD1CA),
+        onSecondary = Color(0xFF172B2A),
+        secondaryContainer = Color(0xFF21443E),
+        onSecondaryContainer = Color(0xFFDDF4EC),
+        tertiary = Color(0xFFF5D280),
+        onTertiary = Color(0xFF332600),
+        background = Color(0xFF0B1816),
+        onBackground = Color(0xFFE7F2ED),
+        surface = Color(0xFF122321),
+        onSurface = Color(0xFFE7F2ED),
+        surfaceVariant = Color(0xFF233B35),
+        onSurfaceVariant = Color(0xFFBDD1CA),
+        surfaceContainer = Color(0xFF192E29),
+        surfaceContainerHigh = Color(0xFF233B35),
+        outline = Color(0xFF8AA59B),
+        outlineVariant = Color(0xFF8AA59B),
+        error = Color(0xFFFFB4AB),
+        onError = Color(0xFF690005),
+    )
 
 @Composable
-fun PsstTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
+fun PsstTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
         content = content,
     )
 }

@@ -9,10 +9,13 @@ import zip.psst.shared.model.UrlHelper
 import java.time.Instant
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class TransferDetailUiState(
@@ -25,6 +28,7 @@ data class TransferDetailUiState(
     val shareUrl: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
+    val offline: Boolean = false,
 )
 
 class TransferDetailViewModel(application: Application) : AndroidViewModel(application) {
@@ -43,11 +47,18 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     _uiState.value =
                         TransferDetailUiState(
                             error =
-                                "Sign in to the account that created this transfer to view its details."
+                                app.getString(
+                                    zip.psst.android.R.string
+                                        .ui_sign_in_to_the_account_that_created_this_transfer_to_view_its_det
+                                )
                         )
                 }
             }
         }
+    }
+
+    fun stopRefreshing() {
+        loadJob?.cancel()
     }
 
     @OptIn(ExperimentalEncodingApi::class)
@@ -65,7 +76,11 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                 ) {
                     _uiState.value =
                         TransferDetailUiState(
-                            error = "This transfer is not available to the signed-in account."
+                            error =
+                                app.getString(
+                                    zip.psst.android.R.string
+                                        .ui_this_transfer_is_not_available_to_the_signed_in_account
+                                )
                         )
                     return@launch
                 }
@@ -73,9 +88,19 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     try {
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
                             .decode(row.encryptionKey)
+                            .also { require(it.size == 32) }
                     } catch (_: Exception) {
                         _uiState.value =
-                            TransferDetailUiState(error = "The transfer key is invalid.")
+                            TransferDetailUiState(
+                                transferId = row.id,
+                                type = row.type,
+                                status = row.status,
+                                fileCount = row.fileCount,
+                                totalSize = row.totalSize,
+                                expiresAt =
+                                    row.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
+                                error = app.getString(zip.psst.android.R.string.unavailable_key),
+                            )
                         return@launch
                     }
                 val shareUrl =
@@ -94,16 +119,30 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                         expiresAt = row.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
                         shareUrl = shareUrl,
                     )
-                val refreshed = refreshHistoryEntry(dao, row.id) ?: return@launch
-                if (app.prefs.historyAccess.value != access || !access.permits(refreshed))
-                    return@launch
-                _uiState.value =
-                    _uiState.value.copy(
-                        status = refreshed.status,
-                        fileCount = refreshed.fileCount,
-                        totalSize = refreshed.totalSize,
-                        expiresAt = refreshed.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
-                    )
+                while (isActive && app.prefs.historyAccess.value == access) {
+                    try {
+                        val refreshed =
+                            refreshHistoryEntry(dao, row.id, reportFailure = true) ?: return@launch
+                        if (app.prefs.historyAccess.value != access || !access.permits(refreshed))
+                            return@launch
+                        _uiState.value =
+                            _uiState.value.copy(
+                                status = refreshed.status,
+                                fileCount = refreshed.fileCount,
+                                totalSize = refreshed.totalSize,
+                                expiresAt =
+                                    refreshed.expiresAt?.let {
+                                        Instant.ofEpochMilli(it).toString()
+                                    },
+                                offline = false,
+                            )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        _uiState.value = _uiState.value.copy(offline = true)
+                    }
+                    delay(if (_uiState.value.offline) 15000 else 5000)
+                }
             }
     }
 }

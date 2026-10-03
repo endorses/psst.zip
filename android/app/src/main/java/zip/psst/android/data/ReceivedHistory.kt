@@ -11,7 +11,7 @@ import zip.psst.shared.model.TransferStatus
 import java.time.Instant
 import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -29,6 +29,12 @@ internal fun DropSlot.receivedSnapshot() =
 
 internal fun TransferHistoryEntity.savedTransferIds(): Set<String> =
     Json.decodeFromString(savedTransferIdsJson)
+
+internal fun TransferHistoryEntity.savedFileCount(): Int {
+    val perFile = Json.decodeFromString<Set<String>>(savedFileIdsJson).size
+    val children = Json.decodeFromString<Map<String, ReceivedChild>>(receivedTransfersJson)
+    return maxOf(perFile, savedTransferIds().sumOf { children[it]?.fileCount ?: 0 })
+}
 
 /** Merge under a Room transaction so delayed polls cannot undo a successful save. */
 internal fun mergeReceivedHistory(
@@ -88,60 +94,78 @@ internal fun sentHistoryStatus(transfer: Transfer, previousStatus: String? = nul
 internal suspend fun refreshHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
+    reportFailure: Boolean = false,
     createClient: (ServerConfig) -> ApiClient = { ApiClient(it) },
 ): TransferHistoryEntity? {
     val row = dao.getById(id) ?: return null
-    withTimeoutOrNull(5_000L) {
-        val client = createClient(ServerConfig(row.serverUrl))
-        try {
-            if (row.type == "sent" || row.type == "send") {
-                dao.mergeSent(row.id, client.transfers.get(row.id))
-            } else {
-                retrySavedDownloadAcknowledgements(row, client)
-                val slot = client.slots.get(row.id)
-                dao.mergeReceived(row.id, slot.receivedSnapshot())
-                if (slot.completedTransfers.isNotEmpty()) {
-                    val key =
-                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-                            .decode(row.encryptionKey)
-                    for (transfer in slot.completedTransfers) {
-                        val encrypted =
-                            EncryptedManifest.fromBytes(
-                                client.transfers.downloadManifest(transfer.transferId)
-                            )
-                        val manifest =
-                            Json.decodeFromString<Manifest>(
-                                CryptoProvider.decrypt(key, encrypted.nonce, encrypted.ciphertext)
-                                    .decodeToString()
-                            )
-                        require(manifest.files.size == transfer.fileCount) {
-                            "Manifest file count mismatch"
-                        }
-                        var size = 0L
-                        for (file in manifest.files) {
-                            require(file.size >= 0 && file.size <= Long.MAX_VALUE - size) {
-                                "Invalid file size"
-                            }
-                            size += file.size
-                        }
-                        dao.mergeReceived(
-                            row.id,
-                            ReceivedSnapshot(
-                                mapOf(
-                                    transfer.transferId to ReceivedChild(transfer.fileCount, size)
+    try {
+        withTimeout(5_000L) {
+            val client = createClient(ServerConfig(row.serverUrl))
+            try {
+                if (row.type == "sent" || row.type == "send") {
+                    dao.mergeSent(row.id, client.transfers.get(row.id))
+                } else {
+                    retrySavedDownloadAcknowledgements(row, client)
+                    val slot = client.slots.get(row.id)
+                    dao.mergeReceived(row.id, slot.receivedSnapshot())
+                    if (slot.completedTransfers.isNotEmpty() && row.encryptionKey.isNotBlank()) {
+                        val key =
+                            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+                                .decode(row.encryptionKey)
+                        for (transfer in slot.completedTransfers) {
+                            val encrypted =
+                                EncryptedManifest.fromBytes(
+                                    client.transfers.downloadManifest(transfer.transferId)
                                 )
-                            ),
-                        )
+                            val manifest =
+                                Json.decodeFromString<Manifest>(
+                                    CryptoProvider.decrypt(
+                                            key,
+                                            encrypted.nonce,
+                                            encrypted.ciphertext,
+                                        )
+                                        .decodeToString()
+                                )
+                            require(manifest.files.size == transfer.fileCount) {
+                                "Manifest file count mismatch"
+                            }
+                            var size = 0L
+                            for (file in manifest.files) {
+                                require(file.size >= 0 && file.size <= Long.MAX_VALUE - size) {
+                                    "Invalid file size"
+                                }
+                                size += file.size
+                            }
+                            manifest.files.firstOrNull()?.name?.let {
+                                dao.setTitleIfEmpty(row.id, it)
+                            }
+                            dao.mergeReceived(
+                                row.id,
+                                ReceivedSnapshot(
+                                    mapOf(
+                                        transfer.transferId to
+                                            ReceivedChild(transfer.fileCount, size)
+                                    )
+                                ),
+                            )
+                        }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (error: Exception) {
+                if (
+                    error is io.ktor.client.plugins.ClientRequestException &&
+                        error.response.status.value in listOf(404, 410)
+                )
+                    dao.updateStatus(id, "unavailable")
+                else if (reportFailure) throw error
+            } finally {
+                client.close()
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // Missing, expired, offline, or unreadable entries retain known local facts.
-        } finally {
-            client.close()
         }
+    } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+        if (reportFailure) throw java.io.IOException("Status request timed out")
     }
     return dao.getById(id)
 }
@@ -156,6 +180,7 @@ internal fun historyStatusLabel(type: String, status: String): String =
         "pending" -> "In progress"
         "failed" -> "Upload failed"
         "expired" -> "Expired"
+        "unavailable" -> "Expired or revoked"
         else -> "Unknown"
     }
 

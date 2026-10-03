@@ -257,6 +257,8 @@ func (s *Server) authRoutes(r chi.Router) {
 		r.Get("/auth/sessions", s.sessions)
 		r.Delete("/auth/sessions/{sessionID}", s.deleteSession)
 		r.Post("/auth/pairings", s.createPairing)
+		r.Get("/auth/pairings/{pairingID}", s.pairingStatus)
+		r.Delete("/auth/pairings/{pairingID}", s.cancelPairing)
 		r.Get("/auth/resources", s.resources)
 	})
 	r.Group(func(r chi.Router) {
@@ -384,6 +386,13 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 func (s *Server) createPairing(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ReplaceID string `json:"replace_id"`
+	}
+	if r.ContentLength != 0 && !authJSON(w, r, &req) {
+		return
+	}
+	id := uuid.NewString()
 	code, hash, err := newDeleteToken()
 	if err != nil {
 		writeError(w, 500, "could not create pairing")
@@ -391,12 +400,39 @@ func (s *Server) createPairing(w http.ResponseWriter, r *http.Request) {
 	}
 	expiry := time.Now().UTC().Add(5 * time.Minute)
 	a := identity(r)
-	if err := s.queries.CreatePairing(hash, a.user.ID, a.session.ID, expiry); err != nil {
-		writeError(w, 500, "could not create pairing")
+	if err := s.queries.CreateTrackedPairing(id, hash, a.user.ID, a.session.ID, expiry, req.ReplaceID); err != nil {
+		pairingError(w, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 201, map[string]any{"code": code, "expires_at": expiry})
+	writeJSON(w, 201, map[string]any{"id": id, "code": code, "expires_at": expiry})
+}
+func pairingError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		writeError(w, 404, "pairing not found")
+	case errors.Is(err, database.ErrPairingConnected):
+		writeError(w, 409, "Phone already connected. Revoke its session in Connected devices if needed.")
+	default:
+		writeError(w, 500, "could not update pairing")
+	}
+}
+func (s *Server) pairingStatus(w http.ResponseWriter, r *http.Request) {
+	a := identity(r)
+	status, err := s.queries.PairingStatus(chi.URLParam(r, "pairingID"), a.user.ID, a.session.ID)
+	if err != nil {
+		pairingError(w, err)
+		return
+	}
+	writeJSON(w, 200, status)
+}
+func (s *Server) cancelPairing(w http.ResponseWriter, r *http.Request) {
+	a := identity(r)
+	if err := s.queries.CancelPairing(chi.URLParam(r, "pairingID"), a.user.ID, a.session.ID); err != nil {
+		pairingError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 func (s *Server) redeemPairing(w http.ResponseWriter, r *http.Request) {
 	if !s.secureAuth(w, r) {

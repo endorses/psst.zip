@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type User struct {
@@ -159,9 +161,93 @@ func (q *Queries) DeleteSession(id, user string) error {
 	_, err := q.db.Exec(`DELETE FROM sessions WHERE id=? AND user_id=?`, id, user)
 	return err
 }
+
+// PairingStatus never includes a login secret or a device session credential.
+type PairingStatus struct {
+	ID         string    `json:"id"`
+	Status     string    `json:"status"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	DeviceName string    `json:"device_name,omitempty"`
+}
+
+var ErrPairingConnected = errors.New("pairing already connected")
+
+// CreatePairing preserves callers that do not need to observe the grant.
 func (q *Queries) CreatePairing(hash []byte, user, session string, expiry time.Time) error {
-	_, err := q.db.Exec(`INSERT INTO pairings(code_hash,user_id,session_id,expires_at) SELECT ?,user_id,id,? FROM sessions WHERE id=? AND user_id=?`, hash, expiry.UTC(), session, user)
-	return err
+	return q.CreateTrackedPairing(uuid.NewString(), hash, user, session, expiry, "")
+}
+
+// CreateTrackedPairing replaces only the specified flow, in the same transaction.
+// Taking the writer lock before inspecting a grant serializes cancellation with redemption.
+func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session string, expiry time.Time, replaceID string) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if replaceID != "" {
+		if err := cancelPairing(tx, replaceID, user, session); err != nil {
+			return err
+		}
+	}
+	res, err := tx.Exec(`INSERT INTO pairings(id,code_hash,user_id,session_id,expires_at)
+ SELECT ?,?,s.user_id,s.id,? FROM sessions s JOIN users u ON u.id=s.user_id
+ WHERE s.id=? AND s.user_id=? AND u.disabled=0`, id, hash, expiry.UTC(), session, user)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return sql.ErrNoRows
+	}
+	var parentExpiry time.Time
+	if err := tx.QueryRow(`SELECT expires_at FROM sessions WHERE id=?`, session).Scan(&parentExpiry); err != nil {
+		return err
+	}
+	if !time.Now().Before(parentExpiry) {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
+}
+
+func (q *Queries) PairingStatus(id, user, session string) (*PairingStatus, error) {
+	p := &PairingStatus{}
+	err := q.db.QueryRow(`SELECT id,status,expires_at,device_name FROM pairings WHERE id=? AND user_id=? AND session_id=?`, id, user, session).Scan(&p.ID, &p.Status, &p.ExpiresAt, &p.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status == "pending" && !time.Now().Before(p.ExpiresAt) {
+		p.Status = "expired"
+	}
+	return p, nil
+}
+
+func cancelPairing(tx *sql.Tx, id, user, session string) error {
+	var status string
+	err := tx.QueryRow(`UPDATE pairings SET status=CASE WHEN status='pending' THEN 'canceled' ELSE status END
+ WHERE id=? AND user_id=? AND session_id=? RETURNING status`, id, user, session).Scan(&status)
+	if err != nil {
+		return err
+	}
+	if status == "connected" {
+		return ErrPairingConnected
+	}
+	return nil
+}
+
+func (q *Queries) CancelPairing(id, user, session string) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := cancelPairing(tx, id, user, session); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error) {
 	tx, err := q.db.Begin()
@@ -171,7 +257,7 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 	defer tx.Rollback()
 	var user, parentSession string
 	var expiry time.Time
-	err = tx.QueryRow(`DELETE FROM pairings WHERE code_hash=? RETURNING user_id,session_id,expires_at`, hash).Scan(&user, &parentSession, &expiry)
+	err = tx.QueryRow(`UPDATE pairings SET status='connected',device_name=? WHERE code_hash=? AND status='pending' RETURNING user_id,session_id,expires_at`, s.DeviceName, hash).Scan(&user, &parentSession, &expiry)
 	if err != nil {
 		return nil, err
 	}
@@ -235,10 +321,12 @@ func (q *Queries) OwnedIDs(kind, user string) ([]string, error) {
 // PruneAuthentication removes expired session and pairing credentials. Session
 // foreign keys also invalidate outstanding pairing grants from those sessions.
 func (q *Queries) PruneAuthentication() error {
-	for _, table := range []string{"sessions", "pairings"} {
-		if _, err := q.db.Exec(`DELETE FROM ` + table + ` WHERE julianday(expires_at)<=julianday('now')`); err != nil {
-			return err
-		}
+	if _, err := q.db.Exec(`DELETE FROM sessions WHERE julianday(substr(expires_at,1,19))<=julianday('now')`); err != nil {
+		return err
 	}
-	return nil
+	// UTC timestamps include a Go zone suffix; SQLite parses the date/time prefix.
+	// Retain terminal status briefly so an open pairing view can explain expiry.
+	// Expired grants are never redeemable during this observation window.
+	_, err := q.db.Exec(`DELETE FROM pairings WHERE julianday(substr(expires_at,1,19))<=julianday('now','-15 minutes')`)
+	return err
 }

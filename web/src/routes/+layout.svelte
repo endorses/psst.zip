@@ -1,84 +1,58 @@
 <script lang="ts">
+  import { page } from "$app/stores";
   import type { Snippet } from "svelte";
-
+  import "$lib/theme.css";
+  import { BRAND } from "$lib/brand";
   let { children }: { children: Snippet } = $props();
 </script>
 
 <div class="app">
   <header>
-    <a href="/" class="logo">Secure File Transfer</a>
+    <a href="/" class="logo">{BRAND}</a><span class="muted small">Quietly share something.</span>
   </header>
-
-  <main>
-    {@render children()}
+  <main id="main">
+    {#key $page.url.pathname}{@render children()}{/key}
   </main>
-
-  <footer>
-    <p>End-to-end encrypted. Files are never readable by the server.</p>
-  </footer>
+  <footer>End-to-end encrypted. Files are never readable by the server.</footer>
 </div>
 
 <style>
-  :global(*) {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  :global(body) {
-    font-family:
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Roboto,
-      Oxygen,
-      Ubuntu,
-      Cantarell,
-      sans-serif;
-    background: #fafafa;
-    color: #1a1a1a;
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-  }
-
   .app {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
-
   header {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e5e5e5;
-    background: #fff;
+    padding: 1rem max(1rem, calc((100vw - 760px) / 2));
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
   }
-
   .logo {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #1a1a1a;
+    font-weight: 750;
+    font-size: 1.4rem;
     text-decoration: none;
+    color: var(--text);
   }
-
   main {
     flex: 1;
     width: 100%;
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
+    max-width: 760px;
+    margin: auto;
+    padding: 1.5rem 1rem;
   }
-
   footer {
-    padding: 1.5rem;
+    padding: 1rem;
     text-align: center;
-    font-size: 0.8125rem;
-    color: #888;
-    border-top: 1px solid #e5e5e5;
+    font-size: 0.8rem;
+    color: var(--muted);
   }
-
-  @media (max-width: 480px) {
-    main {
-      padding: 1.25rem 1rem;
+  @media (max-width: 400px) {
+    header span {
+      display: none;
     }
   }
 </style>

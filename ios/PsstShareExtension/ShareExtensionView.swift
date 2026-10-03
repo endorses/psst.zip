@@ -1,115 +1,79 @@
 import SwiftUI
 
-/// The SwiftUI view displayed within the share extension.
 struct ShareExtensionView: View {
     @Bindable var viewModel: ShareExtensionViewModel
     let onCancel: () -> Void
     let onComplete: () -> Void
-
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Spacer()
-
-                statusContent
-
-                Spacer()
+            ScrollView {
+                VStack(spacing: 16) {
+                    Text(viewModel.config.indicator).font(.caption)
+                    Text("The share extension accepts files up to 10 MiB each because its memory is limited. Use the app for files up to 25 MiB.")
+                        .font(.footnote).foregroundStyle(PsstTheme.secondary)
+                    Text(String(format: String(localized: "%lld files · %@"), Int64(viewModel.fileCount), ByteCountFormatter.string(fromByteCount: viewModel.totalSize, countStyle: .file)))
+                    if !viewModel.config.isConfigured || viewModel.config.needsSignIn {
+                        LoginFields()
+                    } else if let send = viewModel.send {
+                        switch send.state {
+                        case .idle: Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction())
+                        case .encrypting: ProgressView("Preparing files")
+                            Text(verbatim: send.currentFile).font(.caption)
+                        case let .uploading(value):
+                            ProgressView("Uploading", value: value)
+                            if let progress = send.progress {
+                                Text(verbatim: progress.name).font(.caption)
+                                Text(ByteCountFormatter.string(fromByteCount: progress.sent, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: progress.total, countStyle: .file)).font(.caption)
+                            }
+                        case .complete:
+                            Label("Ready to download", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+                            if let link = send.shareURL {
+                                LinkCard(url: link)
+                            }
+                        case let .failed(message):
+                            Text(message).foregroundStyle(PsstTheme.error)
+                            Button("Retry upload") { viewModel.start() }.buttonStyle(PrimaryAction())
+                            DisclosureGroup("Sign in again") { LoginFields() }
+                        }
+                    } else {
+                        Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction()).disabled(viewModel.files.isEmpty)
+                    }
+                    if let error = viewModel.error {
+                        Text(error).foregroundStyle(PsstTheme.error)
+                    }
+                }.padding()
             }
-            .padding()
             .navigationTitle("psst.zip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") {
+                    if viewModel.active {
+                        viewModel.cancelRequested = true
+                    } else {
                         onCancel()
                     }
-                }
+                } }
                 ToolbarItem(placement: .confirmationAction) {
-                    if case .complete = viewModel.state {
-                        Button("Done") {
-                            onComplete()
-                        }
+                    if viewModel.send?.state == .complete {
+                        Button("Done") { onComplete() }
                     }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var statusContent: some View {
-        switch viewModel.state {
-        case .idle:
-            ProgressView("Preparing...")
-
-        case .encrypting:
-            VStack(spacing: 12) {
-                ProgressView()
-                    .controlSize(.large)
-                Text("Encrypting \(viewModel.fileCount) file(s)...")
-                    .font(.headline)
-            }
-
-        case let .uploading(progress):
-            VStack(spacing: 12) {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 250)
-                Text("Uploading...")
-                    .font(.headline)
-                Text("\(Int(progress * 100))%")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-        case let .complete(shareURL):
-            VStack(spacing: 16) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.green)
-
-                Text("Upload complete")
-                    .font(.headline)
-
-                if let image = QRCodeGenerator.generate(from: shareURL, size: 200) {
-                    Image(uiImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 200, height: 200)
-                        .padding()
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            .confirmationDialog("Stop upload?", isPresented: $viewModel.cancelRequested, titleVisibility: .visible) {
+                Button("Stop", role: .destructive) { viewModel.cancel()
+                    onCancel()
                 }
-
-                Button {
-                    UIPasteboard.general.string = shareURL
-                } label: {
-                    Label("Copy Link", systemImage: "doc.on.doc")
+                Button("Keep going", role: .cancel) {}
+            } message: { Text("The upload will stop when this extension closes. Unfinished uploads stay in History so you can revoke them.") }
+            .task {
+                while !Task.isCancelled {
+                    viewModel.config.reload()
+                    do { try await Task.sleep(for: .seconds(3)) } catch { return }
                 }
-                .buttonStyle(.borderedProminent)
-
-                Text(shareURL)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .padding(.horizontal)
             }
-
-        case let .failed(error):
-            VStack(spacing: 12) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.red)
-
-                Text("Upload failed")
-                    .font(.headline)
-
-                Text(error)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            .onChange(of: viewModel.config.accountID) { _, _ in viewModel.accountChanged() }
         }
+        .environment(viewModel.config)
+        .modifier(PsstStyle())
     }
 }

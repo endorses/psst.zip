@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import zip.psst.android.ui.navigation.PsstNavGraph
@@ -18,18 +17,21 @@ import zip.psst.android.ui.theme.PsstTheme
 
 class MainActivity : ComponentActivity() {
 
+    private val incomingUris = mutableStateListOf<Uri>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val app = application as PsstApplication
         val sharedUris = extractSharedUris(intent)
+        incomingUris.addAll(sharedUris)
 
         setContent {
             PsstTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val navController = rememberNavController()
-                    val uris = remember { mutableStateListOf<Uri>().apply { addAll(sharedUris) } }
+                    val uris = incomingUris
 
                     val startDestination =
                         when {
@@ -43,7 +45,8 @@ class MainActivity : ComponentActivity() {
                     PsstNavGraph(
                         navController = navController,
                         startDestination = startDestination,
-                        sharedUris = uris,
+                        sharedUris = uris.toList(),
+                        onSharedUrisConsumed = { incomingUris.clear() },
                     )
                 }
             }
@@ -53,10 +56,8 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // For share intents arriving while the activity is already running,
-        // we recreate to pick up the new URIs. A more sophisticated approach
-        // would use a shared ViewModel or event bus.
-        recreate()
+        // Keep live jobs and their ViewModels intact when another share intent arrives.
+        incomingUris.addAll(extractSharedUris(intent))
     }
 
     private fun extractSharedUris(intent: Intent?): List<Uri> {

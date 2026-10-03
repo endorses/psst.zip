@@ -101,3 +101,59 @@ func TestAuthenticationMigrationPreservesLegacyOwnership(t *testing.T) {
 		t.Fatalf("session revocation retained pairing %d %v", n, err)
 	}
 }
+
+// Cancellation must invalidate a grant throughout its precise lifetime, including
+// the fractional portion of its final second. Both replacement and DELETE use it.
+func TestPairingCancellationAndReplacementAtFractionalExpiry(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "fractional-pairing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := NewQueries(db)
+	user := User{ID: "issuer", Username: "issuer", Role: "user", PasswordHash: []byte("hash")}
+	if err := q.CreateUser(user, false); err != nil {
+		t.Fatal(err)
+	}
+	session := Session{ID: "browser", UserID: user.ID, DeviceName: "Browser", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := q.CreateSession(session, []byte("browser-secret"), user.PasswordHash); err != nil {
+		t.Fatal(err)
+	}
+	for _, replace := range []bool{false, true} {
+		name := "cancel"
+		if replace {
+			name = "replace"
+		}
+		t.Run(name, func(t *testing.T) {
+			// Choose the end of this second; wait for the next second if less than half
+			// remains. The UPDATE must cancel, even when the rounded expiry is past.
+			now := time.Now().UTC()
+			expiry := now.Truncate(time.Second).Add(990 * time.Millisecond)
+			if time.Until(expiry) < 500*time.Millisecond {
+				time.Sleep(time.Until(now.Truncate(time.Second).Add(time.Second + 10*time.Millisecond)))
+				expiry = time.Now().UTC().Truncate(time.Second).Add(990 * time.Millisecond)
+			}
+			id := "grant-" + name
+			hash := []byte(id + "-hash")
+			if err := q.CreateTrackedPairing(id, hash, user.ID, session.ID, expiry, ""); err != nil {
+				t.Fatal(err)
+			}
+			if replace {
+				err = q.CreateTrackedPairing("replacement", []byte("new-hash"), user.ID, session.ID, time.Now().Add(time.Minute), id)
+			} else {
+				err = q.CancelPairing(id, user.ID, session.ID)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			status, err := q.PairingStatus(id, user.ID, session.ID)
+			if err != nil || status.Status != "canceled" {
+				t.Fatalf("successful cancellation left grant active: %+v %v", status, err)
+			}
+			phone := Session{ID: "phone-" + name, DeviceName: "Phone", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+			if _, err := q.RedeemPairing(hash, []byte("device-hash"), phone); err == nil {
+				t.Fatal("canceled code signed in a phone")
+			}
+		})
+	}
+}

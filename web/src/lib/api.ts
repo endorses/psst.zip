@@ -85,9 +85,14 @@ export async function downloadManifest(transferId: string): Promise<ArrayBuffer>
   return readBounded(res, 1024 * 1024);
 }
 
-export async function downloadFile(transferId: string, fileId: string): Promise<ArrayBuffer> {
-  const res = await requestRaw(`/transfers/${transferId}/files/${fileId}`);
-  return readBounded(res);
+export async function downloadFile(
+  transferId: string,
+  fileId: string,
+  onProgress?: (bytes: number) => void,
+  signal?: AbortSignal,
+): Promise<ArrayBuffer> {
+  const res = await requestRaw(`/transfers/${transferId}/files/${fileId}`, { signal });
+  return readBounded(res, MAX_BUFFERED_BYTES + 28, onProgress);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +144,7 @@ export async function createSlotTransfer(slotId: string): Promise<CreateTransfer
 async function readBounded(
   response: Response,
   limit = MAX_BUFFERED_BYTES + 28,
+  onProgress?: (bytes: number) => void,
 ): Promise<ArrayBuffer> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Empty response body");
@@ -149,6 +155,7 @@ async function readBounded(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
+      onProgress?.(size);
       if (size > limit) throw new Error("Download exceeds the 25 MiB file limit.");
       chunks.push(value);
     }

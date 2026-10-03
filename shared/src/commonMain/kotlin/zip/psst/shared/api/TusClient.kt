@@ -2,6 +2,7 @@ package zip.psst.shared.api
 
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.head
 import io.ktor.client.request.headers
 import io.ktor.client.request.patch
@@ -119,10 +120,18 @@ class TusClient(
         require(chunkSize > 0) { "Chunk size must be positive" }
         require(offset in 0..data.size.toLong()) { "Invalid upload offset" }
         var currentOffset = offset
+        var reportedOffset = offset
+        fun reportProgress(bytes: Long) {
+            if (bytes > reportedOffset) {
+                reportedOffset = bytes
+                onProgress?.invoke(bytes)
+            }
+        }
 
         while (currentOffset < data.size) {
             val end = minOf(currentOffset + chunkSize, data.size.toLong())
-            val chunk = data.copyOfRange(currentOffset.toInt(), end.toInt())
+            val chunkOffset = currentOffset
+            val chunk = data.copyOfRange(chunkOffset.toInt(), end.toInt())
 
             val response: HttpResponse =
                 httpClient.patch(resourceUrl) {
@@ -136,6 +145,9 @@ class TusClient(
                     }
                     contentType(TUS_CONTENT_TYPE)
                     setBody(chunk)
+                    // Report bytes written within a PATCH, not only whole acknowledged chunks.
+                    // The durable resume offset still advances only after the server confirms it.
+                    onUpload { sent, _ -> reportProgress((chunkOffset + sent).coerceAtMost(end)) }
                 }
 
             response.checkAuthenticatedWrite()
@@ -149,7 +161,7 @@ class TusClient(
             require(newOffset == end) { "Unexpected tus upload offset: $newOffset" }
 
             currentOffset = newOffset
-            onProgress?.invoke(currentOffset)
+            reportProgress(currentOffset)
         }
     }
 

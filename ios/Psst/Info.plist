@@ -26,12 +26,11 @@
 	<string>17.0</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Users choose their own HTTP or HTTPS server; hosts cannot be listed at build time. -->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Psst connects to the server address you enter to send and receive files on your local network, including from the share extension.</string>
+	<string>psst.zip connects to the server you choose to send and receive encrypted files.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -52,5 +51,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>SharedKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)zip.psst.ios.shared</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan a server login QR code to connect psst.zip to your account.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

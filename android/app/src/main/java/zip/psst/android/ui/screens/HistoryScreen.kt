@@ -1,5 +1,6 @@
 package zip.psst.android.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -22,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,8 +50,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import zip.psst.android.R
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.historyStatusLabel
+import zip.psst.android.ui.components.AccountIndicator
 import zip.psst.android.viewmodel.HistoryViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -60,7 +66,10 @@ fun HistoryScreen(
     onBack: () -> Unit,
     viewModel: HistoryViewModel = viewModel(),
 ) {
-    val history by viewModel.history.collectAsState()
+    val allHistory by viewModel.history.collectAsState()
+    val offline by viewModel.offline.collectAsState()
+    var filter by remember { mutableStateOf("all") }
+    val history = allHistory.filter { filter == "all" || (filter == "sent") == (it.type == "sent") }
     val deletingIds by viewModel.deletingIds.collectAsState()
     val deletionError by viewModel.deletionError.collectAsState()
     var confirmDeletion by remember { mutableStateOf<TransferHistoryEntity?>(null) }
@@ -68,13 +77,12 @@ fun HistoryScreen(
     confirmDeletion?.let { entry ->
         AlertDialog(
             onDismissRequest = { confirmDeletion = null },
-            title = { Text("Revoke link and delete?") },
+            title = { Text(stringResource(R.string.ui_revoke_link_and_delete)) },
             text = {
                 Text(
                     if (entry.type == "received")
-                        "This stops new uploads and removes this slot's files from the server. Files already saved on a device remain."
-                    else
-                        "This removes the files from the server and stops this link from working. Files already saved on a device remain."
+                        stringResource(R.string.revoke_receive_explanation)
+                    else stringResource(R.string.revoke_sent_explanation)
                 )
             },
             confirmButton = {
@@ -84,22 +92,30 @@ fun HistoryScreen(
                         viewModel.delete(entry.id)
                     }
                 ) {
-                    Text("Revoke and delete")
+                    Text(stringResource(R.string.ui_revoke_and_delete))
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmDeletion = null }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { confirmDeletion = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
     deletionError?.let { error ->
         AlertDialog(
             onDismissRequest = viewModel::dismissDeletionError,
-            title = { Text("Link could not be revoked") },
+            title = { Text(stringResource(R.string.ui_link_could_not_be_revoked)) },
             text = { Text(error.message) },
             confirmButton = {
-                TextButton(onClick = { viewModel.delete(error.id) }) { Text("Retry") }
+                TextButton(onClick = { viewModel.delete(error.id) }) {
+                    Text(stringResource(R.string.retry))
+                }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::dismissDeletionError) { Text("Keep entry") }
+                TextButton(onClick = viewModel::dismissDeletionError) {
+                    Text(stringResource(R.string.ui_keep_entry))
+                }
             },
         )
     }
@@ -113,6 +129,7 @@ fun HistoryScreen(
             }
         }
         lifecycle.addObserver(observer)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.refresh()
         onDispose {
             lifecycle.removeObserver(observer)
             viewModel.stopRefreshing()
@@ -122,46 +139,86 @@ fun HistoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("History") },
+                title = { Text(stringResource(R.string.history)) },
+                actions = {
+                    TextButton(onClick = viewModel::refresh) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                        )
                     }
                 },
             )
         }
     ) { padding ->
-        if (history.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            AccountIndicator(Modifier.padding(horizontal = 16.dp))
+            Row(
+                Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Default.History,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "No transfers yet",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(history, key = { it.id }) { entity ->
-                    HistoryItem(
-                        entity = entity,
-                        onClick = { onTransferClick(entity) },
-                        onDelete = { confirmDeletion = entity },
-                        isDeleting = entity.id in deletingIds,
+                listOf(
+                        "all" to R.string.all,
+                        "sent" to R.string.sent,
+                        "received" to R.string.receive_links,
                     )
+                    .forEach { (value, label) ->
+                        FilterChip(
+                            selected = filter == value,
+                            onClick = { filter = value },
+                            label = { Text(stringResource(label)) },
+                        )
+                    }
+            }
+            if (offline)
+                Text(
+                    stringResource(R.string.offline_retained),
+                    Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            if (history.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text =
+                            stringResource(
+                                if (filter == "all") R.string.no_transfers
+                                else R.string.no_filtered_transfers
+                            ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(history, key = { it.id }) { entity ->
+                        HistoryItem(
+                            entity = entity,
+                            onClick = { onTransferClick(entity) },
+                            onDelete = { confirmDeletion = entity },
+                            isDeleting = entity.id in deletingIds,
+                        )
+                    }
                 }
             }
         }
@@ -175,6 +232,7 @@ private fun HistoryItem(
     onDelete: () -> Unit,
     isDeleting: Boolean,
 ) {
+    val revokingLabel = stringResource(R.string.ui_revoking_link)
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -196,7 +254,13 @@ private fun HistoryItem(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (entity.type == "sent") "Sent" else "Received",
+                    text =
+                        entity.title
+                            ?: stringResource(
+                                if (entity.type == "sent") R.string.sent else R.string.receive_link
+                            ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
@@ -210,6 +274,19 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (entity.encryptionKey.isBlank())
+                    Text(
+                        stringResource(R.string.key_on_other_device),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                entity.expiresAt?.let { expiresAt ->
+                    Text(
+                        relativeExpiry(expiresAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = formatTimestamp(entity.createdAt),
                     style = MaterialTheme.typography.bodySmall,
@@ -217,20 +294,19 @@ private fun HistoryItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    text = historyStatusLabel(entity.type, entity.status),
+                    style = MaterialTheme.typography.labelSmall,
+                    color =
+                        when (entity.status) {
+                            "complete",
+                            "downloaded",
+                            "has_uploads" -> MaterialTheme.colorScheme.primary
+                            "expired" -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                )
             }
-
-            Text(
-                text = historyStatusLabel(entity.type, entity.status),
-                style = MaterialTheme.typography.labelSmall,
-                color =
-                    when (entity.status) {
-                        "complete",
-                        "downloaded",
-                        "has_uploads" -> MaterialTheme.colorScheme.primary
-                        "expired" -> MaterialTheme.colorScheme.error
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-            )
 
             Spacer(Modifier.width(8.dp))
 
@@ -238,13 +314,13 @@ private fun HistoryItem(
                 if (isDeleting) {
                     CircularProgressIndicator(
                         modifier =
-                            Modifier.size(20.dp).semantics { contentDescription = "Revoking link" },
+                            Modifier.size(20.dp).semantics { contentDescription = revokingLabel },
                         strokeWidth = 2.dp,
                     )
                 } else {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Revoke link and delete",
+                        contentDescription = stringResource(R.string.ui_revoke_link_and_delete_2),
                         modifier = Modifier.size(20.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -257,4 +333,15 @@ private fun HistoryItem(
 private fun formatTimestamp(millis: Long): String {
     val formatter = SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault())
     return formatter.format(Date(millis))
+}
+
+@Composable
+private fun relativeExpiry(time: Long): String {
+    val minutes = (time - System.currentTimeMillis()) / 60000
+    return when {
+        minutes <= 0 -> stringResource(R.string.expired)
+        minutes < 60 -> stringResource(R.string.expires_minutes, minutes)
+        minutes < 1440 -> stringResource(R.string.expires_hours, minutes / 60)
+        else -> stringResource(R.string.expires_days, minutes / 1440)
+    }
 }

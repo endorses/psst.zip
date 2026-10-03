@@ -74,7 +74,7 @@ test("revoking a transfer blocks downloads from an already loaded page and a fre
   let browserDownloads = 0;
   page.on("download", () => browserDownloads++);
   await page.goto(transfer.link);
-  const download = page.getByRole("button", { name: "Download", exact: true });
+  const download = page.getByRole("button", { name: "Save files", exact: true });
   await expect(download).toBeEnabled();
 
   const revoked = await request.delete(`/api/v1/transfers/${transfer.id}`, {
@@ -87,13 +87,15 @@ test("revoking a transfer blocks downloads from an already loaded page and a fre
   );
   await download.click();
   expect((await blobResponse).status()).toBe(404);
-  await expect(page.getByRole("alert")).toContainText("404");
+  await expect(page.getByRole("alert")).toContainText("Could not save files");
   expect(browserDownloads).toBe(0);
 
   const freshPage = await context.newPage();
   await freshPage.goto(transfer.link);
-  await expect(freshPage.getByText("This transfer has expired or does not exist.")).toBeVisible();
-  await expect(freshPage.getByRole("button", { name: "Download", exact: true })).toHaveCount(0);
+  await expect(
+    freshPage.getByText("This transfer has expired or was revoked. Ask the sender for a new link."),
+  ).toBeVisible();
+  await expect(freshPage.getByRole("button", { name: "Save files", exact: true })).toHaveCount(0);
 });
 
 test("revoking a slot blocks uploads from an already loaded page and a fresh upload link", async ({
@@ -126,14 +128,16 @@ test("revoking a slot blocks uploads from an already loaded page and a fresh upl
       new URL(response.url()).pathname === `/api/v1/slots/${slot.id}/transfers` &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: /Encrypt & Upload/ }).click();
+  await page.getByRole("button", { name: "Send files", exact: true }).click();
   expect((await createResponse).status()).toBe(404);
-  await expect(page.getByText(/API 404:/)).toBeVisible();
+  await expect(
+    page.getByText("This link is no longer available. Ask for a new link."),
+  ).toBeVisible();
 
   const freshPage = await context.newPage();
   await freshPage.goto(link);
   await expect(
-    freshPage.getByText("This upload slot has expired or does not exist."),
+    freshPage.getByText("This receive link has expired or was revoked. Ask for a new link."),
   ).toBeVisible();
   await expect(freshPage.locator('input[type="file"]')).toHaveCount(0);
 });

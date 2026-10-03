@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { beforeNavigate } from "$app/navigation";
+  import { BRAND } from "$lib/brand";
   import { page } from "$app/stores";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { importKey, decrypt, decryptManifest } from "$lib/crypto";
   import { getTransferInfo, downloadManifest, downloadFile, acknowledgeDownload } from "$lib/api";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
@@ -10,6 +12,14 @@
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
+  let controller: AbortController | null = null,
+    disposed = false;
+  let currentFile = $state(""),
+    downloadBytes = $state(0);
+  onDestroy(() => {
+    disposed = true;
+    controller?.abort();
+  });
   let status = $state<Status>("loading");
   let errorMessage = $state("");
   let manifest = $state<Manifest | null>(null);
@@ -18,18 +28,36 @@
   let downloadProgress = $state<Record<string, number>>({});
   let downloadedFileIds = $state<string[]>([]);
   let confirmation = $state<"idle" | "sending" | "confirmed" | "failed">("idle");
+  const saving = $derived(
+    status === "downloading" || Object.values(downloadProgress).some((value) => value < 100),
+  );
+  function unload(event: BeforeUnloadEvent) {
+    if (saving) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+  }
+  beforeNavigate(({ willUnload, cancel }) => {
+    if (
+      !willUnload &&
+      saving &&
+      !confirm("Stop saving and leave? Files already saved will remain.")
+    )
+      cancel();
+  });
   const allFilesDownloaded = $derived(
     !!manifest?.files.length &&
       manifest.files.every((file) => downloadedFileIds.includes(file.blob_id)),
   );
 
-  onMount(async () => {
+  async function load() {
     transferId = $page.params.transferId ?? "";
     keyStr = window.location.hash.slice(1);
 
     if (!keyStr) {
       status = "error";
-      errorMessage = "No decryption key found. The link may be incomplete.";
+      errorMessage =
+        "This link is incomplete. Ask the sender for the full link, including the part after #.";
       return;
     }
 
@@ -43,12 +71,15 @@
     } catch (err) {
       status = "error";
       if (err instanceof Error && (err.message.includes("404") || err.message.includes("410"))) {
-        errorMessage = "This transfer has expired or does not exist.";
+        errorMessage = "This transfer has expired or was revoked. Ask the sender for a new link.";
       } else {
         errorMessage =
-          err instanceof Error && err.message ? err.message : "Failed to load transfer";
+          "Could not open these files. Check your connection and retry, or ask the sender for a new link.";
       }
     }
+  }
+  onMount(() => {
+    void load();
   });
 
   function formatSize(bytes: number): string {
@@ -97,16 +128,26 @@
 
   async function downloadSingleFile(entry: FileManifestEntry) {
     errorMessage = "";
+    controller = new AbortController();
+    const signal = controller.signal;
     try {
       assertFileSize(entry.size);
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 0 };
       const key = await importKey(keyStr);
 
-      downloadProgress = { ...downloadProgress, [entry.blob_id]: 50 };
-      const encrypted = await downloadFile(transferId, entry.blob_id);
-
-      downloadProgress = { ...downloadProgress, [entry.blob_id]: 80 };
+      const encrypted = await downloadFile(
+        transferId,
+        entry.blob_id,
+        (bytes) =>
+          (downloadProgress = {
+            ...downloadProgress,
+            [entry.blob_id]: Math.min(99, Math.floor((bytes / (entry.size + 28)) * 100)),
+          }),
+        signal,
+      );
+      if (signal.aborted || disposed) return;
       const plaintext = await decrypt(key, encrypted);
+      if (signal.aborted || disposed) return;
       validateDownloadedSize(plaintext, entry);
 
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 100 };
@@ -118,7 +159,10 @@
         downloadProgress = rest;
       }, 1000);
     } catch (err) {
-      errorMessage = err instanceof Error && err.message ? err.message : "Download failed";
+      errorMessage =
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Saving stopped. You can retry the same files."
+          : "Could not save files. Check your connection and try Save files again.";
       const { [entry.blob_id]: _, ...rest } = downloadProgress;
       downloadProgress = rest;
     }
@@ -127,6 +171,8 @@
   async function downloadAllAsZip() {
     if (!manifest) return;
 
+    controller = new AbortController();
+    const signal = controller.signal;
     status = "downloading";
     errorMessage = "";
     try {
@@ -139,8 +185,17 @@
       for (let i = 0; i < manifest.files.length; i++) {
         const entry = manifest.files[i];
         assertFileSize(entry.size);
-        const encrypted = await downloadFile(transferId, entry.blob_id);
+        currentFile = entry.name;
+        downloadBytes = 0;
+        const encrypted = await downloadFile(
+          transferId,
+          entry.blob_id,
+          (bytes) => (downloadBytes = bytes),
+          signal,
+        );
+        if (signal.aborted || disposed) return;
         const plaintext = await decrypt(key, encrypted);
+        if (signal.aborted || disposed) return;
         validateDownloadedSize(plaintext, entry);
         const name = entry.name.split(/[\\/]/).pop() || "file";
         zipData[`${i + 1}-${name}`] = new Uint8Array(plaintext);
@@ -152,13 +207,17 @@
       status = "ready";
     } catch (err) {
       status = "ready";
-      errorMessage = err instanceof Error && err.message ? err.message : "Download failed";
+      errorMessage =
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Saving stopped. You can retry the same files."
+          : "Could not save files. Check your connection and try Save files again.";
     }
   }
 </script>
 
+<svelte:window onbeforeunload={unload} />
 <svelte:head>
-  <title>Download Files</title>
+  <title>Save files · {BRAND}</title>
 </svelte:head>
 
 {#if status === "loading"}
@@ -168,17 +227,24 @@
   </section>
 {:else if status === "error"}
   <section class="center">
-    <h1>Something went wrong</h1>
-    <p class="error">{errorMessage}</p>
+    <h1>Cannot open files</h1>
+    <p class="error" role="alert">{errorMessage}</p>
+    <button
+      onclick={() => {
+        status = "loading";
+        void load();
+      }}>Reconnect</button
+    >
   </section>
 {:else if status === "downloading"}
   <section class="center">
     <div class="spinner"></div>
-    <p>Downloading and decrypting files...</p>
+    <p>Saving {currentFile} · {formatSize(downloadBytes)} received</p>
+    <button onclick={() => controller?.abort()}>Cancel saving</button>
   </section>
 {:else if manifest}
   <section>
-    <h1>Your Files</h1>
+    <h1>Save files</h1>
     <p class="subtitle">
       {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
       {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
@@ -194,12 +260,12 @@
           <button
             class="btn"
             onclick={() => downloadSingleFile(entry)}
-            disabled={entry.blob_id in downloadProgress}
+            disabled={Object.keys(downloadProgress).length > 0}
           >
             {#if entry.blob_id in downloadProgress}
               {downloadProgress[entry.blob_id]}%
             {:else}
-              Download
+              {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save files"}
             {/if}
           </button>
         </li>
@@ -207,23 +273,34 @@
     </ul>
 
     {#if manifest.files.length > 1}
-      <button class="btn primary" onclick={downloadAllAsZip}>Download All as ZIP</button>
+      <p class="muted small">
+        ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
+      </p>
+      <button
+        class="primary"
+        disabled={Object.keys(downloadProgress).length > 0 ||
+          manifest.files.reduce((n, f) => n + f.size, 0) > MAX_BUFFERED_BYTES}
+        onclick={downloadAllAsZip}>Save all as ZIP</button
+      >
     {/if}
 
+    {#if Object.keys(downloadProgress).length}<button onclick={() => controller?.abort()}
+        >Cancel saving</button
+      >{/if}
     {#if errorMessage}
       <p class="error" role="alert">{errorMessage}</p>
     {/if}
 
     {#if allFilesDownloaded}
       <div class="download-confirmation" role="status">
-        <p>All files downloaded and decrypted.</p>
+        <p>All files handed to your browser. Check its Downloads list for saved files.</p>
         {#if confirmation === "sending"}
           <p>Notifying the sender...</p>
         {:else if confirmation === "confirmed"}
           <p>Sender notified.</p>
         {:else if confirmation === "failed"}
           <p>Files downloaded, but the sender could not be notified.</p>
-          <button class="btn" onclick={confirmDownload}>Retry Confirmation</button>
+          <button class="btn" onclick={confirmDownload}>Retry confirmation</button>
         {/if}
       </div>
     {/if}
@@ -231,122 +308,13 @@
 {/if}
 
 <style>
-  h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-
-  .subtitle {
-    color: #666;
-    margin-bottom: 1.5rem;
-  }
-
-  .center {
-    text-align: center;
-    padding-top: 4rem;
-  }
-
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #e5e5e5;
-    border-top-color: #1a1a1a;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 1rem;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .file-list {
-    list-style: none;
-    margin: 1rem 0;
-  }
-
-  .file-list li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid #eee;
-    gap: 0.75rem;
-  }
-
-  .file-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .file-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.9375rem;
-  }
-
-  .file-size {
-    color: #888;
-    font-size: 0.8125rem;
-  }
-
-  .btn {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    background: #fff;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition:
-      background 0.15s,
-      border-color 0.15s;
-  }
-
-  .btn:hover:not(:disabled) {
-    background: #f5f5f5;
-  }
-
-  .btn:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  .btn.primary {
-    background: #1a1a1a;
-    color: #fff;
-    border-color: #1a1a1a;
-    width: 100%;
-    padding: 0.625rem;
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
-  }
-
-  .btn.primary:hover {
-    background: #333;
-  }
-
-  .error {
-    color: #d33;
-    margin-top: 0.75rem;
-    font-size: 0.9375rem;
-  }
-
   .download-confirmation {
-    margin-top: 1.5rem;
-    font-size: 0.875rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--accent);
+    border-radius: 8px;
   }
-
-  .download-confirmation p {
-    margin-bottom: 0.5rem;
+  .file-name {
+    word-break: break-word;
   }
 </style>

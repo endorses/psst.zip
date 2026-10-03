@@ -69,7 +69,7 @@ async function prepareDownload(
 
 async function downloadIndividual(page: Page, index: number) {
   const button = page.locator(".file-list li").nth(index).getByRole("button");
-  await expect(button).toHaveText("Download");
+  await expect(button).toHaveText(/Save files|Save again/);
   const download = page.waitForEvent("download");
   await button.click();
   await download;
@@ -79,7 +79,7 @@ test("manifest viewing and repeated partial downloads do not acknowledge the tra
   page,
 }) => {
   const transfer = await prepareDownload(page);
-  await expect(page.getByRole("heading", { name: "Your Files" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Save files" })).toBeVisible();
   expect(transfer.acknowledgments()).toBe(0);
   expect(transfer.blobRequests()).toBe(0);
   await downloadIndividual(page, 0);
@@ -90,7 +90,9 @@ test("manifest viewing and repeated partial downloads do not acknowledge the tra
   expect(transfer.acknowledgments()).toBe(1);
   await downloadIndividual(page, 0);
   expect(transfer.acknowledgments()).toBe(1);
-  await expect(page.getByText("All files downloaded and decrypted.")).toBeVisible();
+  await expect(
+    page.getByText("All files handed to your browser. Check its Downloads list for saved files."),
+  ).toBeVisible();
 });
 
 test("ZIP acknowledgment follows decryption and browser handoff of every file", async ({
@@ -98,7 +100,7 @@ test("ZIP acknowledgment follows decryption and browser handoff of every file", 
 }) => {
   const transfer = await prepareDownload(page);
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download All as ZIP" }).click();
+  await page.getByRole("button", { name: "Save all as ZIP" }).click();
   expect((await download).suggestedFilename()).toBe("files.zip");
   await expect(page.getByText("Sender notified.", { exact: true })).toBeVisible();
   expect(transfer.blobRequests()).toBe(2);
@@ -109,7 +111,7 @@ test("wrong decryption keys never acknowledge even when metadata is accessible",
   page,
 }) => {
   const transfer = await prepareDownload(page, { wrongKey: true });
-  await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cannot open files" })).toBeVisible();
   expect(transfer.blobRequests()).toBe(0);
   expect(transfer.downloads()).toBe(0);
   expect(transfer.acknowledgments()).toBe(0);
@@ -124,7 +126,7 @@ for (const failure of ["corruptFile", "wrongSize", "failedFile"] as const) {
     expect(transfer.acknowledgments()).toBe(0);
     expect(transfer.downloads()).toBe(1);
 
-    await page.getByRole("button", { name: "Download All as ZIP" }).click();
+    await page.getByRole("button", { name: "Save all as ZIP" }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     expect(transfer.acknowledgments()).toBe(0);
     expect(transfer.downloads()).toBe(1);
@@ -134,7 +136,7 @@ for (const failure of ["corruptFile", "wrongSize", "failedFile"] as const) {
 test("failed acknowledgments retry without downloading files again", async ({ page }) => {
   const transfer = await prepareDownload(page, { count: 1, failAcknowledgment: true });
   await downloadIndividual(page, 0);
-  const retry = page.getByRole("button", { name: "Retry Confirmation" });
+  const retry = page.getByRole("button", { name: "Retry confirmation" });
   await expect(retry).toBeVisible();
   await expect(
     page.getByText("Files downloaded, but the sender could not be notified."),
@@ -155,8 +157,8 @@ test("failed browser handoff never acknowledges decrypted files", async ({ page 
       throw new Error("Browser handoff failed");
     };
   });
-  await page.getByRole("button", { name: "Download", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Browser handoff failed");
+  await page.getByRole("button", { name: "Save files", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not save files");
   expect(transfer.acknowledgments()).toBe(0);
   expect(transfer.downloads()).toBe(0);
 });

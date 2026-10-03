@@ -1,6 +1,6 @@
 version: 2
 
-project_name: psst
+project_name: psst.zip
 
 before:
   hooks:

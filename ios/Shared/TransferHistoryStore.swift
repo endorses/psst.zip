@@ -1,54 +1,121 @@
 import Foundation
 
-/// Persists transfer history in App Group UserDefaults.
+/// Each mutation rereads the shared file under a coordinator so the extension cannot overwrite main-app history.
 @Observable
+@MainActor
 final class TransferHistoryStore {
     private(set) var records: [TransferRecord] = []
-
+    private let defaults: UserDefaults
+    private let fileURL: URL?
     init() {
-        load()
+        defaults = AppConstants.sharedDefaults
+        fileURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json")
+        // Preserve the pre-account server for old received records that never stored their own URL.
+        if defaults.string(forKey: "legacyHistoryServerURL") == nil,
+           defaults.data(forKey: AppConstants.transferHistoryKey) != nil,
+           let original = defaults.string(forKey: AppConstants.serverURLKey)
+        {
+            defaults.set(original, forKey: "legacyHistoryServerURL")
+        }
+        reload()
     }
 
-    func add(_ record: TransferRecord) {
-        records.insert(record, at: 0)
-        save()
+    private func decoder() -> JSONDecoder {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
     }
 
-    func update(_ record: TransferRecord) {
-        if let index = records.firstIndex(where: { $0.id == record.id }) {
-            records[index] = record
-            save()
+    private func encoder() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }
+
+    private func read() throws -> [TransferRecord] {
+        let data: Data? = if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+            try Data(contentsOf: fileURL)
+        } else {
+            defaults.data(forKey: AppConstants.transferHistoryKey)
+        }
+        guard let data else { return [] }
+        var values = try decoder().decode([TransferRecord].self, from: data)
+        for index in values.indices where values[index].ownerID == nil && values[index].serverURL == nil {
+            if var origin = URLComponents(string: values[index].shareURL ?? "") {
+                origin.path = ""
+                origin.query = nil
+                origin.fragment = nil
+                values[index].serverURL = try? AccountHTTP.origin(origin.string ?? "")
+            }
+            if values[index].serverURL == nil,
+               let original = defaults.string(forKey: "legacyHistoryServerURL")
+            {
+                values[index].serverURL = try? AccountHTTP.origin(original)
+            }
+        }
+        return values
+    }
+
+    func reload() {
+        // Keep the last successful read during a transient filesystem failure; writes always throw.
+        if let values = try? read() {
+            records = values
         }
     }
 
-    func remove(at offsets: IndexSet) {
-        records.remove(atOffsets: offsets)
-        save()
+    func visible(for session: DeviceSession?) -> [TransferRecord] {
+        guard let session else { return [] }
+        return records.filter { $0.canManage(as: session) }.sorted { $0.createdAt > $1.createdAt }
     }
 
-    func removeAll() {
-        records.removeAll()
-        save()
+    var legacyCount: Int {
+        records.filter { $0.ownerID == nil }.count
     }
 
-    // MARK: - Persistence
+    func add(_ record: TransferRecord) throws {
+        try update(record)
+    }
 
-    private func save() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(records) {
-            AppConstants.sharedDefaults.set(data, forKey: AppConstants.transferHistoryKey)
+    func update(_ record: TransferRecord) throws {
+        try mutate { values in
+            values.removeAll { $0.id == record.id && $0.serverURL == record.serverURL && $0.ownerID == record.ownerID }
+            values.insert(record, at: 0)
         }
     }
 
-    private func load() {
-        guard let data = AppConstants.sharedDefaults.data(forKey: AppConstants.transferHistoryKey) else {
-            return
+    func remove(_ record: TransferRecord) throws {
+        try mutate { $0.removeAll { $0.vaultID == record.vaultID } }
+        SecretStore.remove(record.vaultID)
+    }
+
+    private func mutate(_ change: (inout [TransferRecord]) -> Void) throws {
+        guard let fileURL else { throw AccountError.storage }
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var writeError: Error?
+        coordinator.coordinate(writingItemAt: fileURL, options: .forMerging, error: &coordinationError) { url in
+            do {
+                var values = try read()
+                change(&values)
+                try encoder().encode(values).write(to: url, options: [.atomic, .completeFileProtection])
+                records = values
+                defaults.removeObject(forKey: AppConstants.transferHistoryKey)
+            } catch { writeError = error }
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let decoded = try? decoder.decode([TransferRecord].self, from: data) {
-            records = decoded
+        if let coordinationError {
+            throw coordinationError
         }
+        if let writeError {
+            throw writeError
+        }
+    }
+
+    func revoke(_ record: TransferRecord, session: DeviceSession) async throws {
+        guard record.canManage(as: session), SecretStore.session == session else { throw AccountError.changed }
+        let path = (record.isSlot == true ? "slots/" : "transfers/") + record.id
+        _ = try await AccountHTTP.request(server: session.serverURL, path: path, method: "DELETE",
+                                          token: record.capabilities?.deletionToken ?? session.token)
+        guard SecretStore.session == session else { throw AccountError.changed }
+        try remove(record)
     }
 }

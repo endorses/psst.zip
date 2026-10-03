@@ -1,102 +1,93 @@
 import SwiftUI
 
 struct HomeView: View {
-    @Environment(ServerConfigManager.self) private var serverConfig
-    @Environment(TransferHistoryStore.self) private var historyStore
-
-    @State private var showDocumentPicker = false
-    @State private var sendViewModel: SendViewModel?
-    @State private var receiveViewModel: ReceiveViewModel?
-    @State private var navigateToSend = false
-    @State private var navigateToReceive = false
-
+    @Environment(ServerConfigManager.self) private var config
+    @Environment(TransferHistoryStore.self) private var history
+    @Environment(\.scenePhase) private var scenePhase
+    var receiving = false
+    @State private var picking = false
+    @State private var send: SendViewModel?
+    @State private var receive: ReceiveViewModel?
+    @State private var showing = false
+    @State private var error: String?
+    @State private var selected: [URL] = []
     var body: some View {
         NavigationStack {
-            VStack(spacing: 32) {
-                Spacer()
-
-                Image(systemName: "arrow.up.arrow.down.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundStyle(.tint)
-
-                Text("psst.zip")
-                    .font(.largeTitle.bold())
-
-                Text("End-to-end encrypted file transfer")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                VStack(spacing: 16) {
-                    Button {
-                        showDocumentPicker = true
-                    } label: {
-                        Label("Share Files", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                            .padding()
+            ScrollView {
+                VStack(spacing: 20) {
+                    Text("psst.zip").font(.largeTitle.bold())
+                    Text(LocalizedStringKey(receiving ? "Create a receive link for someone to send you files, nearby or elsewhere." : "Send encrypted files with a link or QR code, nearby or elsewhere."))
+                        .foregroundStyle(PsstTheme.secondary)
+                    Text("Each file can be up to 25 MiB. Files are encrypted automatically.").font(.footnote)
+                    if config.isConfigured, !config.needsSignIn {
+                        Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
+                            if receiving {
+                                createReceive()
+                            } else {
+                                picking = true
+                            }
+                        }.buttonStyle(PrimaryAction())
+                        if !selected.isEmpty, send == nil {
+                            Text(String(format: String(localized: "%lld files selected"), Int64(selected.count)))
+                            Button("Send files") { startSend() }.buttonStyle(PrimaryAction())
+                        }
+                        if send != nil || receive != nil {
+                            Button("Return to transfer") { showing = true }.frame(minHeight: 44)
+                        }
+                    } else {
+                        Text("Sign in to continue this task.").font(.headline)
+                        LoginFields()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-
-                    Button {
-                        startReceiving()
-                    } label: {
-                        Label("Receive Files", systemImage: "square.and.arrow.down")
-                            .frame(maxWidth: .infinity)
-                            .padding()
+                    if let error {
+                        Text(error).foregroundStyle(PsstTheme.error)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
+                }.padding(24).frame(maxWidth: 600)
+            }
+            .navigationTitle(LocalizedStringKey(receiving ? "Receive" : "Send"))
+            .navigationDestination(isPresented: $showing) {
+                TransferDetailView(sendViewModel: send, receiveViewModel: receive)
+            }
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                do {
+                    let urls = try result.get()
+                    _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
+                    selected = urls
+                    startSend()
+                } catch { self.error = String(localized: "Could not select these files. Check access and the 25 MiB per-file limit.") }
+            }
+            .onChange(of: config.accountID) { old, next in
+                if old != nil, old != next {
+                    send?.clearForAccountChange()
+                    receive?.cancelSaving()
+                    send = nil
+                    receive = nil
+                    selected = []
+                    showing = false
                 }
-                .padding(.horizontal, 32)
-
-                Spacer()
             }
-            .navigationTitle("")
-            .fileImporter(
-                isPresented: $showDocumentPicker,
-                allowedContentTypes: [.item],
-                allowsMultipleSelection: true
-            ) { result in
-                handlePickedFiles(result)
-            }
-            .navigationDestination(isPresented: $navigateToSend) {
-                if let sendViewModel {
-                    TransferDetailView(sendViewModel: sendViewModel)
+            .onChange(of: scenePhase) { _, next in
+                if next == .background {
+                    send?.stop()
+                    receive?.cancelSaving()
                 }
             }
-            .navigationDestination(isPresented: $navigateToReceive) {
-                if let receiveViewModel {
-                    TransferDetailView(receiveViewModel: receiveViewModel)
-                }
-            }
-        }
+        }.modifier(PsstStyle())
     }
 
-    private func handlePickedFiles(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result, !urls.isEmpty else { return }
-        let vm = SendViewModel(
-            fileURLs: urls,
-            serverConfig: serverConfig,
-            historyStore: historyStore
-        )
-        sendViewModel = vm
-        navigateToSend = true
-        Task {
-            await vm.startUpload()
-        }
+    private func startSend() {
+        guard !selected.isEmpty else { return }
+        let vm = SendViewModel(fileURLs: selected, serverConfig: config, historyStore: history)
+        send = vm
+        receive = nil
+        showing = true
+        vm.start()
     }
 
-    private func startReceiving() {
-        let vm = ReceiveViewModel(
-            serverConfig: serverConfig,
-            historyStore: historyStore
-        )
-        receiveViewModel = vm
-        navigateToReceive = true
-        Task {
-            await vm.createDropSlot()
-        }
+    private func createReceive() {
+        let vm = ReceiveViewModel(serverConfig: config, historyStore: history)
+        receive = vm
+        send = nil
+        showing = true
+        Task { await vm.createDropSlot() }
     }
 }

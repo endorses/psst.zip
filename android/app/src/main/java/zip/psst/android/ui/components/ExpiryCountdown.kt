@@ -9,28 +9,28 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
+import zip.psst.android.R
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 @Composable
-fun ExpiryCountdown(
-    expiresAt: String?,
-    modifier: Modifier = Modifier,
-) {
+fun ExpiryCountdown(expiresAt: String?, modifier: Modifier = Modifier) {
     if (expiresAt == null) return
 
-    val expiryInstant = remember(expiresAt) {
-        try {
-            Instant.from(DateTimeFormatter.ISO_DATE_TIME.parse(expiresAt))
-        } catch (_: Exception) {
+    val expiryInstant =
+        remember(expiresAt) {
             try {
-                Instant.parse(expiresAt)
+                Instant.from(DateTimeFormatter.ISO_DATE_TIME.parse(expiresAt))
             } catch (_: Exception) {
-                null
+                try {
+                    Instant.parse(expiresAt)
+                } catch (_: Exception) {
+                    null
+                }
             }
-        }
-    } ?: return
+        } ?: return
 
     var remainingSeconds by remember { mutableLongStateOf(0L) }
 
@@ -44,29 +44,31 @@ fun ExpiryCountdown(
         }
     }
 
-    val text = if (remainingSeconds <= 0) {
-        "Expired"
-    } else {
-        val hours = remainingSeconds / 3600
-        val minutes = (remainingSeconds % 3600) / 60
-        val seconds = remainingSeconds % 60
-        if (hours > 0) {
-            String.format("Expires in %dh %02dm", hours, minutes)
-        } else if (minutes > 0) {
-            String.format("Expires in %dm %02ds", minutes, seconds)
+    val text =
+        if (remainingSeconds <= 0) {
+            stringResource(R.string.expired)
         } else {
-            String.format("Expires in %ds", seconds)
+            val hours = remainingSeconds / 3600
+            val minutes = (remainingSeconds % 3600) / 60
+            val seconds = remainingSeconds % 60
+            if (hours > 0) {
+                stringResource(R.string.expires_hours, hours)
+            } else if (minutes > 0) {
+                stringResource(R.string.expires_minutes, minutes)
+            } else {
+                stringResource(R.string.expires_seconds, seconds)
+            }
         }
-    }
 
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
-        color = if (remainingSeconds <= 300) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
+        color =
+            if (remainingSeconds <= 300) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
         modifier = modifier,
     )
 }

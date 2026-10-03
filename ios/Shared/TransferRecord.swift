@@ -1,20 +1,9 @@
 import Foundation
 
-/// The direction of a transfer from the user's perspective.
-enum TransferDirection: String, Codable {
-    case sent
-    case received
-}
+enum TransferDirection: String, Codable { case sent, received }
+enum TransferState: String, Codable { case inProgress, complete, expired, failed, downloaded, started, saved, revoked }
 
-/// The current state of a transfer record.
-enum TransferState: String, Codable {
-    case inProgress
-    case complete
-    case expired
-    case failed
-}
-
-/// A locally-stored record of a transfer or drop slot for history display.
+/// Optional fields preserve decoding of installed users' original history.
 struct TransferRecord: Identifiable, Codable {
     let id: String
     let direction: TransferDirection
@@ -24,20 +13,66 @@ struct TransferRecord: Identifiable, Codable {
     var fileCount: Int
     var totalSize: Int64
     var shareURL: String?
-
-    /// Human-readable summary of file count and size.
-    var summary: String {
-        let sizeString = ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
-        if fileCount == 1 {
-            return "1 file (\(sizeString))"
+    var serverURL: String? = nil
+    var ownerID: String? = nil
+    var title: String? = nil
+    var isSlot: Bool? = nil
+    var savedFiles: [String: String]? = nil
+    var savedTransfers: [String]? = nil
+    var statusText: String {
+        if isExpired {
+            return String(localized: "Expired")
         }
-        return "\(fileCount) files (\(sizeString))"
+        switch state {
+        case .inProgress: return isSlot == true ? String(localized: "Waiting for files") : String(localized: "Uploading")
+        case .complete: return isSlot == true ? String(localized: "Files received") : String(localized: "Ready to download")
+        case .downloaded: return String(localized: "Downloaded")
+        case .started: return String(localized: "Download started")
+        case .saved: return String(localized: "Files saved locally")
+        case .expired: return String(localized: "Expired")
+        case .revoked: return String(localized: "Revoked")
+        case .failed: return String(localized: "Upload stopped")
+        }
+    }
+
+    var summary: String {
+        String(format: String(localized: "%lld files · %@"), Int64(fileCount), ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+    }
+
+    var displayTitle: String {
+        title ?? (isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files"))
     }
 
     var isExpired: Bool {
-        if let expiresAt {
-            return expiresAt < Date()
-        }
-        return state == .expired
+        expiresAt.map { $0 < Date() } ?? (state == .expired)
     }
+
+    var vaultID: String {
+        "resource|" + (serverURL ?? "legacy") + "|" + (ownerID ?? "legacy") + "|" + id
+    }
+
+    var capabilities: ResourceSecrets? {
+        guard let data = SecretStore.read(vaultID) else { return nil }
+        return try? JSONDecoder().decode(ResourceSecrets.self, from: data)
+    }
+
+    var fullLink: String? {
+        capabilities?.link ?? shareURL
+    }
+
+    func saveSecrets(link: String?, deletionToken: String?) throws {
+        try SecretStore.write(JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken)), name: vaultID)
+    }
+
+    func belongs(to session: DeviceSession) -> Bool {
+        serverURL == session.serverURL && ownerID == session.userID
+    }
+
+    func canManage(as session: DeviceSession) -> Bool {
+        belongs(to: session) || (ownerID == nil && session.role == "admin" && serverURL == session.serverURL)
+    }
+}
+
+struct ResourceSecrets: Codable { let link: String?
+    let deletionToken: String?
 }

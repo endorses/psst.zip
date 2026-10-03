@@ -4,6 +4,8 @@ import zip.psst.shared.api.ApiClient
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.FileMetadata
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Authentication, size checks, and every write must succeed before the durable save and ack. */
@@ -15,10 +17,17 @@ internal suspend fun receiveAndSaveChild(
     saveFile: suspend (FileMetadata, ByteArray) -> Unit,
     recordSaved: suspend (ReceivedChild) -> Unit,
     onFileSaved: () -> Unit = {},
+    alreadySaved: Set<String> = emptySet(),
+    recordFileSaved: suspend (String) -> Unit = {},
 ) {
     require(files.isNotEmpty()) { "Transfer contains no files" }
     var savedBytes = 0L
     for (file in files) {
+        if (file.blobId in alreadySaved) {
+            savedBytes += file.size
+            onFileSaved()
+            continue
+        }
         val encrypted = client.transfers.downloadFile(transferId, file.blobId)
         require(encrypted.size >= 28) { "Encrypted file is incomplete" }
         val plaintext =
@@ -29,6 +38,7 @@ internal suspend fun receiveAndSaveChild(
             )
         require(plaintext.size.toLong() == file.size) { "Manifest file size mismatch" }
         saveFile(file, plaintext)
+        withContext(NonCancellable) { recordFileSaved(file.blobId) }
         savedBytes += plaintext.size
         onFileSaved()
     }

@@ -6,5 +6,9 @@
 	<array>
 		<string>group.zip.psst.ios</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)zip.psst.ios.shared</string>
+	</array>
 </dict>
 </plist>

@@ -228,6 +228,82 @@ class HistoryTest {
         assertEquals(saved, refreshHistoryEntry(dao, "slot") { ApiClient(it, http) })
     }
 
+    @Test
+    fun durablePerFileSavesSurviveStaleMetadataAndDuplicateRecording() =
+        kotlinx.coroutines.test.runTest {
+            val row =
+                TransferHistoryEntity("slot", "received", 0, 0, "https://host", "key", "waiting")
+            val dao = MemoryDao(row)
+            dao.recordSavedFile("slot", "child/blob-a")
+            dao.recordSavedFile("slot", "child/blob-a")
+            dao.mergeReceived("slot", ReceivedSnapshot(mapOf("child" to ReceivedChild(2))))
+            val stored = dao.getById("slot")!!
+            assertEquals(
+                setOf("child/blob-a"),
+                kotlinx.serialization.json.Json.decodeFromString<Set<String>>(
+                    stored.savedFileIdsJson
+                ),
+            )
+            assertEquals(1, stored.savedFileCount())
+            assertEquals("has_uploads", stored.status)
+        }
+
+    @Test
+    fun legacySavedChildrenStillReportTheirSavedFileCount() {
+        val row = TransferHistoryEntity("slot", "received", 0, 0, "https://host", "key", "waiting")
+        val saved =
+            mergeReceivedHistory(
+                row,
+                ReceivedSnapshot(mapOf("child" to ReceivedChild(3, 99))),
+                saved = true,
+            )
+        assertEquals(3, saved.savedFileCount())
+    }
+
+    @Test
+    fun absenceVerificationMarksOnlyConfirmedMissingLinksUnavailable() =
+        kotlinx.coroutines.test.runTest {
+            for (missing in listOf(true, false)) {
+                val row =
+                    TransferHistoryEntity(
+                        "sent",
+                        "sent",
+                        1,
+                        12,
+                        "https://host",
+                        "",
+                        "complete",
+                        accountId = "alice",
+                    )
+                val dao = MemoryDao(row)
+                val http =
+                    io.ktor.client.HttpClient(io.ktor.client.engine.mock.MockEngine) {
+                        expectSuccess = true
+                        engine {
+                            dispatcher =
+                                kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+                            addHandler {
+                                if (!missing) throw java.io.IOException("Offline")
+                                respond("", io.ktor.http.HttpStatusCode.NotFound)
+                            }
+                        }
+                    }
+                var failed = false
+                try {
+                    refreshHistoryEntry(dao, row.id, reportFailure = true) {
+                        zip.psst.shared.api.ApiClient(it, http)
+                    }
+                } catch (_: java.io.IOException) {
+                    failed = true
+                }
+                assertEquals(
+                    if (missing) "unavailable" else "complete",
+                    dao.getById(row.id)?.status,
+                )
+                assertEquals(!missing, failed)
+            }
+        }
+
     private class MemoryDao(initial: TransferHistoryEntity) : TransferHistoryDao {
         private val rows = MutableStateFlow(listOf(initial))
 
@@ -243,6 +319,13 @@ class HistoryTest {
 
         override suspend fun update(entity: TransferHistoryEntity) {
             rows.value = rows.value.map { if (it.id == entity.id) entity else it }
+        }
+
+        override suspend fun setTitleIfEmpty(id: String, title: String) {
+            rows.value =
+                rows.value.map {
+                    if (it.id == id && it.title == null) it.copy(title = title) else it
+                }
         }
 
         override suspend fun updateStatus(id: String, status: String) {

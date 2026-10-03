@@ -1,4 +1,4 @@
-import { test, expect, signIn } from "./auth-fixture";
+import { test, expect, signIn, retryAuth } from "./auth-fixture";
 
 test("anonymous users cannot create transfers or receive links; public pages need no account", async ({
   playwright,
@@ -10,7 +10,7 @@ test("anonymous users cannot create transfers or receive links; public pages nee
   expect((await anonymous.post("/api/v1/slots")).status()).toBe(401);
   expect((await anonymous.get("/api/v1/auth/resources")).status()).toBe(401);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Sign in to Psst" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to psst.zip" })).toBeVisible();
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
   await anonymous.dispose();
 });
@@ -22,6 +22,7 @@ test("admin manages accounts; users cannot administer others and disabled sessio
   baseURL,
 }) => {
   await signIn(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Users", exact: true }).click();
   const username = `browser-${Date.now()}`;
   const password = "User-test-password-2026";
@@ -31,9 +32,11 @@ test("admin manages accounts; users cannot administer others and disabled sessio
   const row = page.locator("article").filter({ has: page.getByText(username, { exact: true }) });
   await expect(row).toBeVisible();
   const anonymous = await playwright.request.newContext({ baseURL });
-  const login = await anonymous.post("/api/v1/auth/login", {
-    data: { username, password, session_type: "device" },
-  });
+  const login = await retryAuth(() =>
+    anonymous.post("/api/v1/auth/login", {
+      data: { username, password, session_type: "device" },
+    }),
+  );
   expect(login.status()).toBe(200);
   const { token } = await login.json();
   const member = await playwright.request.newContext({
@@ -69,9 +72,10 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   await signIn(page);
   await page.getByRole("button", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
-  const link = await page.getByLabel("Receive link", { exact: true }).inputValue();
+  const link = await page.getByLabel("Full link", { exact: true }).inputValue();
   const id = new URL(link).pathname.split("/").pop()!;
-  await page.getByRole("button", { name: "Devices", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Connected devices", exact: true }).click();
   await expect(page.getByRole("img", { name: "Mobile app login QR code" })).toHaveCount(0);
   const pairingResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/auth/pairings") && r.request().method() === "POST",
@@ -80,19 +84,24 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   const pairing = await (await pairingResponse).json();
   await expect(page.getByRole("img", { name: "Mobile app login QR code" })).toBeVisible();
   const anonymous = await playwright.request.newContext({ baseURL });
-  const redeemed = await anonymous.post("/api/v1/auth/pairings/redeem", {
-    data: { code: pairing.code, device_name: "Paired test phone" },
-  });
+  const redeemed = await retryAuth(() =>
+    anonymous.post("/api/v1/auth/pairings/redeem", {
+      data: { code: pairing.code, device_name: "Paired test phone" },
+    }),
+  );
   expect(redeemed.status()).toBe(200);
   expect((await redeemed.json()).token).toBeTruthy();
   expect(
     (
-      await anonymous.post("/api/v1/auth/pairings/redeem", {
-        data: { code: pairing.code, device_name: "Replay" },
-      })
+      await retryAuth(() =>
+        anonymous.post("/api/v1/auth/pairings/redeem", {
+          data: { code: pairing.code, device_name: "Replay" },
+        }),
+      )
     ).ok(),
   ).toBe(false);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to psst.zip" })).toBeVisible();
   await page.goto(link);
   await expect(page.locator('input[type="file"]')).toBeEnabled();
   await page.locator('input[type="file"]').setInputFiles({
@@ -100,8 +109,8 @@ test("receive link survives logout; login QR is issued on demand; history revoke
     mimeType: "text/plain",
     buffer: Buffer.from("anonymous invited upload"),
   });
-  await page.getByRole("button", { name: /Encrypt & Upload/ }).click();
-  await expect(page.getByRole("heading", { name: /Upload Complete/i })).toBeVisible();
+  await page.getByRole("button", { name: "Send files", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Files sent" })).toBeVisible();
   await signIn(page);
   await page.getByRole("button", { name: "History", exact: true }).click();
   // Isolate our slot from other test-created history entries.

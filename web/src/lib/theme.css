@@ -1,0 +1,257 @@
+:root {
+  color-scheme: light;
+  --primary: #0f766e;
+  --on-primary: #fff;
+  --text: #172b2a;
+  --muted: #526561;
+  --background: #f6f8f7;
+  --surface: #fff;
+  --accent: #ddf4ec;
+  --border: #748681;
+  --error: #aa2734;
+  --error-bg: #fff0f1;
+  --warning: #765300;
+  --success: #246344;
+  --hover: #e8efec;
+  --elevated: #edf3f0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --primary: #5eead4;
+    --on-primary: #172b2a;
+    --text: #ecf5f1;
+    --muted: #b5c9c2;
+    --background: #0b1917;
+    --surface: #122321;
+    --accent: #1c403a;
+    --border: #76988e;
+    --error: #ffadb4;
+    --error-bg: #3b2027;
+    --warning: #f4d17a;
+    --success: #8ae2b0;
+    --hover: #24443e;
+    --elevated: #1b332e;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--background);
+  color: var(--text);
+  line-height: 1.55;
+}
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+h1 {
+  font-size: 1.65rem;
+  line-height: 1.25;
+}
+h2 {
+  font-size: 1.2rem;
+  margin-top: 1.5rem;
+}
+a {
+  color: var(--primary);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+.button {
+  min-height: 44px;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  text-decoration: none;
+}
+button:hover:not(:disabled),
+.button:hover {
+  background: var(--hover);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.primary,
+button[aria-current="page"] {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.primary:hover:not(:disabled),
+button[aria-current="page"]:hover:not(:disabled) {
+  background: var(--primary);
+  filter: brightness(0.9);
+}
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+input:not([type="checkbox"]),
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+label {
+  display: grid;
+  gap: 0.35rem;
+}
+form {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.muted,
+.subtitle,
+.hint,
+.file-size {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.error,
+.notice {
+  padding: 0.8rem;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+  margin: 1rem 0;
+}
+.error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+.notice {
+  background: var(--accent);
+  color: var(--text);
+}
+.danger {
+  color: var(--error);
+}
+.success {
+  color: var(--success);
+}
+.actions,
+.link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+.center {
+  text-align: center;
+  padding: 2rem 0;
+}
+.file-list {
+  list-style: none;
+  padding: 0;
+}
+.file-list li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-name,
+.file-info {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+.file-info {
+  display: grid;
+}
+.dropzone {
+  display: grid;
+  position: relative;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  margin: 1rem 0;
+}
+.dropzone:focus-within,
+.dropzone:hover {
+  background: var(--accent);
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+progress {
+  width: 100%;
+  height: 1rem;
+  accent-color: var(--primary);
+}
+details {
+  margin: 1rem 0;
+}
+summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 0.5rem 0;
+}
+.qr {
+  display: block;
+  width: 200px;
+  height: 200px;
+  max-width: 100%;
+  margin: 0.75rem auto;
+  background: white;
+  border-radius: 8px;
+  padding: 4px;
+  filter: none;
+}
+[hidden] {
+  display: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

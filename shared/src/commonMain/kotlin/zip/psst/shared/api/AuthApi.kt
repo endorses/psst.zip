@@ -5,6 +5,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -40,6 +41,7 @@ class PairingCode(
     val code: String,
 ) {
     companion object {
+        @Throws(Exception::class)
         fun parse(raw: String): PairingCode {
             require(raw.length <= 4096) { "This is not a server login QR code" }
             val pairing =
@@ -75,6 +77,20 @@ class AuthApi(
     private val config: ServerConfig,
     private val token: String? = null,
 ) {
+    /** Lists only the authenticated user's resources; never requests administrator-wide history. */
+    @Throws(Exception::class)
+    suspend fun resources(): AuthResources =
+        withTimeout(10_000L) {
+            val response =
+                client.get("${config.apiBaseUrl}/auth/resources") {
+                    expectSuccess = false
+                    token?.let { bearerAuth(it) }
+                }
+            response.checkAuthenticatedWrite()
+            response.body()
+        }
+
+    @Throws(Exception::class)
     suspend fun login(username: String, password: String, deviceName: String): AuthSession =
         exchange(
             "login",
@@ -86,6 +102,7 @@ class AuthApi(
             ),
         )
 
+    @Throws(Exception::class)
     suspend fun redeemPairing(code: String, deviceName: String): AuthSession =
         exchange("pairings/redeem", mapOf("code" to code, "device_name" to deviceName))
 
@@ -116,6 +133,7 @@ class AuthApi(
             }
         }
 
+    @Throws(Exception::class)
     suspend fun logout() =
         withTimeout(10_000L) {
             val response =

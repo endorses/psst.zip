@@ -99,3 +99,62 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 		t.Fatalf("reopen lost first acknowledgement: %+v %v", transfer, err)
 	}
 }
+
+func TestPairingTrackingMigrationPreservesOutstandingGrants(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "pairings.db")
+	legacy, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for version, migration := range migrations[:18] {
+		if _, err := legacy.Exec(migration); err != nil {
+			t.Fatal(err)
+		}
+		if version > 0 {
+			if _, err := legacy.Exec(`INSERT INTO schema_migrations(version) VALUES(?)`, version); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	q := NewQueries(legacy)
+	user := User{ID: "owner", Username: "owner", Role: "user", PasswordHash: []byte("hash")}
+	if err := q.CreateUser(user, false); err != nil {
+		t.Fatal(err)
+	}
+	session := Session{ID: "browser", UserID: user.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := q.CreateSession(session, []byte("browser-hash"), user.PasswordHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO pairings(code_hash,user_id,session_id,expires_at) VALUES(?,?,?,?)`, []byte("grant-hash"), user.ID, session.ID, time.Now().Add(time.Minute).UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	q = NewQueries(upgraded)
+	var id string
+	if err := upgraded.QueryRow(`SELECT id FROM pairings`).Scan(&id); err != nil || id == "" {
+		t.Fatalf("missing tracking ID %q %v", id, err)
+	}
+	status, err := q.PairingStatus(id, user.ID, session.ID)
+	if err != nil || status.Status != "pending" {
+		t.Fatalf("status %v %v", status, err)
+	}
+	phone := Session{ID: "phone", DeviceName: "Migrated phone", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	owner, err := q.RedeemPairing([]byte("grant-hash"), []byte("phone-hash"), phone)
+	if err != nil || owner.ID != user.ID {
+		t.Fatalf("legacy grant invalidated %v %v", owner, err)
+	}
+	status, err = q.PairingStatus(id, user.ID, session.ID)
+	if err != nil || status.Status != "connected" {
+		t.Fatalf("completion %v %v", status, err)
+	}
+	if _, err := q.RedeemPairing([]byte("grant-hash"), []byte("replay-hash"), phone); err == nil {
+		t.Fatal("legacy grant replay accepted")
+	}
+}

@@ -14,6 +14,8 @@ export interface Resource {
   id: string;
   status?: string;
   file_count?: number;
+  download_count?: number;
+  total_size?: number;
   downloaded_at?: string | null;
   expires_at: string;
   transfers?: { transfer_id: string; status: string; file_count: number }[];

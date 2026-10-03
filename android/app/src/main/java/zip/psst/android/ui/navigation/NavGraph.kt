@@ -2,12 +2,18 @@ package zip.psst.android.ui.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
 import zip.psst.android.PsstApplication
 import zip.psst.android.ui.screens.HistoryScreen
@@ -36,11 +42,32 @@ fun PsstNavGraph(
     navController: NavHostController,
     startDestination: String,
     sharedUris: List<Uri>,
+    onSharedUrisConsumed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
-    fun authenticatedRoute(route: String): String =
-        if (prefs.getSessionToken() != null) route else Routes.SERVER_CONFIG
+    var intendedRoute by remember {
+        mutableStateOf(if (sharedUris.isNotEmpty()) Routes.SEND else Routes.HOME)
+    }
+    var intendedAccess by remember { mutableStateOf(prefs.historyAccess.value) }
+    fun authenticatedRoute(route: String): String {
+        intendedRoute = route
+        intendedAccess = prefs.historyAccess.value
+        return if (prefs.getSessionToken() != null) route else Routes.SERVER_CONFIG
+    }
+    fun signInFor(route: String) {
+        intendedRoute = route
+        navController.navigate(Routes.SERVER_CONFIG)
+    }
+    val entry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(sharedUris) {
+        if (
+            sharedUris.isNotEmpty() &&
+                entry?.destination?.route !in listOf(Routes.SEND, Routes.SERVER_CONFIG)
+        ) {
+            navController.navigate(authenticatedRoute(Routes.SEND))
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -48,17 +75,33 @@ fun PsstNavGraph(
     ) {
         composable(Routes.SERVER_CONFIG) {
             ServerConfigScreen(
+                onBack = { if (!navController.popBackStack()) navController.navigate(Routes.HOME) },
                 onSignedOut = {
+                    intendedRoute = Routes.HOME
+                    intendedAccess = zip.psst.android.data.HistoryAccess()
                     navController.navigate(Routes.SERVER_CONFIG) {
                         popUpTo(navController.graph.id) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
                 onConfigured = {
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(navController.graph.id) { inclusive = true }
-                        launchSingleTop = true
-                    }
+                    val now = prefs.historyAccess.value
+                    val sameAccount =
+                        intendedAccess.accountId == null ||
+                            (intendedAccess.accountId == now.accountId &&
+                                intendedAccess.serverUrl == now.serverUrl)
+                    val destination = if (sameAccount) intendedRoute else Routes.HOME
+                    if (
+                        sameAccount &&
+                            navController.previousBackStackEntry?.destination?.route == destination
+                    )
+                        navController.popBackStack()
+                    else
+                        navController.navigate(destination) {
+                            popUpTo(navController.graph.id) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    intendedAccess = now
                 },
             )
         }
@@ -68,14 +111,19 @@ fun PsstNavGraph(
                 onShareFiles = { navController.navigate(authenticatedRoute(Routes.SEND)) },
                 onReceiveFiles = { navController.navigate(authenticatedRoute(Routes.RECEIVE)) },
                 onHistory = { navController.navigate(Routes.HISTORY) },
-                onSettings = { navController.navigate(Routes.SERVER_CONFIG) },
+                onSettings = {
+                    intendedRoute = Routes.HOME
+                    intendedAccess = prefs.historyAccess.value
+                    navController.navigate(Routes.SERVER_CONFIG)
+                },
             )
         }
 
         composable(Routes.SEND) {
             SendScreen(
                 sharedUris = sharedUris,
-                onSignIn = { navController.navigate(Routes.SERVER_CONFIG) },
+                onSharedUrisConsumed = onSharedUrisConsumed,
+                onSignIn = { signInFor(Routes.SEND) },
                 onTransferCreated = { transferId, key, type ->
                     navController.navigate(Routes.transferDetail(transferId, key, type)) {
                         popUpTo(Routes.HOME)
@@ -87,7 +135,7 @@ fun PsstNavGraph(
 
         composable(Routes.RECEIVE) {
             ReceiveScreen(
-                onSignIn = { navController.navigate(Routes.SERVER_CONFIG) },
+                onSignIn = { signInFor(Routes.RECEIVE) },
                 onSlotCreated = { slotId, key ->
                     navController.navigate(Routes.transferDetail(slotId, key, "receive")) {
                         popUpTo(Routes.HOME)
@@ -111,12 +159,22 @@ fun PsstNavGraph(
                 Uri.decode(backStackEntry.arguments?.getString("encryptionKey") ?: "")
             val type = backStackEntry.arguments?.getString("type") ?: "send"
 
-            TransferDetailScreen(
-                transferId = transferId,
-                encryptionKey = encryptionKey,
-                type = type,
-                onBack = { navController.popBackStack() },
-            )
+            if (type == "receive" || type == "received")
+                ReceiveScreen(
+                    existingId = transferId,
+                    onSlotCreated = { _, _ -> },
+                    onSignIn = {
+                        signInFor(Routes.transferDetail(transferId, encryptionKey, type))
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            else
+                TransferDetailScreen(
+                    transferId = transferId,
+                    encryptionKey = encryptionKey,
+                    type = type,
+                    onBack = { navController.popBackStack() },
+                )
         }
 
         composable(Routes.HISTORY) {

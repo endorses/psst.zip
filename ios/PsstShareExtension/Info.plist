@@ -24,7 +24,6 @@
 	<string>17.0</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Use the HTTP or HTTPS server configured in the containing app. -->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
@@ -47,5 +46,11 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.share-services</string>
 	</dict>
+	<key>SharedKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)zip.psst.ios.shared</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Scan a server login QR code to connect psst.zip to your account.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>psst.zip connects to the server you choose to send and receive encrypted files.</string>
 </dict>
 </plist>

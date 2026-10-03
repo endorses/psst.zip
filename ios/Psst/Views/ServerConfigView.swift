@@ -2,101 +2,46 @@ import SwiftUI
 
 struct ServerConfigView: View {
     @Environment(ServerConfigManager.self) private var serverConfig
+    @Environment(\.dismiss) private var dismiss
     var isInitialSetup = false
-
-    @State private var urlText = ""
-    @State private var isTesting = false
-    @State private var testResult: TestResult?
-    @State private var connectionTask: Task<Void, Never>?
-
-    enum TestResult {
-        case success
-        case failure(String)
-    }
-
     var body: some View {
         Form {
-            Section {
-                TextField("Server URL", text: $urlText)
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            } header: {
-                Text("Server")
-            } footer: {
-                Text("Enter your server's HTTP or HTTPS address, such as http://192.168.1.20. Use an address the other device can reach; shared links use it too.")
-            }
-
-            Section {
-                Button {
-                    connectionTask = Task { await testConnection(saveOnSuccess: false) }
-                } label: {
-                    HStack {
-                        Text("Test Connection")
-                        Spacer()
-                        if isTesting {
-                            ProgressView()
-                        }
-                    }
-                }
-                .disabled(urlText.isEmpty || isTesting)
-
-                if let testResult {
-                    switch testResult {
-                    case .success:
-                        Label("Connection successful", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    case let .failure(message):
-                        Label(message, systemImage: "xmark.circle.fill")
-                            .foregroundStyle(.red)
-                    }
+            if serverConfig.isConfigured {
+                Section("Account") {
+                    Text(serverConfig.indicator).textSelection(.enabled)
+                    LogoutButton()
                 }
             }
-
+            Section("Server login") { LoginFields() }
             Section {
-                Button("Save") {
-                    connectionTask = Task { await testConnection(saveOnSuccess: true) }
-                }
-                .disabled(urlText.isEmpty || isTesting)
-                .frame(maxWidth: .infinity)
+                Text("Use a server address other people can reach. Your files are encrypted automatically before upload.")
+                    .foregroundStyle(PsstTheme.secondary)
             }
         }
-        .navigationTitle(isInitialSetup ? "Welcome to Psst" : "Server Settings")
-        .onAppear {
-            urlText = serverConfig.serverURL
-        }
-        .onChange(of: urlText) { _, _ in
-            connectionTask?.cancel()
-            testResult = nil
-        }
-        .onDisappear {
-            connectionTask?.cancel()
+        .modifier(PsstStyle())
+        .navigationTitle(LocalizedStringKey(isInitialSetup ? "psst.zip" : "Settings"))
+        .toolbar {
+            if !isInitialSetup {
+                Button("Done") { dismiss() }
+            }
         }
     }
+}
 
-    @MainActor
-    private func testConnection(saveOnSuccess: Bool) async {
-        guard !isTesting, !Task.isCancelled else { return }
-        isTesting = true
-        testResult = nil
-        defer { isTesting = false }
-
-        let trimmed = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            try await serverConfig.testConnection(url: trimmed)
-            try Task.checkCancellation()
-            guard urlText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
-            testResult = .success
-            if saveOnSuccess {
-                serverConfig.serverURL = trimmed
+private struct LogoutButton: View {
+    @Environment(ServerConfigManager.self) private var config
+    @State private var error: String?
+    @State private var busy = false
+    var body: some View {
+        Button("Sign out", role: .destructive) {
+            busy = true
+            Task {
+                defer { busy = false }
+                do { try await config.logout() } catch { self.error = String(localized: "Could not revoke your session. Reconnect and retry signing out.") }
             }
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled else { return }
-            guard urlText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
-            testResult = .failure(error.localizedDescription)
+        }.disabled(busy)
+        if let error {
+            Text(error).foregroundStyle(PsstTheme.error)
         }
     }
 }

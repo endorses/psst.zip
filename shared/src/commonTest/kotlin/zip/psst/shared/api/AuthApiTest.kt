@@ -24,6 +24,36 @@ import kotlinx.serialization.json.Json
 
 class AuthApiTest {
     @Test
+    fun resourcesAreAuthenticatedAccountScopedAndContainNoLocalKeys() = runTest {
+        val client =
+            HttpClient(
+                MockEngine { request ->
+                    assertEquals("/api/v1/auth/resources", request.url.encodedPath)
+                    assertEquals("Bearer device-token", request.headers[HttpHeaders.Authorization])
+                    assertNull(request.url.parameters["all"])
+                    respond(
+                        """{"transfers":[{"id":"remote","status":"revoked","file_count":2}],"slots":[{"id":"receive","status":"has_uploads","transfers":[{"transfer_id":"child","status":"complete","file_count":3}]}]}""",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+            ) {
+                install(ContentNegotiation) { json() }
+            }
+        try {
+            val resources =
+                withContext(Dispatchers.Default) {
+                    AuthApi(client, ServerConfig("https://files.example.com"), "device-token")
+                        .resources()
+                }
+            assertEquals("revoked", resources.transfers.single().status)
+            assertEquals(3, resources.slots.single().transfers.single().fileCount)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun pairingAcceptsOnlyVersionedOriginAndSingleUseSecret() {
         val code = "a".repeat(43)
         val valid =

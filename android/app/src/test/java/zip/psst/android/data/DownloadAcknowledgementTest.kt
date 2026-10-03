@@ -133,6 +133,58 @@ class DownloadAcknowledgementTest {
     }
 
     @Test
+    fun partialSaveRetrySkipsPersistedFilesAndAcknowledgesOnlyAfterAllSaved() = runTest {
+        val savedFiles = mutableSetOf<String>()
+        val written = mutableListOf<String>()
+        val downloaded = mutableListOf<String>()
+        var failSecond = true
+        var acknowledgements = 0
+        var recorded = false
+        val client = client { request ->
+            if (request.method == HttpMethod.Post) {
+                acknowledgements++
+                respond("", HttpStatusCode.NoContent)
+            } else {
+                downloaded += request.url.encodedPath.substringAfterLast('/')
+                respond(encrypted())
+            }
+        }
+        suspend fun save() =
+            receiveAndSaveChild(
+                client,
+                "same-child",
+                listOf(
+                    FileMetadata("first", 3, blobId = "a"),
+                    FileMetadata("second", 3, blobId = "b"),
+                ),
+                key,
+                saveFile = { file, _ ->
+                    if (file.blobId == "b" && failSecond) error("Disk full")
+                    else written += file.blobId
+                },
+                recordSaved = { recorded = true },
+                alreadySaved = savedFiles.toSet(),
+                recordFileSaved = { savedFiles += it },
+            )
+        try {
+            try {
+                save()
+            } catch (_: IllegalStateException) {}
+            assertEquals(setOf("a"), savedFiles)
+            assertFalse(recorded)
+            assertEquals(0, acknowledgements)
+            failSecond = false
+            save()
+            assertEquals(listOf("a", "b"), written)
+            assertEquals(listOf("a", "b", "b"), downloaded)
+            assertTrue(recorded)
+            assertEquals(1, acknowledgements)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun failedAcknowledgementRetriesDurableSavedIdsWithoutDownloadingAgain() = runTest {
         var saved = row()
         var gets = 0

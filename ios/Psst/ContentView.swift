@@ -1,25 +1,34 @@
 import SwiftUI
 
 struct ContentView: View {
-    @Environment(ServerConfigManager.self) private var serverConfig
+    @Environment(ServerConfigManager.self) private var config
+    @Environment(TransferHistoryStore.self) private var history
     @Environment(\.scenePhase) private var scenePhase
-
+    @State private var settings = false
     var body: some View {
-        Group {
-            if serverConfig.isConfigured {
-                TabView {
-                    HomeView().tabItem { Label("Home", systemImage: "house") }
-                    HistoryView().tabItem { Label("History", systemImage: "clock") }
-                    ServerConfigView().tabItem { Label("Settings", systemImage: "gear") }
-                }
-            } else {
-                NavigationStack {
-                    ServerConfigView(isInitialSetup: true)
-                }
+        TabView {
+            HomeView(receiving: false).tabItem { Label("Send", systemImage: "square.and.arrow.up") }
+            HomeView(receiving: true).tabItem { Label("Receive", systemImage: "square.and.arrow.down") }
+            HistoryView().tabItem { Label("History", systemImage: "clock") }
+        }
+        .modifier(PsstStyle())
+        .safeAreaInset(edge: .top) {
+            HStack {
+                Text(config.indicator).font(.caption).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Button { settings = true } label: { Image(systemName: "gearshape").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Settings")
+            }.padding(.horizontal).background(PsstTheme.surface)
+        }
+        .onChange(of: config.needsSignIn) {
+            _, required in if required {
+                settings = true
             }
         }
+        .sheet(isPresented: $settings) { NavigationStack { ServerConfigView() } }
         .task(id: scenePhase) {
             if scenePhase == .active {
+                config.reload()
+                history.reload()
                 await DownloadAcknowledgements.shared.flush()
             }
         }

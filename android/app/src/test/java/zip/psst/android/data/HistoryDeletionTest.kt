@@ -39,6 +39,30 @@ class HistoryDeletionTest {
         )
 
     @Test
+    fun remoteHistoryWithoutKeyOrDeletionCapabilityUsesOwnerSession() = runTest {
+        val original = row(token = null).copy(encryptionKey = "")
+        val dao = MemoryDao(original)
+        val http =
+            HttpClient(MockEngine) {
+                engine {
+                    dispatcher = StandardTestDispatcher(testScheduler)
+                    addHandler { request ->
+                        assertEquals(
+                            "Bearer account-session",
+                            request.headers[HttpHeaders.Authorization],
+                        )
+                        assertEquals("original.example", request.url.host)
+                        respond("", HttpStatusCode.NoContent)
+                    }
+                }
+            }
+        revokeHistoryEntry(dao, original.id, { access }) { config ->
+            ApiClient(config, http, "account-session")
+        }
+        assertNull(dao.getById(original.id))
+    }
+
+    @Test
     fun revokeUsesSavedOriginAndCorrectResourceBeforeLocalRemoval() = runTest {
         for (type in listOf("sent", "received")) {
             for (code in listOf(204, 404)) {
@@ -80,7 +104,7 @@ class HistoryDeletionTest {
     @Test
     fun rejectedLegacyRevocationKeepsRowAndCanRetryWithoutAuthorization() = runTest {
         for (code in listOf(403, 405, 500)) {
-            val original = row(token = null)
+            val original = row(token = null).copy(accountId = null)
             val dao = MemoryDao(original)
             var attempts = 0
             suspend fun attempt() {
@@ -252,6 +276,13 @@ class HistoryDeletionTest {
 
         override suspend fun update(entity: TransferHistoryEntity) {
             rows.value = rows.value.map { if (it.id == entity.id) entity else it }
+        }
+
+        override suspend fun setTitleIfEmpty(id: String, title: String) {
+            rows.value =
+                rows.value.map {
+                    if (it.id == id && it.title == null) it.copy(title = title) else it
+                }
         }
 
         override suspend fun updateStatus(id: String, status: String) {

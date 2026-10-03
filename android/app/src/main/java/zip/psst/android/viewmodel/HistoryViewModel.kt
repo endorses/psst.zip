@@ -5,15 +5,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.historyRefreshBatch
 import zip.psst.android.data.refreshHistoryEntry
 import zip.psst.android.data.revokeHistoryEntry
+import zip.psst.android.data.syncAccountHistory
+import zip.psst.shared.api.ApiClient
+import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.LinkDeletionException
+import zip.psst.shared.model.ServerConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,9 +25,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 data class HistoryDeletionError(val id: String, val message: String)
 
@@ -44,6 +47,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _deletionError = MutableStateFlow<HistoryDeletionError?>(null)
     val deletionError = _deletionError.asStateFlow()
 
+    val offline = MutableStateFlow(false)
     private var refreshJob: Job? = null
     private val deleteJobs = mutableMapOf<String, Job>()
 
@@ -65,21 +69,51 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         refreshJob?.cancel()
         refreshJob =
             viewModelScope.launch(Dispatchers.IO) {
-                withTimeoutOrNull(20_000L) {
+                var offset = 0
+                while (isActive) {
                     val access = app.prefs.historyAccess.value
+                    val token = app.prefs.getSessionToken(access.serverUrl) ?: return@launch
+                    val client = ApiClient(ServerConfig(access.serverUrl), sessionToken = token)
+                    var failed = false
+                    var remoteIds = emptySet<String>()
+                    try {
+                        val resources = client.auth.resources()
+                        remoteIds =
+                            resources.transfers.map { it.id }.toSet() +
+                                resources.slots.map { it.id }
+                        if (app.prefs.historyAccess.value != access) return@launch
+                        syncAccountHistory(dao, resources, access) { app.prefs.historyAccess.value }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: AuthenticationRequiredException) {
+                        if (
+                            app.prefs.historyAccess.value == access &&
+                                app.prefs.getSessionToken(access.serverUrl) == token
+                        )
+                            app.prefs.clearSession()
+                        return@launch
+                    } catch (_: Exception) {
+                        failed = true
+                    } finally {
+                        client.close()
+                    }
                     val rows = dao.getAll().first().filter(access::permits)
-                    for (batch in rows.take(20).chunked(4)) {
-                        coroutineScope {
-                            batch
-                                .map { row ->
-                                    async {
-                                        if (app.prefs.historyAccess.value == access)
-                                            refreshHistoryEntry(dao, row.id)
-                                    }
-                                }
-                                .awaitAll()
+                    val batch =
+                        if (failed) emptyList() else historyRefreshBatch(rows, offset, remoteIds)
+                    offset += batch.size
+                    for (row in batch) {
+                        if (app.prefs.historyAccess.value != access) return@launch
+                        try {
+                            refreshHistoryEntry(dao, row.id, reportFailure = true)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            failed = true
+                            break
                         }
                     }
+                    offline.value = failed
+                    delay(if (failed) 15000 else 5000)
                 }
             }
     }
@@ -100,7 +134,12 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 try {
                     withContext(Dispatchers.IO) {
-                        revokeHistoryEntry(dao, id, { app.prefs.historyAccess.value })
+                        revokeHistoryEntry(dao, id, { app.prefs.historyAccess.value }) { config ->
+                            ApiClient(
+                                config,
+                                sessionToken = app.prefs.getSessionToken(config.normalizedBaseUrl),
+                            )
+                        }
                     }
                 } catch (error: CancellationException) {
                     throw error

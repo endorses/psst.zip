@@ -34,7 +34,7 @@ final class DownloadAcknowledgements {
         // Each request has a five-second timeout in the shared API.
         // Rotate unsuccessful entries so an offline host cannot starve other hosts.
         var attempted: [Pending] = []
-        for _ in 0..<4 {
+        for _ in 0 ..< 4 {
             guard !Task.isCancelled,
                   let receipt = pending.first(where: { !attempted.contains($0) }) else { return }
             attempted.append(receipt)

@@ -1,4 +1,4 @@
-# Psst
+# psst.zip
 
 Self-hosted, end-to-end encrypted file transfer. Share files between devices without trusting the server.
 
@@ -10,13 +10,37 @@ Self-hosted, end-to-end encrypted file transfer. Share files between devices wit
 4. The sender gets a link like `https://your-server/d/{id}#key` where the encryption key lives in the URL fragment (never sent to the server).
 5. The recipient opens the link, and the web app (or mobile app) decrypts everything in the browser/on-device.
 
-Drop slots work in reverse: the receiver creates a slot, shares its QR/link, and uploaders encrypt into it.
-The mobile receive screen displays the full upload link with **Copy Link** and
-**Share Link** actions, so the sender can also receive it through a message or email.
+Receive links work in reverse: choose **Receive**, create a link, and share its QR
+or use **Copy link** / **Share**. Anyone with that link can send files without an
+account, including people elsewhere who can reach your server. Return to the
+original link in History to see arrivals and choose **Save files**.
 
 Creating transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
 into a receive link remain accessible without signing in.
+
+## Everyday use
+
+**Send**, **Receive**, and **History** are the primary destinations. Account,
+connected-device, and administrator controls live under Settings. A receive item
+in History opens its existing link; retrying a save keeps that link and preserves
+files already saved. History stays scoped to the current account and server.
+
+Link screens put the QR and **Copy link** / **Share** actions first; expand details
+to inspect the complete URL. Missing encryption keys on another device are
+explained on the corresponding history entry. Revoking a link prevents further
+requests, but does not remove copies someone already saved.
+
+Uploads show preparation separately from transferred-byte progress. Web uploads
+remain visible when moving between the primary destinations; mobile navigation
+that would stop an active upload requires confirmation. The apps do not promise
+background transfers after the OS or share extension stops them. Failed cleanup
+remains actionable so a partially created resource can still be revoked.
+
+The interface follows system light/dark appearance, using deep teal primary
+actions, neutral surfaces, and dark-on-white QR codes in both themes. Statuses
+also use text, including the distinction between files received by the server,
+files saved locally, and a recipient-confirmed download.
 
 ## Architecture
 
@@ -53,9 +77,9 @@ For development on a trusted LAN, explicitly set `PSST_DOMAIN=:80`,
 HTTP exposes login credentials and sessions to network observers; use HTTPS
 for normal hosting. Authentication is still required in development mode.
 
-Open the public address and sign in. In Android server settings, enter that same
+Open the public address and sign in. In Android or iOS server settings, enter that same
 address, without `/api/v1`, and your username/password. Alternatively, sign in on
-the website, choose **Connect mobile app**, and scan its QR from Android server
+the website, choose **Connect mobile app**, and scan its QR from the app’s server
 settings to configure and sign in automatically. Allow the app through any phone
 firewall.
 Generated links then open the download page directly; recipients do not need to
@@ -80,12 +104,15 @@ resources. Ordinary users manage their own transfers and receive slots. Password
 resets and disabling an account invalidate its sessions and unused pairing codes.
 The last enabled administrator cannot be disabled.
 
-The website uses an HttpOnly session cookie; Android stores its separate session
-encrypted with Android Keystore. Passwords are not saved in the app. Connected
+The website uses an HttpOnly session cookie. Android stores its device session
+encrypted with Android Keystore; iOS uses Keychain, with a shared access group for
+the main app and share extension. Passwords are not saved in either app. Connected
 device sessions can be revoked from the website. A pairing QR is a short-lived,
 single-use login grant: display it only when connecting a device. It contains no
 password or browser session token, but whoever redeems it first gets access to
-that account.
+that account. The website shows **Phone connected** after redemption. Canceling
+an unused code or replacing it invalidates that grant; if a phone connected first,
+revoke its session from **Connected devices** instead.
 
 History from the server includes resource metadata, never encryption keys.
 The browser remembers links it created locally, scoped to the signed-in account.
@@ -97,10 +124,10 @@ automatically be assigned to an account; admins can manage them and existing
 private deletion tokens remain usable. Receive links created before accounts
 must be recreated after signing in before they can accept further uploads;
 their already-uploaded files remain downloadable. Older apps cannot create transfers once authentication is
-required. Account login and pairing are implemented in Android and the web UI;
-the iOS login UI has not yet been updated.
+required. Account login and pairing are available in the web UI and both mobile
+apps. See the iOS build and device validation requirements below.
 
-Android keeps new local history scoped to the signed-in account and server.
+Both mobile apps keep new local history scoped to the signed-in account and server.
 Local history from before accounts existed is visible only to an administrator
 signed in on its original server; this does not assign server ownership to those
 records. Signing out hides account history, and signing into a different account
@@ -202,7 +229,7 @@ its allowance, cleanup removes the encrypted file blobs; transfer metadata and t
 encrypted manifest remain until the original expiry so download confirmations can
 still be recorded and read.
 Expired resources are rejected immediately and their stored data is removed periodically.
-Deleting Android history revokes the transfer on its original server before
+Choosing **Revoke and delete** in mobile history revokes the transfer on its original server before
 removing the local record. Deleting a receive entry revokes its upload slot and
 all child transfers. A failed request keeps the entry so deletion can be retried.
 Files already saved by a recipient are unaffected, and an already-open download
@@ -221,7 +248,7 @@ identity. Operators may set `ALLOW_LEGACY_DELETION=true` to allow deletion of
 those older resources by ID; anyone with an old link can then revoke it. This
 compatibility option defaults to `false` and never bypasses token checks on new
 resources. Older client versions that discard creation tokens cannot later revoke
-their protected transfers. iOS history removal currently remains local.
+their protected transfers.
 
 After downloading and successfully decrypting every file, a receiver sends
 `POST /api/v1/transfers/{id}/downloaded` with an empty body. This idempotent endpoint
@@ -231,7 +258,7 @@ alone do not set it. Confirmations report client success; they do not independen
 prove the recipient saved or opened the files. No encryption key or plaintext is
 included in the confirmation.
 
-Android sent history distinguishes **Ready to download**, **Download started**
+Sent history distinguishes **Ready to download**, **Download started**
 (all files requested), and **Downloaded** (receiver confirmation). Native receivers
 confirm after saving their decrypted files. The browser confirms after handing the
 decrypted files or ZIP to its download mechanism; it cannot verify the subsequent

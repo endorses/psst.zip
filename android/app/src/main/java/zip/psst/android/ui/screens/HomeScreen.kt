@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Download
@@ -25,10 +27,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import zip.psst.android.PsstApplication
+import zip.psst.android.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,31 +46,42 @@ fun HomeScreen(
     onHistory: () -> Unit,
     onSettings: () -> Unit,
 ) {
+    val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
+    val access by prefs.historyAccess.collectAsState()
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("psst.zip") },
+                title = { Text(stringResource(R.string.app_name)) },
                 actions = {
                     IconButton(onClick = onHistory) {
-                        Icon(Icons.Default.History, contentDescription = "History")
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = stringResource(R.string.history),
+                        )
                     }
                     IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.settings),
+                        )
                     }
                 },
             )
-        },
+        }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
+            modifier =
+                Modifier.fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(padding)
+                    .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "What would you like to do?",
+                text =
+                    if (access.accountId != null) "${prefs.getUsername()} · ${access.serverUrl}"
+                    else stringResource(R.string.not_signed_in),
                 style = MaterialTheme.typography.headlineSmall,
             )
 
@@ -70,8 +89,8 @@ fun HomeScreen(
 
             ActionCard(
                 icon = Icons.AutoMirrored.Filled.Send,
-                title = "Share files",
-                description = "Encrypt and upload files, then share a download link via QR code",
+                title = stringResource(R.string.send_files),
+                description = stringResource(R.string.send_description),
                 onClick = onShareFiles,
             )
 
@@ -79,32 +98,30 @@ fun HomeScreen(
 
             ActionCard(
                 icon = Icons.Default.Download,
-                title = "Receive files",
-                description = "Generate a QR code so others can send files to you",
+                title = stringResource(R.string.receive_link),
+                description = stringResource(R.string.receive_description),
                 onClick = onReceiveFiles,
+            )
+            Spacer(Modifier.height(16.dp))
+            ActionCard(
+                Icons.Default.History,
+                stringResource(R.string.history),
+                stringResource(R.string.history_description),
+                onHistory,
             )
         }
     }
 }
 
 @Composable
-private fun ActionCard(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    onClick: () -> Unit,
-) {
+private fun ActionCard(icon: ImageVector, title: String, description: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -117,10 +134,7 @@ private fun ActionCard(
             Spacer(Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Text(text = title, style = MaterialTheme.typography.titleMedium)
                 Text(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
