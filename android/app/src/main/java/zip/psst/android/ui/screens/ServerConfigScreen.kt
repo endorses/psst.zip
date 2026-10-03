@@ -25,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,12 +57,16 @@ fun ServerConfigScreen(
     onConfigured: () -> Unit,
     onSignedOut: () -> Unit,
     onBack: () -> Unit = {},
+    onScan: () -> Unit = {},
+    onLocalReceived: () -> Unit = {},
     viewModel: ServerConfigViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val prefs = (context.applicationContext as PsstApplication).prefs
     val appearance by prefs.appearance.collectAsStateWithLifecycle()
+    val access by prefs.historyAccess.collectAsStateWithLifecycle()
+    LaunchedEffect(access) { viewModel.refreshSavedSession() }
     var passwordVisible by remember { mutableStateOf(false) }
     val scanner =
         rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -87,6 +92,10 @@ fun ServerConfigScreen(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge)
+            OutlinedButton(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
+                Text("Scan QR code / Paste link")
+            }
+            TextButton(onClick = onLocalReceived) { Text("Received on this device") }
             AppearancePicker(appearance = appearance, onSelected = prefs::setAppearance)
             Text(
                 stringResource(R.string.server_intro),

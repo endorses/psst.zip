@@ -4,6 +4,7 @@ struct HistoryView: View {
     @Environment(TransferHistoryStore.self) private var history
     @Environment(ServerConfigManager.self) private var config
     @Environment(\.scenePhase) private var scenePhase
+    @State private var localReceived = false
     @State private var receiveOnly = false
     @State private var deleting: TransferRecord?
     @State private var failedDeletion: TransferRecord?
@@ -19,6 +20,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             List {
+                Button { localReceived = true } label: { Label("Received on this device", systemImage: "arrow.down.doc") }
                 Picker("History filter", selection: $receiveOnly) {
                     Text("Sent").tag(false)
                     Text("Receive links").tag(true)
@@ -67,6 +69,7 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            .sheet(isPresented: $localReceived) { ScanReceiveView(historyOnly: true).modifier(PsstAppearance()) }
             .refreshable { _ = await refresh() }
             .toolbar { Button("Refresh") { Task { _ = await refresh() } }.disabled(busy) }
             .confirmationDialog("Revoke and delete?", isPresented: Binding(get: { deleting != nil }, set: {

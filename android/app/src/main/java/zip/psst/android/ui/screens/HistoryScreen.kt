@@ -64,6 +64,7 @@ import java.util.Locale
 fun HistoryScreen(
     onTransferClick: (TransferHistoryEntity) -> Unit,
     onBack: () -> Unit,
+    onLocalReceived: () -> Unit = {},
     viewModel: HistoryViewModel = viewModel(),
 ) {
     val allHistory by viewModel.history.collectAsState()
@@ -141,6 +142,7 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.history)) },
                 actions = {
+                    TextButton(onClick = onLocalReceived) { Text("Received") }
                     TextButton(onClick = viewModel::refresh) {
                         Text(stringResource(R.string.refresh))
                     }

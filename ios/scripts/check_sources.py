@@ -105,4 +105,26 @@ for path in ROOT.rglob("*.swift"):
 for path in ROOT.rglob("*.json"):
     if "build" not in path.parts:
         json.loads(path.read_text())
+# Guest receive source wiring: these assertions do not prove native compilation or runtime behavior.
+assert app["UIFileSharingEnabled"] and app["LSSupportsOpeningDocumentsInPlace"]
+assert "ScanReceiveView().tabItem" in read("Psst/ContentView.swift")
+assert "guestTransfer.cancel()" in read("Psst/ContentView.swift")
+assert "Received on this device" in read("Psst/Views/HistoryView.swift")
+assert "ApiClient.companion.anonymous" in read(
+    "Psst/ViewModels/GuestTransferModel.swift"
+)
+assert "validateForTransfer" in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "downloadFileWithProgress" in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "sessionToken" not in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "GuestUploadCleanup" in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "SecretStore.write(key" in read("Psst/Services/GuestDownloadStore.swift")
+assert "transfers.delete" not in read("Psst/Services/GuestDownloadStore.swift")
+assert "remainingReceipts" in read("Psst/Services/GuestDownloadStore.swift")
+assert "ScanInputClassifier.shared.classify" in read("Shared/ServerConfigManager.swift")
+assert "testKillAfterPublicationReconcilesIntentBeforeReceipt" in read(
+    "PsstTests/GuestDownloadTests.swift"
+)
+assert "testReceiptFailureKeepsSavedStateAndRetriesWithoutFileWorkAfterRemoval" in read(
+    "PsstTests/GuestDownloadTests.swift"
+)
 print("iOS source/configuration gates passed (not a Swift build).")

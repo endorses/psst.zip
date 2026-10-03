@@ -21,10 +21,32 @@ into a receive link remain accessible without signing in.
 
 ## Everyday use
 
-**Send**, **Receive**, and **History** are the primary destinations. Account,
+**Send**, **Receive**, and **History** are the main account destinations. Account,
 connected-device, and administrator controls live under Settings. A receive item
 in History opens its existing link; retrying a save keeps that link and preserves
-files already saved. History stays scoped to the current account and server.
+files already saved. Owned-link history stays scoped to the current account and server.
+
+The mobile apps also offer **Scan QR code**, available before signing in. Scan a
+download QR from either app or the web UI to immediately download, decrypt and
+save its files. Alternatively, paste the complete link and choose **Receive
+files**. A scanned server does not replace your configured server or receive its
+login credentials. Upload-link QRs open a deliberate file-selection/send flow;
+account-pairing QRs ask before connecting the account.
+
+Scanned downloads save to **Downloads/psst.zip** on Android or the app's
+**Received/Guest** folder in iOS Files. Android 8–9 requests storage permission;
+later Android versions use scoped Downloads storage. **Received on this device**
+keeps guest downloads separate from owned links and remains available after
+sign-out. Open and Share use the saved copies, including offline or after the
+link expires. Removing a local entry keeps its files and does not revoke the
+sender's link. Files never open automatically.
+
+Keep the app in the foreground while receiving. Retry reuses files already
+saved, and delivery confirmation follows the final durable save; receipt retries
+do not download the files again. Server expiry, revocation or download limits
+can prevent retrying an unfinished file. Direct receiving supports up to 100
+files, each up to 25 MiB. See the [native verification workflow](docs/testing/scan-to-receive.md)
+for disposable interoperability fixtures and platform checks.
 
 Link screens put the QR and **Copy link** / **Share** actions first; expand details
 to inspect the complete URL. Missing encryption keys on another device are

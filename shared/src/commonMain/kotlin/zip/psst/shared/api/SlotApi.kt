@@ -2,6 +2,8 @@ package zip.psst.shared.api
 
 import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.Transfer
+import zip.psst.shared.model.UrlHelper
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
@@ -9,6 +11,7 @@ import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -36,6 +39,32 @@ class SlotApi(
             }
         response.checkAuthenticatedWrite()
         return response.body()
+    }
+
+    /**
+     * Public guest creation. Never attach an account token; the result carries a child-only
+     * capability.
+     */
+    @Throws(Exception::class)
+    suspend fun createTransfer(slotId: String): Transfer {
+        require(UrlHelper.isResourceId(slotId)) { "Invalid receive link identifier" }
+        val response =
+            httpClient.post("${config.apiBaseUrl}/slots/$slotId/transfers") {
+                expectSuccess = false
+                contentType(ContentType.Application.Json)
+                setBody(mapOf<String, String>())
+            }
+        require(response.status.value == 201) {
+            "The receive link is unavailable or cannot accept more files"
+        }
+        return response.body<Transfer>().also {
+            require(
+                UrlHelper.isResourceId(it.id) &&
+                    it.deleteToken?.matches(Regex("[A-Za-z0-9_-]{32,128}")) == true
+            ) {
+                "The server returned an invalid upload capability"
+            }
+        }
     }
 
     /** Revoke the link and stored uploads. Missing resources are already revoked. */

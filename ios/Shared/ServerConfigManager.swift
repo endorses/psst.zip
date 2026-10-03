@@ -75,16 +75,10 @@ final class ServerConfigManager {
     }
 
     func pair(raw: String) async throws {
-        struct Code: Decodable { let type: String
-            let version: Int
-            let server_url: String
-            let code: String
-        }
-        guard raw.utf8.count <= 4096, let code = try? JSONDecoder().decode(Code.self, from: Data(raw.utf8)),
-              code.type == "psst-pairing", code.version == 1,
-              code.code.range(of: "^[A-Za-z0-9_-]{32,128}$", options: .regularExpression) != nil else { throw AccountError.pairing }
+        guard let classified = ScanInputClassifier.shared.classify(raw: raw), classified.kind == .pairing,
+              let code = classified.pairing else { throw AccountError.pairing }
         let previous = SecretStore.session
-        let server = try AccountHTTP.origin(code.server_url)
+        let server = try AccountHTTP.origin(code.serverUrl)
         try await validate(server: server)
         let data = try await AccountHTTP.request(server: server, path: "auth/pairings/redeem", method: "POST",
                                                  body: ["code": code.code, "device_name": UIDevice.current.name])

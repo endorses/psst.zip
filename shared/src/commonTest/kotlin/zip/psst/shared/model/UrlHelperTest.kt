@@ -30,22 +30,32 @@ class UrlHelperTest {
 
     @Test
     fun parseDownloadUrl() {
-        val url = UrlHelper.buildDownloadUrl("https://example.com", "transfer1", testKey)
+        val url =
+            UrlHelper.buildDownloadUrl(
+                "https://example.com",
+                "01234567-89ab-cdef-0123-456789abcdef",
+                testKey,
+            )
         val parsed = UrlHelper.parse(url)
 
         assertNotNull(parsed)
-        assertEquals("transfer1", parsed.id)
+        assertEquals("01234567-89ab-cdef-0123-456789abcdef", parsed.id)
         assertEquals(UrlType.DOWNLOAD, parsed.type)
         assertEquals(testKey.toList(), parsed.key.toList())
     }
 
     @Test
     fun parseUploadUrl() {
-        val url = UrlHelper.buildUploadUrl("https://example.com", "slot1", testKey)
+        val url =
+            UrlHelper.buildUploadUrl(
+                "https://example.com",
+                "01234567-89ab-cdef-0123-456789abcdef",
+                testKey,
+            )
         val parsed = UrlHelper.parse(url)
 
         assertNotNull(parsed)
-        assertEquals("slot1", parsed.id)
+        assertEquals("01234567-89ab-cdef-0123-456789abcdef", parsed.id)
         assertEquals(UrlType.UPLOAD, parsed.type)
         assertEquals(testKey.toList(), parsed.key.toList())
     }
@@ -53,11 +63,16 @@ class UrlHelperTest {
     @Test
     fun roundTripDownloadUrl() {
         val originalKey = ByteArray(32) { (it * 7 + 3).toByte() }
-        val url = UrlHelper.buildDownloadUrl("https://drop.example.com", "xfer-id", originalKey)
+        val url =
+            UrlHelper.buildDownloadUrl(
+                "https://drop.example.com",
+                "01234567-89ab-cdef-0123-456789abcdef",
+                originalKey,
+            )
         val parsed = UrlHelper.parse(url)
 
         assertNotNull(parsed)
-        assertEquals("xfer-id", parsed.id)
+        assertEquals("01234567-89ab-cdef-0123-456789abcdef", parsed.id)
         assertEquals(UrlType.DOWNLOAD, parsed.type)
         assertEquals(originalKey.toList(), parsed.key.toList())
     }
@@ -65,11 +80,16 @@ class UrlHelperTest {
     @Test
     fun roundTripUploadUrl() {
         val originalKey = ByteArray(32) { (it * 13 + 1).toByte() }
-        val url = UrlHelper.buildUploadUrl("https://drop.example.com", "slot-id", originalKey)
+        val url =
+            UrlHelper.buildUploadUrl(
+                "https://drop.example.com",
+                "01234567-89ab-cdef-0123-456789abcdef",
+                originalKey,
+            )
         val parsed = UrlHelper.parse(url)
 
         assertNotNull(parsed)
-        assertEquals("slot-id", parsed.id)
+        assertEquals("01234567-89ab-cdef-0123-456789abcdef", parsed.id)
         assertEquals(UrlType.UPLOAD, parsed.type)
         assertEquals(originalKey.toList(), parsed.key.toList())
     }

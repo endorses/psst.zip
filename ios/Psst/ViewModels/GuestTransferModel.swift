@@ -1,0 +1,273 @@
+import Foundation
+import Shared
+
+/// Always creates a fresh isolated transport, even when the origin matches the signed-in account.
+enum GuestNetwork {
+    static func client(_ origin: String) throws -> ApiClient {
+        try ApiClient.companion.anonymous(origin: origin)
+    }
+}
+
+@Observable
+@MainActor
+final class GuestTransferModel {
+    private(set) var active = false
+    private(set) var stage = ""
+    private(set) var bytes: Int64 = 0
+    private(set) var total: Int64 = 0
+    private(set) var fileNumber = 0
+    private(set) var error: String?
+    private(set) var currentID: String?
+    private(set) var uploadComplete = false
+    private(set) var cleanupPending = false
+    private var task: Task<Void, Never>?
+    private var client: ApiClient?
+    private var run = UUID()
+    private let store: GuestDownloadStore
+    init(store: GuestDownloadStore) {
+        self.store = store
+    }
+
+    func cancel() {
+        guard active else { return }
+        task?.cancel()
+        client?.close()
+    }
+
+    func receive(_ link: ParsedUrl) {
+        guard !active else { return }
+        do {
+            let record = try store.prepare(origin: link.origin, transferID: link.id, key: link.key.toData())
+            resume(record)
+        } catch { self.error = (error as? GuestError)?.localizedDescription ?? "Could not save the transfer securely. Check device storage and try again." }
+    }
+
+    func resetPresentation() {
+        guard !active else { return }
+        currentID = nil; uploadComplete = false; cleanupPending = false; error = nil; fileNumber = 0
+    }
+
+    func show(_ record: GuestDownload) {
+        guard !active else { return }
+        currentID = record.id
+        error = nil
+    }
+
+    func resume(_ requested: GuestDownload, allowRedownload: Bool = false) {
+        guard !active else { return }
+        let record = store.records.first { $0.id == requested.id } ?? requested
+        currentID = record.id
+        error = nil
+        uploadComplete = false
+        guard allowRedownload || !store.requiresRedownloadConsent(record) else {
+            error = GuestError.redownloadConsent.localizedDescription
+            return
+        }
+        if record.complete, record.files.allSatisfy({ store.url($0) != nil }) {
+            stage = "Saved"
+            task = Task { await store.flushReceipts() }
+            return
+        }
+        active = true
+        let identifier = UUID()
+        run = identifier
+        task = Task { await download(record, identifier: identifier, allowRedownload: allowRedownload) }
+    }
+
+    private func download(_ original: GuestDownload, identifier: UUID, allowRedownload: Bool) async {
+        var record = original
+        defer { self.client?.close(); self.client = nil; active = false }
+        do {
+            let client = try GuestNetwork.client(record.origin)
+            self.client = client
+            try store.reconcile()
+            record = store.records.first { $0.id == original.id } ?? original
+            guard let key = SecretStore.read(record.keyReference), key.count == 32 else { throw GuestError.missingKey }
+            if record.files.isEmpty {
+                stage = "Inspecting transfer"
+                let transfer = try await client.transfers.get(transferId: record.transferID)
+                guard transfer.id.lowercased() == record.transferID.lowercased() else { throw GuestError.invalidManifest }
+                guard transfer.status == .complete else { throw GuestError.notReady }
+                try Task.checkCancellation()
+                let encrypted = try await client.transfers.downloadManifest(transferId: record.transferID)
+                stage = "Decrypting file list"
+                let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
+                guard let manifest = ManifestSerializer.decode(json: String(decoding: plain, as: UTF8.self)) else { throw GuestError.invalidManifest }
+                _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: transfer)
+                record.files = try manifest.files.map {
+                    try GuestFile(id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType)
+                }
+                try store.update(record)
+            }
+            for index in record.files.indices {
+                try Task.checkCancellation()
+                if store.url(record.files[index]) != nil {
+                    continue
+                }
+                let file = record.files[index]
+                // A local copy can also disappear after the initial resume check.
+                guard allowRedownload || !file.saved else { throw GuestError.redownloadConsent }
+                fileNumber = index + 1
+                bytes = 0
+                total = file.size + 28
+                stage = "Downloading"
+                let encrypted = try await client.transfers.downloadFileWithProgress(transferId: record.transferID, fileId: file.id, onProgress: { received, _ in
+                    Task { @MainActor in
+                        guard self.run == identifier, self.active, self.stage == "Downloading", self.fileNumber == index + 1 else { return }
+                        self.bytes = received.int64Value
+                    }
+                })
+                try Task.checkCancellation()
+                stage = "Decrypting"
+                await Task.yield()
+                let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
+                guard Int64(plain.count) == file.size else { throw GuestError.invalidManifest }
+                try Task.checkCancellation()
+                stage = "Saving"
+                await Task.yield()
+                try store.save(plain, index: index, record: &record)
+            }
+            try Task.checkCancellation()
+            guard !record.files.isEmpty, record.files.allSatisfy({ store.url($0) != nil }) else { throw GuestError.invalidManifest }
+            record.complete = true
+            record.receiptPending = !record.receiptDelivered
+            try store.update(record)
+            stage = "Saved"
+            await store.flushReceipts()
+        } catch {
+            stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
+            self.error = (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
+        }
+    }
+
+    func send(_ urls: [URL], to link: ParsedUrl) {
+        guard !active, !urls.isEmpty else { return }
+        active = true; error = nil; currentID = nil; uploadComplete = false; cleanupPending = false; fileNumber = 0
+        let identifier = UUID()
+        run = identifier
+        task = Task { await upload(urls, to: link, identifier: identifier) }
+    }
+
+    private func upload(_ urls: [URL], to link: ParsedUrl, identifier: UUID) async {
+        var allocation: (String, String)?
+        var finished = false
+        defer { client?.close(); client = nil; active = false; GuestUploadCleanup.activeID = nil }
+        do {
+            let anonymous = try GuestNetwork.client(link.origin)
+            defer { anonymous.close() }
+            let sizes = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
+            let selection = Manifest(files: zip(urls, sizes).map { url, size in
+                FileMetadata(name: url.lastPathComponent, size: size, mimeType: "application/octet-stream", blobId: UUID().uuidString)
+            })
+            _ = try ManifestValidator.shared.validate(manifest: selection)
+            stage = "Preparing upload"
+            client = anonymous
+            let transfer = try await anonymous.slots.createTransfer(slotId: link.id)
+            guard UUID(uuidString: transfer.id) != nil, let capability = transfer.deleteToken, !capability.isEmpty else { throw AccountError.request }
+            allocation = (transfer.id, capability)
+            GuestUploadCleanup.activeID = link.origin + "|" + transfer.id
+            // Persist a resource-scoped cleanup capability before cancellation can abandon the allocation.
+            try GuestUploadCleanup.enqueue(origin: link.origin, transferID: transfer.id, capability: capability)
+            try Task.checkCancellation()
+            let scoped = try ApiClient.companion.slotUpload(origin: link.origin, capability: capability)
+            client = scoped
+            let metadata = try await BufferedUpload.send(fileURLs: urls, client: scoped, transferId: transfer.id, key: link.key,
+                                                         limit: BufferedUpload.maxFileBytes, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = "Encrypting" },
+                                                         progress: { progress in
+                                                             guard self.run == identifier, self.active, self.task?.isCancelled != true else { return }
+                                                             self.stage = "Uploading"; self.bytes = progress.sent; self.total = progress.total
+                                                         })
+            let manifest = try ManifestSerializer.encode(manifest: Manifest(files: metadata))
+            let nonce = try CryptoProvider.shared.generateNonce()
+            let encrypted = try CryptoProvider.shared.encrypt(key: link.key, nonce: nonce, plaintext: Data(manifest.utf8).toKotlinByteArray())
+            try Task.checkCancellation()
+            try await scoped.transfers.uploadManifest(transferId: transfer.id, manifestBytes: (nonce.toData() + encrypted.toData()).toKotlinByteArray())
+            try await scoped.transfers.complete(transferId: transfer.id)
+            finished = true
+            try GuestUploadCleanup.remove(origin: link.origin, transferID: transfer.id)
+            allocation = nil
+            uploadComplete = true; stage = "Files sent"
+        } catch {
+            stage = "Upload stopped"
+            self.error = "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
+            if finished {
+                uploadComplete = true; stage = "Files sent"; self.error = nil
+                return
+            }
+            if let allocation {
+                let origin = link.origin
+                let result = await Task.detached {
+                    try? await GuestUploadCleanup.attempt(origin: origin, transferID: allocation.0, capability: allocation.1)
+                }.value
+                if let finalized = result {
+                    try? GuestUploadCleanup.remove(origin: origin, transferID: allocation.0)
+                    if finalized {
+                        uploadComplete = true; stage = "Files sent"; self.error = nil
+                    }
+                }
+                cleanupPending = result == nil
+            }
+        }
+    }
+}
+
+/// Keychain-only cleanup journal survives cancellation, sign-out and process interruption.
+@MainActor
+enum GuestUploadCleanup {
+    struct Entry: Codable, Sendable { let origin: String; let transferID: String; let capability: String }
+    private static let name = "guest-upload-cleanup"
+    private static var flushing = false
+    static var activeID: String?
+    private static func read() throws -> [Entry] {
+        guard let data = SecretStore.read(name) else { return [] }
+        return try JSONDecoder().decode([Entry].self, from: data)
+    }
+
+    static func enqueue(origin: String, transferID: String, capability: String) throws {
+        var entries = try read()
+        entries.append(Entry(origin: origin, transferID: transferID, capability: capability))
+        try SecretStore.write(JSONEncoder().encode(entries), name: name)
+    }
+
+    static func remove(origin: String, transferID: String) throws {
+        try SecretStore.write(JSONEncoder().encode(read().filter { $0.origin != origin || $0.transferID != transferID }), name: name)
+    }
+
+    /// Returns true when a lost finalization response concealed a successful upload.
+    nonisolated static func attempt(origin: String, transferID: String, capability: String) async throws -> Bool {
+        struct Status: Decodable { let status: String }
+        do {
+            let data = try await AccountHTTP.request(server: origin, path: "transfers/" + transferID)
+            let status = try JSONDecoder().decode(Status.self, from: data)
+            if status.status == "complete" {
+                return true
+            }
+            if status.status == "expired" || status.status == "revoked" {
+                return false
+            }
+        } catch AccountError.unavailable { return false }
+        let client = try ApiClient.companion.slotUpload(origin: origin, capability: capability)
+        defer { client.close() }
+        try await client.transfers.delete(transferId: transferID, deleteToken: capability)
+        return false
+    }
+
+    static func flush() async {
+        guard !flushing, let entries = try? read() else { return }
+        flushing = true
+        defer { flushing = false }
+        for entry in entries.prefix(4) {
+            guard activeID != entry.origin + "|" + entry.transferID else { continue }
+            do {
+                _ = try await attempt(origin: entry.origin, transferID: entry.transferID, capability: entry.capability)
+                try remove(origin: entry.origin, transferID: entry.transferID)
+            } catch {
+                // Retain capabilities on network failure, rotating offline hosts behind other work.
+                if var latest = try? read(), let index = latest.firstIndex(where: { $0.origin == entry.origin && $0.transferID == entry.transferID }) {
+                    latest.append(latest.remove(at: index))
+                    try? SecretStore.write(JSONEncoder().encode(latest), name: name)
+                }
+            }
+        }
+    }
+}

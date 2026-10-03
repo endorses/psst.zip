@@ -3,9 +3,10 @@ import SwiftUI
 import UIKit
 
 struct PairingScanner: UIViewControllerRepresentable {
+    var allowsPaste = false
     let onCode: (String) -> Void
     func makeUIViewController(context _: Context) -> ScannerController {
-        ScannerController(onCode: onCode)
+        ScannerController(allowsPaste: allowsPaste, onCode: onCode)
     }
 
     func updateUIViewController(_: ScannerController, context _: Context) {}
@@ -19,9 +20,11 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     private let queue = DispatchQueue(label: "zip.psst.ios.camera")
     private var preview: AVCaptureVideoPreviewLayer?
     private let onCode: (String) -> Void
+    private let allowsPaste: Bool
     private var delivered = false
     private var active = true
-    init(onCode: @escaping (String) -> Void) {
+    init(allowsPaste: Bool, onCode: @escaping (String) -> Void) {
+        self.allowsPaste = allowsPaste
         self.onCode = onCode
         super.init(nibName: nil, bundle: nil)
     }
@@ -72,7 +75,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
 
     private func showError() {
         let label = UILabel(frame: view.bounds)
-        label.text = String(localized: "Camera unavailable. Enable camera access in iOS Settings, or cancel and sign in manually.")
+        label.text = allowsPaste ? String(localized: "Camera unavailable. Enable camera access in iOS Settings, or go back to paste a link.") : String(localized: "Camera unavailable. Enable camera access in iOS Settings, or cancel and sign in manually.")
         label.numberOfLines = 0
         label.textAlignment = .center
         label.adjustsFontForContentSizeCategory = true

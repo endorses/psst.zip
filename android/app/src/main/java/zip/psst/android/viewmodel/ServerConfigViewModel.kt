@@ -45,6 +45,18 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     private var operation: Job? = null
     private var version = 0L
 
+    fun refreshSavedSession() {
+        if (prefs.getSessionToken() != null) {
+            _uiState.value =
+                _uiState.value.copy(
+                    url = prefs.getServerUrl(),
+                    username = prefs.getUsername(),
+                    password = "",
+                    signedInUsername = prefs.getUsername(),
+                )
+        }
+    }
+
     fun onUrlChange(url: String) {
         version++
         operation?.cancel()

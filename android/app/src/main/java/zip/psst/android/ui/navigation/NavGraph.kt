@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -19,9 +20,11 @@ import zip.psst.android.PsstApplication
 import zip.psst.android.ui.screens.HistoryScreen
 import zip.psst.android.ui.screens.HomeScreen
 import zip.psst.android.ui.screens.ReceiveScreen
+import zip.psst.android.ui.screens.ScanScreen
 import zip.psst.android.ui.screens.SendScreen
 import zip.psst.android.ui.screens.ServerConfigScreen
 import zip.psst.android.ui.screens.TransferDetailScreen
+import zip.psst.android.viewmodel.ScanViewModel
 
 object Routes {
     const val SERVER_CONFIG = "server_config"
@@ -30,6 +33,8 @@ object Routes {
     const val RECEIVE = "receive"
     const val TRANSFER_DETAIL = "transfer_detail/{transferId}/{encryptionKey}/{type}"
     const val HISTORY = "history"
+    const val SCAN = "scan"
+    const val LOCAL_RECEIVED = "local_received"
 
     fun transferDetail(transferId: String, encryptionKey: String, type: String): String {
         val encodedKey = Uri.encode(encryptionKey)
@@ -45,6 +50,7 @@ fun PsstNavGraph(
     onSharedUrisConsumed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val guestDownloads: ScanViewModel = viewModel()
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
     var intendedRoute by remember {
         mutableStateOf(if (sharedUris.isNotEmpty()) Routes.SEND else Routes.HOME)
@@ -75,6 +81,8 @@ fun PsstNavGraph(
     ) {
         composable(Routes.SERVER_CONFIG) {
             ServerConfigScreen(
+                onScan = { navController.navigate(Routes.SCAN) },
+                onLocalReceived = { navController.navigate(Routes.LOCAL_RECEIVED) },
                 onBack = { if (!navController.popBackStack()) navController.navigate(Routes.HOME) },
                 onSignedOut = {
                     intendedRoute = Routes.HOME
@@ -108,6 +116,7 @@ fun PsstNavGraph(
 
         composable(Routes.HOME) {
             HomeScreen(
+                onScan = { navController.navigate(Routes.SCAN) },
                 onShareFiles = { navController.navigate(authenticatedRoute(Routes.SEND)) },
                 onReceiveFiles = { navController.navigate(authenticatedRoute(Routes.RECEIVE)) },
                 onHistory = { navController.navigate(Routes.HISTORY) },
@@ -177,8 +186,20 @@ fun PsstNavGraph(
                 )
         }
 
+        composable(Routes.SCAN) {
+            ScanScreen(onBack = { navController.popBackStack() }, viewModel = guestDownloads)
+        }
+        composable(Routes.LOCAL_RECEIVED) {
+            ScanScreen(
+                onBack = { navController.popBackStack() },
+                showHistoryInitially = true,
+                viewModel = guestDownloads,
+            )
+        }
+
         composable(Routes.HISTORY) {
             HistoryScreen(
+                onLocalReceived = { navController.navigate(Routes.LOCAL_RECEIVED) },
                 onTransferClick = { entity ->
                     navController.navigate(
                         Routes.transferDetail(entity.id, entity.encryptionKey, entity.type)

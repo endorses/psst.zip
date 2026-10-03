@@ -1,6 +1,7 @@
 package zip.psst.shared.api
 
 import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.ServerOrigin
 import io.ktor.client.HttpClient
 
 /**
@@ -12,6 +13,29 @@ class ApiClient(
     private val httpClient: HttpClient = createPlatformHttpClient(),
     sessionToken: String? = null,
 ) {
+    companion object {
+        /** Fresh client with no account token or cookie storage, even for the signed-in origin. */
+        @Throws(Exception::class)
+        fun anonymous(origin: String): ApiClient = ApiClient(validatedConfig(origin))
+
+        /**
+         * A fresh guest upload client, authorized only by the newly created child-transfer
+         * capability.
+         */
+        @Throws(Exception::class)
+        fun slotUpload(origin: String, capability: String): ApiClient {
+            require(capability.matches(Regex("[A-Za-z0-9_-]{32,128}"))) {
+                "Invalid upload capability"
+            }
+            return ApiClient(validatedConfig(origin), sessionToken = capability)
+        }
+
+        private fun validatedConfig(origin: String): ServerConfig =
+            ServerConfig(
+                requireNotNull(ServerOrigin.normalize(origin)) { "Invalid server address" }
+            )
+    }
+
     // Preserve the two-argument initializer exported to the existing Swift client.
     constructor(config: ServerConfig, httpClient: HttpClient) : this(config, httpClient, null)
 

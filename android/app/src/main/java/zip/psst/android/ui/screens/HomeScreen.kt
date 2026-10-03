@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +46,7 @@ fun HomeScreen(
     onReceiveFiles: () -> Unit,
     onHistory: () -> Unit,
     onSettings: () -> Unit,
+    onScan: () -> Unit,
 ) {
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
     val access by prefs.historyAccess.collectAsState()
@@ -80,6 +82,14 @@ fun HomeScreen(
             )
 
             Spacer(Modifier.height(32.dp))
+
+            ActionCard(
+                Icons.Default.QrCodeScanner,
+                "Scan QR code",
+                "Scan or paste a link to save files without signing in.",
+                onScan,
+            )
+            Spacer(Modifier.height(16.dp))
 
             ActionCard(
                 icon = Icons.AutoMirrored.Filled.Send,

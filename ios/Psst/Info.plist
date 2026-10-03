@@ -54,7 +54,7 @@
 	<key>SharedKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)zip.psst.ios.shared</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan a server login QR code to connect psst.zip to your account.</string>
+	<string>Scan QR codes to receive files or connect your psst.zip server account.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

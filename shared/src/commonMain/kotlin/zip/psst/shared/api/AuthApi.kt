@@ -1,6 +1,7 @@
 package zip.psst.shared.api
 
 import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.ServerOrigin
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
@@ -9,7 +10,6 @@ import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
-import io.ktor.http.Url
 import io.ktor.http.contentType
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
@@ -57,17 +57,11 @@ class PairingCode(
             ) {
                 "This is not a supported server login QR code"
             }
-            require(
-                Regex("^https?://[^/?#@\\\\\\s]+/?$", RegexOption.IGNORE_CASE)
-                    .matches(pairing.serverUrl)
-            ) {
+            val normalizedOrigin = ServerOrigin.normalize(pairing.serverUrl)
+            require(normalizedOrigin != null) {
                 "The pairing code contains an invalid server address"
             }
-            val origin = Url(pairing.serverUrl)
-            require(origin.host.isNotBlank() && origin.port in 1..65535) {
-                "The pairing code contains an invalid server address"
-            }
-            return pairing
+            return PairingCode(pairing.type, pairing.version, normalizedOrigin, pairing.code)
         }
     }
 }

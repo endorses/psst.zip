@@ -13,6 +13,7 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.utils.io.readAvailable
@@ -52,7 +53,9 @@ class TransferApi(
     @Throws(Exception::class)
     suspend fun get(transferId: String): Transfer {
         val response = httpClient.get("${config.apiBaseUrl}/transfers/$transferId")
-        return response.body()
+        return response.body<Transfer>().also {
+            require(it.id == transferId) { "The server returned details for a different transfer" }
+        }
     }
 
     /**
@@ -111,6 +114,19 @@ class TransferApi(
         )
     }
 
+    /** Actual bytes received; callbacks are bounded to one per 64 KiB plus start/final updates. */
+    @Throws(Exception::class)
+    suspend fun downloadFileWithProgress(
+        transferId: String,
+        fileId: String,
+        onProgress: (received: Long, total: Long?) -> Unit,
+    ): ByteArray =
+        downloadBounded(
+            "${config.apiBaseUrl}/transfers/$transferId/files/$fileId",
+            TransferLimits.MAX_FILE_BYTES + 28,
+            onProgress,
+        )
+
     /**
      * Download the encrypted manifest for a transfer.
      *
@@ -124,27 +140,50 @@ class TransferApi(
         )
     }
 
-    private suspend fun downloadBounded(url: String, maxBytes: Int): ByteArray =
-        httpClient.prepareGet(url).execute { response ->
-            require(response.status.value in 200..299) { "Download failed: ${response.status}" }
-            val channel = response.bodyAsChannel()
-            val buffer = ByteArray(8192)
-            val chunks = mutableListOf<ByteArray>()
-            var total = 0
-            while (true) {
-                val count =
-                    channel.readAvailable(buffer, 0, minOf(buffer.size, maxBytes - total + 1))
-                if (count == -1) break
-                total += count
-                require(total <= maxBytes) { "Download exceeds this app's supported size limit" }
-                chunks += buffer.copyOf(count)
-            }
-            ByteArray(total).also { result ->
-                var offset = 0
-                for (chunk in chunks) {
-                    chunk.copyInto(result, offset)
-                    offset += chunk.size
+    private suspend fun downloadBounded(
+        url: String,
+        maxBytes: Int,
+        onProgress: ((Long, Long?) -> Unit)? = null,
+    ): ByteArray =
+        httpClient
+            .prepareGet(url) { expectSuccess = false }
+            .execute { response ->
+                require(response.status.value in 200..299) { "Download failed: ${response.status}" }
+                val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+                require(declaredSize == null || declaredSize in 0..maxBytes.toLong()) {
+                    "Download exceeds this app's supported size limit"
+                }
+                onProgress?.invoke(0, declaredSize)
+                var reported = 0
+                val channel = response.bodyAsChannel()
+                val buffer = ByteArray(8192)
+                val chunks = mutableListOf<ByteArray>()
+                var total = 0
+                while (true) {
+                    val count =
+                        channel.readAvailable(buffer, 0, minOf(buffer.size, maxBytes - total + 1))
+                    if (count == -1) break
+                    if (count == 0) continue
+                    total += count
+                    require(total <= maxBytes) {
+                        "Download exceeds this app's supported size limit"
+                    }
+                    chunks += buffer.copyOf(count)
+                    if (total - reported >= 64 * 1024) {
+                        reported = total
+                        onProgress?.invoke(total.toLong(), declaredSize)
+                    }
+                }
+                require(declaredSize == null || total.toLong() == declaredSize) {
+                    "The download was interrupted"
+                }
+                if (total != reported) onProgress?.invoke(total.toLong(), declaredSize)
+                ByteArray(total).also { result ->
+                    var offset = 0
+                    for (chunk in chunks) {
+                        chunk.copyInto(result, offset)
+                        offset += chunk.size
+                    }
                 }
             }
-        }
 }
