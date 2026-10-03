@@ -6,7 +6,7 @@ Make sending, receiving, and returning to an existing transfer predictable and c
 
 This plan follows the UX review after account access control was implemented. Prioritize the receive/retry workflow defects, then progress and state handling, navigation, and presentation. Preserve authenticated creation, public shared links, end-to-end encryption, account isolation, link revocation, and self-hosted server configuration.
 
-Implementation is complete and the bounded closure review concluded **CLOSED_WITH_DEFERRALS**. Platform build/device checks remain separate from implementation; unchecked validation items below identify those limitations. Final commit/deployment delivery is being completed. Every applicable mobile improvement includes both Android and iOS, with equivalent capabilities adapted to native platform conventions. Lack of local iOS testing is a validation constraint, not an implementation exclusion. This parity requirement also applies to future mobile changes unless the user explicitly agrees to an exception.
+Implementation and development delivery are complete; the bounded closure review concluded **CLOSED_WITH_DEFERRALS**. Platform build/device checks remain separate from implementation; unchecked validation items below identify those limitations. Every applicable mobile improvement includes both Android and iOS, with equivalent capabilities adapted to native platform conventions. Lack of local iOS testing is a validation constraint, not an implementation exclusion. This parity requirement also applies to future mobile changes unless the user explicitly agrees to an exception.
 
 ## Existing iOS parity gaps and prerequisites
 
@@ -34,6 +34,8 @@ Acceptance: public pages, authenticated pages, and both mobile apps visibly use 
 
 Approved direction: **deep teal, dark ink, and soft off-white**, shared across web, Android, iOS, and the iOS share extension. The intended character is quiet confidence, privacy, and approachability. These are design intentions rather than universal psychological effects or evidence of security. Keep most surfaces neutral and use teal to emphasize primary actions and selected navigation.
 
+This is the selected brand palette for **psst.zip**. Teal gives the primary actions a calm, recognizable identity; dark ink provides clear reading contrast; soft off-white keeps larger surfaces understated. Pale mint adds emphasis to supporting panels without competing with the main action. Apply the same visual identity to public transfer pages and signed-in screens so opening a shared link feels like part of the same service.
+
 ### Light theme
 
 | Role           | Color                 | Use                                                           |
@@ -48,7 +50,19 @@ Approved direction: **deep teal, dark ink, and soft off-white**, shared across w
 
 ### Dark theme
 
-Use deep green-black `#122321` as the surface foundation and light teal `#5EEAD4` for primary accents. Filled light-teal buttons use dark ink text, not white. Derive complementary background, elevated-surface, primary-text, secondary-text, border, and interaction-state tokens during implementation, verifying each actual foreground/background combination. Do not simply invert the light palette.
+Use the following complementary dark palette, with dark ink text on filled light-teal buttons. Verify each actual foreground/background combination rather than simply inverting the light palette.
+
+| Role           | Color                      | Use                                           |
+| -------------- | -------------------------- | --------------------------------------------- |
+| Primary        | Light teal `#5EEAD4`       | Primary buttons, links, selected navigation   |
+| On primary     | Ink `#172B2A`              | Text and icons on filled light-teal buttons   |
+| Main text      | Soft white `#ECF5F1`       | Headings and body text                        |
+| Secondary text | Muted mint-gray `#B5C9C2`  | Supporting information and timestamps         |
+| Background     | Deep green-black `#0B1917` | Page and screen backgrounds                   |
+| Surface        | Dark green-black `#122321` | Cards, forms, dialogs                         |
+| Subtle accent  | Muted deep teal `#1C403A`  | Selected backgrounds and informational panels |
+
+Use semantic color roles throughout the clients so theme and accessibility adjustments remain consistent. Keep success, warning, and error colors separate from the brand palette; a teal button or panel must not imply that a transfer is complete or a server connection is secure.
 
 - [x] Define semantic theme tokens in web styles, Android's theme, and iOS color assets/styles. Use the same approved palette and semantic roles while respecting native controls and platform conventions, including the iOS share extension.
 - [x] Implement light and dark appearances, following the browser/device appearance preference by default. Apply the theme to authenticated screens, public link pages, dialogs, and loading/error/empty states.
@@ -150,7 +164,7 @@ Acceptance: open pairing, scan on a phone, observe connection confirmation on th
 - [ ] Manually verify the receive/history/retry journey and actual QR scanning on a device or suitable emulator. Record any physical-device or accessibility checks that remain unverified rather than marking them complete.
 - [ ] Capture and inspect representative web, Android, and iOS screens in both light and dark themes at desktop/phone widths and enlarged text, including success, error, offline, and empty states. Verify system appearance changes and QR readability in both themes.
 - [x] Update README and relevant documentation with psst.zip terminology and final workflows. Record actual validation results and check off only verified tasks in this plan.
-- [ ] Format changed files, commit the implementation and completed plan while preserving unrelated edits, then update the development deployment and provide the rebuilt APK and an explicit iOS build/validation handoff. Clean temporary services, test credentials, screenshots, and caches created for verification.
+- [x] Format changed files, commit the implementation and completed plan while preserving unrelated edits, then update the development deployment and provide the rebuilt APK and an explicit iOS build/validation handoff. Clean temporary services, test credentials, screenshots, and caches created for verification.
 
 ## Implementation order and completion evidence
 
@@ -158,7 +172,7 @@ First close the existing iOS authentication/revocation parity gaps needed by the
 
 Initial iOS inventory identified missing authentication and ownership integration in the main app and share extension, unscoped local-only history deletion, temporary automatic receive downloads without a durable slot record, retries that allocated new slots, and per-file upload percentages without cancellation. Work is assigned across `ios/Shared` authentication/history/upload services, iOS view models and views, target entitlements, and regression tests. Android equivalents span account storage, Room history, send/receive view models, navigation and shared link views; web equivalents span route state, upload jobs, receive/history components, and device settings.
 
-Backend pairing tracking and cancellation are being verified independently of the client changes. Final validation evidence and any unavailable device checks will be recorded here before delivery.
+Backend pairing tracking and cancellation were verified independently of the client changes. Validation evidence and unavailable device checks are recorded below.
 
 ### Verification recorded during implementation
 
@@ -184,3 +198,13 @@ Available verification covers the web/Android flows and shared/backend contracts
 The plan explicitly permits unavailable native/device checks to remain pending with a concrete handoff. These limitations do not exclude iOS from the delivered implementation or claim those checks passed.
 
 During final delivery verification, a throttled Android upload exposed chunk-only progress reporting in the shared tus client. The shared uploader now reports bytes written within each PATCH while retaining server-confirmed offsets for durable resume. Two regressions verify intermediate progress before the HTTP response and correct resumed-byte totals across chunks. All 39 Android and 76 shared tests passed with the rebuilt APK. This shared fix applies to Android, iOS, and the iOS share extension; native iOS execution remains pending as above.
+
+### Development delivery
+
+Implementation commit: `f70dfe1` (`Implement psst.zip UX across web and mobile`). The final documentation update records the approved palette and delivery evidence.
+
+The existing development instance was rebuilt and deployed at **http://192.168.178.29**, preserving its persistent database and configured LAN address. A Chromium smoke check passed API health, branded login, authenticated Receive navigation, logout, and the public upload route. The first title assertion ran before client rendering; waiting for the rendered page passed without a product change.
+
+The rebuilt Android APK is available at `android/app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `6d4d606b436d2521a73ab4adf352891e1f036625499574b3af7b718d724819e0`. Final emulator verification observed byte progress during a throttled upload, confirmed Back opens **Stop upload?**, and confirmed stopping returns to Home. The final test reports contain 39 Android and 76 shared tests with zero failures, errors, or skips. The iOS source/configuration gate passed again; native build and device validation remain pending under the [iOS handoff](../../ios/README.md).
+
+The isolated test deployment, its test accounts/data/volumes/images, and the disposable emulator were removed or stopped. Task-owned temporary scripts, screenshots, logs, credentials, formatter downloads, and caches were removed. The development deployment remains running; the APK and repository test reports remain available.
