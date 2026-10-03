@@ -5,6 +5,7 @@
   import { goto } from "$app/navigation";
   import Icon from "$lib/components/Icon.svelte";
   import LinkCard from "$lib/components/LinkCard.svelte";
+  import RevokeDialog from "$lib/components/RevokeDialog.svelte";
   import { BRAND } from "$lib/brand";
   import { formatSize } from "$lib/upload-job.svelte";
   import SendPanel from "$lib/components/SendPanel.svelte";
@@ -719,18 +720,21 @@
                     >{/if}{/if}<button
                   class="danger"
                   disabled={busy}
-                  onclick={() => (pendingDelete = { id: item.id, kind: item.kind })}>Revoke</button
+                  onclick={() => {
+                    error = "";
+                    pendingDelete = { id: item.id, kind: item.kind };
+                  }}>Revoke</button
                 >
               </div>
             </article>{/each}
-          {#if pendingDelete}<div class="confirm" role="alert">
-              <p>
-                Revoke this link and delete its server files? Existing downloaded copies will
-                remain.
-              </p>
-              <button class="danger" disabled={busy} onclick={revoke}>Revoke and delete</button
-              ><button disabled={busy} onclick={() => (pendingDelete = null)}>Cancel</button>
-            </div>{/if}
+          {#if pendingDelete}
+            <RevokeDialog
+              {busy}
+              {error}
+              oncancel={() => (pendingDelete = null)}
+              onconfirm={revoke}
+            />
+          {/if}
         {:else if tab === "Devices"}<a class="back-link" href="/?view=settings"
             >← Back to Settings</a
           >

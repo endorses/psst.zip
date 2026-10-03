@@ -44,3 +44,11 @@ Inspected desktop (1280×900) and phone (390×844) screenshots in light and dark
 Android APK: `android/app/build/outputs/apk/debug/app-debug.apk`, SHA-256 `84ea8de154d1d4e60c58963018afdbceb796d310e0b077e9bfaeef147663d5f9`. Native iOS compilation, XCTest execution and physical-device scanning remain explicitly unverified; available source and formatting checks passed.
 
 Deployed to **http://192.168.178.29** with the existing database and server configuration preserved. The live Chromium smoke check passed health, login, the four navigation links, Settings and logout. The disposable test deployment and emulator were removed/stopped, and task-owned temporary screenshots, scripts, sample files, logs and formatter downloads were cleaned up.
+
+### History revocation confirmation follow-up
+
+- [x] Replace the confirmation below the history list with a centered native modal dialog. Keep the current scroll position, make the page behind it inert, initially focus Cancel, contain keyboard focus, and return focus to the original Revoke button on cancellation.
+- [x] Keep revocation errors inside the dialog for retry, prevent dismissal while deletion is in progress, and close only after successful deletion or explicit cancellation.
+- [x] Verify long-history behavior at desktop and phone widths and preserve the existing real revocation workflow. All three focused browser checks passed, including Escape/Cancel without deletion, focus return, viewport position, error retry, and successful revocation. Inspected light desktop and dark phone screenshots; Svelte checks and the production build passed.
+
+The fix is deployed to the existing LAN instance. It changes only the web confirmation presentation; the existing server revocation operation remains unchanged.
