@@ -7,11 +7,12 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
-import zip.psst.android.data.ReceivedChild
 import zip.psst.android.data.ReceivedSnapshot
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.parseHistoryExpiry
+import zip.psst.android.data.receiveAndSaveChild
 import zip.psst.android.data.receivedSnapshot
+import zip.psst.android.data.retrySavedDownloadAcknowledgements
 import zip.psst.android.data.savedTransferIds
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.SlotEvent
@@ -152,6 +153,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun refreshSlot(client: ApiClient, slotId: String) {
         try {
+            app.database.transferHistoryDao().getById(slotId)?.let {
+                retrySavedDownloadAcknowledgements(it, client)
+            }
             val slot = client.slots.get(slotId)
             val snapshot = slot.receivedSnapshot()
             historyMutex.withLock {
@@ -216,63 +220,51 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 require(totalFiles == transfers.sumOf { it.fileCount }) {
                     "Manifest file count mismatch"
                 }
-                val savedBytes = mutableMapOf<String, Long>()
-                val remainingFiles = received.groupingBy { it.first }.eachCount().toMutableMap()
-
-                // Download and decrypt each file
-                for ((index, receivedFile) in received.withIndex()) {
-                    val (transferId, fileMeta) = receivedFile
-                    _uiState.update {
-                        it.copy(downloadProgress = index.toFloat() / totalFiles.toFloat())
-                    }
-
-                    val encryptedData = client.transfers.downloadFile(transferId, fileMeta.blobId)
-
-                    // Decrypt: first 12 bytes are nonce, rest is ciphertext
-                    val nonce = encryptedData.copyOfRange(0, 12)
-                    val ciphertext = encryptedData.copyOfRange(12, encryptedData.size)
-                    val plaintext = CryptoProvider.decrypt(key, nonce, ciphertext)
-                    require(plaintext.size.toLong() == fileMeta.size) {
-                        "Manifest file size mismatch"
-                    }
-
-                    // Save to Downloads via MediaStore
-                    val contentValues =
-                        ContentValues().apply {
-                            put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
-                            put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
-                            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                        }
-
-                    val uri =
-                        context.contentResolver.insert(
-                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                            contentValues,
-                        ) ?: throw Exception("Failed to create file in Downloads")
-
-                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                        outputStream.write(plaintext)
-                    } ?: throw Exception("Failed to write file")
-                    savedBytes[transferId] = (savedBytes[transferId] ?: 0L) + plaintext.size
-                    remainingFiles[transferId] = remainingFiles.getValue(transferId) - 1
-                    if (remainingFiles.getValue(transferId) == 0) {
-                        val child = transfers.first { it.transferId == transferId }
-                        historyMutex.withLock {
-                            dao.mergeReceived(
-                                slotId,
-                                ReceivedSnapshot(
-                                    mapOf(
-                                        transferId to
-                                            ReceivedChild(
-                                                child.fileCount,
-                                                savedBytes.getValue(transferId),
-                                            )
+                var savedFiles = 0
+                for (transfer in transfers) {
+                    receiveAndSaveChild(
+                        client = client,
+                        transferId = transfer.transferId,
+                        files =
+                            received.filter { it.first == transfer.transferId }.map { it.second },
+                        key = key,
+                        saveFile = { fileMeta, plaintext ->
+                            val contentValues =
+                                ContentValues().apply {
+                                    put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
+                                    put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
+                                    put(
+                                        MediaStore.Downloads.RELATIVE_PATH,
+                                        Environment.DIRECTORY_DOWNLOADS,
                                     )
-                                ),
-                                saved = true,
-                            )
-                        }
-                    }
+                                }
+                            val uri =
+                                context.contentResolver.insert(
+                                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                    contentValues,
+                                ) ?: throw Exception("Failed to create file in Downloads")
+                            context.contentResolver.openOutputStream(uri)?.use {
+                                it.write(plaintext)
+                            } ?: throw Exception("Failed to write file")
+                        },
+                        recordSaved = { child ->
+                            historyMutex.withLock {
+                                dao.mergeReceived(
+                                    slotId,
+                                    ReceivedSnapshot(mapOf(transfer.transferId to child)),
+                                    saved = true,
+                                )
+                            }
+                        },
+                        onFileSaved = {
+                            savedFiles++
+                            _uiState.update {
+                                it.copy(
+                                    downloadProgress = savedFiles.toFloat() / totalFiles.toFloat()
+                                )
+                            }
+                        },
+                    )
                 }
 
                 historyMutex.withLock {

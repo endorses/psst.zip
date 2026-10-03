@@ -140,6 +140,33 @@ class HistoryTest {
     }
 
     @Test
+    fun explicitAcknowledgementWinsOverStartedAndStaleResponses() {
+        val sent = row("download_started").copy(type = "sent")
+        val downloaded =
+            mergeSentHistory(
+                sent,
+                Transfer(
+                    "slot",
+                    status = TransferStatus.COMPLETE,
+                    downloadedAt = "2026-10-03T16:00:00Z",
+                ),
+            )
+        assertEquals("Downloaded", historyStatusLabel("sent", downloaded.status))
+        assertEquals(
+            "downloaded",
+            mergeSentHistory(
+                    downloaded,
+                    Transfer("slot", status = TransferStatus.COMPLETE, downloadCount = 1),
+                )
+                .status,
+        )
+        assertEquals(
+            "downloaded",
+            mergeSentHistory(downloaded, Transfer("slot", status = TransferStatus.COMPLETE)).status,
+        )
+    }
+
+    @Test
     fun refreshUsesStoredOriginAndEncryptedManifestWithoutDownloadingFiles() = runTest {
         val key = ByteArray(32) { it.toByte() }
         val nonce = ByteArray(12) { it.toByte() }

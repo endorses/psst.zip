@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.refreshHistoryEntry
+import zip.psst.android.data.sentHistoryStatus
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.DropSlotStatus
 import zip.psst.shared.model.ServerConfig
@@ -100,9 +101,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     _uiState.value =
                         _uiState.value.copy(
                             isLoading = false,
-                            status =
-                                if (transfer.downloadCount > 0) "download_started"
-                                else transfer.status.name.lowercase(),
+                            status = sentHistoryStatus(transfer),
                             fileCount = transfer.fileCount,
                             totalSize = transfer.totalSize,
                             expiresAt = transfer.expiresAt,

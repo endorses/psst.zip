@@ -155,6 +155,7 @@ export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Pr
   if (
     !manifest ||
     !Array.isArray(manifest.files) ||
+    new Set(manifest.files.map((file) => file?.blob_id)).size !== manifest.files.length ||
     manifest.files.some(
       (file) =>
         !file ||

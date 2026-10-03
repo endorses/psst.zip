@@ -78,6 +78,9 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		resp.CompletedAt = &t.CompletedAt.Time
 	}
 
+	if t.DownloadedAt.Valid {
+		resp.DownloadedAt = &t.DownloadedAt.Time
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -172,7 +175,8 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.downloadableTransfer(w, transferID) == nil {
+	t := s.downloadableTransfer(w, transferID)
+	if t == nil {
 		return
 	}
 
@@ -187,9 +191,24 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if t.MaxDownloads > 0 && f.DownloadCount >= t.MaxDownloads {
+		writeError(w, http.StatusGone, "download limit reached")
+		return
+	}
+
 	storageKey := fmt.Sprintf("%s/%s", transferID, fileID)
 	rc, err := s.fileStore.Load(storageKey)
 	if err != nil {
+		// Another request can consume the last allowance and trigger payload cleanup
+		// between our metadata read and opening the blob. Keep the quota response.
+		if t.MaxDownloads > 0 {
+			latest, lookupErr := s.queries.GetFile(fileID)
+			if lookupErr == nil && latest.DownloadCount >= t.MaxDownloads {
+				writeError(w, http.StatusGone, "download limit reached")
+				return
+			}
+		}
+
 		writeError(w, http.StatusInternalServerError, "failed to load file")
 		return
 	}
@@ -418,4 +437,27 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		ID:        id,
 		ExpiresAt: expiresAt,
 	})
+}
+
+// acknowledgeDownload accepts a recipient's report that every file was
+// downloaded and decrypted. It is not proof of local filesystem persistence.
+func (s *Server) acknowledgeDownload(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "transferID")
+	if !isValidUUID(id) {
+		writeError(w, http.StatusBadRequest, "invalid transfer ID")
+		return
+	}
+	if s.downloadableTransfer(w, id) == nil {
+		return
+	}
+	acknowledged, err := s.queries.AcknowledgeDownload(id, time.Now())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to record download acknowledgement")
+		return
+	}
+	if !acknowledged {
+		writeError(w, http.StatusConflict, "every file must be requested before acknowledging download")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

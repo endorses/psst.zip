@@ -55,6 +55,8 @@ var migrations = []string{
 	)`,
 	// Migration 6: download quotas apply independently to each file.
 	`ALTER TABLE files ADD COLUMN download_count INTEGER NOT NULL DEFAULT 0`,
+	// Migration 7: explicit recipient-reported completion, separate from GET attempts.
+	`ALTER TABLE transfers ADD COLUMN downloaded_at DATETIME`,
 }
 
 func runMigrations(db *sql.DB) error {

@@ -42,6 +42,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 func (w *Worker) sweep() {
 	w.sweepTransfers()
+	w.sweepExhaustedPayloads()
 	w.sweepSlots()
 }
 
@@ -75,6 +76,22 @@ func (w *Worker) sweepSlots() {
 			log.Printf("cleanup: delete slot %s: %v", id, err)
 		} else {
 			log.Printf("cleanup: removed expired slot %s", id)
+		}
+	}
+}
+
+// File readers open a handle before their GET allowance is reserved. Removing
+// exhausted disk payloads therefore leaves already-open downloads readable;
+// metadata and the encrypted manifest remain available until the normal TTL.
+func (w *Worker) sweepExhaustedPayloads() {
+	ids, err := w.queries.ExhaustedTransferIDs()
+	if err != nil {
+		log.Printf("cleanup: list exhausted transfers: %v", err)
+		return
+	}
+	for _, id := range ids {
+		if err := w.files.DeleteAll(id); err != nil {
+			log.Printf("cleanup: delete exhausted payloads for transfer %s: %v", id, err)
 		}
 	}
 }

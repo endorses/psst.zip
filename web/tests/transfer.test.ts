@@ -37,6 +37,9 @@ before(async () => {
       LISTEN_ADDR: `127.0.0.1:${port}`,
       DB_PATH: join(directory, "psst.db"),
       STORAGE_PATH: join(directory, "files"),
+      // Tiny tus chunks intentionally create a burst of requests in this fixture.
+      RATE_LIMIT_GLOBAL: "1000",
+      RATE_LIMIT_BURST: "1000",
     },
     stdio: "ignore",
   });
@@ -112,6 +115,16 @@ async function roundTrip(id: string) {
 test("web API and real tus client upload encrypted files and download them", async () => {
   const { id } = await api.createTransfer();
   await roundTrip(id);
+});
+test("only explicit download acknowledgment records downloaded_at and repeated acknowledgment is idempotent", async () => {
+  const { id } = await api.createTransfer();
+  await roundTrip(id);
+  assert.equal((await api.getTransferInfo(id)).downloaded_at, null);
+  await api.acknowledgeDownload(id);
+  const downloadedAt = (await api.getTransferInfo(id)).downloaded_at;
+  assert.ok(downloadedAt);
+  await api.acknowledgeDownload(id);
+  assert.equal((await api.getTransferInfo(id)).downloaded_at, downloadedAt);
 });
 test("drop slot uploads create a completed child transfer", async () => {
   const slot = await api.createSlot();

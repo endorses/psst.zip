@@ -29,6 +29,7 @@ type TransferResponse struct {
 	DownloadCount int        `json:"download_count"`
 	CreatedAt     time.Time  `json:"created_at"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	DownloadedAt  *time.Time `json:"downloaded_at"`
 }
 
 // CreateTransferResponse is returned by POST /api/v1/transfers.

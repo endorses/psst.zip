@@ -151,3 +151,15 @@ test("encryption refuses to generate keys or nonces without a CSPRNG", async () 
     else Reflect.deleteProperty(globalThis, "crypto");
   }
 });
+
+test("manifests reject duplicate blob IDs with conflicting file metadata", async () => {
+  const key = await generateKey();
+  const file = {
+    name: "file.txt",
+    size: 1,
+    mime_type: "text/plain",
+    blob_id: "12345678-1234-1234-1234-123456789012",
+  };
+  const encrypted = await encryptManifest(key, { files: [file, { ...file, size: 2 }] });
+  await assert.rejects(decryptManifest(key, encrypted), /Invalid file manifest/);
+});

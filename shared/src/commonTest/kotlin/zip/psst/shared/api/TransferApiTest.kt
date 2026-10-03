@@ -6,6 +6,7 @@ import zip.psst.shared.model.TransferStatus
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -16,6 +17,7 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 
@@ -89,6 +91,30 @@ class TransferApiTest {
             }
 
         return Pair(client, engine)
+    }
+
+    @Test
+    fun acknowledgeDownloadPostsNoKeysOrFileData() = runTest {
+        val client =
+            HttpClient(MockEngine) {
+                engine {
+                    dispatcher = StandardTestDispatcher(testScheduler)
+                    addHandler { request ->
+                        assertEquals(HttpMethod.Post, request.method)
+                        assertEquals(
+                            "https://example.com/api/v1/transfers/test-xfer/downloaded",
+                            request.url.toString(),
+                        )
+                        assertEquals(0, request.body.toByteArray().size)
+                        respond("", status = HttpStatusCode.NoContent)
+                    }
+                }
+            }
+        try {
+            TransferApi(client, config).acknowledgeDownload("test-xfer")
+        } finally {
+            client.close()
+        }
     }
 
     @Test

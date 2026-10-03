@@ -92,6 +92,9 @@ final class ReceiveViewModel {
             guard let manifest = ManifestSerializer.decode(json: json) else {
                 throw NSError(domain: "Psst", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid file manifest"])
             }
+            guard !manifest.files.isEmpty, manifest.files.count == Int(transfer.fileCount) else {
+                throw NSError(domain: "Psst", code: 3, userInfo: [NSLocalizedDescriptionKey: "Manifest file count mismatch"])
+            }
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("psst-received-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             for (index, file) in manifest.files.enumerated() {
@@ -116,6 +119,10 @@ final class ReceiveViewModel {
                 createdAt: Date(), expiresAt: expiresAt, fileCount: manifest.files.count,
                 totalSize: manifest.files.reduce(0) { $0 + $1.size }, shareURL: nil
             ))
+            DownloadAcknowledgements.shared.enqueue(
+                serverURL: client.config.baseUrl, transferID: transfer.transferId
+            )
+            Task { await DownloadAcknowledgements.shared.flush() }
         }
         receivedFileURLs = savedURLs
         state = .complete

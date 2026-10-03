@@ -15,6 +15,7 @@ type Transfer struct {
 	DownloadCount int
 	CreatedAt     time.Time
 	CompletedAt   sql.NullTime
+	DownloadedAt  sql.NullTime
 }
 
 // File represents a row in the files table.
@@ -24,6 +25,7 @@ type File struct {
 	Size           int64
 	UploadOffset   int64
 	UploadComplete bool
+	DownloadCount  int
 	CreatedAt      time.Time
 }
 
@@ -57,10 +59,10 @@ func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads in
 
 func (q *Queries) GetTransfer(id string) (*Transfer, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at FROM transfers WHERE id = ?`, id,
+		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at FROM transfers WHERE id = ?`, id,
 	)
 	t := &Transfer{}
-	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt); err != nil {
+	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -133,10 +135,10 @@ func (q *Queries) CreateFile(id, transferID string, size int64) error {
 
 func (q *Queries) GetFile(id string) (*File, error) {
 	row := q.db.QueryRow(
-		`SELECT id, transfer_id, size, upload_offset, upload_complete, created_at FROM files WHERE id = ?`, id,
+		`SELECT id, transfer_id, size, upload_offset, upload_complete, download_count, created_at FROM files WHERE id = ?`, id,
 	)
 	f := &File{}
-	if err := row.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.CreatedAt); err != nil {
+	if err := row.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.DownloadCount, &f.CreatedAt); err != nil {
 		return nil, err
 	}
 	return f, nil
@@ -156,7 +158,7 @@ func (q *Queries) UpdateFileOffset(id string, offset int64, complete bool) error
 
 func (q *Queries) ListFiles(transferID string) ([]File, error) {
 	rows, err := q.db.Query(
-		`SELECT id, transfer_id, size, upload_offset, upload_complete, created_at FROM files WHERE transfer_id = ?`, transferID,
+		`SELECT id, transfer_id, size, upload_offset, upload_complete, download_count, created_at FROM files WHERE transfer_id = ?`, transferID,
 	)
 	if err != nil {
 		return nil, err
@@ -166,7 +168,7 @@ func (q *Queries) ListFiles(transferID string) ([]File, error) {
 	var files []File
 	for rows.Next() {
 		var f File
-		if err := rows.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.DownloadCount, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		files = append(files, f)
@@ -255,7 +257,7 @@ func (q *Queries) LinkSlotTransfer(slotID, transferID string) error {
 
 func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 	rows, err := q.db.Query(
-		`SELECT t.id, t.status, t.expires_at, t.max_downloads, t.download_count, t.created_at, t.completed_at
+		`SELECT t.id, t.status, t.expires_at, t.max_downloads, t.download_count, t.created_at, t.completed_at, t.downloaded_at
 		 FROM transfers t
 		 JOIN slot_transfers st ON st.transfer_id = t.id
 		 WHERE st.slot_id = ?`, slotID,
@@ -268,7 +270,7 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 	var transfers []Transfer
 	for rows.Next() {
 		var t Transfer
-		if err := rows.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt); err != nil {
 			return nil, err
 		}
 		transfers = append(transfers, t)
@@ -278,12 +280,12 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 
 // --- Expiry / Cleanup ---
 
-// ExpiredTransferIDs returns IDs of transfers that have passed their expiry
-// time or exceeded their download limit.
+// ExpiredTransferIDs returns transfers whose TTL has elapsed. Exhausting a
+// download quota removes payloads separately, keeping acknowledgement metadata.
 func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 	// Compare parsed times, since historical rows use Go timestamp strings with
 	// different timezone offsets, which SQLite cannot order chronologically.
-	rows, err := q.db.Query(`SELECT id, expires_at, max_downloads, download_count FROM transfers`)
+	rows, err := q.db.Query(`SELECT id, expires_at FROM transfers`)
 	if err != nil {
 		return nil, err
 	}
@@ -293,13 +295,33 @@ func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 	for rows.Next() {
 		var id string
 		var expiresAt time.Time
-		var limit, count int
-		if err := rows.Scan(&id, &expiresAt, &limit, &count); err != nil {
+		if err := rows.Scan(&id, &expiresAt); err != nil {
 			return nil, err
 		}
-		if !now.Before(expiresAt) || (limit > 0 && count >= limit) {
+		if !now.Before(expiresAt) {
 			ids = append(ids, id)
 		}
+	}
+	return ids, rows.Err()
+}
+
+// ExhaustedTransferIDs returns immutable transfers whose file GET allowances
+// are all consumed. Their metadata stays until TTL so recipients can acknowledge
+// after downloading and senders can subsequently retrieve that acknowledgement.
+func (q *Queries) ExhaustedTransferIDs() ([]string, error) {
+	rows, err := q.db.Query(`SELECT id FROM transfers
+ WHERE status = 'complete' AND max_downloads > 0 AND download_count >= max_downloads`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
 	}
 	return ids, rows.Err()
 }
@@ -351,4 +373,19 @@ func (q *Queries) TransferSlotIDs(transferID string) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// AcknowledgeDownload records the first recipient report, never inferred from
+// an HTTP response. File counters only ensure the transfer has been requested;
+// they cannot prove decryption or saving to the recipient's filesystem.
+func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
+	res, err := q.db.Exec(`UPDATE transfers SET downloaded_at = COALESCE(downloaded_at, ?)
+ WHERE id = ? AND status = 'complete'
+ AND EXISTS (SELECT 1 FROM files WHERE transfer_id = transfers.id)
+ AND NOT EXISTS (SELECT 1 FROM files WHERE transfer_id = transfers.id AND download_count <= 0)`, at.UTC(), id)
+	if err != nil {
+		return false, err
+	}
+	count, err := res.RowsAffected()
+	return count > 0, err
 }

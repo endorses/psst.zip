@@ -110,12 +110,14 @@ fun TransferDetailScreen(
                 val statusIcon =
                     when (state.status) {
                         "complete",
+                        "downloaded",
                         "has_uploads" -> Icons.Default.CheckCircle
                         else -> Icons.Default.HourglassTop
                     }
                 val statusColor =
                     when (state.status) {
                         "complete",
+                        "downloaded",
                         "has_uploads" -> MaterialTheme.colorScheme.primary
                         "expired" -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant

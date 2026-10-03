@@ -2,7 +2,7 @@
   import { page } from "$app/stores";
   import { onMount } from "svelte";
   import { importKey, decrypt, decryptManifest } from "$lib/crypto";
-  import { getTransferInfo, downloadManifest, downloadFile } from "$lib/api";
+  import { getTransferInfo, downloadManifest, downloadFile, acknowledgeDownload } from "$lib/api";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
   import { zipSync } from "fflate";
 
@@ -16,6 +16,12 @@
   let transferId = $state("");
   let keyStr = $state("");
   let downloadProgress = $state<Record<string, number>>({});
+  let downloadedFileIds = $state<string[]>([]);
+  let confirmation = $state<"idle" | "sending" | "confirmed" | "failed">("idle");
+  const allFilesDownloaded = $derived(
+    !!manifest?.files.length &&
+      manifest.files.every((file) => downloadedFileIds.includes(file.blob_id)),
+  );
 
   onMount(async () => {
     transferId = $page.params.transferId ?? "";
@@ -39,7 +45,8 @@
       if (err instanceof Error && (err.message.includes("404") || err.message.includes("410"))) {
         errorMessage = "This transfer has expired or does not exist.";
       } else {
-        errorMessage = err instanceof Error ? err.message : "Failed to load transfer";
+        errorMessage =
+          err instanceof Error && err.message ? err.message : "Failed to load transfer";
       }
     }
   });
@@ -57,11 +64,39 @@
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      a.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function confirmDownload() {
+    if (!allFilesDownloaded || confirmation === "sending" || confirmation === "confirmed") return;
+    confirmation = "sending";
+    try {
+      await acknowledgeDownload(transferId);
+      confirmation = "confirmed";
+    } catch {
+      // Files are already decrypted and handed to the browser. Retry only the
+      // acknowledgment; never ask the recipient to download those files again.
+      confirmation = "failed";
+    }
+  }
+
+  function recordDownloadedFiles(ids: string[]) {
+    downloadedFileIds = [...new Set([...downloadedFileIds, ...ids])];
+    if (allFilesDownloaded && confirmation === "idle") void confirmDownload();
+  }
+
+  function validateDownloadedSize(plaintext: ArrayBuffer, entry: FileManifestEntry) {
+    if (plaintext.byteLength !== entry.size) {
+      throw new Error(`Downloaded file size does not match the manifest: ${entry.name}`);
+    }
   }
 
   async function downloadSingleFile(entry: FileManifestEntry) {
+    errorMessage = "";
     try {
       assertFileSize(entry.size);
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 0 };
@@ -72,17 +107,20 @@
 
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 80 };
       const plaintext = await decrypt(key, encrypted);
+      validateDownloadedSize(plaintext, entry);
 
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 100 };
       triggerDownload(plaintext, entry.name, entry.mime_type);
+      recordDownloadedFiles([entry.blob_id]);
 
       setTimeout(() => {
         const { [entry.blob_id]: _, ...rest } = downloadProgress;
         downloadProgress = rest;
       }, 1000);
     } catch (err) {
-      status = "error";
-      errorMessage = err instanceof Error ? err.message : "Download failed";
+      errorMessage = err instanceof Error && err.message ? err.message : "Download failed";
+      const { [entry.blob_id]: _, ...rest } = downloadProgress;
+      downloadProgress = rest;
     }
   }
 
@@ -90,6 +128,7 @@
     if (!manifest) return;
 
     status = "downloading";
+    errorMessage = "";
     try {
       const key = await importKey(keyStr);
       if (manifest.files.reduce((sum, file) => sum + file.size, 0) > MAX_BUFFERED_BYTES) {
@@ -99,18 +138,21 @@
 
       for (let i = 0; i < manifest.files.length; i++) {
         const entry = manifest.files[i];
+        assertFileSize(entry.size);
         const encrypted = await downloadFile(transferId, entry.blob_id);
         const plaintext = await decrypt(key, encrypted);
+        validateDownloadedSize(plaintext, entry);
         const name = entry.name.split(/[\\/]/).pop() || "file";
         zipData[`${i + 1}-${name}`] = new Uint8Array(plaintext);
       }
 
       const zipped = zipSync(zipData);
       triggerDownload(new Uint8Array(zipped).buffer, "files.zip", "application/zip");
+      recordDownloadedFiles(manifest.files.map((entry) => entry.blob_id));
       status = "ready";
     } catch (err) {
-      status = "error";
-      errorMessage = err instanceof Error ? err.message : "Download failed";
+      status = "ready";
+      errorMessage = err instanceof Error && err.message ? err.message : "Download failed";
     }
   }
 </script>
@@ -166,6 +208,24 @@
 
     {#if manifest.files.length > 1}
       <button class="btn primary" onclick={downloadAllAsZip}>Download All as ZIP</button>
+    {/if}
+
+    {#if errorMessage}
+      <p class="error" role="alert">{errorMessage}</p>
+    {/if}
+
+    {#if allFilesDownloaded}
+      <div class="download-confirmation" role="status">
+        <p>All files downloaded and decrypted.</p>
+        {#if confirmation === "sending"}
+          <p>Notifying the sender...</p>
+        {:else if confirmation === "confirmed"}
+          <p>Sender notified.</p>
+        {:else if confirmation === "failed"}
+          <p>Files downloaded, but the sender could not be notified.</p>
+          <button class="btn" onclick={confirmDownload}>Retry Confirmation</button>
+        {/if}
+      </div>
     {/if}
   </section>
 {/if}
@@ -279,5 +339,14 @@
     color: #d33;
     margin-top: 0.75rem;
     font-size: 0.9375rem;
+  }
+
+  .download-confirmation {
+    margin-top: 1.5rem;
+    font-size: 0.875rem;
+  }
+
+  .download-confirmation p {
+    margin-bottom: 0.5rem;
   }
 </style>

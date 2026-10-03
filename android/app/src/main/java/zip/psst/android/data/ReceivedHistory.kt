@@ -72,13 +72,17 @@ internal fun mergeSentHistory(
     current.copy(
         fileCount = maxOf(current.fileCount, transfer.fileCount),
         expiresAt = parseHistoryExpiry(transfer.expiresAt) ?: current.expiresAt,
-        status =
-            if (current.status == "download_started" || transfer.downloadCount > 0)
-                "download_started"
-            else transfer.status.name.lowercase(),
+        status = sentHistoryStatus(transfer, current.status),
     )
 
-/** Refresh metadata only, using the origin and key saved with this history entry. */
+internal fun sentHistoryStatus(transfer: Transfer, previousStatus: String? = null): String =
+    when {
+        previousStatus == "downloaded" || transfer.downloadedAt != null -> "downloaded"
+        previousStatus == "download_started" || transfer.downloadCount > 0 -> "download_started"
+        else -> transfer.status.name.lowercase()
+    }
+
+/** Refresh metadata and retry acknowledgements for files already saved on this device. */
 internal suspend fun refreshHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
@@ -91,6 +95,7 @@ internal suspend fun refreshHistoryEntry(
             if (row.type == "sent" || row.type == "send") {
                 dao.mergeSent(row.id, client.transfers.get(row.id))
             } else {
+                retrySavedDownloadAcknowledgements(row, client)
                 val slot = client.slots.get(row.id)
                 dao.mergeReceived(row.id, slot.receivedSnapshot())
                 if (slot.completedTransfers.isNotEmpty()) {
@@ -142,6 +147,7 @@ internal suspend fun refreshHistoryEntry(
 internal fun historyStatusLabel(type: String, status: String): String =
     when (status) {
         "complete" -> if (type == "received" || type == "receive") "Saved" else "Ready to download"
+        "downloaded" -> "Downloaded"
         "download_started" -> "Download started"
         "has_uploads" -> "Uploads received"
         "waiting" -> "Waiting for files"

@@ -60,6 +60,7 @@ func (s *Server) Router() http.Handler {
 		r.With(rateLimitMiddleware(creationRL)).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
 		r.Post("/transfers/{transferID}/complete", s.completeTransfer)
+		r.Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
 		r.Post("/transfers/{transferID}/manifest", s.uploadManifest)
 		r.Get("/transfers/{transferID}/manifest", s.downloadManifest)
 

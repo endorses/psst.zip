@@ -12,6 +12,18 @@ class SerializationTest {
     }
 
     @Test
+    fun downloadAcknowledgementTimestampIsOptional() {
+        val acknowledged =
+            json.decodeFromString<Transfer>("""{"id":"a","downloaded_at":"2026-10-03T16:00:00Z"}""")
+        assertEquals("2026-10-03T16:00:00Z", acknowledged.downloadedAt)
+        assertEquals(null, json.decodeFromString<Transfer>("""{"id":"a"}""").downloadedAt)
+        assertEquals(
+            null,
+            json.decodeFromString<Transfer>("""{"id":"a","downloaded_at":null}""").downloadedAt,
+        )
+    }
+
+    @Test
     fun transferSerializationRoundTrip() {
         val transfer =
             Transfer(

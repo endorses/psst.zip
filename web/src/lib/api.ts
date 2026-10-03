@@ -57,10 +57,19 @@ export interface TransferInfo {
   file_count: number;
   total_size: number;
   expires_at: string;
+  downloaded_at: string | null;
 }
 
 export async function getTransferInfo(transferId: string): Promise<TransferInfo> {
   return request<TransferInfo>(`/transfers/${transferId}`);
+}
+
+/** Confirm client-side decryption and browser handoff, not a completed disk save. */
+export async function acknowledgeDownload(transferId: string): Promise<void> {
+  await requestRaw(`/transfers/${transferId}/downloaded`, {
+    method: "POST",
+    signal: AbortSignal.timeout(10_000),
+  });
 }
 
 export async function downloadManifest(transferId: string): Promise<ArrayBuffer> {

@@ -218,7 +218,7 @@ func TestMultiFileDownloadQuotaAndCleanup(t *testing.T) {
 		t.Fatalf("complete set count: %+v, %v", tr, err)
 	}
 	sweep(t, env)
-	request(t, env, "GET", second, nil, http.StatusNotFound)
+	request(t, env, "GET", second, nil, http.StatusGone)
 	if _, err := os.Stat(env.dataDir + "/files/" + id); !os.IsNotExist(err) {
 		t.Fatalf("exhausted files remain: %v", err)
 	}

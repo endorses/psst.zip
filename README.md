@@ -145,11 +145,31 @@ transfers; `transfer_complete` SSE notifications include `transfer_id`.
 
 `max_downloads` limits GET attempts for each file independently, so every file in
 a multi-file transfer remains retrievable. Interrupted downloads consume an
-attempt. Transfer `download_count` counts complete sets (the minimum file count),
-and cleanup removes the transfer once every file exhausts its allowance. Expired
-resources are rejected immediately and their stored data is removed periodically.
+attempt. Transfer `download_count` counts complete sets of file requests (the
+minimum per-file request count), not completed downloads. Once every file exhausts
+its allowance, cleanup removes the encrypted file blobs; transfer metadata and the
+encrypted manifest remain until the original expiry so download confirmations can
+still be recorded and read.
+Expired resources are rejected immediately and their stored data is removed periodically.
 History deletion currently removes local records only; server-side manual deletion
 is not implemented.
+
+After downloading and successfully decrypting every file, a receiver sends
+`POST /api/v1/transfers/{id}/downloaded` with an empty body. This idempotent endpoint
+returns `204`; transfer metadata exposes the first confirmation as `downloaded_at`
+(otherwise `null`). Partial downloads, manifest reads, and completed HTTP responses
+alone do not set it. Confirmations report client success; they do not independently
+prove the recipient saved or opened the files. No encryption key or plaintext is
+included in the confirmation.
+
+Android sent history distinguishes **Ready to download**, **Download started**
+(all files requested), and **Downloaded** (receiver confirmation). Native receivers
+confirm after saving their decrypted files. The browser confirms after handing the
+decrypted files or ZIP to its download mechanism; it cannot verify the subsequent
+filesystem save. Failed confirmations can be retried without downloading again:
+the web page provides a retry button, Android retries from saved history, and iOS
+keeps a pending queue and retries when the app becomes active. Older clients do not
+send confirmations, so their downloads may remain **Download started**.
 
 ## Configuration
 
@@ -184,7 +204,7 @@ client application itself is trustworthy.
 - **Key in URL fragment**: The `#key` portion of URLs is not sent to the server by browsers (per RFC 3986). The server only sees the transfer ID.
 - **Zero-knowledge server**: The backend stores and serves encrypted blobs. It cannot decrypt file contents or metadata.
 - **Resumable uploads**: The tus protocol supports retrying interrupted uploads within the client size limits. All data is encrypted before upload.
-- **Automatic expiry**: Transfers are deleted after a configurable duration or download count.
+- **Automatic expiry**: Transfers expire after a configurable duration; exhausted download quotas remove encrypted payloads while retaining status metadata until expiry.
 
 ## License
 

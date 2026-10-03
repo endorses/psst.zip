@@ -11,8 +11,10 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.withTimeout
 
 /** API operations for file transfers (send flow). */
 class TransferApi(private val httpClient: HttpClient, private val config: ServerConfig) {
@@ -52,6 +54,18 @@ class TransferApi(private val httpClient: HttpClient, private val config: Server
     @Throws(Exception::class)
     suspend fun complete(transferId: String) {
         httpClient.post("${config.apiBaseUrl}/transfers/$transferId/complete")
+    }
+
+    /** Confirm successful download and decryption of every file; contains no keys or file data. */
+    @Throws(Exception::class)
+    suspend fun acknowledgeDownload(transferId: String) {
+        val response =
+            withTimeout(5_000L) {
+                httpClient.post("${config.apiBaseUrl}/transfers/$transferId/downloaded")
+            }
+        require(response.status == HttpStatusCode.NoContent) {
+            "Download acknowledgement failed: ${response.status}"
+        }
     }
 
     /**

@@ -17,6 +17,7 @@ data class Transfer(
     @SerialName("created_at") val createdAt: String? = null,
     // Counts requested file sets, not confirmed saves on the recipient's device.
     @SerialName("download_count") val downloadCount: Int = 0,
+    @SerialName("downloaded_at") val downloadedAt: String? = null,
 )
 
 @Serializable

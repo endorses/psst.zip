@@ -169,6 +169,7 @@ private fun HistoryItem(entity: TransferHistoryEntity, onClick: () -> Unit, onDe
                 color =
                     when (entity.status) {
                         "complete",
+                        "downloaded",
                         "has_uploads" -> MaterialTheme.colorScheme.primary
                         "expired" -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
