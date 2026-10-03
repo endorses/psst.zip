@@ -15,6 +15,15 @@ class PrefsManager(context: Context) {
     private val _serverUrl = MutableStateFlow(prefs.getString(KEY_SERVER_URL, "") ?: "")
     val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
 
+    private val _appearance =
+        MutableStateFlow(Appearance.fromPreference(prefs.getString(KEY_APPEARANCE, null)))
+    val appearance: StateFlow<Appearance> = _appearance.asStateFlow()
+
+    fun setAppearance(appearance: Appearance) {
+        prefs.edit().putString(KEY_APPEARANCE, appearance.preferenceValue).apply()
+        _appearance.value = appearance
+    }
+
     private val _historyAccess = MutableStateFlow(readHistoryAccess())
     val historyAccess: StateFlow<HistoryAccess> = _historyAccess.asStateFlow()
 
@@ -59,5 +68,6 @@ class PrefsManager(context: Context) {
 
     companion object {
         private const val KEY_SERVER_URL = "server_url"
+        private const val KEY_APPEARANCE = "appearance"
     }
 }

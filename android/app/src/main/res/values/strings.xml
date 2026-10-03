@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="appearance_value">Appearance: %1$s</string>
+    <string name="appearance_system">System</string>
+    <string name="appearance_light">Light</string>
+    <string name="appearance_dark">Dark</string>
     <string name="app_name">psst.zip</string>
     <string name="send_files">Send files</string>
     <string name="receive_link">Receive link</string>

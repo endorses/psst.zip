@@ -113,3 +113,8 @@
 "init(coder:) is not supported" = "init(coder:) is not supported";
 "psst.zip" = "psst.zip";
 "Some selected files could not be loaded. Nothing was sent. Share the files again." = "Some selected files could not be loaded. Nothing was sent. Share the files again.";
+"Appearance" = "Appearance";
+"Theme" = "Theme";
+"System" = "System";
+"Light" = "Light";
+"Dark" = "Dark";

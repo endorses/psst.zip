@@ -3,9 +3,19 @@ import SwiftUI
 struct ServerConfigView: View {
     @Environment(ServerConfigManager.self) private var serverConfig
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppConstants.appearanceKey, store: AppConstants.sharedDefaults)
+    private var appearance = AppAppearance.system
     var isInitialSetup = false
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $appearance) {
+                    ForEach(AppAppearance.allCases, id: \.self) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             if serverConfig.isConfigured {
                 Section("Account") {
                     Text(serverConfig.indicator).textSelection(.enabled)
@@ -19,6 +29,7 @@ struct ServerConfigView: View {
             }
         }
         .modifier(PsstStyle())
+        .modifier(PsstAppearance())
         .navigationTitle(LocalizedStringKey(isInitialSetup ? "psst.zip" : "Settings"))
         .toolbar {
             if !isInitialSetup {

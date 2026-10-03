@@ -40,8 +40,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import zip.psst.android.PsstApplication
 import zip.psst.android.R
+import zip.psst.android.ui.components.AppearancePicker
 import zip.psst.android.ui.components.loginAutofill
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
@@ -57,6 +60,8 @@ fun ServerConfigScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val prefs = (context.applicationContext as PsstApplication).prefs
+    val appearance by prefs.appearance.collectAsStateWithLifecycle()
     var passwordVisible by remember { mutableStateOf(false) }
     val scanner =
         rememberLauncherForActivityResult(ScanContract()) { result ->
@@ -82,6 +87,7 @@ fun ServerConfigScreen(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge)
+            AppearancePicker(appearance = appearance, onSelected = prefs::setAppearance)
             Text(
                 stringResource(R.string.server_intro),
                 style = MaterialTheme.typography.bodyMedium,

@@ -11,6 +11,7 @@ struct PsstApp: App {
             ContentView()
                 .environment(serverConfig)
                 .environment(historyStore)
+                .modifier(PsstAppearance())
         }
     }
 }

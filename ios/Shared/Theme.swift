@@ -1,6 +1,38 @@
 import SwiftUI
 import UIKit
 
+enum AppAppearance: String, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+
+/// One device preference, shared with the extension and independent of the signed-in account.
+struct PsstAppearance: ViewModifier {
+    @AppStorage(AppConstants.appearanceKey, store: AppConstants.sharedDefaults)
+    private var appearance = AppAppearance.system
+
+    func body(content: Content) -> some View {
+        content.preferredColorScheme(appearance.colorScheme)
+    }
+}
+
 enum PsstTheme {
     static let primary = adaptive(0x0F766E, 0x5EEAD4)
     static let onPrimary = adaptive(0xFFFFFF, 0x172B2A)

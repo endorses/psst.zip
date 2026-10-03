@@ -75,5 +75,6 @@ struct ShareExtensionView: View {
         }
         .environment(viewModel.config)
         .modifier(PsstStyle())
+        .modifier(PsstAppearance())
     }
 }

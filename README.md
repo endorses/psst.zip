@@ -39,7 +39,10 @@ remains actionable so a partially created resource can still be revoked.
 
 The web header offers **System**, **Light**, and **Dark** appearance on every page,
 including login and public links. The choice is saved in that browser; System
-follows the browser/device preference. Native apps follow system appearance.
+follows the browser/device preference. Android and iOS offer the same choices
+under **Settings → Appearance**, saved on that device independently of the
+server account. System is the default; iOS also applies the choice to its share
+extension.
 The interface uses deep teal primary
 actions, neutral surfaces, and dark-on-white QR codes in both themes. Statuses
 also use text, including the distinction between files received by the server,

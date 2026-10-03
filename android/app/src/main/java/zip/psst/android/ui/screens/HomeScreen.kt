@@ -53,12 +53,6 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
                 actions = {
-                    IconButton(onClick = onHistory) {
-                        Icon(
-                            Icons.Default.History,
-                            contentDescription = stringResource(R.string.history),
-                        )
-                    }
                     IconButton(onClick = onSettings) {
                         Icon(
                             Icons.Default.Settings,
