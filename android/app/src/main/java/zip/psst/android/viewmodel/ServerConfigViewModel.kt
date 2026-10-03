@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.ServerConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,7 @@ data class ServerConfigUiState(
 
 sealed interface TestResult {
     data object Success : TestResult
+
     data class Error(val message: String) : TestResult
 }
 
@@ -29,54 +32,53 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     private val _uiState = MutableStateFlow(ServerConfigUiState(url = prefs.getServerUrl()))
     val uiState: StateFlow<ServerConfigUiState> = _uiState.asStateFlow()
 
+    private var validationJob: Job? = null
+    private var validationVersion = 0L
+
     fun onUrlChange(url: String) {
-        _uiState.value = _uiState.value.copy(url = url, testResult = null)
+        validationVersion++
+        validationJob?.cancel()
+        _uiState.value = _uiState.value.copy(url = url, isTesting = false, testResult = null)
     }
 
-    fun testConnection() {
-        val url = _uiState.value.url.trim()
-        if (url.isBlank()) {
-            _uiState.value = _uiState.value.copy(
-                testResult = TestResult.Error("Please enter a server URL"),
-            )
-            return
-        }
+    fun testConnection() = validate()
 
+    fun saveUrl(onSaved: () -> Unit) = validate(onSaved)
+
+    private fun validate(onSaved: (() -> Unit)? = null) {
+        validationJob?.cancel()
+        val version = ++validationVersion
+        val enteredUrl = _uiState.value.url
+        val url = enteredUrl.trim()
         _uiState.value = _uiState.value.copy(isTesting = true, testResult = null)
-
-        viewModelScope.launch {
-            try {
-                val client = ApiClient(ServerConfig(url))
-                // Try to create and immediately check a transfer to verify connectivity.
-                // A simple GET to the API base would be better, but we use what's available.
-                // We'll just try to get a non-existent transfer; a 404 means the server is up.
+        validationJob =
+            viewModelScope.launch {
+                var client: ApiClient? = null
                 try {
-                    client.transfers.get("__connection_test__")
-                } catch (_: Exception) {
-                    // Expected: 404 or similar. The fact that we got a response means
-                    // the server is reachable. If it were unreachable, we'd get a
-                    // network exception that wouldn't be caught here.
+                    require(url.isNotBlank()) { "Please enter a server URL" }
+                    client = ApiClient(ServerConfig(url))
+                    client.validateServer()
+                    if (validationVersion != version || _uiState.value.url != enteredUrl)
+                        return@launch
+                    _uiState.value =
+                        _uiState.value.copy(isTesting = false, testResult = TestResult.Success)
+                    if (onSaved != null) {
+                        prefs.setServerUrl(url)
+                        onSaved()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (validationVersion == version && _uiState.value.url == enteredUrl) {
+                        _uiState.value =
+                            _uiState.value.copy(
+                                isTesting = false,
+                                testResult = TestResult.Error(e.message ?: "Connection failed"),
+                            )
+                    }
+                } finally {
+                    client?.close()
                 }
-                client.close()
-                _uiState.value = _uiState.value.copy(
-                    isTesting = false,
-                    testResult = TestResult.Success,
-                )
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isTesting = false,
-                    testResult = TestResult.Error(
-                        e.message ?: "Connection failed",
-                    ),
-                )
             }
-        }
-    }
-
-    fun saveUrl() {
-        val url = _uiState.value.url.trim()
-        if (url.isNotBlank()) {
-            prefs.setServerUrl(url)
-        }
     }
 }

@@ -11,6 +11,8 @@ Self-hosted, end-to-end encrypted file transfer. Share files between devices wit
 5. The recipient opens the link, and the web app (or mobile app) decrypts everything in the browser/on-device.
 
 Drop slots work in reverse: the receiver creates a slot, shares its QR/link, and uploaders encrypt into it.
+The mobile receive screen displays the full upload link with **Copy Link** and
+**Share Link** actions, so the sender can also receive it through a message or email.
 
 ## Architecture
 
@@ -25,17 +27,31 @@ ios/         iOS app (SwiftUI + share extension)
 ## Quick start (Docker Compose)
 
 ```bash
-# 1. Build the web app
-cd web && npm ci && npm run build && cd ..
-
-# 2. (Optional) Configure your domain and port in a .env file
+# 1. Configure the hostname recipients will use in a .env file
 echo 'PSST_DOMAIN=psst.example.com' > .env
 
-# 3. Start the stack
-docker compose up -d
+# 2. Build and start the complete stack (includes the web app)
+docker compose up -d --build
 ```
 
-Caddy handles TLS automatically when `PSST_DOMAIN` is set to a public domain. For local use, it defaults to `localhost`.
+Caddy serves the website and API together at `https://psst.example.com`.
+Enter that same address in the mobile app's server settings, without `/api/v1`.
+Generated links then open the download page directly; recipients do not need to
+change addresses or ports. Port 8080 belongs to the internal API and is not the
+address to give to mobile clients or recipients.
+
+The hostname is chosen by each operator; no hostname is built into the mobile
+apps. Server setup verifies the API and both share pages before saving the URL.
+An API-only address, failed connection, or HTTP LAN address is rejected with a
+setup error. Deploy the updated backend and web app together before configuring
+an updated mobile client. Existing saved settings are retained until changed.
+
+For automatic public certificates, point the hostname's DNS records at the server
+and make ports 80 and 443 reachable. See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/https).
+The default `localhost` hostname is only for testing on the server itself. LAN-only
+HTTPS requires a hostname reachable by every device and a certificate trusted by
+both browsers and native clients; an untrusted self-signed certificate is not a
+complete deployment.
 
 ## Manual build
 
@@ -53,8 +69,13 @@ go build -o psst-server ./cmd/server
 cd web
 npm ci
 npm run build
-# Serve the contents of web/build/ with any static file server
+# Serve web/build/ behind the same HTTPS origin as the API (see Caddyfile)
 ```
+
+The public server must route `/api/*` to the Go backend and serve the web build for
+other paths, falling back to `index.html` for `/d/*` and `/u/*`. The included
+Docker Compose stack and Caddyfile provide this routing. Running only the Go
+server does not serve download pages.
 
 ## Native builds and verification
 
@@ -66,6 +87,13 @@ continues targeting Java 17 bytecode. Set `JAVA_HOME` to your JDK and
 ```bash
 ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
 ```
+
+Set the app's server URL to the shared HTTPS address described above. Debug APKs
+also allow plain HTTP for isolated API testing, but using the backend's port 8080
+directly produces links without a web download page. Browser decryption requires
+HTTPS or localhost, so a plain HTTP LAN address is not an end-to-end sharing setup.
+Release builds retain Android's default HTTPS requirement. After rebuilding,
+reinstall `android/app/build/outputs/apk/debug/app-debug.apk` to apply changes.
 
 On this Linux development machine, the JDK is `/opt/android-studio/jbr` and the
 SDK is `/home/grischa/Android/Sdk`. These paths are local configuration, not
@@ -91,6 +119,11 @@ npm run build
 The tests start temporary backend instances, exercise encrypted transfers and
 slot uploads, and verify single-file and ZIP downloads in Chromium. Browser tests
 use local ports 8080 and 4173. CI also assembles Android and runs shared tests.
+
+To run the same browser tests against an isolated Docker deployment, set
+`PSST_TEST_BASE_URL` to its origin and run
+`npx playwright test --config playwright.deployment.config.ts` from `web/`.
+This suite creates and downloads test transfers; use a disposable deployment.
 
 ## Current limits and protocol
 

@@ -1,0 +1,23 @@
+# The web/Caddy image needs only these build inputs. Backend builds use their
+# own context and backend/.dockerignore.
+**
+!Caddyfile
+!web/
+web/*
+!web/Dockerfile
+!web/package.json
+!web/package-lock.json
+!web/svelte.config.js
+!web/vite.config.ts
+!web/tsconfig.json
+!web/src/
+!web/src/**
+!web/static/
+!web/static/**
+
+# Never copy host dependencies, generated output, or browser test artifacts.
+web/node_modules/
+web/build/
+web/.svelte-kit/
+web/test-results/
+web/playwright-report/

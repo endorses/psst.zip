@@ -28,25 +28,13 @@ final class ServerConfigManager {
         ApiClient(config: makeServerConfig(), httpClient: HttpClientFactoryKt.createPlatformHttpClient())
     }
 
-    /// Test the connection to the server. Returns true on success.
-    func testConnection() async -> Bool {
-        guard isConfigured else { return false }
-        do {
-            let client = makeApiClient()
-            defer { client.close() }
-            // Attempt to create and immediately check a transfer to verify connectivity.
-            // A simple GET to the base URL would be better, but we use what the API offers.
-            // We'll just try a GET to a non-existent transfer and check we get a proper HTTP error
-            // rather than a network error.
-            let _ = try await client.transfers.get(transferId: "00000000-0000-0000-0000-000000000000")
-            return true
-        } catch {
-            // A 404 is fine — it means the server is reachable.
-            let description = String(describing: error)
-            if description.contains("404") || description.contains("Not Found") {
-                return true
-            }
-            return false
-        }
+    /// Check a candidate address without changing the saved configuration.
+    func testConnection(url: String) async throws {
+        let client = ApiClient(
+            config: ServerConfig(baseUrl: url),
+            httpClient: HttpClientFactoryKt.createPlatformHttpClient()
+        )
+        defer { client.close() }
+        try await client.validateServer()
     }
 }

@@ -31,18 +31,12 @@ import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
 
 @Composable
-fun ServerConfigScreen(
-    onConfigured: () -> Unit,
-    viewModel: ServerConfigViewModel = viewModel(),
-) {
+fun ServerConfigScreen(onConfigured: () -> Unit, viewModel: ServerConfigViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -55,15 +49,13 @@ fun ServerConfigScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            Text(
-                text = "Server Configuration",
-                style = MaterialTheme.typography.headlineMedium,
-            )
+            Text(text = "Server Configuration", style = MaterialTheme.typography.headlineMedium)
 
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "Enter the URL of your self-hosted Psst server.",
+                text =
+                    "Enter your self-hosted website's HTTPS address. Shared links use this address too.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -124,11 +116,8 @@ fun ServerConfigScreen(
             Spacer(Modifier.height(12.dp))
 
             Button(
-                onClick = {
-                    viewModel.saveUrl()
-                    onConfigured()
-                },
-                enabled = state.url.isNotBlank(),
+                onClick = { viewModel.saveUrl(onConfigured) },
+                enabled = !state.isTesting && state.url.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Save & Continue")

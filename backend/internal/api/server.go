@@ -54,6 +54,8 @@ func (s *Server) Router() http.Handler {
 	creationRL := newRateLimiter(s.cfg.RateLimitCreation, s.cfg.RateLimitCreationBurst)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/health", s.health)
+
 		// Transfer endpoints (send flow)
 		r.With(rateLimitMiddleware(creationRL)).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)

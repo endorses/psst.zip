@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct TransferDetailView: View {
     var sendViewModel: SendViewModel?
@@ -24,7 +25,7 @@ private struct SendTransferDetailContent: View {
                 statusSection
                 if let url = viewModel.shareURL {
                     qrCodeSection(url: url)
-                    shareLinkSection(url: url)
+                    ShareLinkSection(url: url)
                 }
                 fileListSection
                 if let expiresAt = viewModel.expiresAt {
@@ -101,7 +102,7 @@ private struct ReceiveTransferDetailContent: View {
                 statusSection
                 if let url = viewModel.uploadURL {
                     qrCodeSection(url: url)
-                    shareLinkSection(url: url)
+                    ShareLinkSection(url: url)
                 }
                 receivedFilesSection
                 if let expiresAt = viewModel.expiresAt {
@@ -200,18 +201,35 @@ private func qrCodeSection(url: String) -> some View {
     }
 }
 
-private func shareLinkSection(url: String) -> some View {
-    HStack {
-        Text(url)
-            .font(.caption)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .foregroundStyle(.secondary)
-        Spacer()
-        ShareLink(item: url) {
-            Label("Share Link", systemImage: "link")
+private struct ShareLinkSection: View {
+    let url: String
+    @State private var copiedURL: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(verbatim: url)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                UIPasteboard.general.string = url
+                copiedURL = url
+            } label: {
+                Label(copiedURL == url ? "Link Copied" : "Copy Link", systemImage: copiedURL == url ? "checkmark" : "doc.on.doc")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Copies the complete link to share with someone remotely.")
+
+            ShareLink(item: url) {
+                Label("Share Link", systemImage: "link")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
-        .buttonStyle(.bordered)
     }
 }
 

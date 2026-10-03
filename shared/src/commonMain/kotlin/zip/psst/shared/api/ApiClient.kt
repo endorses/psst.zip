@@ -37,6 +37,12 @@ class ApiClient(
         return resourceUrl
     }
 
+    /** Verify the server origin, API version, and public upload/download pages before saving it. */
+    @Throws(Exception::class)
+    suspend fun validateServer() {
+        validateServer(config, httpClient)
+    }
+
     fun close() {
         httpClient.close()
     }
