@@ -38,7 +38,7 @@ test("share page uploads files; download page decrypts individual files and ZIP"
   await page.goto(link);
   await expect(page.getByRole("heading", { name: "Save files" })).toBeVisible();
   const single = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Save files", exact: true }).first().click();
+  await page.getByRole("button", { name: "Save file", exact: true }).first().click();
   const download = await single;
   // Chromium sanitizes quotation marks in the suggested filesystem name.
   expect(download.suggestedFilename()).toBe("first _quoted_.txt");

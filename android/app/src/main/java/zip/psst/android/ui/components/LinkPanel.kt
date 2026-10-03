@@ -25,7 +25,7 @@ fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        QrCodeImage(url, size = 180.dp)
+        QrCodeImage(url)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
                 onClick = {

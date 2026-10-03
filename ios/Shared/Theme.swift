@@ -47,14 +47,21 @@ struct PrimaryAction: ButtonStyle {
 struct LinkCard: View {
     let url: String
     @State private var copied = false
+    @Environment(\.displayScale) private var displayScale
     var body: some View {
         VStack(spacing: 12) {
-            if let image = QRCodeGenerator.generate(from: url, size: 200) {
-                Image(uiImage: image).interpolation(.none).resizable().scaledToFit()
-                    .frame(width: 200, height: 200).padding(16).background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .accessibilityLabel("Shareable link QR code")
+            GeometryReader { geometry in
+                let availablePixels = geometry.size.width * displayScale
+                if let image = QRCodeGenerator.generate(from: url, size: availablePixels) {
+                    let center = (floor((availablePixels - image.size.width) / 2) + image.size.width / 2) / displayScale
+                    Image(uiImage: image).interpolation(.none).resizable()
+                        .frame(width: image.size.width / displayScale, height: image.size.height / displayScale)
+                        .position(x: center, y: center)
+                        .accessibilityLabel("Shareable link QR code")
+                }
             }
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 400)
             ViewThatFits(in: .horizontal) {
                 HStack { copy
                     share

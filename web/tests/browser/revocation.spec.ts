@@ -74,7 +74,7 @@ test("revoking a transfer blocks downloads from an already loaded page and a fre
   let browserDownloads = 0;
   page.on("download", () => browserDownloads++);
   await page.goto(transfer.link);
-  const download = page.getByRole("button", { name: "Save files", exact: true });
+  const download = page.getByRole("button", { name: "Save file", exact: true });
   await expect(download).toBeEnabled();
 
   const revoked = await request.delete(`/api/v1/transfers/${transfer.id}`, {
@@ -95,7 +95,7 @@ test("revoking a transfer blocks downloads from an already loaded page and a fre
   await expect(
     freshPage.getByText("This transfer has expired or was revoked. Ask the sender for a new link."),
   ).toBeVisible();
-  await expect(freshPage.getByRole("button", { name: "Save files", exact: true })).toHaveCount(0);
+  await expect(freshPage.getByRole("button", { name: "Save file", exact: true })).toHaveCount(0);
 });
 
 test("revoking a slot blocks uploads from an already loaded page and a fresh upload link", async ({

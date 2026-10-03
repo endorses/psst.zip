@@ -2,6 +2,7 @@
   import { onDestroy, untrack } from "svelte";
   import { beforeNavigate } from "$app/navigation";
   import { UploadJob, formatSize } from "$lib/upload-job.svelte";
+  import Icon from "./Icon.svelte";
   import LinkCard from "./LinkCard.svelte";
   import { FILE_SIZE_NOTICE } from "$lib/limits";
   let {
@@ -88,9 +89,7 @@
   >
 {:else}
   <h1>Send files</h1>
-  <p class="muted">
-    Files are encrypted automatically. Share a link or QR code, nearby or anywhere.
-  </p>
+  <p class="muted">A private link for anything you need to share.</p>
   <label
     class="dropzone"
     ondragover={(e) => e.preventDefault()}
@@ -98,7 +97,15 @@
       e.preventDefault();
       job.add(Array.from(e.dataTransfer?.files ?? []));
     }}
-    ><span>{FILE_SIZE_NOTICE}</span><span>Drop files here or choose files</span><input
+  >
+    <span class="upload-icon"><Icon name="Upload" size={28} /></span>
+    <strong class="drop-title"
+      >{job.files.length ? "Add more files" : "Drop your files here"}</strong
+    >
+    <span class="muted small">or choose them from your device</span>
+    <span class="choose-files" aria-hidden="true">Choose files <Icon name="Arrow" size={17} /></span
+    >
+    <span class="muted small file-limit">{FILE_SIZE_NOTICE}</span><input
       class="file-input"
       aria-label="Choose files"
       type="file"
@@ -109,8 +116,10 @@
       }}
     /></label
   >
-  {#if job.files.length}<p>
-      {job.files.length} files · {formatSize(job.files.reduce((n, f) => n + f.size, 0))}
+  {#if job.files.length}<p class="selection-summary">
+      {job.files.length} file{job.files.length === 1 ? "" : "s"} · {formatSize(
+        job.files.reduce((n, f) => n + f.size, 0),
+      )}
     </p>
     <ul class="file-list">
       {#each job.files as file, i}<li>
@@ -124,9 +133,78 @@
     </ul>
     <button class="primary" onclick={start}
       >{job.state === "error" ? "Retry upload" : "Send files"}</button
-    >{/if}
+    >{:else}<p class="encryption-note">
+      <Icon name="Lock" size={16} />Encrypted on your device. Only people with the link can open
+      your files.
+    </p>{/if}
 {/if}
 {#if job.error}<p class="error" role="alert">{job.error}</p>
   {#if job.transferId && !job.active}<button onclick={() => job.retryCleanup()}
       >Retry cleanup</button
     >{/if}{/if}
+
+<style>
+  .dropzone {
+    min-height: 320px;
+    align-content: center;
+    justify-items: center;
+    gap: 0.6rem;
+    margin: 2rem 0 1.25rem;
+  }
+  .upload-icon {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    background: var(--accent);
+    color: var(--primary);
+    border-radius: 18px;
+    margin-bottom: 0.65rem;
+  }
+  .drop-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .choose-files {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--primary);
+    color: var(--on-primary);
+    padding: 0.65rem 1rem;
+    border-radius: 10px;
+    font-weight: 550;
+    margin-top: 0.4rem;
+  }
+  .file-limit {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+  }
+  .encryption-note {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    align-items: baseline;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .encryption-note :global(svg) {
+    flex-shrink: 0;
+    position: relative;
+    top: 3px;
+  }
+  .selection-summary {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 550;
+    margin-top: 1.5rem;
+  }
+  @media (max-width: 540px) {
+    .dropzone {
+      min-height: 290px;
+      padding: 2rem 1rem;
+    }
+  }
+</style>

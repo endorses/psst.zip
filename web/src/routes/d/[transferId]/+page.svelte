@@ -265,7 +265,7 @@
             {#if entry.blob_id in downloadProgress}
               {downloadProgress[entry.blob_id]}%
             {:else}
-              {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save files"}
+              {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save file"}
             {/if}
           </button>
         </li>

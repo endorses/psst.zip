@@ -3,6 +3,7 @@
   import QRCode from "qrcode";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import Icon from "$lib/components/Icon.svelte";
   import LinkCard from "$lib/components/LinkCard.svelte";
   import { BRAND } from "$lib/brand";
   import { formatSize } from "$lib/upload-job.svelte";
@@ -38,6 +39,27 @@
     pairingStatus = $state("pending"),
     pairedDevice = $state("");
   const destinations = ["Send", "Receive", "History", "Settings", "Devices", "Account", "Users"];
+  const mainDestinations = ["Send", "Receive", "History", "Settings"] as const;
+  const settingsDestinations = [
+    {
+      name: "Account",
+      title: "Account",
+      description: "Manage your password and account security.",
+    },
+    {
+      name: "Devices",
+      title: "Connected devices",
+      description: "Connect the mobile app or manage signed-in devices.",
+    },
+    {
+      name: "Users",
+      title: "Users",
+      description: "Create accounts and manage access to your server.",
+    },
+  ] as const;
+  function destinationUrl(next: string) {
+    return `/?view=${next.toLowerCase()}${next === "Receive" && receiveId ? `&slot=${encodeURIComponent(receiveId)}` : ""}`;
+  }
   function routeTab(): Tab {
     return (destinations.find((v) => v.toLowerCase() === $page.url.searchParams.get("view")) ||
       "Send") as Tab;
@@ -422,7 +444,7 @@
           server_url: location.origin,
           code: result.code,
         }),
-        { width: 280, margin: 4 },
+        { scale: 8, margin: 4 },
       );
       if (owner === epoch && flow === pairingFlow) pairingQr = qr;
     });
@@ -474,7 +496,7 @@
   }
 </script>
 
-<svelte:head><title>{user ? "Your transfers" : "Sign in"} · {BRAND}</title></svelte:head>
+<svelte:head><title>{user ? tab : "Sign in"} · {BRAND}</title></svelte:head>
 {#if loading}<p role="status">Loading your account…</p>
 {:else if !user}
   <section class="panel login">
@@ -526,342 +548,384 @@
       </p>{/if}
   </section>
 {:else}
-  <div class="account-bar">
-    <span>Signed in as <strong>{user.username}</strong></span><button
-      disabled={busy}
-      onclick={() =>
-        act(async () => {
-          await cancelPair();
-          await request("/auth/logout", "POST");
-          try {
-            localStorage.setItem("psst.auth-change", String(Date.now()));
-          } catch {}
-          clearAccount();
-        })}>Sign out</button
-    >
-  </div>
-  <nav aria-label="Account navigation">
-    {#each ["Send", "Receive", "History", "Settings"] as item}<button
-        aria-current={tab === item ? "page" : undefined}
-        disabled={busy}
-        onclick={() => select(item as Tab)}>{item}</button
-      >{/each}
-  </nav>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
-      class="notice"
-      role="status"
-    >
-      {notice}
-    </p>{/if}
-  {#if sendActive && tab !== "Send"}<p class="notice">
-      <button onclick={() => select("Send")}>Return to your transfer</button> Your selected files and
-      upload stay here.
-    </p>{/if}
-  {#if liveMessage && (tab === "History" || tab === "Receive" || tab === "Devices")}<p
-      role="status"
-      class="notice"
-    >
-      {liveMessage}
-    </p>{/if}
-  <section class="panel">
-    {#key user.id}<div hidden={tab !== "Send"}>
-        <SendPanel
-          accountId={user.id}
-          initialFiles={restoredFiles}
-          onselection={(files) => (selectedFiles = files)}
-          oncreated={remember}
-          onactive={(value) => (sendActive = value)}
-        />
-      </div>{/key}
-    {#if tab === "Settings"}<h1>Settings</h1>
-      <div class="actions">
-        <button onclick={() => select("Account")}>Account</button><button
-          onclick={() => select("Devices")}>Connected devices</button
-        >{#if user.role === "admin"}<button onclick={() => select("Users")}>Users</button>{/if}
-      </div>
-    {:else if tab === "Receive"}<h1>Receive files</h1>
-      <p class="muted">
-        Anyone with your receive link can send you encrypted files within the server’s limits.
-      </p>
-      {#if receiveUnavailable}<p class="notice" role="status">
-          This receive link has expired or was revoked. Create a new link to get more files.
-        </p>{:else if receiveUrl}<LinkCard
-          url={receiveUrl}
-          label="Receive link — share it with someone to get files."
-        /><button disabled={busy} onclick={() => checkReceived(receiveId)}
-          >Refresh received files</button
-        >
-        <p class="muted small" role="status">
-          {received.length
-            ? `${received.reduce((n, t) => n + t.count, 0)} files received. Ready to save below.`
-            : "Waiting for files. Arrivals update automatically."}
-        </p>{/if}
-      <button class="primary" disabled={busy} onclick={createReceive}
-        >{receiveUrl
-          ? "Create another receive link"
-          : busy
-            ? "Creating link…"
-            : "Create receive link"}</button
-      >
-    {:else if tab === "History"}<div class="heading">
-        <h1>{allResources ? "All server resources" : "Your transfers"}</h1>
-        <button disabled={busy} onclick={() => select("History")}>Refresh</button>
-      </div>
-      <label
-        >Show<select bind:value={historyFilter}
-          ><option value="all">All transfers</option><option value="transfers">Sent</option><option
-            value="slots">Receive links</option
-          ></select
-        ></label
-      >
-      {#if user.role === "admin"}
-        <label class="toggle"
-          ><input
-            type="checkbox"
-            bind:checked={allResources}
-            disabled={busy}
-            onchange={() => select("History")}
-          /> All server resources</label
-        >
-      {/if}
-      <p class="muted small">
-        Encryption keys stay on the device that created the link. This browser can reopen its own
-        links; transfers from other devices can still be revoked.
-      </p>
-      {#if !transfers.length && !slots.length}<p class="empty">No transfers yet.</p>{/if}
-      {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].filter((item) => historyFilter === "all" || item.kind === historyFilter) as item}<article
-          class="resource"
-          data-resource-id={item.id}
-        >
-          <div>
-            <strong
-              >{labels[item.id]?.title ||
-                (item.kind === "slots" ? "Receive link" : "Sent files")}</strong
-            >
-            <p>
-              {item.kind === "slots"
-                ? `${item.transfers?.reduce((n, t) => n + t.file_count, 0) ?? item.file_count ?? 0} files received`
-                : `${item.file_count ?? 0} files · ${status(item)}`}
-            </p>
-            <p class="muted small">
-              {labels[item.id]
-                ? formatSize(labels[item.id].size) + " · "
-                : item.total_size
-                  ? formatSize(item.total_size) + " stored · "
-                  : ""}Expires {date(item.expires_at)}
-            </p>
-            {#if !links[item.id]}<p class="muted small">
-                This device has no encryption key. Use the device that created the link to open or
-                share it. You can still revoke it here.
-              </p>{/if}
-          </div>
-          <div class="actions">
-            {#if links[item.id]}<button onclick={() => copy(links[item.id])}>Copy link</button
-              >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
-                >{:else}<button disabled={busy} onclick={() => openReceive(item.id)}
-                  >View files</button
-                >{/if}{/if}<button
-              class="danger"
-              disabled={busy}
-              onclick={() => (pendingDelete = { id: item.id, kind: item.kind })}>Revoke</button
-            >
-          </div>
-        </article>{/each}
-      {#if pendingDelete}<div class="confirm" role="alert">
-          <p>
-            Revoke this link and delete its server files? Existing downloaded copies will remain.
-          </p>
-          <button class="danger" disabled={busy} onclick={revoke}>Revoke and delete</button><button
-            disabled={busy}
-            onclick={() => (pendingDelete = null)}>Cancel</button
+  <div class="workspace">
+    <aside class="sidebar">
+      <p class="sidebar-label">Your workspace</p>
+      <nav aria-label="Account navigation">
+        {#each mainDestinations as item}
+          <a
+            href={destinationUrl(item)}
+            aria-current={tab === item
+              ? "page"
+              : item === "Settings" && ["Account", "Devices", "Users"].includes(tab)
+                ? "location"
+                : undefined}
+            class:active={tab === item ||
+              (item === "Settings" && ["Account", "Devices", "Users"].includes(tab))}
+            data-sveltekit-keepfocus
+            data-sveltekit-noscroll
           >
-        </div>{/if}
-    {:else if tab === "Devices"}<button onclick={() => select("Settings")}>Back to Settings</button>
-      <h1>Connect mobile app</h1>
-      <p class="muted">
-        In the app’s server settings, choose Scan login QR code. Keep this code private: it signs
-        the scanning device in as you.
-      </p>
-      {#if pairingStatus === "connected"}<p class="notice" role="status">
-          Phone connected: {pairedDevice}
-        </p>
-      {:else if pairingQr && now < Date.parse(pairingExpires)}<section
-          aria-label="Connect mobile app"
+            <Icon name={item} /><span>{item}</span>
+          </a>
+        {/each}
+      </nav>
+      <div class="account-bar">
+        <span class="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
+        <div class="identity">
+          <span class="small muted">Signed in as</span><strong>{user.username}</strong>
+        </div>
+        <button
+          class="sign-out"
+          disabled={busy}
+          onclick={() =>
+            act(async () => {
+              await cancelPair();
+              await request("/auth/logout", "POST");
+              try {
+                localStorage.setItem("psst.auth-change", String(Date.now()));
+              } catch {}
+              clearAccount();
+            })}>Sign out</button
         >
-          <img class="qr" src={pairingQr} alt="Mobile app login QR code" />
-          <p>
-            Single use · expires in {Math.max(
-              0,
-              Math.ceil((Date.parse(pairingExpires) - now) / 1000),
-            )} seconds
-          </p>
-          <button onclick={cancelPair}>Cancel pairing</button>
-        </section>
-      {:else if pairingId}<p class="notice" role="status">
-          This code has expired. Generate a new code.
+      </div>
+    </aside>
+    <div class="workspace-content">
+      {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
+          class="notice"
+          role="status"
+        >
+          {notice}
         </p>{/if}
-      <button class="primary" disabled={busy} onclick={pair}
-        >{pairingId ? "Generate new code" : "Show login QR code"}</button
-      >
-      <h2>Connected devices</h2>
-      <p class="muted">Revoke a session to sign that device out.</p>
-      {#each sessions as session}<article class="resource">
-          <div>
-            <strong
-              >{session.device_name || "Device"}{session.current ? " (this browser)" : ""}</strong
-            >
-            <p class="muted small">Expires {date(session.expires_at)}</p>
+      {#if sendActive && tab !== "Send"}<p class="notice">
+          <button onclick={() => select("Send")}>Return to your transfer</button> Your selected files
+          and upload stay here.
+        </p>{/if}
+      {#if liveMessage && (tab === "History" || tab === "Receive" || tab === "Devices")}<p
+          role="status"
+          class="notice"
+        >
+          {liveMessage}
+        </p>{/if}
+      <section class="workspace-panel">
+        {#key user.id}<div hidden={tab !== "Send"}>
+            <SendPanel
+              accountId={user.id}
+              initialFiles={restoredFiles}
+              onselection={(files) => (selectedFiles = files)}
+              oncreated={remember}
+              onactive={(value) => (sendActive = value)}
+            />
+          </div>{/key}
+        {#if tab === "Settings"}<h1>Settings</h1>
+          <p class="muted">Your account, devices, and server access.</p>
+          <div class="settings-list">
+            {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
+              <a
+                href={destinationUrl(item.name)}
+                aria-label={item.title}
+                data-sveltekit-keepfocus
+                data-sveltekit-noscroll
+              >
+                <span class="setting-icon"><Icon name={item.name} size={22} /></span>
+                <span
+                  ><strong>{item.title}</strong><span class="muted small setting-description"
+                    >{item.description}</span
+                  ></span
+                >
+                <Icon name="Arrow" />
+              </a>
+            {/each}
           </div>
-          <button
-            class="danger"
-            disabled={busy}
-            onclick={() =>
-              act(async () => {
-                await request(`/auth/sessions/${session.id}`, "DELETE");
-                if (session.current) clearAccount();
-                else sessions = sessions.filter((s) => s.id !== session.id);
-              })}>Revoke session</button
+        {:else if tab === "Receive"}<h1>Receive files</h1>
+          <p class="muted">
+            Anyone with your receive link can send you encrypted files within the server’s limits.
+          </p>
+          {#if receiveUnavailable}<p class="notice" role="status">
+              This receive link has expired or was revoked. Create a new link to get more files.
+            </p>{:else if receiveUrl}<LinkCard
+              url={receiveUrl}
+              label="Receive link — share it with someone to get files."
+            /><button disabled={busy} onclick={() => checkReceived(receiveId)}
+              >Refresh received files</button
+            >
+            <p class="muted small" role="status">
+              {received.length
+                ? `${received.reduce((n, t) => n + t.count, 0)} files received. Ready to save below.`
+                : "Waiting for files. Arrivals update automatically."}
+            </p>{/if}
+          <button class="primary" disabled={busy} onclick={createReceive}
+            >{receiveUrl
+              ? "Create another receive link"
+              : busy
+                ? "Creating link…"
+                : "Create receive link"}</button
           >
-        </article>{/each}
-    {:else if tab === "Account"}<button onclick={() => select("Settings")}>Back to Settings</button>
-      <h1>Change password</h1>
-      <p class="muted">Changing your password signs out all devices, including this browser.</p>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void act(async () => {
-            await request("/auth/password", "POST", {
-              current_password: currentPassword,
-              password: changedPassword,
-            });
-            clearAccount();
-            notice = "Password changed. Sign in with your new password.";
-          });
-        }}
-      >
-        <label
-          >Current password<input
-            type="password"
-            autocomplete="current-password"
-            required
-            bind:value={currentPassword}
-          /></label
-        ><label
-          >New password<input
-            type="password"
-            autocomplete="new-password"
-            minlength="12"
-            required
-            bind:value={changedPassword}
-          /></label
-        >
-        <p class="muted small">Use at least 12 characters (up to 72 UTF-8 bytes).</p>
-        <button class="primary" disabled={busy}>Change password</button>
-      </form>
-    {:else if tab === "Users"}<button onclick={() => select("Settings")}>Back to Settings</button>
-      <h1>Manage users</h1>
-      <p class="muted">
-        Only administrators can create accounts. Disabling an account signs out its devices.
-      </p>
-      {#each users as account}<article class="resource">
-          <div>
-            <strong>{account.username}</strong>
-            <p class="muted small">
-              {account.role === "admin" ? "Administrator" : "User"} · {account.disabled
-                ? "Disabled"
-                : "Active"}
-            </p>
+        {:else if tab === "History"}<div class="heading">
+            <h1>{allResources ? "All server resources" : "Your transfers"}</h1>
+            <button disabled={busy} onclick={() => select("History")}>Refresh</button>
           </div>
-          <div class="actions">
-            <button
-              disabled={busy}
-              onclick={() => {
-                resetId = account.id;
-                resetPassword = "";
-              }}>Reset password</button
-            ><button
-              disabled={busy || account.id === user.id}
-              onclick={() =>
-                act(async () => {
-                  const updated = await request<{ user: User }>(
-                    `/admin/users/${account.id}`,
-                    "PATCH",
-                    { disabled: !account.disabled },
-                  );
-                  users = users.map((u) => (u.id === updated.user.id ? updated.user : u));
-                })}>{account.disabled ? "Enable" : "Disable"}</button
-            >
-          </div>
-        </article>{/each}
-      {#if resetId}<form
-          class="confirm"
-          onsubmit={(e) => {
-            e.preventDefault();
-            void act(async () => {
-              await request(`/admin/users/${resetId}`, "PATCH", { password: resetPassword });
-              const self = resetId === user?.id;
-              resetId = "";
-              resetPassword = "";
-              if (self) clearAccount();
-              else notice = "Password reset. Existing sessions have been revoked.";
-            });
-          }}
-        >
           <label
-            >New password for {users.find((u) => u.id === resetId)?.username}<input
-              type="password"
-              autocomplete="new-password"
-              minlength="12"
-              required
-              bind:value={resetPassword}
-            /></label
-          ><button class="primary" disabled={busy}>Save new password</button><button
-            type="button"
-            onclick={() => (resetId = "")}>Cancel</button
+            >Show<select bind:value={historyFilter}
+              ><option value="all">All transfers</option><option value="transfers">Sent</option
+              ><option value="slots">Receive links</option></select
+            ></label
           >
-        </form>{/if}
-      <h2>Create account</h2>
-      <form
-        onsubmit={(e) => {
-          e.preventDefault();
-          void act(async () => {
-            const result = await request<{ user: User }>("/admin/users", "POST", {
-              username: newUsername,
-              password: newPassword,
-              role: newRole,
-            });
-            users = [...users, result.user];
-            newUsername = "";
-            newPassword = "";
-            notice = "Account created. Share the credentials privately with its owner.";
-          });
-        }}
-      >
-        <label>New username<input autocomplete="off" required bind:value={newUsername} /></label
-        ><label
-          >Temporary password<input
-            type="password"
-            autocomplete="new-password"
-            minlength="12"
-            required
-            bind:value={newPassword}
-          /></label
-        ><label
-          >Role<select bind:value={newRole}
-            ><option value="user">User</option><option value="admin">Administrator</option></select
-          ></label
-        >
-        <p class="muted small">
-          Use at least 12 characters. Users can change their password after signing in.
-        </p>
-        <button class="primary" disabled={busy}>Create account</button>
-      </form>
-    {/if}
-    {#if (tab === "Receive" || tab === "History") && received.length}<h2>Received files</h2>
-      {#each received as item}<a class="received" href={item.url}
-          >{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
-        >{/each}{/if}
-  </section>
+          {#if user.role === "admin"}
+            <label class="toggle"
+              ><input
+                type="checkbox"
+                bind:checked={allResources}
+                disabled={busy}
+                onchange={() => select("History")}
+              /> All server resources</label
+            >
+          {/if}
+          <p class="muted small">
+            Encryption keys stay on the device that created the link. This browser can reopen its
+            own links; transfers from other devices can still be revoked.
+          </p>
+          {#if !transfers.length && !slots.length}<p class="empty">No transfers yet.</p>{/if}
+          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].filter((item) => historyFilter === "all" || item.kind === historyFilter) as item}<article
+              class="resource"
+              data-resource-id={item.id}
+            >
+              <div>
+                <strong
+                  >{labels[item.id]?.title ||
+                    (item.kind === "slots" ? "Receive link" : "Sent files")}</strong
+                >
+                <p>
+                  {item.kind === "slots"
+                    ? `${item.transfers?.reduce((n, t) => n + t.file_count, 0) ?? item.file_count ?? 0} files received`
+                    : `${item.file_count ?? 0} files · ${status(item)}`}
+                </p>
+                <p class="muted small">
+                  {labels[item.id]
+                    ? formatSize(labels[item.id].size) + " · "
+                    : item.total_size
+                      ? formatSize(item.total_size) + " stored · "
+                      : ""}Expires {date(item.expires_at)}
+                </p>
+                {#if !links[item.id]}<p class="muted small">
+                    This device has no encryption key. Use the device that created the link to open
+                    or share it. You can still revoke it here.
+                  </p>{/if}
+              </div>
+              <div class="actions">
+                {#if links[item.id]}<button onclick={() => copy(links[item.id])}>Copy link</button
+                  >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
+                    >{:else}<button disabled={busy} onclick={() => openReceive(item.id)}
+                      >View files</button
+                    >{/if}{/if}<button
+                  class="danger"
+                  disabled={busy}
+                  onclick={() => (pendingDelete = { id: item.id, kind: item.kind })}>Revoke</button
+                >
+              </div>
+            </article>{/each}
+          {#if pendingDelete}<div class="confirm" role="alert">
+              <p>
+                Revoke this link and delete its server files? Existing downloaded copies will
+                remain.
+              </p>
+              <button class="danger" disabled={busy} onclick={revoke}>Revoke and delete</button
+              ><button disabled={busy} onclick={() => (pendingDelete = null)}>Cancel</button>
+            </div>{/if}
+        {:else if tab === "Devices"}<a class="back-link" href="/?view=settings"
+            >← Back to Settings</a
+          >
+          <h1>Connect mobile app</h1>
+          <p class="muted">
+            In the app’s server settings, choose Scan login QR code. Keep this code private: it
+            signs the scanning device in as you.
+          </p>
+          {#if pairingStatus === "connected"}<p class="notice" role="status">
+              Phone connected: {pairedDevice}
+            </p>
+          {:else if pairingQr && now < Date.parse(pairingExpires)}<section
+              aria-label="Connect mobile app"
+            >
+              <img class="qr" src={pairingQr} alt="Mobile app login QR code" />
+              <p>
+                Single use · expires in {Math.max(
+                  0,
+                  Math.ceil((Date.parse(pairingExpires) - now) / 1000),
+                )} seconds
+              </p>
+              <button onclick={cancelPair}>Cancel pairing</button>
+            </section>
+          {:else if pairingId}<p class="notice" role="status">
+              This code has expired. Generate a new code.
+            </p>{/if}
+          <button class="primary" disabled={busy} onclick={pair}
+            >{pairingId ? "Generate new code" : "Show login QR code"}</button
+          >
+          <h2>Connected devices</h2>
+          <p class="muted">Revoke a session to sign that device out.</p>
+          {#each sessions as session}<article class="resource">
+              <div>
+                <strong
+                  >{session.device_name || "Device"}{session.current
+                    ? " (this browser)"
+                    : ""}</strong
+                >
+                <p class="muted small">Expires {date(session.expires_at)}</p>
+              </div>
+              <button
+                class="danger"
+                disabled={busy}
+                onclick={() =>
+                  act(async () => {
+                    await request(`/auth/sessions/${session.id}`, "DELETE");
+                    if (session.current) clearAccount();
+                    else sessions = sessions.filter((s) => s.id !== session.id);
+                  })}>Revoke session</button
+              >
+            </article>{/each}
+        {:else if tab === "Account"}<a class="back-link" href="/?view=settings"
+            >← Back to Settings</a
+          >
+          <h1>Change password</h1>
+          <p class="muted">Changing your password signs out all devices, including this browser.</p>
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              void act(async () => {
+                await request("/auth/password", "POST", {
+                  current_password: currentPassword,
+                  password: changedPassword,
+                });
+                clearAccount();
+                notice = "Password changed. Sign in with your new password.";
+              });
+            }}
+          >
+            <label
+              >Current password<input
+                type="password"
+                autocomplete="current-password"
+                required
+                bind:value={currentPassword}
+              /></label
+            ><label
+              >New password<input
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+                bind:value={changedPassword}
+              /></label
+            >
+            <p class="muted small">Use at least 12 characters (up to 72 UTF-8 bytes).</p>
+            <button class="primary" disabled={busy}>Change password</button>
+          </form>
+        {:else if tab === "Users"}<a class="back-link" href="/?view=settings">← Back to Settings</a>
+          <h1>Manage users</h1>
+          <p class="muted">
+            Only administrators can create accounts. Disabling an account signs out its devices.
+          </p>
+          {#each users as account}<article class="resource">
+              <div>
+                <strong>{account.username}</strong>
+                <p class="muted small">
+                  {account.role === "admin" ? "Administrator" : "User"} · {account.disabled
+                    ? "Disabled"
+                    : "Active"}
+                </p>
+              </div>
+              <div class="actions">
+                <button
+                  disabled={busy}
+                  onclick={() => {
+                    resetId = account.id;
+                    resetPassword = "";
+                  }}>Reset password</button
+                ><button
+                  disabled={busy || account.id === user.id}
+                  onclick={() =>
+                    act(async () => {
+                      const updated = await request<{ user: User }>(
+                        `/admin/users/${account.id}`,
+                        "PATCH",
+                        { disabled: !account.disabled },
+                      );
+                      users = users.map((u) => (u.id === updated.user.id ? updated.user : u));
+                    })}>{account.disabled ? "Enable" : "Disable"}</button
+                >
+              </div>
+            </article>{/each}
+          {#if resetId}<form
+              class="confirm"
+              onsubmit={(e) => {
+                e.preventDefault();
+                void act(async () => {
+                  await request(`/admin/users/${resetId}`, "PATCH", { password: resetPassword });
+                  const self = resetId === user?.id;
+                  resetId = "";
+                  resetPassword = "";
+                  if (self) clearAccount();
+                  else notice = "Password reset. Existing sessions have been revoked.";
+                });
+              }}
+            >
+              <label
+                >New password for {users.find((u) => u.id === resetId)?.username}<input
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="12"
+                  required
+                  bind:value={resetPassword}
+                /></label
+              ><button class="primary" disabled={busy}>Save new password</button><button
+                type="button"
+                onclick={() => (resetId = "")}>Cancel</button
+              >
+            </form>{/if}
+          <h2>Create account</h2>
+          <form
+            onsubmit={(e) => {
+              e.preventDefault();
+              void act(async () => {
+                const result = await request<{ user: User }>("/admin/users", "POST", {
+                  username: newUsername,
+                  password: newPassword,
+                  role: newRole,
+                });
+                users = [...users, result.user];
+                newUsername = "";
+                newPassword = "";
+                notice = "Account created. Share the credentials privately with its owner.";
+              });
+            }}
+          >
+            <label>New username<input autocomplete="off" required bind:value={newUsername} /></label
+            ><label
+              >Temporary password<input
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+                bind:value={newPassword}
+              /></label
+            ><label
+              >Role<select bind:value={newRole}
+                ><option value="user">User</option><option value="admin">Administrator</option
+                ></select
+              ></label
+            >
+            <p class="muted small">
+              Use at least 12 characters. Users can change their password after signing in.
+            </p>
+            <button class="primary" disabled={busy}>Create account</button>
+          </form>
+        {/if}
+        {#if (tab === "Receive" || tab === "History") && received.length}<h2>Received files</h2>
+          {#each received as item}<a class="received" href={item.url}
+              >{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
+            >{/each}{/if}
+      </section>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -874,11 +938,99 @@
     letter-spacing: 0.1em;
     color: var(--muted);
   }
-  .account-bar span {
+  .workspace {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: start;
+  }
+  .sidebar {
+    position: sticky;
+    top: 2rem;
+  }
+  .sidebar-label {
+    font-size: 0.7rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0.2rem 0.8rem 1rem;
+  }
+  nav {
+    display: grid;
+    gap: 0.35rem;
+  }
+  nav a {
+    min-height: 48px;
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 550;
+  }
+  nav a:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  nav a.active {
+    background: var(--accent);
+    color: var(--primary);
+    box-shadow: inset 3px 0 var(--primary);
+  }
+  .account-bar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.65rem;
+    border-top: 1px solid var(--divider);
+    padding: 1.25rem 0.6rem 0;
+    margin-top: 2rem;
+  }
+  .avatar {
+    background: var(--elevated);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    font-size: 0.85rem;
+    font-weight: 650;
+  }
+  .identity {
+    display: grid;
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  .account-bar,
+  .identity .small {
+    font-size: 0.72rem;
+  }
+  .identity strong {
+    font-size: 0.9rem;
+  }
+  .sign-out {
+    grid-column: 2;
+    justify-self: start;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 0.25rem 0;
+    min-height: 44px;
+    font-size: 0.85rem;
+  }
+  .workspace-content {
+    min-width: 0;
+  }
+  .workspace-panel {
+    min-width: 0;
+    padding: 0;
+  }
+  .workspace-panel > :global(h1),
+  .workspace-panel > :global(div > h1) {
+    margin-bottom: 0.65rem;
+  }
   .heading {
     display: flex;
     align-items: center;
@@ -886,18 +1038,50 @@
     gap: 1rem;
     margin-bottom: 1rem;
   }
-  nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 1rem;
+  .heading h1 {
+    margin-bottom: 0;
   }
-  nav button {
-    flex: 1;
+  .settings-list {
+    display: grid;
+    margin-top: 2rem;
+  }
+  .settings-list a {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 20px;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--divider);
+    color: var(--text);
+    text-decoration: none;
+  }
+  .settings-list a:hover {
+    color: var(--primary);
+  }
+  .setting-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--elevated);
+    color: var(--primary);
+  }
+  .setting-description {
+    display: block;
+    margin-top: 0.3rem;
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    text-decoration: none;
   }
   .resource {
     padding: 1rem 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--divider);
     display: flex;
     justify-content: space-between;
     gap: 1rem;
@@ -935,6 +1119,59 @@
     padding: 0.75rem 0;
     min-height: 44px;
   }
+  @media (max-width: 760px) {
+    .workspace {
+      display: block;
+    }
+    .sidebar {
+      position: static;
+      margin-bottom: 2rem;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    .sidebar-label,
+    .avatar {
+      display: none;
+    }
+    nav {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 4.3rem), 1fr));
+      border-bottom: 1px solid var(--divider);
+      gap: 0;
+    }
+    nav a {
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      padding: 0.75rem 0.25rem;
+      border-radius: 0;
+      font-size: 0.85rem;
+    }
+    nav a.active {
+      background: transparent;
+      box-shadow: inset 0 -3px var(--primary);
+    }
+    .account-bar {
+      display: flex;
+      justify-content: space-between;
+      margin: 0 0 0.75rem;
+      padding: 0;
+      border: 0;
+      gap: 1rem;
+    }
+    .identity {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: baseline;
+    }
+    .identity .small {
+      font-size: 0.8rem;
+    }
+    .sign-out {
+      padding: 0.4rem;
+    }
+  }
   @media (max-width: 540px) {
     .resource {
       flex-direction: column;
@@ -943,12 +1180,7 @@
     .panel {
       padding: 1rem;
     }
-    .account-bar {
-      font-size: 0.85rem;
-    }
-    nav button {
-      padding: 0.5rem;
-    }
+
     .resource .actions {
       flex-shrink: 1;
     }

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -149,13 +148,7 @@ fun SendScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier =
-                Modifier.fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AccountIndicator()
             Text(stringResource(R.string.file_limit), style = MaterialTheme.typography.bodySmall)
             if (state.files.isNotEmpty())
@@ -169,7 +162,8 @@ fun SendScreen(
                 )
             if (state.files.isEmpty()) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
+                    modifier =
+                        Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -197,7 +191,7 @@ fun SendScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.heightIn(max = 280.dp),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     itemsIndexed(state.files) { index, file ->

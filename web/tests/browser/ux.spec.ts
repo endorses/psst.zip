@@ -11,19 +11,23 @@ test("destinations survive refresh and browser history while selected files surv
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(file);
-  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
   await expect(page).toHaveURL(/view=receive/);
   await expect(page.getByRole("button", { name: "Return to your transfer" })).toBeVisible();
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await expect(page).toHaveURL(/view=history/);
+  await expect(page.getByRole("heading", { name: "Your transfers", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Receive files", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Return to your transfer" }).click();
   await expect(page.getByText(file.name, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/view=settings/);
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Connected devices", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connected devices", exact: true })).toBeVisible();
 });
 
 test("upload byte progress persists through navigation and cancellation removes the partial transfer", async ({
@@ -54,7 +58,7 @@ test("upload byte progress persists through navigation and cancellation removes 
   await page.getByRole("button", { name: "Send files", exact: true }).click();
   await expect(page.getByRole("progressbar")).toBeVisible();
   await expect.poll(() => transferId).not.toBe("");
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
   await expect(page.getByRole("button", { name: "Return to your transfer" })).toBeVisible();
   await page.getByRole("button", { name: "Return to your transfer" }).click();
   page.once("dialog", (dialog) => dialog.accept());
@@ -81,15 +85,15 @@ test("logout clears selected private files and local labels never appear in anot
   await authenticate(page, { username, password });
   await expect(page.getByRole("navigation")).toBeVisible();
   await expect(page.getByText(file.name, { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Users", exact: true })).toHaveCount(0);
 });
 
 test("live history keeps known data when offline and recovers automatically", async ({ page }) => {
   await signIn(page);
-  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
   await expect(page.locator("article").first()).toBeVisible();
   await page.route("**/api/v1/auth/resources", (route) => route.abort());
   await expect(page.getByText(/Offline — last updated/)).toBeVisible({ timeout: 10000 });
@@ -105,8 +109,8 @@ test("pairing replaces QR on redemption and cancel invalidates the unused code",
 }) => {
   const deviceName = `UX phone ${Date.now()}`;
   await signIn(page);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Connected devices", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Connected devices", exact: true }).click();
   async function issue() {
     const response = page.waitForResponse(
       (r) => r.url().endsWith("/auth/pairings") && r.request().method() === "POST",
@@ -175,7 +179,7 @@ test("theme follows system, keyboard login toggle works and phone QR actions fit
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "text");
   await signIn(page);
-  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
   const qr = page.getByRole("img", { name: "QR code for shared link" });
   await expect(qr).toHaveCSS("background-color", "rgb(255, 255, 255)");
@@ -254,11 +258,11 @@ test("receive history reopens the original link and failed saving retries only t
   page.on("request", (r) => {
     if (r.url().endsWith("/api/v1/slots") && r.method() === "POST") slotCreations++;
   });
-  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
   const link = await page.getByLabel("Full link").inputValue(),
     slotId = new URL(link).pathname.split("/").pop()!;
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
   const sender = await context.newPage();
   await sender.goto(link);
   await sender.getByLabel("Choose files").setInputFiles([file, { ...file, name: "second.txt" }]);

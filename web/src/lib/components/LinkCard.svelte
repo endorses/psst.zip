@@ -7,7 +7,7 @@
   $effect(() => {
     let alive = true;
     QRCode.toDataURL(url, {
-      width: 240,
+      scale: 8,
       margin: 4,
       color: { dark: "#172B2A", light: "#FFFFFF" },
     }).then((value) => {

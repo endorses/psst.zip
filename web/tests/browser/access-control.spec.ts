@@ -22,8 +22,8 @@ test("admin manages accounts; users cannot administer others and disabled sessio
   baseURL,
 }) => {
   await signIn(page);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Users", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Users", exact: true }).click();
   const username = `browser-${Date.now()}`;
   const password = "User-test-password-2026";
   await page.getByLabel("New username", { exact: true }).fill(username);
@@ -70,12 +70,12 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   request,
 }) => {
   await signIn(page);
-  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
   const link = await page.getByLabel("Full link", { exact: true }).inputValue();
   const id = new URL(link).pathname.split("/").pop()!;
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Connected devices", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Connected devices", exact: true }).click();
   await expect(page.getByRole("img", { name: "Mobile app login QR code" })).toHaveCount(0);
   const pairingResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/v1/auth/pairings") && r.request().method() === "POST",
@@ -112,7 +112,7 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   await page.getByRole("button", { name: "Send files", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Files sent" })).toBeVisible();
   await signIn(page);
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
   // Isolate our slot from other test-created history entries.
   const resources = await (await request.get("/api/v1/auth/resources")).json();
   expect(resources.slots.some((slot: { id: string }) => slot.id === id)).toBe(true);

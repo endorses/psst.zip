@@ -1,63 +1,68 @@
 package zip.psst.android.ui.components
 
-import android.graphics.Bitmap
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import zip.psst.android.R
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import kotlin.math.floor
 
 @Composable
-fun QrCodeImage(data: String, modifier: Modifier = Modifier, size: Dp = 240.dp) {
-    val bitmap = remember(data) { generateQrBitmap(data, 512) }
-
-    Box(
-        modifier = modifier.clip(RoundedCornerShape(16.dp)).background(Color.White).padding(16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        bitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription =
-                    androidx.compose.ui.res.stringResource(zip.psst.android.R.string.qr_code),
-                modifier = Modifier.size(size),
-            )
+fun QrCodeImage(data: String, modifier: Modifier = Modifier) {
+    // Encode at module resolution: ZXing supplies the four-module quiet zone.
+    // Rendering at whole physical pixels avoids interpolation and extra bitmap padding.
+    val matrix =
+        remember(data) {
+            runCatching {
+                    QRCodeWriter()
+                        .encode(
+                            data,
+                            BarcodeFormat.QR_CODE,
+                            0,
+                            0,
+                            mapOf(
+                                EncodeHintType.MARGIN to 4,
+                                EncodeHintType.CHARACTER_SET to "UTF-8",
+                            ),
+                        )
+                }
+                .getOrNull()
+        } ?: return
+    val description = stringResource(R.string.qr_code)
+    Canvas(
+        modifier.widthIn(max = 400.dp).fillMaxWidth().aspectRatio(1f).semantics {
+            contentDescription = description
+            role = Role.Image
         }
-    }
-}
-
-private fun generateQrBitmap(content: String, size: Int): Bitmap? {
-    return try {
-        val hints = mapOf(EncodeHintType.MARGIN to 4, EncodeHintType.CHARACTER_SET to "UTF-8")
-        val bitMatrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                bitmap.setPixel(
-                    x,
-                    y,
-                    if (bitMatrix[x, y]) android.graphics.Color.BLACK
-                    else android.graphics.Color.WHITE,
-                )
+    ) {
+        drawRect(Color.White)
+        val moduleSize = floor(size.minDimension / matrix.width)
+        val origin = floor((size.minDimension - moduleSize * matrix.width) / 2f)
+        for (y in 0 until matrix.height) {
+            for (x in 0 until matrix.width) {
+                if (matrix[x, y]) {
+                    drawRect(
+                        Color.Black,
+                        topLeft = Offset(origin + x * moduleSize, origin + y * moduleSize),
+                        size = Size(moduleSize, moduleSize),
+                    )
+                }
             }
         }
-        bitmap
-    } catch (_: Exception) {
-        null
     }
 }

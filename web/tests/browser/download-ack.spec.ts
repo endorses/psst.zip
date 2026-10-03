@@ -69,7 +69,7 @@ async function prepareDownload(
 
 async function downloadIndividual(page: Page, index: number) {
   const button = page.locator(".file-list li").nth(index).getByRole("button");
-  await expect(button).toHaveText(/Save files|Save again/);
+  await expect(button).toHaveText(/^(Save file|Save again)$/);
   const download = page.waitForEvent("download");
   await button.click();
   await download;
@@ -157,7 +157,7 @@ test("failed browser handoff never acknowledges decrypted files", async ({ page 
       throw new Error("Browser handoff failed");
     };
   });
-  await page.getByRole("button", { name: "Save files", exact: true }).click();
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Could not save files");
   expect(transfer.acknowledgments()).toBe(0);
   expect(transfer.downloads()).toBe(0);

@@ -1,3 +1,4 @@
+import CoreImage
 @testable import Psst
 import XCTest
 
@@ -152,6 +153,33 @@ final class TransferWorkflowTests: XCTestCase {
         XCTAssertThrowsError(try ShareSelection.copyProviderFile(source)) { error in
             XCTAssertEqual(error as? ShareSelectionError, .tooLarge)
         }
+    }
+
+    func testQRCodeKeepsFourModuleQuietZoneAndDecodesAfterIntegerScaling() throws {
+        let link = "https://files.example/d/transfer#abcdefghijklmnopqrstuvwxyz0123456789"
+        let native = try XCTUnwrap(QRCodeGenerator.generate(from: link, size: 1)?.cgImage)
+        XCTAssertEqual(native.bitsPerPixel, 8)
+        let pixels = try XCTUnwrap(native.dataProvider?.data) as Data
+        var darkColumns = Set<Int>()
+        var darkRows = Set<Int>()
+        for y in 0 ..< native.height {
+            for x in 0 ..< native.width where pixels[y * native.bytesPerRow + x] < 128 {
+                darkColumns.insert(x)
+                darkRows.insert(y)
+            }
+        }
+        XCTAssertEqual(darkColumns.min(), 4)
+        XCTAssertEqual(darkRows.min(), 4)
+        XCTAssertEqual(darkColumns.max(), native.width - 5)
+        XCTAssertEqual(darkRows.max(), native.height - 5)
+
+        let scaled = try XCTUnwrap(QRCodeGenerator.generate(from: link, size: 1080)?.cgImage)
+        XCTAssertEqual(scaled.width, native.width * (1080 / native.width))
+        XCTAssertEqual(scaled.width, scaled.height)
+        let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: CIContext(),
+                                                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+        let feature = try XCTUnwrap(detector.features(in: CIImage(cgImage: scaled)).first as? CIQRCodeFeature)
+        XCTAssertEqual(feature.messageString, link)
     }
 
     func testKeyRequiresExactly32Bytes() {
