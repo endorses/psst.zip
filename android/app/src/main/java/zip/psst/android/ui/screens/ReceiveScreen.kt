@@ -2,11 +2,14 @@ package zip.psst.android.ui.screens
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -16,7 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +51,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.ui.components.QrCodeImage
@@ -61,12 +68,10 @@ fun ReceiveScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var linkCopied by remember(state.uploadUrl) { mutableStateOf(false) }
+    var showLink by remember(state.uploadUrl) { mutableStateOf(false) }
 
-    // Auto-create slot on first load
     LaunchedEffect(Unit) {
-        if (state.slotId == null && !state.isCreatingSlot) {
-            viewModel.createSlot()
-        }
+        if (state.slotId == null && !state.isCreatingSlot) viewModel.createSlot()
     }
 
     Scaffold(
@@ -81,148 +86,151 @@ fun ReceiveScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier =
-                Modifier.fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Top,
-        ) {
-            when {
-                state.isCreatingSlot -> {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(16.dp))
-                    Text("Creating drop slot...")
-                }
-
-                state.error != null -> {
-                    Text(
-                        text = state.error ?: "Unknown error",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
-                }
-
-                state.downloadComplete -> {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = "Files saved to Downloads",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-
-                state.isDownloading -> {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(16.dp))
-                    Text("Downloading and decrypting files...")
-                    Spacer(Modifier.height(16.dp))
-                    LinearProgressIndicator(
-                        progress = { state.downloadProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                state.slotStatus == "has_uploads" -> {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(text = "Files received!", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Someone has uploaded files to your drop slot.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    Button(onClick = { viewModel.downloadReceivedFiles() }) {
-                        Text("Download & Decrypt")
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            val qrSize = minOf(220.dp, maxWidth - 80.dp, (maxHeight * 0.4f).coerceAtLeast(140.dp))
+            Column(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp, 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val status =
+                    when {
+                        state.isCreatingSlot -> "Creating drop slot…"
+                        state.error != null -> "Unable to receive files"
+                        state.downloadComplete -> "Files saved to Downloads"
+                        state.isDownloading -> "Downloading and decrypting…"
+                        state.slotStatus == "has_uploads" -> "Files received"
+                        else -> "Waiting for upload"
                     }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (state.isCreatingSlot || state.isDownloading) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        val icon =
+                            when {
+                                state.error != null -> Icons.Default.ErrorOutline
+                                state.downloadComplete -> Icons.Default.CheckCircle
+                                state.slotStatus == "has_uploads" -> Icons.Default.Download
+                                else -> Icons.Default.HourglassTop
+                            }
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
+                    Text(status, style = MaterialTheme.typography.titleMedium)
                 }
 
-                state.uploadUrl != null -> {
-                    Icon(
-                        imageVector = Icons.Default.HourglassTop,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                state.uploadUrl?.let { uploadUrl ->
+                    val copyLink = {
+                        clipboardManager.setText(AnnotatedString(uploadUrl))
+                        linkCopied = true
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    QrCodeImage(data = uploadUrl, size = qrSize)
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        OutlinedButton(onClick = copyLink, modifier = Modifier.weight(1f)) {
+                            Text("Copy Link")
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                val intent =
+                                    Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, uploadUrl)
+                                    }
+                                context.startActivity(
+                                    Intent.createChooser(intent, "Share upload link")
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("Share Link")
+                        }
+                    }
+                    if (linkCopied) {
+                        Text(
+                            "Link copied",
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Waiting for upload...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            // The readable link remains available while receiving or downloading files.
-            state.uploadUrl?.let { uploadUrl ->
-                Spacer(Modifier.height(24.dp))
-                Text("Upload link", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Send this link to someone so they can upload files from their browser, or let them scan the QR code.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(16.dp))
-                SelectionContainer {
                     Text(
                         uploadUrl,
                         modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        softWrap = true,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(uploadUrl))
-                        linkCopied = true
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Copy Link")
-                }
-                if (linkCopied) {
-                    Text(
-                        "Link copied",
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    TextButton(onClick = { showLink = true }) { Text("View link") }
+
+                    if (showLink) {
+                        AlertDialog(
+                            onDismissRequest = { showLink = false },
+                            title = { Text("Upload link") },
+                            text = {
+                                Column {
+                                    SelectionContainer {
+                                        Text(
+                                            uploadUrl,
+                                            modifier =
+                                                Modifier.heightIn(max = 280.dp)
+                                                    .verticalScroll(rememberScrollState()),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                    }
+                                    if (linkCopied) {
+                                        Text(
+                                            "Link copied",
+                                            modifier =
+                                                Modifier.semantics {
+                                                    liveRegion = LiveRegionMode.Polite
+                                                },
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showLink = false }) { Text("Done") }
+                            },
+                            dismissButton = { TextButton(onClick = copyLink) { Text("Copy Link") } },
+                        )
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(
-                    onClick = {
-                        val intent =
-                            Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, uploadUrl)
-                            }
-                        context.startActivity(Intent.createChooser(intent, "Share upload link"))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Share Link")
+
+                when {
+                    state.error != null -> {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            state.error ?: "Unknown error",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
+                    }
+                    state.isDownloading -> {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { state.downloadProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    state.slotStatus == "has_uploads" && !state.downloadComplete -> {
+                        Button(onClick = { viewModel.downloadReceivedFiles() }) {
+                            Text("Download & Decrypt")
+                        }
+                    }
                 }
-                Spacer(Modifier.height(24.dp))
-                QrCodeImage(data = uploadUrl)
             }
         }
     }
