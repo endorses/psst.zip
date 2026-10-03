@@ -75,7 +75,11 @@ class ServerValidationTest {
                 listOf(
                     "",
                     "example.com",
-                    "http://192.168.1.2:8080",
+                    "ftp://192.168.1.2:8080",
+                    "http://user:pass@192.168.1.2:8080",
+                    "http://192.168.1.2:8080/path",
+                    "http://192.168.1.2:8080?x=1",
+                    "http://192.168.1.2:8080#key",
                     "https://user:pass@example.com",
                     "https://example.com/path",
                     "https://example.com?x=1",
@@ -94,11 +98,22 @@ class ServerValidationTest {
     }
 
     @Test
-    fun allowsHttpLoopbackForDevelopment() = runTest {
+    fun acceptsHttpAndHttpsForUserConfiguredLanPublicAndLoopbackOrigins() = runTest {
         for (origin in
-            listOf("http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080")) {
+            listOf(
+                "http://localhost:8080",
+                "http://127.0.0.1:8080",
+                "http://[::1]:8080",
+                "http://192.168.1.2:8080",
+                "http://10.4.8.12:9000",
+                "http://[fd12:3456::42]:8080",
+                "http://transfer.example.net",
+                "https://transfer.example.net",
+            )) {
             val http =
                 mockClient({ request ->
+                    assertEquals(origin.substringBefore("://"), request.url.protocol.name)
+                    assertTrue(request.url.toString().startsWith("$origin/"))
                     if (request.url.encodedPath.endsWith("/health")) {
                         respond(
                             """{"service":"psst.zip","api_version":1}""",
@@ -113,6 +128,26 @@ class ServerValidationTest {
             } finally {
                 http.close()
             }
+        }
+    }
+
+    @Test
+    fun doesNotRetryHttpsFailureUsingHttp() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val http =
+            mockClient({ request ->
+                requestedUrls += request.url.toString()
+                throw IllegalStateException("Certificate validation failed")
+            })
+        try {
+            val failure =
+                assertFailsWith<IllegalStateException> {
+                    ApiClient(ServerConfig("https://transfer.example.net"), http).validateServer()
+                }
+            assertTrue(failure.message.orEmpty().contains("Certificate validation failed"))
+            assertEquals(listOf("https://transfer.example.net/api/v1/health"), requestedUrls)
+        } finally {
+            http.close()
         }
     }
 

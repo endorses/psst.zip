@@ -55,7 +55,7 @@ fun ServerConfigScreen(onConfigured: () -> Unit, viewModel: ServerConfigViewMode
 
             Text(
                 text =
-                    "Enter your self-hosted website's HTTPS address. Shared links use this address too.",
+                    "Enter your self-hosted website's address (http:// or https://). Shared links use this address too.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

@@ -24,6 +24,14 @@
 	<true/>
 	<key>MinimumOSVersion</key>
 	<string>17.0</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Users choose their own HTTP or HTTPS server; hosts cannot be listed at build time. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Psst connects to the server address you enter to send and receive files on your local network, including from the share extension.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

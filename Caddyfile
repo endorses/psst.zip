@@ -1,4 +1,4 @@
-{$PSST_DOMAIN:localhost} {
+{$PSST_DOMAIN::80} {
 	# API requests go to the backend
 	handle /api/* {
 		reverse_proxy backend:8080

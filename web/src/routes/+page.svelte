@@ -22,6 +22,8 @@
   let shareUrl = $state("");
   let qrDataUrl = $state("");
   let copied = $state(false);
+  let copyMessage = $state("");
+  let linkInput = $state<HTMLInputElement>();
   let dragOver = $state(false);
 
   function handleFileSelect(e: Event) {
@@ -137,9 +139,28 @@
   }
 
   async function copyLink() {
-    await navigator.clipboard.writeText(shareUrl);
-    copied = true;
-    setTimeout(() => (copied = false), 2000);
+    copied = false;
+    copyMessage = "";
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        copied = true;
+      } catch {
+        // Clipboard permission can be denied even on HTTPS. Try the selected
+        // input below, which also works on LAN HTTP without navigator.clipboard.
+      }
+    }
+    if (!copied && linkInput) {
+      linkInput.focus();
+      linkInput.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        // Leave the link selected so the browser's Copy command remains usable.
+      }
+    }
+    if (copied) setTimeout(() => (copied = false), 2000);
+    else copyMessage = "Link selected. Use your browser’s Copy command to copy it.";
   }
 
   function reset() {
@@ -149,6 +170,8 @@
     shareUrl = "";
     qrDataUrl = "";
     errorMessage = "";
+    copied = false;
+    copyMessage = "";
   }
 </script>
 
@@ -223,11 +246,15 @@
     {/if}
 
     <div class="link-box">
-      <input type="text" readonly value={shareUrl} class="link-input" />
+      <input bind:this={linkInput} type="text" readonly value={shareUrl} class="link-input" />
       <button class="btn" onclick={copyLink}>
         {copied ? "Copied!" : "Copy"}
       </button>
     </div>
+
+    {#if copyMessage}
+      <p role="status">{copyMessage}</p>
+    {/if}
 
     <button class="btn secondary" onclick={reset}>Share more files</button>
   </section>

@@ -25,6 +25,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "@noble/ciphers": "2.4.0",
     "fflate": "^0.8.2",
     "qrcode": "^1.5.4",
     "tus-js-client": "^4.2.3"

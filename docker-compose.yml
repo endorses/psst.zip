@@ -21,7 +21,7 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     environment:
-      PSST_DOMAIN: "${PSST_DOMAIN:-localhost}"
+      PSST_DOMAIN: "${PSST_DOMAIN:-:80}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -1,9 +1,11 @@
 /**
- * AES-256-GCM encryption/decryption via the Web Crypto API.
+ * AES-256-GCM using Web Crypto when available, or noble-ciphers on LAN HTTP.
  *
  * Keys are transported as base64url-encoded strings in URL fragments,
  * so they never leave the client or reach the server.
  */
+
+import { gcm } from "@noble/ciphers/aes.js";
 
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
@@ -37,24 +39,36 @@ export function base64urlDecode(str: string): ArrayBuffer {
 // Key generation & serialisation
 // ---------------------------------------------------------------------------
 
-export async function generateKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey({ name: ALGORITHM, length: KEY_LENGTH }, true, [
-    "encrypt",
-    "decrypt",
-  ]);
+// Raw key bytes work in both secure contexts and LAN HTTP, where browsers omit
+// crypto.subtle but still expose the cryptographically secure getRandomValues.
+export type EncryptionKey = Uint8Array<ArrayBuffer>;
+
+function validateKey(key: EncryptionKey): void {
+  if (key.byteLength !== KEY_LENGTH / 8) {
+    throw new Error("Encryption keys must contain exactly 32 bytes");
+  }
 }
 
-export async function exportKey(key: CryptoKey): Promise<string> {
-  const raw = await crypto.subtle.exportKey("raw", key);
-  return base64urlEncode(raw);
+function randomBytes(length: number): Uint8Array<ArrayBuffer> {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("This browser cannot generate cryptographically secure random bytes");
+  }
+  return globalThis.crypto.getRandomValues(new Uint8Array(length));
 }
 
-export async function importKey(encoded: string): Promise<CryptoKey> {
-  const raw = base64urlDecode(encoded);
-  return crypto.subtle.importKey("raw", raw, { name: ALGORITHM, length: KEY_LENGTH }, true, [
-    "encrypt",
-    "decrypt",
-  ]);
+export async function generateKey(): Promise<EncryptionKey> {
+  return randomBytes(KEY_LENGTH / 8);
+}
+
+export async function exportKey(key: EncryptionKey): Promise<string> {
+  validateKey(key);
+  return base64urlEncode(key.slice().buffer);
+}
+
+export async function importKey(encoded: string): Promise<EncryptionKey> {
+  const key = new Uint8Array(base64urlDecode(encoded));
+  validateKey(key);
+  return key;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,30 +79,49 @@ export async function importKey(encoded: string): Promise<CryptoKey> {
  * Encrypt plaintext bytes.
  * Returns a single ArrayBuffer: `iv (12 bytes) || ciphertext+tag`.
  */
-export async function encrypt(key: CryptoKey, plaintext: ArrayBuffer): Promise<ArrayBuffer> {
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
-    key,
-    plaintext,
-  );
+export async function encrypt(key: EncryptionKey, plaintext: ArrayBuffer): Promise<ArrayBuffer> {
+  validateKey(key);
+  const iv = randomBytes(IV_LENGTH);
+  const subtle = globalThis.crypto?.subtle;
+  const ciphertext = subtle
+    ? new Uint8Array(
+        await subtle.encrypt(
+          { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
+          await subtle.importKey("raw", key, ALGORITHM, false, ["encrypt"]),
+          plaintext,
+        ),
+      )
+    : gcm(key, iv).encrypt(new Uint8Array(plaintext));
 
-  // Prepend IV so the receiver can extract it
+  // Both implementations append a 16-byte authentication tag. Keep the existing
+  // 12-byte nonce prefix so web and native clients can exchange the same blobs.
   const result = new Uint8Array(iv.length + ciphertext.byteLength);
   result.set(iv, 0);
-  result.set(new Uint8Array(ciphertext), iv.length);
+  result.set(ciphertext, iv.length);
   return result.buffer;
 }
 
 /**
  * Decrypt a buffer produced by `encrypt()`.
- * Expects the first 12 bytes to be the IV.
+ * Expects the first 12 bytes to be the IV and the final 16 bytes to be the tag.
  */
-export async function decrypt(key: CryptoKey, data: ArrayBuffer): Promise<ArrayBuffer> {
+export async function decrypt(key: EncryptionKey, data: ArrayBuffer): Promise<ArrayBuffer> {
+  validateKey(key);
+  if (data.byteLength < IV_LENGTH + TAG_LENGTH / 8) {
+    throw new Error("Encrypted data is too short");
+  }
   const bytes = new Uint8Array(data);
   const iv = bytes.slice(0, IV_LENGTH);
   const ciphertext = bytes.slice(IV_LENGTH);
-  return crypto.subtle.decrypt({ name: ALGORITHM, iv, tagLength: TAG_LENGTH }, key, ciphertext);
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    return subtle.decrypt(
+      { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
+      await subtle.importKey("raw", key, ALGORITHM, false, ["decrypt"]),
+      ciphertext,
+    );
+  }
+  return new Uint8Array(gcm(key, iv).decrypt(ciphertext)).buffer;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,13 +139,16 @@ export interface Manifest {
   files: FileManifestEntry[];
 }
 
-export async function encryptManifest(key: CryptoKey, manifest: Manifest): Promise<ArrayBuffer> {
+export async function encryptManifest(
+  key: EncryptionKey,
+  manifest: Manifest,
+): Promise<ArrayBuffer> {
   const json = JSON.stringify(manifest);
   const encoded = new TextEncoder().encode(json);
   return encrypt(key, encoded.buffer);
 }
 
-export async function decryptManifest(key: CryptoKey, data: ArrayBuffer): Promise<Manifest> {
+export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Promise<Manifest> {
   const plaintext = await decrypt(key, data);
   const json = new TextDecoder().decode(plaintext);
   const manifest = JSON.parse(json) as Manifest;

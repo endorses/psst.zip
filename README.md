@@ -27,31 +27,34 @@ ios/         iOS app (SwiftUI + share extension)
 ## Quick start (Docker Compose)
 
 ```bash
-# 1. Configure the hostname recipients will use in a .env file
-echo 'PSST_DOMAIN=psst.example.com' > .env
-
-# 2. Build and start the complete stack (includes the web app)
+# Build and start the complete stack (includes the web app)
 docker compose up -d --build
 ```
 
-Caddy serves the website and API together at `https://psst.example.com`.
-Enter that same address in the mobile app's server settings, without `/api/v1`.
+Caddy serves the website and API together at `http://<server-ip>` on port 80.
+Open that address from another device on the same LAN and enter it in the mobile
+app's server settings, without `/api/v1`. No domain, certificate installation, or
+custom APK is required. Allow the app through any phone firewall and allow local
+network access if iOS prompts for it. Test/save the server in the main iOS app
+before using the share extension, so it can request local network permission.
 Generated links then open the download page directly; recipients do not need to
 change addresses or ports. Port 8080 belongs to the internal API and is not the
 address to give to mobile clients or recipients.
 
-The hostname is chosen by each operator; no hostname is built into the mobile
-apps. Server setup verifies the API and both share pages before saving the URL.
-An API-only address, failed connection, or HTTP LAN address is rejected with a
-setup error. Deploy the updated backend and web app together before configuring
-an updated mobile client. Existing saved settings are retained until changed.
+Each operator chooses an IP address or hostname; nothing is hardcoded in the
+mobile apps. Server setup accepts HTTP and HTTPS and verifies the API and both
+share pages before saving the URL. API-only addresses and failed connections
+produce a setup error. Deploy the updated backend and web app together before
+configuring an updated mobile client. Existing saved settings are retained until
+changed. LAN addresses work for recipients on that LAN; remote recipients need
+an address they can reach.
+
+For HTTPS, set `PSST_DOMAIN=psst.example.com` in `.env` and restart with
+`docker compose up -d --build`. Enter `https://psst.example.com` in clients.
 
 For automatic public certificates, point the hostname's DNS records at the server
 and make ports 80 and 443 reachable. See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/https).
-The default `localhost` hostname is only for testing on the server itself. LAN-only
-HTTPS requires a hostname reachable by every device and a certificate trusted by
-both browsers and native clients; an untrusted self-signed certificate is not a
-complete deployment.
+HTTPS certificate verification remains enabled in all clients.
 
 ## Manual build
 
@@ -69,7 +72,7 @@ go build -o psst-server ./cmd/server
 cd web
 npm ci
 npm run build
-# Serve web/build/ behind the same HTTPS origin as the API (see Caddyfile)
+# Serve web/build/ at the same origin as the API (see Caddyfile)
 ```
 
 The public server must route `/api/*` to the Go backend and serve the web build for
@@ -88,11 +91,11 @@ continues targeting Java 17 bytecode. Set `JAVA_HOME` to your JDK and
 ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
 ```
 
-Set the app's server URL to the shared HTTPS address described above. Debug APKs
-also allow plain HTTP for isolated API testing, but using the backend's port 8080
-directly produces links without a web download page. Browser decryption requires
-HTTPS or localhost, so a plain HTTP LAN address is not an end-to-end sharing setup.
-Release builds retain Android's default HTTPS requirement. After rebuilding,
+Set the app's server URL to the shared HTTP or HTTPS address described above.
+Both debug and release apps support an operator's HTTP server; HTTPS uses normal
+system certificate validation. Browser encryption uses Web Crypto when available
+and a compatible AES-GCM implementation on HTTP LAN pages, with the browser's
+cryptographically secure random generator in both cases. After rebuilding,
 reinstall `android/app/build/outputs/apk/debug/app-debug.apk` to apply changes.
 
 On this Linux development machine, the JDK is `/opt/android-studio/jbr` and the
@@ -163,13 +166,19 @@ All backend settings are controlled via environment variables.
 
 Docker Compose also accepts:
 
-| Variable      | Default     | Description                                              |
-| ------------- | ----------- | -------------------------------------------------------- |
-| `PSST_DOMAIN` | `localhost` | Domain for Caddy (enables auto-HTTPS for public domains) |
-| `HTTP_PORT`   | `80`        | Host port mapped to Caddy HTTP                           |
-| `HTTPS_PORT`  | `443`       | Host port mapped to Caddy HTTPS                          |
+| Variable      | Default | Description                                                                   |
+| ------------- | ------- | ----------------------------------------------------------------------------- |
+| `PSST_DOMAIN` | `:80`   | Caddy site address; default serves LAN HTTP, a domain enables automatic HTTPS |
+| `HTTP_PORT`   | `80`    | Host port mapped to Caddy HTTP                                                |
+| `HTTPS_PORT`  | `443`   | Host port mapped to Caddy HTTPS                                               |
 
 ## Security model
+
+HTTP LAN mode encrypts file contents but does not authenticate delivery of the
+web app itself. An active network attacker could replace its JavaScript and steal
+keys or plaintext. Use HTTP only on a trusted network; use trusted HTTPS for
+untrusted networks or Internet-facing deployments. Encryption also assumes the
+client application itself is trustworthy.
 
 - **End-to-end encryption**: AES-256-GCM. Keys are generated client-side and shared with recipients in link fragments.
 - **Key in URL fragment**: The `#key` portion of URLs is not sent to the server by browsers (per RFC 3986). The server only sees the transfer ID.

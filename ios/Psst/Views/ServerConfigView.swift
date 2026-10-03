@@ -25,7 +25,7 @@ struct ServerConfigView: View {
             } header: {
                 Text("Server")
             } footer: {
-                Text("Enter your self-hosted website's HTTPS address, e.g. https://drop.example.com. Shared links use this address too.")
+                Text("Enter your server's HTTP or HTTPS address, such as http://192.168.1.20. Use an address the other device can reach; shared links use it too.")
             }
 
             Section {

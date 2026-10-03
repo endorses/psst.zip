@@ -19,7 +19,7 @@ import kotlinx.serialization.json.jsonPrimitive
 internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
     val raw = config.baseUrl
     require(raw == raw.trim() && raw.none { it.isWhitespace() || it == '\\' }) {
-        "Enter a clean server URL such as https://transfer.example.com."
+        "Enter a clean http:// or https:// server address."
     }
     require(Regex("^https?://[^/?#@]+/?$", RegexOption.IGNORE_CASE).matches(raw)) {
         "Enter the server origin only, without credentials, a path, query, or fragment."
@@ -28,18 +28,9 @@ internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
         try {
             Url(raw)
         } catch (e: Exception) {
-            throw IllegalArgumentException(
-                "Enter a valid server URL such as https://transfer.example.com.",
-                e,
-            )
+            throw IllegalArgumentException("Enter a valid http:// or https:// server address.", e)
         }
     require(url.host.isNotBlank() && url.port in 1..65535) { "Enter a valid server host and port." }
-    require(
-        url.protocol.name == "https" ||
-            url.host.lowercase() in setOf("localhost", "127.0.0.1", "::1", "[::1]")
-    ) {
-        "HTTPS is required for a LAN or public server. Configure HTTPS and enter its https:// address."
-    }
     try {
         val completed =
             withTimeoutOrNull(10_000L) {
@@ -80,7 +71,7 @@ internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
         throw e
     } catch (e: Exception) {
         throw IllegalStateException(
-            "Server validation failed. Check the HTTPS address, certificate, and API/web deployment. ${e.message.orEmpty()}",
+            "Server validation failed. Check the server address, network, and API/web deployment. ${e.message.orEmpty()}",
             e,
         )
     }

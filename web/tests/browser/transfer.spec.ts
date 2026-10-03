@@ -8,6 +8,21 @@ const files = [
   { name: "empty.txt", mimeType: "text/plain", buffer: Buffer.alloc(0) },
 ];
 
+test("LAN deployment runs without a secure context or Web Crypto", async ({ page }) => {
+  test.skip(
+    process.env.PSST_EXPECT_INSECURE_CONTEXT !== "1",
+    "Only required for LAN HTTP deployment checks",
+  );
+  await page.goto("/");
+  expect(
+    await page.evaluate(() => ({
+      secureContext: window.isSecureContext,
+      subtle: typeof globalThis.crypto?.subtle,
+      getRandomValues: typeof globalThis.crypto?.getRandomValues,
+    })),
+  ).toEqual({ secureContext: false, subtle: "undefined", getRandomValues: "function" });
+});
+
 test("share page uploads files; download page decrypts individual files and ZIP", async ({
   page,
 }) => {
@@ -17,6 +32,8 @@ test("share page uploads files; download page decrypts individual files and ZIP"
   await page.getByRole("button", { name: /Encrypt & Upload/ }).click();
   await expect(page.getByRole("heading", { name: "Ready to Share" })).toBeVisible();
   const link = await page.locator(".link-input").inputValue();
+  await page.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Copied!", exact: true })).toBeVisible();
   expect(link).toMatch(/\/d\/[0-9a-f-]+#[A-Za-z0-9_-]+$/);
   await page.goto(link);
   await expect(page.getByRole("heading", { name: "Your Files" })).toBeVisible();
