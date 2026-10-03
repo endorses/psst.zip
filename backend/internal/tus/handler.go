@@ -72,6 +72,10 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 
 	id, err := h.store.CreateUpload(transferID, length)
 	if err != nil {
+		if errors.Is(err, ErrUploadLimit) {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -186,3 +190,5 @@ func ServeOptions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Tus-Extension", "creation")
 	w.WriteHeader(http.StatusNoContent)
 }
+
+var ErrUploadLimit = errors.New("receive link upload limit reached")

@@ -35,7 +35,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash); err != nil {
+	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash, identity(r).user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create transfer")
 		return
 	}
@@ -336,6 +336,18 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
 	}
 
+	maxExpiry := s.cfg.MaxSlotExpiry
+	if maxExpiry <= 0 {
+		maxExpiry = 168 * time.Hour
+	}
+	if req.ExpiresInSeconds < 0 || (req.ExpiresInSeconds > 0 && int64(req.ExpiresInSeconds) > int64(maxExpiry/time.Second)) {
+		writeError(w, 400, "receive link expiry exceeds server limit")
+		return
+	}
+	if expiry > maxExpiry {
+		expiry = maxExpiry
+	}
+
 	token, hash, err := newDeleteToken()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate deletion token")
@@ -345,7 +357,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateSlot(id, expiresAt, hash); err != nil {
+	if err := s.queries.CreateSlot(id, expiresAt, hash, identity(r).user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create slot")
 		return
 	}
@@ -420,6 +432,9 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
+	if !s.slotOwnerActive(w, slotID) {
+		return
+	}
 	var req CreateTransferRequest
 	if err := decodeJSON(r, &req); err != nil {
 		req = CreateTransferRequest{}
@@ -442,7 +457,11 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	if expiresAt.After(slot.ExpiresAt) {
 		expiresAt = slot.ExpiresAt
 	}
-	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash); err != nil {
+	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash, s.cfg.MaxSlotTransfers); err != nil {
+		if err == database.ErrSlotQuota {
+			writeError(w, http.StatusForbidden, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create transfer in slot")
 		return
 	}

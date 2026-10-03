@@ -13,6 +13,7 @@ import { assertFileSize, MAX_BUFFERED_BYTES } from "../src/lib/limits.ts";
 let server: ChildProcess;
 let directory: string;
 let origin: string;
+let authToken = "";
 const realFetch = globalThis.fetch;
 
 before(async () => {
@@ -34,6 +35,9 @@ before(async () => {
   server = spawn(join(directory, "server"), [], {
     env: {
       ...process.env,
+      ADMIN_USERNAME: "admin",
+      ADMIN_PASSWORD: "Test-admin-password-2026",
+      AUTH_ALLOW_INSECURE_HTTP: "true",
       LISTEN_ADDR: `127.0.0.1:${port}`,
       DB_PATH: join(directory, "psst.db"),
       STORAGE_PATH: join(directory, "files"),
@@ -48,12 +52,29 @@ before(async () => {
     startupError = error;
   });
   globalThis.fetch = (input, options) =>
-    realFetch(typeof input === "string" ? new URL(input, origin) : input, options);
+    realFetch(typeof input === "string" ? new URL(input, origin) : input, {
+      ...options,
+      headers: {
+        ...Object.fromEntries(new Headers(options?.headers)),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+    });
   for (let i = 0; i < 100; i++) {
     if (startupError) throw startupError;
     if (server.exitCode !== null) throw new Error(`Backend exited: ${server.exitCode}`);
     try {
       await realFetch(`${origin}/api/v1/transfers/missing`, { signal: AbortSignal.timeout(1000) });
+      const login = await realFetch(`${origin}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "admin",
+          password: "Test-admin-password-2026",
+          session_type: "device",
+        }),
+      });
+      assert.equal(login.status, 200);
+      authToken = (await login.json()).token;
       return;
     } catch {
       await new Promise((done) => setTimeout(done, 50));
@@ -76,6 +97,7 @@ function upload(id: string, encrypted: ArrayBuffer): Promise<string> {
     const task = new Upload(Buffer.from(encrypted), {
       endpoint: `${origin}${api.tusEndpoint(id)}`,
       chunkSize: 7,
+      headers: { Authorization: `Bearer ${authToken}` },
       retryDelays: [],
       onError: reject,
       onSuccess: () => {

@@ -5,15 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.refreshHistoryEntry
-import zip.psst.android.data.sentHistoryStatus
-import zip.psst.shared.api.ApiClient
-import zip.psst.shared.model.DropSlotStatus
-import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.UrlHelper
 import java.time.Instant
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +17,7 @@ import kotlinx.coroutines.launch
 
 data class TransferDetailUiState(
     val transferId: String = "",
-    val type: String = "send", // "send" or "receive"
+    val type: String = "send",
     val status: String = "pending",
     val fileCount: Int = 0,
     val totalSize: Long = 0,
@@ -32,45 +28,75 @@ data class TransferDetailUiState(
 )
 
 class TransferDetailViewModel(application: Application) : AndroidViewModel(application) {
-
     private val app = application as PsstApplication
     private val _uiState = MutableStateFlow(TransferDetailUiState())
     val uiState: StateFlow<TransferDetailUiState> = _uiState.asStateFlow()
+    private var loadJob: Job? = null
+    private var loadedAccess = app.prefs.historyAccess.value
+
+    init {
+        viewModelScope.launch {
+            app.prefs.historyAccess.collect { access ->
+                if (access != loadedAccess) {
+                    loadJob?.cancel()
+                    loadedAccess = access
+                    _uiState.value =
+                        TransferDetailUiState(
+                            error =
+                                "Sign in to the account that created this transfer to view its details."
+                        )
+                }
+            }
+        }
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun load(transferId: String, encryptionKey: String, type: String) {
-        _uiState.value =
-            TransferDetailUiState(transferId = transferId, type = type, isLoading = true)
-        viewModelScope.launch {
-            val dao = app.database.transferHistoryDao()
-            val row = dao.getById(transferId)
-            val serverUrl = row?.serverUrl ?: app.prefs.getServerUrl()
-            val keyBytes =
-                try {
-                    Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-                        .decode(row?.encryptionKey ?: encryptionKey)
-                } catch (_: Exception) {
-                    ByteArray(0)
+        loadJob?.cancel()
+        val access = app.prefs.historyAccess.value
+        loadedAccess = access
+        _uiState.value = TransferDetailUiState(isLoading = true)
+        loadJob =
+            viewModelScope.launch {
+                val dao = app.database.transferHistoryDao()
+                val row = dao.getById(transferId)
+                if (
+                    row == null || !access.permits(row) || app.prefs.historyAccess.value != access
+                ) {
+                    _uiState.value =
+                        TransferDetailUiState(
+                            error = "This transfer is not available to the signed-in account."
+                        )
+                    return@launch
                 }
-            val shareUrl =
-                if (type == "receive" || type == "received") {
-                    UrlHelper.buildUploadUrl(serverUrl, transferId, keyBytes)
-                } else {
-                    UrlHelper.buildDownloadUrl(serverUrl, transferId, keyBytes)
-                }
-            _uiState.value = _uiState.value.copy(shareUrl = shareUrl)
-            if (row != null) {
-                // Keep local saved/activity facts if the remote entry has expired or is
-                // unavailable.
+                val keyBytes =
+                    try {
+                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+                            .decode(row.encryptionKey)
+                    } catch (_: Exception) {
+                        _uiState.value =
+                            TransferDetailUiState(error = "The transfer key is invalid.")
+                        return@launch
+                    }
+                val shareUrl =
+                    if (row.type in listOf("receive", "received")) {
+                        UrlHelper.buildUploadUrl(row.serverUrl, row.id, keyBytes)
+                    } else {
+                        UrlHelper.buildDownloadUrl(row.serverUrl, row.id, keyBytes)
+                    }
                 _uiState.value =
-                    _uiState.value.copy(
-                        isLoading = false,
+                    TransferDetailUiState(
+                        transferId = row.id,
+                        type = row.type,
                         status = row.status,
                         fileCount = row.fileCount,
                         totalSize = row.totalSize,
                         expiresAt = row.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
+                        shareUrl = shareUrl,
                     )
                 val refreshed = refreshHistoryEntry(dao, row.id) ?: return@launch
+                if (app.prefs.historyAccess.value != access || !access.permits(refreshed))
+                    return@launch
                 _uiState.value =
                     _uiState.value.copy(
                         status = refreshed.status,
@@ -78,41 +104,6 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                         totalSize = refreshed.totalSize,
                         expiresAt = refreshed.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
                     )
-                return@launch
             }
-            val client = ApiClient(ServerConfig(serverUrl))
-            try {
-                if (type == "receive" || type == "received") {
-                    val slot = client.slots.get(transferId)
-                    _uiState.value =
-                        _uiState.value.copy(
-                            isLoading = false,
-                            status =
-                                when {
-                                    slot.status == DropSlotStatus.EXPIRED -> "expired"
-                                    slot.completedTransfers.isEmpty() -> "waiting"
-                                    else -> "has_uploads"
-                                },
-                            fileCount = slot.fileCount,
-                            expiresAt = slot.expiresAt,
-                        )
-                } else {
-                    val transfer = client.transfers.get(transferId)
-                    _uiState.value =
-                        _uiState.value.copy(
-                            isLoading = false,
-                            status = sentHistoryStatus(transfer),
-                            fileCount = transfer.fileCount,
-                            totalSize = transfer.totalSize,
-                            expiresAt = transfer.expiresAt,
-                        )
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
-            } finally {
-                client.close()
-            }
-        }
     }
 }

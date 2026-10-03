@@ -62,6 +62,7 @@ import zip.psst.android.viewmodel.ReceiveViewModel
 fun ReceiveScreen(
     onSlotCreated: (slotId: String, encryptionKey: String) -> Unit,
     onBack: () -> Unit,
+    onSignIn: () -> Unit,
     viewModel: ReceiveViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -216,7 +217,11 @@ fun ReceiveScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                         )
-                        Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
+                        if (state.requiresLogin) {
+                            Button(onClick = onSignIn) { Text("Sign in") }
+                        } else {
+                            Button(onClick = { viewModel.createSlot() }) { Text("Retry") }
+                        }
                     }
                     state.isDownloading -> {
                         Spacer(Modifier.height(8.dp))

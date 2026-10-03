@@ -30,22 +30,30 @@ async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
 
 export interface CreateTransferResponse {
   id: string;
+  delete_token?: string;
 }
 
 export async function createTransfer(): Promise<CreateTransferResponse> {
   return request<CreateTransferResponse>("/transfers", { method: "POST" });
 }
 
-export async function uploadManifest(transferId: string, data: ArrayBuffer): Promise<void> {
+export async function uploadManifest(
+  transferId: string,
+  data: ArrayBuffer,
+  token?: string,
+): Promise<void> {
   await requestRaw(`/transfers/${transferId}/manifest`, {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers: { "Content-Type": "application/octet-stream", ...uploadHeaders(token) },
     body: data,
   });
 }
 
-export async function completeTransfer(transferId: string): Promise<void> {
-  await requestRaw(`/transfers/${transferId}/complete`, { method: "POST" });
+export async function completeTransfer(transferId: string, token?: string): Promise<void> {
+  await requestRaw(`/transfers/${transferId}/complete`, {
+    method: "POST",
+    headers: uploadHeaders(token),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -155,4 +163,8 @@ async function readBounded(
     offset += chunk.byteLength;
   }
   return result.buffer;
+}
+
+export function uploadHeaders(token?: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }

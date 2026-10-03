@@ -5,6 +5,8 @@ import zip.psst.shared.model.Transfer
 import zip.psst.shared.model.TransferLimits
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
@@ -17,22 +19,33 @@ import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.withTimeout
 
 /** API operations for file transfers (send flow). */
-class TransferApi(private val httpClient: HttpClient, private val config: ServerConfig) {
+class TransferApi(
+    private val httpClient: HttpClient,
+    private val config: ServerConfig,
+    private val sessionToken: String? = null,
+) {
     /** Create a new transfer. Returns the created transfer with its server-assigned ID. */
     @Throws(Exception::class)
     suspend fun create(): Transfer {
         val response =
             httpClient.post("${config.apiBaseUrl}/transfers") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
                 contentType(ContentType.Application.Json)
                 setBody(mapOf<String, String>())
             }
+        response.checkAuthenticatedWrite()
         return response.body()
     }
 
     /** Revoke the link and stored uploads. Missing resources are already revoked. */
     @Throws(Exception::class)
     suspend fun delete(transferId: String, deleteToken: String? = null) {
-        deleteLink(httpClient, "${config.apiBaseUrl}/transfers/$transferId", deleteToken)
+        deleteLink(
+            httpClient,
+            "${config.apiBaseUrl}/transfers/$transferId",
+            deleteToken ?: sessionToken,
+        )
     }
 
     /** Get transfer metadata (status, file count, sizes, expiry). */
@@ -50,16 +63,25 @@ class TransferApi(private val httpClient: HttpClient, private val config: Server
      */
     @Throws(Exception::class)
     suspend fun uploadManifest(transferId: String, manifestBytes: ByteArray) {
-        httpClient.post("${config.apiBaseUrl}/transfers/$transferId/manifest") {
-            contentType(ContentType.Application.OctetStream)
-            setBody(manifestBytes)
-        }
+        httpClient
+            .post("${config.apiBaseUrl}/transfers/$transferId/manifest") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+                contentType(ContentType.Application.OctetStream)
+                setBody(manifestBytes)
+            }
+            .checkAuthenticatedWrite()
     }
 
     /** Mark a transfer as complete (all files and manifest uploaded). */
     @Throws(Exception::class)
     suspend fun complete(transferId: String) {
-        httpClient.post("${config.apiBaseUrl}/transfers/$transferId/complete")
+        httpClient
+            .post("${config.apiBaseUrl}/transfers/$transferId/complete") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
+            .checkAuthenticatedWrite()
     }
 
     /** Confirm successful download and decryption of every file; contains no keys or file data. */

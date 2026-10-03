@@ -60,6 +60,14 @@ var migrations = []string{
 	// Legacy rows stay NULL and require explicit compatibility opt-in to delete.
 	`ALTER TABLE transfers ADD COLUMN delete_token_hash BLOB`,
 	`ALTER TABLE slots ADD COLUMN delete_token_hash BLOB`,
+	`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE UNIQUE, role TEXT NOT NULL CHECK(role IN ('admin','user')), disabled INTEGER NOT NULL DEFAULT 0, password_hash BLOB NOT NULL)`,
+	`CREATE TABLE sessions (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token_hash BLOB NOT NULL UNIQUE,device_name TEXT NOT NULL,created_at DATETIME NOT NULL,expires_at DATETIME NOT NULL)`,
+	`CREATE TABLE pairings (code_hash BLOB PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,expires_at DATETIME NOT NULL)`,
+	`ALTER TABLE transfers ADD COLUMN owner_id TEXT REFERENCES users(id)`,
+	`ALTER TABLE slots ADD COLUMN owner_id TEXT REFERENCES users(id)`,
+	`ALTER TABLE slots ADD COLUMN upload_count INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE slots ADD COLUMN reserved_bytes INTEGER NOT NULL DEFAULT 0`,
+	`UPDATE slots SET upload_count=(SELECT COUNT(*) FROM slot_transfers WHERE slot_id=slots.id), reserved_bytes=(SELECT COALESCE(SUM(f.size),0) FROM files f JOIN slot_transfers st ON st.transfer_id=f.transfer_id WHERE st.slot_id=slots.id)`,
 }
 
 func runMigrations(db *sql.DB) error {

@@ -38,6 +38,9 @@ func main() {
 
 	queries := database.NewQueries(db)
 	srv := api.NewServer(cfg, queries, fs)
+	if err := srv.BootstrapAdmin(); err != nil {
+		log.Fatalf("initialize accounts: %v", err)
+	}
 
 	httpSrv := &http.Server{
 		Addr:         cfg.ListenAddr,

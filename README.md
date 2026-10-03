@@ -14,6 +14,10 @@ Drop slots work in reverse: the receiver creates a slot, shares its QR/link, and
 The mobile receive screen displays the full upload link with **Copy Link** and
 **Share Link** actions, so the sender can also receive it through a message or email.
 
+Creating transfers and receive links requires an account. Administrators create
+accounts; there is no public registration. Generated download links and uploads
+into a receive link remain accessible without signing in.
+
 ## Architecture
 
 ```
@@ -27,16 +31,33 @@ ios/         iOS app (SwiftUI + share extension)
 ## Quick start (Docker Compose)
 
 ```bash
-# Build and start the complete stack (includes the web app)
+cp .env.example .env
+chmod 600 .env
+# Edit .env: set your hostname, public HTTPS URL, and initial admin credentials.
 docker compose up -d --build
 ```
 
-Caddy serves the website and API together at `http://<server-ip>` on port 80.
-Open that address from another device on the same LAN and enter it in the mobile
-app's server settings, without `/api/v1`. No domain, certificate installation, or
-custom APK is required. Allow the app through any phone firewall and allow local
-network access if iOS prompts for it. Test/save the server in the main iOS app
-before using the share extension, so it can request local network permission.
+Caddy serves the website and API together. For normal hosting, set
+`PSST_DOMAIN=transfer.example.com` and `PUBLIC_URL=https://transfer.example.com`.
+Point that hostname at the server and make ports 80 and 443 reachable so Caddy
+can obtain a trusted certificate. No certificate is embedded in the mobile app.
+
+Set `ADMIN_USERNAME` and a unique `ADMIN_PASSWORD` (12–72 UTF-8 bytes) for the
+first startup. The administrator is created only when there are no accounts;
+changing these environment variables later does not reset an existing password.
+After initialization, remove the bootstrap password from `.env`; manage accounts
+through the web UI. Keep `.env` private and out of version control.
+
+For development on a trusted LAN, explicitly set `PSST_DOMAIN=:80`,
+`PUBLIC_URL=http://<server-ip>`, and `AUTH_ALLOW_INSECURE_HTTP=true`.
+HTTP exposes login credentials and sessions to network observers; use HTTPS
+for normal hosting. Authentication is still required in development mode.
+
+Open the public address and sign in. In Android server settings, enter that same
+address, without `/api/v1`, and your username/password. Alternatively, sign in on
+the website, choose **Connect mobile app**, and scan its QR from Android server
+settings to configure and sign in automatically. Allow the app through any phone
+firewall.
 Generated links then open the download page directly; recipients do not need to
 change addresses or ports. Port 8080 belongs to the internal API and is not the
 address to give to mobile clients or recipients.
@@ -49,12 +70,41 @@ configuring an updated mobile client. Existing saved settings are retained until
 changed. LAN addresses work for recipients on that LAN; remote recipients need
 an address they can reach.
 
-For HTTPS, set `PSST_DOMAIN=psst.example.com` in `.env` and restart with
-`docker compose up -d --build`. Enter `https://psst.example.com` in clients.
-
-For automatic public certificates, point the hostname's DNS records at the server
-and make ports 80 and 443 reachable. See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/https).
+See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/https).
 HTTPS certificate verification remains enabled in all clients.
+
+## Accounts and connected devices
+
+Admins can create users, disable accounts, reset passwords, and revoke server
+resources. Ordinary users manage their own transfers and receive slots. Password
+resets and disabling an account invalidate its sessions and unused pairing codes.
+The last enabled administrator cannot be disabled.
+
+The website uses an HttpOnly session cookie; Android stores its separate session
+encrypted with Android Keystore. Passwords are not saved in the app. Connected
+device sessions can be revoked from the website. A pairing QR is a short-lived,
+single-use login grant: display it only when connecting a device. It contains no
+password or browser session token, but whoever redeems it first gets access to
+that account.
+
+History from the server includes resource metadata, never encryption keys.
+The browser remembers links it created locally, scoped to the signed-in account.
+It can revoke resources created on another device, but cannot recover their
+encryption keys or reconstruct their complete share links.
+
+Existing anonymous download links survive the migration. Old resources cannot
+automatically be assigned to an account; admins can manage them and existing
+private deletion tokens remain usable. Receive links created before accounts
+must be recreated after signing in before they can accept further uploads;
+their already-uploaded files remain downloadable. Older apps cannot create transfers once authentication is
+required. Account login and pairing are implemented in Android and the web UI;
+the iOS login UI has not yet been updated.
+
+Android keeps new local history scoped to the signed-in account and server.
+Local history from before accounts existed is visible only to an administrator
+signed in on its original server; this does not assign server ownership to those
+records. Signing out hides account history, and signing into a different account
+does not expose the previous account's links or encryption keys.
 
 ## Manual build
 
@@ -63,6 +113,7 @@ HTTPS certificate verification remains enabled in all clients.
 ```bash
 cd backend
 go build -o psst-server ./cmd/server
+# Configure PUBLIC_URL and first-start ADMIN_USERNAME/ADMIN_PASSWORD first.
 ./psst-server
 ```
 
@@ -193,15 +244,22 @@ send confirmations, so their downloads may remain **Download started**.
 
 All backend settings are controlled via environment variables.
 
-| Variable                | Default             | Description                                                      |
-| ----------------------- | ------------------- | ---------------------------------------------------------------- |
-| `LISTEN_ADDR`           | `:8080`             | Address the backend listens on                                   |
-| `STORAGE_PATH`          | `./data/files`      | Directory for encrypted file blobs                               |
-| `DB_PATH`               | `./data/psst.db`    | Path to the SQLite database                                      |
-| `MAX_FILE_SIZE`         | `5368709120` (5 GB) | Maximum upload size in bytes                                     |
-| `DEFAULT_EXPIRY`        | `24h`               | Transfer expiry duration (Go duration syntax)                    |
-| `CLEANUP_INTERVAL`      | `5m`                | How often the cleanup worker runs                                |
-| `ALLOW_LEGACY_DELETION` | `false`             | Allow deletion by ID for older resources without deletion tokens |
+| Variable                   | Default              | Description                                                      |
+| -------------------------- | -------------------- | ---------------------------------------------------------------- |
+| `LISTEN_ADDR`              | `:8080`              | Address the backend listens on                                   |
+| `STORAGE_PATH`             | `./data/files`       | Directory for encrypted file blobs                               |
+| `DB_PATH`                  | `./data/psst.db`     | Path to the SQLite database                                      |
+| `MAX_FILE_SIZE`            | `5368709120` (5 GB)  | Maximum upload size in bytes                                     |
+| `DEFAULT_EXPIRY`           | `24h`                | Transfer expiry duration (Go duration syntax)                    |
+| `CLEANUP_INTERVAL`         | `5m`                 | How often the cleanup worker runs                                |
+| `ALLOW_LEGACY_DELETION`    | `false`              | Allow deletion by ID for older resources without deletion tokens |
+| `ADMIN_USERNAME`           | unset                | First administrator username, required when no accounts exist    |
+| `ADMIN_PASSWORD`           | unset                | First administrator password; used only during initialization    |
+| `PUBLIC_URL`               | unset                | Canonical public origin, such as `https://transfer.example.com`  |
+| `AUTH_ALLOW_INSECURE_HTTP` | `false`              | Explicit development-only permission to authenticate over HTTP   |
+| `MAX_SLOT_TRANSFERS`       | `20`                 | Maximum child transfers created through one public receive link  |
+| `MAX_SLOT_SIZE`            | `5368709120` (5 GiB) | Maximum total reserved file bytes in one receive slot            |
+| `MAX_SLOT_EXPIRY`          | `168h`               | Maximum receive-link lifetime                                    |
 
 Docker Compose also accepts:
 
@@ -212,6 +270,25 @@ Docker Compose also accepts:
 | `HTTPS_PORT`  | `443`   | Host port mapped to Caddy HTTPS                                               |
 
 ## Security model
+
+Accounts authorize creation and management; generated links intentionally grant
+access to their specific transfer or receive slot. Direct file uploads require
+an active owner/admin session. Public slot uploaders receive a private capability
+for uploading only their newly created child transfer. Receive slots enforce
+expiry, transfer-count, and aggregate storage limits on the server.
+
+Browser sessions use same-origin mutation checks and HttpOnly cookies, with
+Secure enabled unless development HTTP is explicitly permitted. Passwords are
+hashed and session/pairing secrets are stored as hashes. See the
+[OWASP session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+and [password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+for the security controls informing this design.
+
+Keep the backend on the private Docker network and expose Caddy's public origin.
+`PUBLIC_URL` identifies that trusted HTTPS entry point; it does not add TLS to a
+separately exposed backend port. Sessions expire after 30 days and pairing codes
+after five minutes. Login and pairing redemption are rate limited; deployments
+behind one reverse proxy currently share a conservative attempt bucket.
 
 HTTP LAN mode encrypts file contents but does not authenticate delivery of the
 web app itself. An active network attacker could replace its JavaScript and steal

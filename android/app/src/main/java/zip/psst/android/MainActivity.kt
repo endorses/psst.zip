@@ -31,11 +31,14 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val uris = remember { mutableStateListOf<Uri>().apply { addAll(sharedUris) } }
 
-                    val startDestination = when {
-                        !app.prefs.hasServerUrl() -> Routes.SERVER_CONFIG
-                        sharedUris.isNotEmpty() -> Routes.SEND
-                        else -> Routes.HOME
-                    }
+                    val startDestination =
+                        when {
+                            !app.prefs.hasServerUrl() -> Routes.SERVER_CONFIG
+                            sharedUris.isNotEmpty() && app.prefs.getSessionToken() == null ->
+                                Routes.SERVER_CONFIG
+                            sharedUris.isNotEmpty() -> Routes.SEND
+                            else -> Routes.HOME
+                        }
 
                     PsstNavGraph(
                         navController = navController,

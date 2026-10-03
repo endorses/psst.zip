@@ -15,6 +15,7 @@ import zip.psst.android.data.receivedSnapshot
 import zip.psst.android.data.retrySavedDownloadAcknowledgements
 import zip.psst.android.data.savedTransferIds
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.SlotEvent
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.EncryptedManifest
@@ -48,6 +49,7 @@ data class ReceiveUiState(
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
     val error: String? = null,
+    val requiresLogin: Boolean = false,
     val downloadComplete: Boolean = false,
 )
 
@@ -62,6 +64,30 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     private var slotClient: ApiClient? = null
     private var pollJob: Job? = null
     private val historyMutex = Mutex()
+    private var downloadJob: Job? = null
+    private var createJob: Job? = null
+    private var activeAccess = app.prefs.historyAccess.value
+
+    init {
+        viewModelScope.launch {
+            app.prefs.historyAccess.collect { access ->
+                if (activeAccess != access) {
+                    activeAccess = access
+                    sseJob?.cancel()
+                    pollJob?.cancel()
+                    downloadJob?.cancel()
+                    createJob?.cancel()
+                    slotClient?.close()
+                    encryptionKeyBytes = null
+                    _uiState.value =
+                        ReceiveUiState(
+                            error = "Your account changed. Create a new receive link to continue.",
+                            requiresLogin = access.accountId == null,
+                        )
+                }
+            }
+        }
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun createSlot() {
@@ -71,60 +97,81 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
+        val sessionToken = app.prefs.getSessionToken(serverUrl)
+        val accountId = app.prefs.getAccountId()
+        if (sessionToken == null || accountId == null) {
+            _uiState.update {
+                it.copy(
+                    requiresLogin = true,
+                    error = "Sign in under Server Configuration to create receive links.",
+                )
+            }
+            return
+        }
+
         sseJob?.cancel()
         pollJob?.cancel()
         slotClient?.close()
         _uiState.value = ReceiveUiState(isCreatingSlot = true)
 
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val client = ApiClient(ServerConfig(serverUrl))
-                slotClient = client
-                val slot = client.slots.create()
-                val key = CryptoProvider.generateKey()
-                encryptionKeyBytes = key
-                val base64Key = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
-                val uploadUrl = UrlHelper.buildUploadUrl(serverUrl, slot.id, key)
+        createJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val client = ApiClient(ServerConfig(serverUrl), sessionToken = sessionToken)
+                    slotClient = client
+                    val slot = client.slots.create()
+                    val key = CryptoProvider.generateKey()
+                    encryptionKeyBytes = key
+                    val base64Key =
+                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
+                    val uploadUrl = UrlHelper.buildUploadUrl(serverUrl, slot.id, key)
 
-                _uiState.update {
-                    it.copy(
-                        isCreatingSlot = false,
-                        slotId = slot.id,
-                        encryptionKey = base64Key,
-                        uploadUrl = uploadUrl,
-                    )
-                }
-
-                // Save to history
-                app.database
-                    .transferHistoryDao()
-                    .insert(
-                        TransferHistoryEntity(
-                            id = slot.id,
-                            type = "received",
-                            fileCount = 0,
-                            totalSize = 0,
-                            serverUrl = serverUrl,
+                    _uiState.update {
+                        it.copy(
+                            isCreatingSlot = false,
+                            slotId = slot.id,
                             encryptionKey = base64Key,
-                            status = "waiting",
-                            expiresAt = parseHistoryExpiry(slot.expiresAt),
-                            deletionToken = slot.deleteToken,
+                            uploadUrl = uploadUrl,
                         )
-                    )
+                    }
 
-                // Start listening for SSE events
-                listenForEvents(client, slot.id)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                slotClient?.close()
-                _uiState.update {
-                    it.copy(
-                        isCreatingSlot = false,
-                        error = e.message ?: "Failed to create drop slot",
+                    // Save to history
+                    app.database
+                        .transferHistoryDao()
+                        .insert(
+                            TransferHistoryEntity(
+                                id = slot.id,
+                                type = "received",
+                                fileCount = 0,
+                                totalSize = 0,
+                                serverUrl = serverUrl,
+                                encryptionKey = base64Key,
+                                status = "waiting",
+                                expiresAt = parseHistoryExpiry(slot.expiresAt),
+                                deletionToken = slot.deleteToken,
+                                accountId = accountId,
+                            )
+                        )
+
+                    // Start listening for SSE events
+                    listenForEvents(client, slot.id)
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    if (
+                        e is AuthenticationRequiredException &&
+                            app.prefs.getSessionToken(serverUrl) == sessionToken
                     )
+                        app.prefs.clearSession()
+                    slotClient?.close()
+                    _uiState.update {
+                        it.copy(
+                            isCreatingSlot = false,
+                            requiresLogin = e is AuthenticationRequiredException,
+                            error = e.message ?: "Failed to create drop slot",
+                        )
+                    }
                 }
             }
-        }
     }
 
     private fun listenForEvents(client: ApiClient, slotId: String) {
@@ -154,9 +201,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     private suspend fun refreshSlot(client: ApiClient, slotId: String) {
         try {
-            app.database.transferHistoryDao().getById(slotId)?.let {
-                retrySavedDownloadAcknowledgements(it, client)
-            }
+            val visibleRow = app.database.transferHistoryDao().getById(slotId) ?: return
+            if (!app.prefs.historyAccess.value.permits(visibleRow)) return
+            retrySavedDownloadAcknowledgements(visibleRow, client)
             val slot = client.slots.get(slotId)
             val snapshot = slot.receivedSnapshot()
             historyMutex.withLock {
@@ -184,112 +231,123 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
         _uiState.update { it.copy(isDownloading = true, error = null, downloadComplete = false) }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val dao = app.database.transferHistoryDao()
-            val row = dao.getById(slotId)
-            if (row == null) {
-                _uiState.update {
-                    it.copy(isDownloading = false, error = "Receive history entry is missing")
+        downloadJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                val access = app.prefs.historyAccess.value
+                val dao = app.database.transferHistoryDao()
+                val row = dao.getById(slotId)
+                if (row == null || !access.permits(row)) {
+                    _uiState.update {
+                        it.copy(isDownloading = false, error = "Receive history entry is missing")
+                    }
+                    return@launch
                 }
-                return@launch
-            }
-            val client = ApiClient(ServerConfig(row.serverUrl))
-            try {
-                val slot = client.slots.get(slotId)
-                val latest = dao.mergeReceived(slotId, slot.receivedSnapshot()) ?: row
-                val transfers =
-                    slot.completedTransfers.filter { it.transferId !in latest.savedTransferIds() }
-                require(transfers.isNotEmpty()) { "No new completed uploads to save" }
-                val received = mutableListOf<Pair<String, FileMetadata>>()
-                for (transfer in transfers) {
-                    val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
-                    val encManifest = EncryptedManifest.fromBytes(manifestBytes)
-                    val manifestPlaintext =
-                        CryptoProvider.decrypt(key, encManifest.nonce, encManifest.ciphertext)
-                    val manifest =
-                        Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
+                val client = ApiClient(ServerConfig(row.serverUrl))
+                try {
+                    val slot = client.slots.get(slotId)
+                    val latest = dao.mergeReceived(slotId, slot.receivedSnapshot()) ?: row
+                    val transfers =
+                        slot.completedTransfers.filter {
+                            it.transferId !in latest.savedTransferIds()
+                        }
+                    require(transfers.isNotEmpty()) { "No new completed uploads to save" }
+                    val received = mutableListOf<Pair<String, FileMetadata>>()
+                    for (transfer in transfers) {
+                        val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
+                        val encManifest = EncryptedManifest.fromBytes(manifestBytes)
+                        val manifestPlaintext =
+                            CryptoProvider.decrypt(key, encManifest.nonce, encManifest.ciphertext)
+                        val manifest =
+                            Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
 
-                    require(manifest.files.size == transfer.fileCount) {
+                        require(manifest.files.size == transfer.fileCount) {
+                            "Manifest file count mismatch"
+                        }
+                        received += manifest.files.map { transfer.transferId to it }
+                    }
+                    _uiState.update { it.copy(receivedFiles = received.map { it.second }) }
+
+                    val context = getApplication<PsstApplication>()
+                    val totalFiles = received.size
+                    require(totalFiles == transfers.sumOf { it.fileCount }) {
                         "Manifest file count mismatch"
                     }
-                    received += manifest.files.map { transfer.transferId to it }
-                }
-                _uiState.update { it.copy(receivedFiles = received.map { it.second }) }
-
-                val context = getApplication<PsstApplication>()
-                val totalFiles = received.size
-                require(totalFiles == transfers.sumOf { it.fileCount }) {
-                    "Manifest file count mismatch"
-                }
-                var savedFiles = 0
-                for (transfer in transfers) {
-                    receiveAndSaveChild(
-                        client = client,
-                        transferId = transfer.transferId,
-                        files =
-                            received.filter { it.first == transfer.transferId }.map { it.second },
-                        key = key,
-                        saveFile = { fileMeta, plaintext ->
-                            val contentValues =
-                                ContentValues().apply {
-                                    put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
-                                    put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
-                                    put(
-                                        MediaStore.Downloads.RELATIVE_PATH,
-                                        Environment.DIRECTORY_DOWNLOADS,
+                    var savedFiles = 0
+                    for (transfer in transfers) {
+                        check(app.prefs.historyAccess.value == access) { "Your account changed" }
+                        receiveAndSaveChild(
+                            client = client,
+                            transferId = transfer.transferId,
+                            files =
+                                received
+                                    .filter { it.first == transfer.transferId }
+                                    .map { it.second },
+                            key = key,
+                            saveFile = { fileMeta, plaintext ->
+                                check(app.prefs.historyAccess.value == access) {
+                                    "Your account changed"
+                                }
+                                val contentValues =
+                                    ContentValues().apply {
+                                        put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
+                                        put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
+                                        put(
+                                            MediaStore.Downloads.RELATIVE_PATH,
+                                            Environment.DIRECTORY_DOWNLOADS,
+                                        )
+                                    }
+                                val uri =
+                                    context.contentResolver.insert(
+                                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                        contentValues,
+                                    ) ?: throw Exception("Failed to create file in Downloads")
+                                context.contentResolver.openOutputStream(uri)?.use {
+                                    it.write(plaintext)
+                                } ?: throw Exception("Failed to write file")
+                            },
+                            recordSaved = { child ->
+                                historyMutex.withLock {
+                                    dao.mergeReceived(
+                                        slotId,
+                                        ReceivedSnapshot(mapOf(transfer.transferId to child)),
+                                        saved = true,
                                     )
                                 }
-                            val uri =
-                                context.contentResolver.insert(
-                                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                    contentValues,
-                                ) ?: throw Exception("Failed to create file in Downloads")
-                            context.contentResolver.openOutputStream(uri)?.use {
-                                it.write(plaintext)
-                            } ?: throw Exception("Failed to write file")
-                        },
-                        recordSaved = { child ->
-                            historyMutex.withLock {
-                                dao.mergeReceived(
-                                    slotId,
-                                    ReceivedSnapshot(mapOf(transfer.transferId to child)),
-                                    saved = true,
-                                )
-                            }
-                        },
-                        onFileSaved = {
-                            savedFiles++
-                            _uiState.update {
-                                it.copy(
-                                    downloadProgress = savedFiles.toFloat() / totalFiles.toFloat()
-                                )
-                            }
-                        },
-                    )
-                }
-
-                historyMutex.withLock {
-                    val updated = dao.getById(slotId)
-                    _uiState.update {
-                        if (it.slotId == slotId)
-                            it.copy(
-                                isDownloading = false,
-                                downloadProgress = 1f,
-                                slotStatus = updated?.status ?: "has_uploads",
-                                downloadComplete = updated?.status == "complete",
-                            )
-                        else it
+                            },
+                            onFileSaved = {
+                                savedFiles++
+                                _uiState.update {
+                                    it.copy(
+                                        downloadProgress =
+                                            savedFiles.toFloat() / totalFiles.toFloat()
+                                    )
+                                }
+                            },
+                        )
                     }
+
+                    historyMutex.withLock {
+                        val updated = dao.getById(slotId)
+                        _uiState.update {
+                            if (it.slotId == slotId)
+                                it.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 1f,
+                                    slotStatus = updated?.status ?: "has_uploads",
+                                    downloadComplete = updated?.status == "complete",
+                                )
+                            else it
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    _uiState.update {
+                        it.copy(isDownloading = false, error = e.message ?: "Download failed")
+                    }
+                } finally {
+                    client.close()
                 }
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _uiState.update {
-                    it.copy(isDownloading = false, error = e.message ?: "Download failed")
-                }
-            } finally {
-                client.close()
             }
-        }
     }
 
     override fun onCleared() {
@@ -297,5 +355,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         sseJob?.cancel()
         pollJob?.cancel()
         slotClient?.close()
+        downloadJob?.cancel()
+        createJob?.cancel()
     }
 }

@@ -23,6 +23,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HistoryDeletionTest {
+    private val access = HistoryAccess("http://original.example:8080", "alice", isAdmin = true)
+
     private fun row(type: String = "sent", token: String? = "owner-secret") =
         TransferHistoryEntity(
             "owned",
@@ -33,6 +35,7 @@ class HistoryDeletionTest {
             "encryption-secret",
             "complete",
             deletionToken = token,
+            accountId = "alice",
         )
 
     @Test
@@ -64,7 +67,7 @@ class HistoryDeletionTest {
                             }
                         }
                     }
-                revokeHistoryEntry(dao, original.id) { config ->
+                revokeHistoryEntry(dao, original.id, { access }) { config ->
                     assertEquals(original.serverUrl, config.baseUrl)
                     ApiClient(config, http)
                 }
@@ -95,7 +98,7 @@ class HistoryDeletionTest {
                             }
                         }
                     }
-                revokeHistoryEntry(dao, original.id) { ApiClient(it, http) }
+                revokeHistoryEntry(dao, original.id, { access }) { ApiClient(it, http) }
             }
             var failure: LinkDeletionException? = null
             try {
@@ -128,7 +131,7 @@ class HistoryDeletionTest {
                 }
             var failure: Exception? = null
             try {
-                revokeHistoryEntry(dao, original.id) { ApiClient(it, http) }
+                revokeHistoryEntry(dao, original.id, { access }) { ApiClient(it, http) }
             } catch (error: Exception) {
                 failure = error
             }
@@ -171,10 +174,66 @@ class HistoryDeletionTest {
         assertEquals(3, AppDatabase.MIGRATION_2_3.endVersion)
         AppDatabase.MIGRATION_1_2.migrate(database)
         AppDatabase.MIGRATION_2_3.migrate(database)
-        assertEquals(3, sql.size)
+        assertEquals(3, AppDatabase.MIGRATION_3_4.startVersion)
+        assertEquals(4, AppDatabase.MIGRATION_3_4.endVersion)
+        AppDatabase.MIGRATION_3_4.migrate(database)
+        assertEquals(4, sql.size)
         assertTrue(sql.all { it.startsWith("ALTER TABLE transfer_history ADD COLUMN ") })
-        assertEquals("ALTER TABLE transfer_history ADD COLUMN deletionToken TEXT", sql.last())
+        assertEquals("ALTER TABLE transfer_history ADD COLUMN deletionToken TEXT", sql[2])
+        assertEquals("ALTER TABLE transfer_history ADD COLUMN accountId TEXT", sql.last())
+        assertNull(row().copy(accountId = null).accountId)
         assertNull(row(token = null).deletionToken)
+    }
+
+    @Test
+    fun anotherAccountCannotUseStoredDeletionCapability() = runTest {
+        val original = row()
+        for (scope in
+            listOf(
+                HistoryAccess(),
+                HistoryAccess(original.serverUrl, "bob"),
+                HistoryAccess("https://other.example", "alice"),
+            )) {
+            val dao = MemoryDao(original)
+            var requested = false
+            var denied = false
+            try {
+                revokeHistoryEntry(dao, original.id, { scope }) {
+                    requested = true
+                    error("Must not create a client for inaccessible history")
+                }
+            } catch (_: IllegalArgumentException) {
+                denied = true
+            }
+            assertTrue(denied)
+            assertTrue(!requested)
+            assertEquals(original, dao.getById(original.id))
+        }
+    }
+
+    @Test
+    fun accountSwitchDuringRevocationKeepsOtherAccountHistory() = runTest {
+        val original = row()
+        val dao = MemoryDao(original)
+        var current = access
+        val http =
+            HttpClient(MockEngine) {
+                engine {
+                    dispatcher = StandardTestDispatcher(testScheduler)
+                    addHandler {
+                        current = HistoryAccess(original.serverUrl, "bob")
+                        respond("", HttpStatusCode.NoContent)
+                    }
+                }
+            }
+        var denied = false
+        try {
+            revokeHistoryEntry(dao, original.id, { current }) { ApiClient(it, http) }
+        } catch (_: IllegalArgumentException) {
+            denied = true
+        }
+        assertTrue(denied)
+        assertEquals(original, dao.getById(original.id))
     }
 
     private class MemoryDao(

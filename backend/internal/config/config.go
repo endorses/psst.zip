@@ -8,12 +8,19 @@ import (
 
 // Config holds application configuration loaded from environment variables.
 type Config struct {
-	ListenAddr      string
-	StoragePath     string
-	DBPath          string
-	MaxFileSize     int64
-	DefaultExpiry   time.Duration
-	CleanupInterval time.Duration
+	AdminUsername         string
+	AdminPassword         string
+	PublicURL             string
+	AuthAllowInsecureHTTP bool
+	MaxSlotTransfers      int
+	MaxSlotSize           int64
+	MaxSlotExpiry         time.Duration
+	ListenAddr            string
+	StoragePath           string
+	DBPath                string
+	MaxFileSize           int64
+	DefaultExpiry         time.Duration
+	CleanupInterval       time.Duration
 
 	AllowLegacyDeletion bool // ID-only deletion for pre-token links; disabled by default.
 
@@ -30,12 +37,19 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() Config {
 	return Config{
-		ListenAddr:      envOrDefault("LISTEN_ADDR", ":8080"),
-		StoragePath:     envOrDefault("STORAGE_PATH", "./data/files"),
-		DBPath:          envOrDefault("DB_PATH", "./data/psst.db"),
-		MaxFileSize:     envOrDefaultInt64("MAX_FILE_SIZE", 5*1024*1024*1024), // 5 GB
-		DefaultExpiry:   envOrDefaultDuration("DEFAULT_EXPIRY", 24*time.Hour),
-		CleanupInterval: envOrDefaultDuration("CLEANUP_INTERVAL", 5*time.Minute),
+		AdminUsername:         os.Getenv("ADMIN_USERNAME"),
+		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
+		PublicURL:             os.Getenv("PUBLIC_URL"),
+		AuthAllowInsecureHTTP: envOrDefaultBool("AUTH_ALLOW_INSECURE_HTTP", false),
+		MaxSlotTransfers:      int(envOrDefaultInt64("MAX_SLOT_TRANSFERS", 20)),
+		MaxSlotExpiry:         envOrDefaultDuration("MAX_SLOT_EXPIRY", 168*time.Hour),
+		MaxSlotSize:           envOrDefaultInt64("MAX_SLOT_SIZE", 5*1024*1024*1024),
+		ListenAddr:            envOrDefault("LISTEN_ADDR", ":8080"),
+		StoragePath:           envOrDefault("STORAGE_PATH", "./data/files"),
+		DBPath:                envOrDefault("DB_PATH", "./data/psst.db"),
+		MaxFileSize:           envOrDefaultInt64("MAX_FILE_SIZE", 5*1024*1024*1024), // 5 GB
+		DefaultExpiry:         envOrDefaultDuration("DEFAULT_EXPIRY", 24*time.Hour),
+		CleanupInterval:       envOrDefaultDuration("CLEANUP_INTERVAL", 5*time.Minute),
 
 		AllowLegacyDeletion:    envOrDefaultBool("ALLOW_LEGACY_DELETION", false),
 		CORSOrigin:             envOrDefault("CORS_ORIGIN", "*"),

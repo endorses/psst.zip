@@ -1,6 +1,7 @@
 package zip.psst.shared.api
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.head
 import io.ktor.client.request.headers
 import io.ktor.client.request.patch
@@ -11,6 +12,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
+import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.takeFrom
 
@@ -23,7 +25,27 @@ import io.ktor.http.takeFrom
  *
  * @see <a href="https://tus.io/protocols/resumable-upload">tus protocol</a>
  */
-class TusClient(private val httpClient: HttpClient) {
+class TusClient(
+    private val httpClient: HttpClient,
+    private val serverOrigin: String? = null,
+    private val sessionToken: String? = null,
+) {
+    private fun authorize(url: String): String? {
+        if (sessionToken == null) return null
+        val origin = Url(requireNotNull(serverOrigin))
+        val target = Url(url)
+        require(
+            target.protocol == origin.protocol &&
+                target.host == origin.host &&
+                target.port == origin.port &&
+                target.user.isNullOrEmpty() &&
+                target.password.isNullOrEmpty()
+        ) {
+            "Upload URL must remain on the configured server"
+        }
+        return sessionToken
+    }
+
     companion object {
         const val TUS_VERSION = "1.0.0"
         private val TUS_CONTENT_TYPE = ContentType("application", "offset+octet-stream")
@@ -55,7 +77,9 @@ class TusClient(private val httpClient: HttpClient) {
 
         val response: HttpResponse =
             httpClient.post(uploadUrl) {
+                expectSuccess = false
                 headers {
+                    authorize(uploadUrl)?.let { append(HttpHeaders.Authorization, "Bearer $it") }
                     append("Tus-Resumable", TUS_VERSION)
                     append("Upload-Length", totalSize.toString())
                     if (metadataHeader != null) {
@@ -64,6 +88,7 @@ class TusClient(private val httpClient: HttpClient) {
                 }
             }
 
+        response.checkAuthenticatedWrite()
         require(response.status == HttpStatusCode.Created) {
             "tus creation failed with status ${response.status}"
         }
@@ -71,7 +96,7 @@ class TusClient(private val httpClient: HttpClient) {
         val location =
             response.headers[HttpHeaders.Location]
                 ?: throw IllegalStateException("tus creation response missing Location header")
-        return URLBuilder(uploadUrl).takeFrom(location).buildString()
+        return URLBuilder(uploadUrl).takeFrom(location).buildString().also { authorize(it) }
     }
 
     /**
@@ -101,7 +126,11 @@ class TusClient(private val httpClient: HttpClient) {
 
             val response: HttpResponse =
                 httpClient.patch(resourceUrl) {
+                    expectSuccess = false
                     headers {
+                        authorize(resourceUrl)?.let {
+                            append(HttpHeaders.Authorization, "Bearer $it")
+                        }
                         append("Tus-Resumable", TUS_VERSION)
                         append("Upload-Offset", currentOffset.toString())
                     }
@@ -109,6 +138,7 @@ class TusClient(private val httpClient: HttpClient) {
                     setBody(chunk)
                 }
 
+            response.checkAuthenticatedWrite()
             require(response.status == HttpStatusCode.NoContent) {
                 "tus upload failed with status ${response.status}"
             }
@@ -132,8 +162,15 @@ class TusClient(private val httpClient: HttpClient) {
     @Throws(Exception::class)
     suspend fun getOffset(resourceUrl: String): Long {
         val response: HttpResponse =
-            httpClient.head(resourceUrl) { headers { append("Tus-Resumable", TUS_VERSION) } }
+            httpClient.head(resourceUrl) {
+                expectSuccess = false
+                headers {
+                    authorize(resourceUrl)?.let { append(HttpHeaders.Authorization, "Bearer $it") }
+                    append("Tus-Resumable", TUS_VERSION)
+                }
+            }
 
+        response.checkAuthenticatedWrite()
         require(response.status == HttpStatusCode.OK) {
             "tus HEAD failed with status ${response.status}"
         }

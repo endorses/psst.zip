@@ -41,6 +41,9 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) sweep() {
+	if err := w.queries.PruneAuthentication(); err != nil {
+		log.Printf("cleanup: expired authentication credentials: %v", err)
+	}
 	w.sweepTransfers()
 	w.sweepExhaustedPayloads()
 	w.sweepSlots()

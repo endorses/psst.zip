@@ -1,52 +1,31 @@
 <script lang="ts">
-  import { page } from "$app/stores";
   import { onMount } from "svelte";
-  import { importKey, encrypt, encryptManifest } from "$lib/crypto";
-  import {
-    getSlotInfo,
-    uploadManifest,
-    createSlotTransfer,
-    completeTransfer,
-    tusEndpoint,
-    uploadHeaders,
-  } from "$lib/api";
+
+  let { oncreated }: { oncreated: (id: string, url: string) => void } = $props();
+  let mounted = $state(false);
+  onMount(() => {
+    mounted = true;
+  });
+  import { generateKey, exportKey, encrypt, encryptManifest } from "$lib/crypto";
+  import { createTransfer, uploadManifest, completeTransfer, tusEndpoint } from "$lib/api";
   import type { FileManifestEntry, Manifest } from "$lib/crypto";
   import * as tus from "tus-js-client";
+  import QRCode from "qrcode";
 
   import { assertFileSize, FILE_SIZE_NOTICE } from "$lib/limits";
 
-  type Status = "loading" | "ready" | "uploading" | "done" | "error";
+  type Status = "idle" | "uploading" | "done" | "error";
 
-  let status = $state<Status>("loading");
+  let status = $state<Status>("idle");
   let errorMessage = $state("");
-  let slotId = $state("");
-  let keyStr = $state("");
   let selectedFiles = $state<File[]>([]);
   let uploadProgress = $state(0);
+  let shareUrl = $state("");
+  let qrDataUrl = $state("");
+  let copied = $state(false);
+  let copyMessage = $state("");
+  let linkInput = $state<HTMLInputElement>();
   let dragOver = $state(false);
-
-  onMount(async () => {
-    slotId = $page.params.slotId ?? "";
-    keyStr = window.location.hash.slice(1);
-
-    if (!keyStr) {
-      status = "error";
-      errorMessage = "No encryption key found. The link may be incomplete.";
-      return;
-    }
-
-    try {
-      await getSlotInfo(slotId);
-      status = "ready";
-    } catch (err) {
-      status = "error";
-      if (err instanceof Error && (err.message.includes("404") || err.message.includes("410"))) {
-        errorMessage = "This upload slot has expired or does not exist.";
-      } else {
-        errorMessage = err instanceof Error ? err.message : "Failed to load slot";
-      }
-    }
-  });
 
   function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -83,16 +62,11 @@
     return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
   }
 
-  async function uploadFileViatTus(
-    endpoint: string,
-    encryptedData: ArrayBuffer,
-    token?: string,
-  ): Promise<string> {
+  async function uploadFile(endpoint: string, encryptedData: ArrayBuffer): Promise<string> {
     return new Promise((resolve, reject) => {
       const blob = new Blob([encryptedData]);
       const upload = new tus.Upload(blob, {
         endpoint,
-        headers: uploadHeaders(token),
         retryDelays: [0, 1000, 3000, 5000],
         chunkSize: 5 * 1024 * 1024,
         metadata: {
@@ -119,8 +93,10 @@
 
     try {
       selectedFiles.forEach((file) => assertFileSize(file.size));
-      const key = await importKey(keyStr);
-      const { id: transferId, delete_token } = await createSlotTransfer(slotId);
+      const key = await generateKey();
+      const keyStr = await exportKey(key);
+
+      const { id: transferId } = await createTransfer();
       const endpoint = tusEndpoint(transferId);
 
       const manifestEntries: FileManifestEntry[] = [];
@@ -130,7 +106,7 @@
         const file = selectedFiles[i];
         const plaintext = await file.arrayBuffer();
         const encrypted = await encrypt(key, plaintext);
-        const fileId = await uploadFileViatTus(endpoint, encrypted, delete_token);
+        const fileId = await uploadFile(endpoint, encrypted);
 
         manifestEntries.push({
           name: file.name,
@@ -144,8 +120,18 @@
 
       const manifest: Manifest = { files: manifestEntries };
       const encryptedManifestData = await encryptManifest(key, manifest);
-      await uploadManifest(transferId, encryptedManifestData, delete_token);
-      await completeTransfer(transferId, delete_token);
+      await uploadManifest(transferId, encryptedManifestData);
+      await completeTransfer(transferId);
+
+      const origin = window.location.origin;
+      shareUrl = `${origin}/d/${transferId}#${keyStr}`;
+
+      oncreated(transferId, shareUrl);
+      qrDataUrl = await QRCode.toDataURL(shareUrl, {
+        width: 256,
+        margin: 2,
+        color: { dark: "#1a1a1a", light: "#ffffff" },
+      });
 
       status = "done";
     } catch (err) {
@@ -153,26 +139,52 @@
       errorMessage = err instanceof Error ? err.message : "Upload failed";
     }
   }
+
+  async function copyLink() {
+    copied = false;
+    copyMessage = "";
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        copied = true;
+      } catch {
+        // Clipboard permission can be denied even on HTTPS. Try the selected
+        // input below, which also works on LAN HTTP without navigator.clipboard.
+      }
+    }
+    if (!copied && linkInput) {
+      linkInput.focus();
+      linkInput.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        // Leave the link selected so the browser's Copy command remains usable.
+      }
+    }
+    if (copied) setTimeout(() => (copied = false), 2000);
+    else copyMessage = "Link selected. Use your browser’s Copy command to copy it.";
+  }
+
+  function reset() {
+    status = "idle";
+    selectedFiles = [];
+    uploadProgress = 0;
+    shareUrl = "";
+    qrDataUrl = "";
+    errorMessage = "";
+    copied = false;
+    copyMessage = "";
+  }
 </script>
 
 <svelte:head>
-  <title>Upload Files</title>
+  <title>Share Files</title>
 </svelte:head>
 
-{#if status === "loading"}
-  <section class="center">
-    <div class="spinner"></div>
-    <p>Loading upload slot...</p>
-  </section>
-{:else if status === "error"}
-  <section class="center">
-    <h1>Something went wrong</h1>
-    <p class="error">{errorMessage}</p>
-  </section>
-{:else if status === "ready"}
-  <section>
-    <h1>Upload Files</h1>
-    <p class="subtitle">Your files will be encrypted before upload.</p>
+{#if status === "idle" || status === "error"}
+  <section class="upload-section">
+    <h1>Share Files Securely</h1>
+    <p class="subtitle">Files are encrypted in your browser before upload.</p>
 
     <div
       class="dropzone"
@@ -185,7 +197,13 @@
     >
       <p>{FILE_SIZE_NOTICE}</p>
       <p class="dropzone-text">Drop files here or click to browse</p>
-      <input type="file" multiple onchange={handleFileSelect} class="file-input" />
+      <input
+        type="file"
+        multiple
+        disabled={!mounted}
+        onchange={handleFileSelect}
+        class="file-input"
+      />
     </div>
 
     {#if selectedFiles.length > 0}
@@ -205,9 +223,13 @@
         Encrypt &amp; Upload {selectedFiles.length} file{selectedFiles.length > 1 ? "s" : ""}
       </button>
     {/if}
+
+    {#if status === "error"}
+      <p class="error">{errorMessage}</p>
+    {/if}
   </section>
 {:else if status === "uploading"}
-  <section class="center">
+  <section class="progress-section">
     <h1>Encrypting &amp; Uploading...</h1>
     <div class="progress-bar">
       <div class="progress-fill" style="width: {uploadProgress}%"></div>
@@ -215,10 +237,28 @@
     <p class="progress-text">{uploadProgress}%</p>
   </section>
 {:else if status === "done"}
-  <section class="center">
-    <h1>Upload Complete</h1>
-    <p class="subtitle">Your files have been encrypted and uploaded successfully.</p>
-    <p class="hint">You can close this page now.</p>
+  <section class="done-section">
+    <h1>Ready to Share</h1>
+    <p class="subtitle">Anyone with this link can download your files.</p>
+
+    {#if qrDataUrl}
+      <div class="qr-container">
+        <img src={qrDataUrl} alt="QR code for download link" class="qr-code" />
+      </div>
+    {/if}
+
+    <div class="link-box">
+      <input bind:this={linkInput} type="text" readonly value={shareUrl} class="link-input" />
+      <button class="btn" onclick={copyLink}>
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
+
+    {#if copyMessage}
+      <p role="status">{copyMessage}</p>
+    {/if}
+
+    <button class="btn secondary" onclick={reset}>Share more files</button>
   </section>
 {/if}
 
@@ -232,27 +272,6 @@
   .subtitle {
     color: #666;
     margin-bottom: 1.5rem;
-  }
-
-  .center {
-    text-align: center;
-    padding-top: 4rem;
-  }
-
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #e5e5e5;
-    border-top-color: #1a1a1a;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 1rem;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .dropzone {
@@ -356,14 +375,23 @@
     background: #333;
   }
 
+  .btn.secondary {
+    width: 100%;
+    margin-top: 1rem;
+  }
+
+  .progress-section {
+    text-align: center;
+    padding-top: 3rem;
+  }
+
   .progress-bar {
     width: 100%;
-    max-width: 400px;
     height: 8px;
     background: #e5e5e5;
     border-radius: 4px;
     overflow: hidden;
-    margin: 1.5rem auto 0.75rem;
+    margin: 1.5rem 0 0.75rem;
   }
 
   .progress-fill {
@@ -378,15 +406,41 @@
     font-size: 0.875rem;
   }
 
-  .error {
-    color: #d33;
-    margin-top: 0.75rem;
-    font-size: 0.9375rem;
+  .done-section {
+    text-align: center;
   }
 
-  .hint {
-    color: #888;
+  .qr-container {
+    margin: 1.5rem 0;
+  }
+
+  .qr-code {
+    width: 200px;
+    height: 200px;
+    border-radius: 8px;
+  }
+
+  .link-box {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .link-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    color: #333;
+    background: #f9f9f9;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .error {
+    color: #d33;
+    margin-top: 1rem;
     font-size: 0.875rem;
-    margin-top: 0.5rem;
   }
 </style>

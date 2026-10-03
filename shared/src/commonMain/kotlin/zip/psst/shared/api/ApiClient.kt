@@ -10,10 +10,15 @@ import io.ktor.client.HttpClient
 class ApiClient(
     val config: ServerConfig,
     private val httpClient: HttpClient = createPlatformHttpClient(),
+    sessionToken: String? = null,
 ) {
-    val transfers: TransferApi = TransferApi(httpClient, config)
-    val slots: SlotApi = SlotApi(httpClient, config)
-    val tus: TusClient = TusClient(httpClient)
+    // Preserve the two-argument initializer exported to the existing Swift client.
+    constructor(config: ServerConfig, httpClient: HttpClient) : this(config, httpClient, null)
+
+    val transfers: TransferApi = TransferApi(httpClient, config, sessionToken)
+    val slots: SlotApi = SlotApi(httpClient, config, sessionToken)
+    val tus: TusClient = TusClient(httpClient, config.normalizedBaseUrl, sessionToken)
+    val auth: AuthApi = AuthApi(httpClient, config, sessionToken)
 
     /**
      * Upload an encrypted file to a transfer via the tus protocol.

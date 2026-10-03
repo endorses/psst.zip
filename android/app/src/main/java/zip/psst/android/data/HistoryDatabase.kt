@@ -29,6 +29,7 @@ data class TransferHistoryEntity(
     val createdAt: Long = System.currentTimeMillis(),
     val expiresAt: Long? = null,
     val deletionToken: String? = null,
+    val accountId: String? = null,
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
 )
@@ -71,7 +72,7 @@ interface TransferHistoryDao {
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 3, exportSchema = false)
+@Database(entities = [TransferHistoryEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
@@ -95,13 +96,20 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_3_4 =
+            object : Migration(3, 4) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE transfer_history ADD COLUMN accountId TEXT")
+                }
+            }
+
         fun create(context: Context): AppDatabase {
             return Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "psst-history.db",
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
         }
     }

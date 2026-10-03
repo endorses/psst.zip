@@ -14,3 +14,16 @@ func TestLegacyDeletionRequiresExplicitOptIn(t *testing.T) {
 		t.Fatal("explicit legacy deletion opt-in ignored")
 	}
 }
+
+func TestAuthenticationIsSecureByDefault(t *testing.T) {
+	for _, value := range []string{"", "false", "garbage"} {
+		t.Setenv("AUTH_ALLOW_INSECURE_HTTP", value)
+		if Load().AuthAllowInsecureHTTP {
+			t.Fatalf("insecure auth enabled by %q", value)
+		}
+	}
+	cfg := Load()
+	if cfg.MaxSlotTransfers != 20 || cfg.MaxSlotSize != 5*1024*1024*1024 || cfg.MaxSlotExpiry.Hours() != 168 {
+		t.Fatalf("unexpected receive limits: %+v", cfg)
+	}
+}

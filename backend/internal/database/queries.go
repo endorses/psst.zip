@@ -51,10 +51,10 @@ func NewQueries(db *sql.DB) *Queries {
 
 // --- Transfers ---
 
-func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int, deleteTokenHash []byte) error {
+func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int, deleteTokenHash []byte, owner ...string) error {
 	_, err := q.db.Exec(
-		`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash) VALUES (?, 'pending', ?, ?, ?)`,
-		id, expiresAt.UTC(), maxDownloads, deleteTokenHash,
+		`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash, owner_id) VALUES (?, 'pending', ?, ?, ?, ?)`,
+		id, expiresAt.UTC(), maxDownloads, deleteTokenHash, optionalOwner(owner),
 	)
 	return err
 }
@@ -230,10 +230,10 @@ func (q *Queries) HasManifest(transferID string) (bool, error) {
 
 // --- Slots ---
 
-func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []byte) error {
+func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []byte, owner ...string) error {
 	_, err := q.db.Exec(
-		`INSERT INTO slots (id, status, expires_at, delete_token_hash) VALUES (?, 'waiting', ?, ?)`,
-		id, expiresAt.UTC(), deleteTokenHash,
+		`INSERT INTO slots (id, status, expires_at, delete_token_hash, owner_id) VALUES (?, 'waiting', ?, ?, ?)`,
+		id, expiresAt.UTC(), deleteTokenHash, optionalOwner(owner),
 	)
 	return err
 }
@@ -396,14 +396,29 @@ func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
 
 // CreateSlotTransfer is called while holding the slot mutation lock. The
 // transaction prevents an unlinked transfer from surviving a failed create.
-func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, maxDownloads int, hash []byte) error {
+func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, maxDownloads int, hash []byte, limits ...int) error {
 	tx, err := q.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash)
- SELECT ?, 'pending', ?, ?, ? FROM slots WHERE id = ? AND status != 'revoked'`, id, expiresAt.UTC(), maxDownloads, hash, slotID)
+	limit := 20
+	if len(limits) > 0 && limits[0] > 0 {
+		limit = limits[0]
+	}
+	reservation, err := tx.Exec(`UPDATE slots SET upload_count=upload_count+1 WHERE id=? AND status!='revoked' AND upload_count<?`, slotID, limit)
+	if err != nil {
+		return err
+	}
+	n, err := reservation.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrSlotQuota
+	}
+	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash,owner_id)
+ SELECT ?, 'pending', ?, ?, ?,owner_id FROM slots WHERE id = ? AND status != 'revoked'`, id, expiresAt.UTC(), maxDownloads, hash, slotID)
 	if err != nil {
 		return err
 	}
@@ -458,4 +473,11 @@ func (q *Queries) RevokeSlot(id string) ([]string, error) {
 		return nil, err
 	}
 	return ids, tx.Commit()
+}
+
+func optionalOwner(owner []string) any {
+	if len(owner) > 0 && owner[0] != "" {
+		return owner[0]
+	}
+	return nil
 }

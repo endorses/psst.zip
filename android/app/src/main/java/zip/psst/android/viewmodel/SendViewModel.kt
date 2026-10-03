@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.EncryptedManifest
 import zip.psst.shared.model.FileMetadata
@@ -36,6 +37,7 @@ data class SendUiState(
     val uploadProgress: Float = 0f,
     val currentFileIndex: Int = 0,
     val error: String? = null,
+    val requiresLogin: Boolean = false,
     val transferId: String? = null,
     val encryptionKey: String? = null,
     val downloadUrl: String? = null,
@@ -48,6 +50,19 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<SendUiState> = _uiState.asStateFlow()
 
     private var uploadJob: Job? = null
+    private var activeAccess = app.prefs.historyAccess.value
+
+    init {
+        viewModelScope.launch {
+            app.prefs.historyAccess.collect { access ->
+                if (activeAccess != access) {
+                    activeAccess = access
+                    uploadJob?.cancel()
+                    _uiState.value = SendUiState()
+                }
+            }
+        }
+    }
 
     fun addFiles(uris: List<Uri>) {
         val context = getApplication<PsstApplication>()
@@ -78,11 +93,23 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        val sessionToken = app.prefs.getSessionToken(serverUrl)
+        val accountId = app.prefs.getAccountId()
+        if (sessionToken == null || accountId == null) {
+            _uiState.update {
+                it.copy(
+                    requiresLogin = true,
+                    error = "Sign in under Server Configuration to upload files.",
+                )
+            }
+            return
+        }
+
         _uiState.update { it.copy(isUploading = true, error = null, uploadProgress = 0f) }
 
         uploadJob =
             viewModelScope.launch(Dispatchers.IO) {
-                val client = ApiClient(ServerConfig(serverUrl))
+                val client = ApiClient(ServerConfig(serverUrl), sessionToken = sessionToken)
                 var createdTransferId: String? = null
                 try {
                     val key = CryptoProvider.generateKey()
@@ -107,6 +134,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                 encryptionKey = base64Key,
                                 status = "pending",
                                 deletionToken = transfer.deleteToken,
+                                accountId = accountId,
                             )
                         )
                     _uiState.update { it.copy(transferId = transfer.id) }
@@ -197,11 +225,20 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     app.database.transferHistoryDao().updateStatus(transfer.id, "complete")
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (
+                        e is AuthenticationRequiredException &&
+                            app.prefs.getSessionToken(serverUrl) == sessionToken
+                    )
+                        app.prefs.clearSession()
                     createdTransferId?.let {
                         app.database.transferHistoryDao().updateStatus(it, "failed")
                     }
                     _uiState.update {
-                        it.copy(isUploading = false, error = e.message ?: "Upload failed")
+                        it.copy(
+                            isUploading = false,
+                            requiresLogin = e is AuthenticationRequiredException,
+                            error = e.message ?: "Upload failed",
+                        )
                     }
                 } finally {
                     client.close()

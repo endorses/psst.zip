@@ -61,7 +61,7 @@ func (s *Server) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !s.authorizeDeletion(w, r, transfer.DeleteTokenHash) {
+	if !s.owns(r, "transfer", id) && !s.authorizeDeletion(w, r, transfer.DeleteTokenHash) {
 		return
 	}
 	if err := cleanup.RemoveTransfer(s.queries, s.fileStore, id); err != nil {
@@ -86,7 +86,7 @@ func (s *Server) deleteSlot(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !s.authorizeDeletion(w, r, slot.DeleteTokenHash) {
+	if !s.owns(r, "slot", id) && !s.authorizeDeletion(w, r, slot.DeleteTokenHash) {
 		return
 	}
 	err = cleanup.RemoveSlot(s.queries, s.fileStore, id)

@@ -48,6 +48,7 @@ fun SendScreen(
     sharedUris: List<Uri>,
     onTransferCreated: (transferId: String, encryptionKey: String, type: String) -> Unit,
     onBack: () -> Unit,
+    onSignIn: () -> Unit,
     viewModel: SendViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -68,13 +69,14 @@ fun SendScreen(
         }
     }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments(),
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            viewModel.addFiles(uris)
+    val filePicker =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.OpenMultipleDocuments()
+        ) { uris ->
+            if (uris.isNotEmpty()) {
+                viewModel.addFiles(uris)
+            }
         }
-    }
 
     Scaffold(
         topBar = {
@@ -86,19 +88,12 @@ fun SendScreen(
                     }
                 },
             )
-        },
+        }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-        ) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             if (state.files.isEmpty()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -129,9 +124,7 @@ fun SendScreen(
                     itemsIndexed(state.files) { index, file ->
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Icon(
@@ -172,7 +165,8 @@ fun SendScreen(
             if (state.isUploading) {
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Encrypting and uploading file ${state.currentFileIndex + 1} of ${state.files.size}...",
+                    text =
+                        "Encrypting and uploading file ${state.currentFileIndex + 1} of ${state.files.size}...",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -204,13 +198,22 @@ fun SendScreen(
                     )
                 }
 
+                if (state.requiresLogin) {
+                    Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) {
+                        Text("Sign in")
+                    }
+                }
                 Spacer(Modifier.height(16.dp))
 
                 OutlinedButton(
                     onClick = { filePicker.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text("Add Files")
                 }

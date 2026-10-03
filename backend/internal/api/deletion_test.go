@@ -79,9 +79,10 @@ func alternateServer(t *testing.T, env *testEnv, fs store.FileStore, legacy bool
 	cfg := config.Config{
 		DefaultExpiry: time.Hour, MaxFileSize: 1024 * 1024, RateLimitGlobal: 1000,
 		RateLimitBurst: 2000, RateLimitCreation: 1000, RateLimitCreationBurst: 2000,
-		AllowLegacyDeletion: legacy,
+		AllowLegacyDeletion:   legacy,
+		AuthAllowInsecureHTTP: true,
 	}
-	server := httptest.NewServer(api.NewServer(cfg, env.queries, fs).Router())
+	server := httptest.NewServer(authenticatedFixture(api.NewServer(cfg, env.queries, fs).Router(), env.authToken))
 	t.Cleanup(server.Close)
 	result := *env
 	result.server = server

@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -23,13 +24,16 @@ import (
 )
 
 type testEnv struct {
-	server  *httptest.Server
-	db      *sql.DB
-	queries *database.Queries
-	dataDir string
+	server    *httptest.Server
+	db        *sql.DB
+	queries   *database.Queries
+	dataDir   string
+	authToken string
 }
 
-func setup(t *testing.T) *testEnv {
+func setup(t *testing.T) *testEnv { return setupAuthFixture(t, true) }
+
+func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -48,6 +52,7 @@ func setup(t *testing.T) *testEnv {
 
 	cfg := config.Config{
 		ListenAddr:             ":0",
+		AuthAllowInsecureHTTP:  true,
 		StoragePath:            storagePath,
 		DBPath:                 dbPath,
 		MaxFileSize:            100 * 1024 * 1024,
@@ -62,15 +67,28 @@ func setup(t *testing.T) *testEnv {
 	}
 
 	queries := database.NewQueries(db)
+	u := database.User{ID: "fixture-user", Username: "fixture", Role: "admin", PasswordHash: []byte("fixture-hash")}
+	if err := queries.CreateUser(u, false); err != nil {
+		t.Fatal(err)
+	}
+	token := "fixture-session-token"
+	hash := sha256.Sum256([]byte(token))
+	if err := queries.CreateSession(database.Session{ID: "fixture-session", UserID: u.ID, DeviceName: "Tests", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, hash[:], u.PasswordHash); err != nil {
+		t.Fatal(err)
+	}
 	srv := api.NewServer(cfg, queries, fs)
-	ts := httptest.NewServer(srv.Router())
+	handler := srv.Router()
+	if authorized {
+		handler = authenticatedFixture(handler, token)
+	}
+	ts := httptest.NewServer(handler)
 
 	t.Cleanup(func() {
 		ts.Close()
 		db.Close()
 	})
 
-	return &testEnv{server: ts, db: db, queries: queries, dataDir: dir}
+	return &testEnv{server: ts, db: db, queries: queries, dataDir: dir, authToken: token}
 }
 
 func (e *testEnv) url(path string) string {
@@ -594,4 +612,15 @@ func TestTusOptions(t *testing.T) {
 	if resp.Header.Get("Tus-Version") != "1.0.0" {
 		t.Fatalf("expected Tus-Version 1.0.0, got %s", resp.Header.Get("Tus-Version"))
 	}
+}
+
+// Existing lifecycle suites exercise resource behavior using an authenticated
+// owner. Auth security tests use setupAuthFixture(false), the unwrapped router.
+func authenticatedFixture(next http.Handler, token string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" && (r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodHead) {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		next.ServeHTTP(w, r)
+	})
 }

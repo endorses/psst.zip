@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, signIn } from "./auth-fixture";
 import { readFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
 import { randomBytes, webcrypto } from "node:crypto";
@@ -26,7 +26,7 @@ test("LAN deployment runs without a secure context or Web Crypto", async ({ page
 test("share page uploads files; download page decrypts individual files and ZIP", async ({
   page,
 }) => {
-  await page.goto("/");
+  await signIn(page);
   await expect(page.locator('input[type="file"]')).toBeEnabled();
   await page.locator('input[type="file"]').setInputFiles(files);
   await page.getByRole("button", { name: /Encrypt & Upload/ }).click();

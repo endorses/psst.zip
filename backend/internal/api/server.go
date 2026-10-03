@@ -29,7 +29,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 		fileStore: fs,
 		sseHub:    NewSSEHub(),
 	}
-	ts := &tusStore{queries: q}
+	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
 	s.tusH = tus.NewHandler(ts, fs, cfg.MaxFileSize)
 	return s
 }
@@ -42,6 +42,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(securityHeadersMiddleware)
 	r.Use(s.corsMiddleware)
+	r.Use(s.authenticate)
 
 	// Global rate limiter (looser).
 	globalRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
@@ -52,27 +53,28 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", s.health)
+		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
-		r.With(rateLimitMiddleware(creationRL)).Post("/transfers", s.createTransfer)
+		r.With(rateLimitMiddleware(creationRL), s.requireLogin).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
-		r.Post("/transfers/{transferID}/complete", s.completeTransfer)
+		r.With(s.requireUpload).Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
-		r.Post("/transfers/{transferID}/manifest", s.uploadManifest)
+		r.With(s.requireUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
 		r.Get("/transfers/{transferID}/manifest", s.downloadManifest)
 
 		// Tus file upload endpoints
 		r.Options("/transfers/{transferID}/files", tus.ServeOptions)
-		r.Post("/transfers/{transferID}/files", s.tusCreate)
-		r.Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
-		r.Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
+		r.With(s.requireUpload).Post("/transfers/{transferID}/files", s.tusCreate)
+		r.With(s.requireUpload).Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
+		r.With(s.requireUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
 
 		// File download
 		r.Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
-		r.With(rateLimitMiddleware(creationRL)).Post("/slots", s.createSlot)
+		r.With(rateLimitMiddleware(creationRL), s.requireLogin).Post("/slots", s.createSlot)
 		r.Get("/slots/{slotID}", s.getSlot)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.Get("/slots/{slotID}/events", s.slotEvents)

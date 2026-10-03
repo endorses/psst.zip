@@ -8,11 +8,15 @@ import zip.psst.shared.model.ServerConfig
 suspend fun revokeHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
+    currentAccess: () -> HistoryAccess,
     clientFactory: (ServerConfig) -> ApiClient = { ApiClient(it) },
 ) {
     val row = dao.getById(id) ?: return
+    val access = currentAccess()
+    require(access.permits(row)) { "This history entry belongs to another account or server" }
     val client = clientFactory(ServerConfig(row.serverUrl))
     try {
+        require(currentAccess() == access) { "Your account changed. Open History again." }
         when (row.type) {
             "received",
             "receive" -> client.slots.delete(row.id, row.deletionToken)
@@ -20,6 +24,7 @@ suspend fun revokeHistoryEntry(
             "send" -> client.transfers.delete(row.id, row.deletionToken)
             else -> error("Unknown history entry type")
         }
+        require(currentAccess() == access) { "Your account changed. Open History again." }
         dao.delete(id)
     } catch (error: LinkDeletionException) {
         if (row.deletionToken == null && error.statusCode in listOf(401, 403)) {

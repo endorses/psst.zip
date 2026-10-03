@@ -4,6 +4,8 @@ import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.ServerConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
@@ -18,21 +20,28 @@ import kotlinx.coroutines.flow.flow
 data class SlotEvent(val event: String, val data: String)
 
 /** API operations for drop slots (receive flow). */
-class SlotApi(private val httpClient: HttpClient, private val config: ServerConfig) {
+class SlotApi(
+    private val httpClient: HttpClient,
+    private val config: ServerConfig,
+    private val sessionToken: String? = null,
+) {
     /** Create a new drop slot. Returns the slot with its server-assigned ID. */
     @Throws(Exception::class)
     suspend fun create(): DropSlot {
         val response =
             httpClient.post("${config.apiBaseUrl}/slots") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
                 contentType(ContentType.Application.Json)
             }
+        response.checkAuthenticatedWrite()
         return response.body()
     }
 
     /** Revoke the link and stored uploads. Missing resources are already revoked. */
     @Throws(Exception::class)
     suspend fun delete(slotId: String, deleteToken: String? = null) {
-        deleteLink(httpClient, "${config.apiBaseUrl}/slots/$slotId", deleteToken)
+        deleteLink(httpClient, "${config.apiBaseUrl}/slots/$slotId", deleteToken ?: sessionToken)
     }
 
     /** Get drop slot status including list of uploaded files. */

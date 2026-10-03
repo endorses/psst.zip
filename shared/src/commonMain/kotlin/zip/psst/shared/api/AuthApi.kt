@@ -1,0 +1,130 @@
+package zip.psst.shared.api
+
+import zip.psst.shared.model.ServerConfig
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.Url
+import io.ktor.http.contentType
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+@Serializable
+data class AuthUser(
+    val id: String,
+    val username: String,
+    val role: String,
+    val disabled: Boolean = false,
+)
+
+@Serializable
+class AuthSession(
+    val token: String,
+    val user: AuthUser,
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("expires_at") val expiresAt: String,
+)
+
+/** Single-use pairing secrets are never passwords or durable session tokens. */
+@Serializable
+class PairingCode(
+    val type: String,
+    val version: Int,
+    @SerialName("server_url") val serverUrl: String,
+    val code: String,
+) {
+    companion object {
+        fun parse(raw: String): PairingCode {
+            require(raw.length <= 4096) { "This is not a server login QR code" }
+            val pairing =
+                try {
+                    Json.decodeFromString<PairingCode>(raw)
+                } catch (_: Exception) {
+                    throw IllegalArgumentException("This is not a server login QR code")
+                }
+            require(
+                pairing.type == "psst-pairing" &&
+                    pairing.version == 1 &&
+                    pairing.code.matches(Regex("[A-Za-z0-9_-]{32,128}"))
+            ) {
+                "This is not a supported server login QR code"
+            }
+            require(
+                Regex("^https?://[^/?#@\\\\\\s]+/?$", RegexOption.IGNORE_CASE)
+                    .matches(pairing.serverUrl)
+            ) {
+                "The pairing code contains an invalid server address"
+            }
+            val origin = Url(pairing.serverUrl)
+            require(origin.host.isNotBlank() && origin.port in 1..65535) {
+                "The pairing code contains an invalid server address"
+            }
+            return pairing
+        }
+    }
+}
+
+class AuthApi(
+    private val client: HttpClient,
+    private val config: ServerConfig,
+    private val token: String? = null,
+) {
+    suspend fun login(username: String, password: String, deviceName: String): AuthSession =
+        exchange(
+            "login",
+            mapOf(
+                "username" to username,
+                "password" to password,
+                "device_name" to deviceName,
+                "session_type" to "device",
+            ),
+        )
+
+    suspend fun redeemPairing(code: String, deviceName: String): AuthSession =
+        exchange("pairings/redeem", mapOf("code" to code, "device_name" to deviceName))
+
+    private suspend fun exchange(path: String, values: Map<String, String>): AuthSession =
+        withTimeout(15_000L) {
+            val response =
+                client.post("${config.apiBaseUrl}/auth/$path") {
+                    expectSuccess = false
+                    contentType(ContentType.Application.Json)
+                    setBody(values)
+                }
+            check(response.status.value in 200..299) {
+                when (response.status.value) {
+                    400,
+                    401,
+                    403 ->
+                        if (path == "login")
+                            "Sign-in failed. Check your credentials and use HTTPS unless the server explicitly allows development HTTP."
+                        else
+                            "Pairing failed. The code may have expired or already been used. Generate a new one in the web app."
+                    429 -> "Too many sign-in attempts. Please wait and try again."
+                    404 -> "This server needs an update before it supports account sign-in."
+                    else -> "The server could not sign you in. Try again later."
+                }
+            }
+            response.body<AuthSession>().also {
+                require(it.token.isNotBlank()) { "The server returned an invalid session" }
+            }
+        }
+
+    suspend fun logout() =
+        withTimeout(10_000L) {
+            val response =
+                client.post("${config.apiBaseUrl}/auth/logout") {
+                    expectSuccess = false
+                    token?.let { bearerAuth(it) }
+                }
+            check(response.status.value in listOf(204, 401)) {
+                "Could not sign out on the server. Try again when connected."
+            }
+        }
+}

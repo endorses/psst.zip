@@ -34,6 +34,10 @@ ios/*.xcodeproj/xcuserdata/
 .DS_Store
 Thumbs.db
 
+# Local server credentials
+.env
+.env.local
+
 # Generated native tooling state
 android/.kotlin/
 shared/.kotlin/

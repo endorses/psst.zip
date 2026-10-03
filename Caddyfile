@@ -1,4 +1,12 @@
 {$PSST_DOMAIN::80} {
+	# Protect login and pairing pages as well as API responses.
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
 	# API requests go to the backend
 	handle /api/* {
 		reverse_proxy backend:8080

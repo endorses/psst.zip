@@ -1,4 +1,5 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { type APIRequestContext } from "@playwright/test";
+import { test, expect } from "./auth-fixture";
 import { randomBytes, webcrypto } from "node:crypto";
 
 async function createEncryptedTransfer(request: APIRequestContext) {
