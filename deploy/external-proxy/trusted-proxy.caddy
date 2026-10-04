@@ -1,0 +1,5 @@
+servers {
+	# Trust only the external gateway's address on the shared proxy network.
+	trusted_proxies static {$PSST_EXTERNAL_PROXY_CIDRS}
+	trusted_proxies_strict
+}

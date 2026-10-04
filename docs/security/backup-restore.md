@@ -262,3 +262,12 @@ recorded results in the security plan define coverage. They do not validate an
 operator's actual backup, remote backup encryption, Caddy/ACME restoration, external
 proxy routing, storage hardware durability or native client key recovery. Run the
 operator checks above against your deployment before relying on a backup.
+
+The separate [external-proxy deployment gate](deployment.md#external-tls-gateway-example),
+`python3 tools/test_external_proxy.py`, also copies its own stopped backend volume
+to a backup and then to a new restored working volume. Through verified disposable
+TLS and both supplied proxies, it checks persisted policy, pause, sessions,
+receive-slot revocation and deliberate resume/logout. It never copies operator
+volumes. This control-plane check does not restore encrypted payload fixtures,
+gateway certificate/ACME state or client-held keys, and does not certify your
+actual backup.

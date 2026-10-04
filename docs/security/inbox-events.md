@@ -71,3 +71,10 @@ recorded in the [security implementation plan](../plans/security-abuse-preventio
 This application-level verification does not establish external proxy buffering,
 camera/device behavior or a multi-process event bus. The supported deployment
 still uses one backend process per SQLite database/store.
+
+The separate `python3 tools/test_external_proxy.py` integration gate builds the
+supplied external HTTPS gateway and inner HTTP proxy with an isolated backend.
+It verifies that an authenticated owner's `connected` frame arrives while the
+SSE response is still open, using verified disposable TLS. This establishes
+first-frame flushing through that supplied two-proxy layout; other gateways,
+long-lived network behavior and native clients still need their own checks.

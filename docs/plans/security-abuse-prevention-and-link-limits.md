@@ -146,7 +146,7 @@ off the requirements.
 
 The current login limiter uses the immediate peer address, so all users behind Caddy share one attempt bucket. The general limiter instead trusts arbitrary `X-Forwarded-For`. These approaches must be replaced by a consistent, tested trust boundary.
 
-- [ ] Implement one canonical client-address resolver based on the socket peer and an explicit trusted-proxy allowlist. Parse/normalize the trusted chain consistently, including IPv6; ignore forwarded headers from untrusted peers. Never default to trusting all Internet addresses. Provide tested direct, bundled Caddy and external-proxy configuration examples.
+- [x] Implement one canonical client-address resolver based on the socket peer and an explicit trusted-proxy allowlist. Parse/normalize the trusted chain consistently, including IPv6; ignore forwarded headers from untrusted peers. Never default to trusting all Internet addresses. Provide tested direct, bundled Caddy and external-proxy configuration examples.
 - [ ] Combine client-address and normalized-account login throttles with a global expensive-password-work concurrency cap. Distinguish login/pairing limits appropriately, keep error messages non-enumerating, and avoid permanent account lockouts or shared proxy buckets that let one attacker deny everyone service. Bound tracking memory and document distributed-attack limits.
 - [ ] Preserve HttpOnly/Secure/SameSite cookies, same-origin mutation checks, hashed session/pairing secrets, mandatory temporary-password replacement and single-use expiring pairing codes. Add focused regression checks while changing admission/auth ordering.
 - [x] Add administrator second-factor support using maintained implementations, choosing and recording passkeys/WebAuthn or password-plus-TOTP before implementation. Prefer passkeys where deployment/origin compatibility permits; ensure a complete enrollment, verification, recovery and revocation flow rather than an unenforced UI switch. Surface incomplete setup prominently without silently locking existing administrators out during upgrade.
@@ -163,7 +163,7 @@ End-to-end encryption prevents server inspection of honest ciphertext. A custom 
 - [x] Extend resource management with owner, type, creation/expiry, byte/object counts and relevant abuse events so an operator can identify and revoke a reported resource without plaintext. Bound/paginate results and support targeted cleanup with visible failures.
 - [x] Add an optional administrator-configured abuse contact/reporting path. Reports identify the instance and opaque resource ID without sending the decryption fragment, private keys or file content. Rate-limit, size-limit and retain reports conservatively; do not make the reporting endpoint a new spam/open-mail relay or accept arbitrary attachment uploads. A contact-only deployment may omit an in-app submission endpoint.
 - [x] Keep a minimal bounded security audit trail for administrative changes, suspicious authentication patterns, suspensions and revocations. Redact authorization headers, cookies, pairing codes, key fragments and sensitive query values; avoid logging request bodies, filenames or decrypted metadata. State retention and access policy and rotate application/container logs.
-- [ ] Harden supplied deployment configuration: private backend networking, explicit trusted HTTPS setup, prominent opt-in development HTTP, non-root execution where supported, least capabilities, no-new-privileges, restricted writable paths, process/memory/CPU limits and tested restart behavior. Keep storage/database/key material out of the static web root and avoid exposing diagnostic/admin ports publicly.
+- [x] Harden supplied deployment configuration: private backend networking, explicit trusted HTTPS setup, prominent opt-in development HTTP, non-root execution where supported, least capabilities, no-new-privileges, restricted writable paths, process/memory/CPU limits and tested restart behavior. Keep storage/database/key material out of the static web root and avoid exposing diagnostic/admin ports publicly.
 - [x] Add a tested Content Security Policy compatible with compiled assets, theme initialization, local QR scanning, blob downloads, workers and intentional external-server scan behavior. Preserve nosniff, frame denial, no-referrer and camera restrictions. Treat CSP as defense in depth, not evidence that an existing XSS has been found.
 - [ ] Document supported dependency/base-image update and vulnerability-check workflows, signed/reproducible release verification where available, backups/restores and safe credential handling. Ensure updates do not reset operator budgets/proxy policy. Describe what restored metadata/key material can and cannot recover without promising server access to plaintext.
 - [ ] Align security claims throughout UI/README: trusted HTTPS and trustworthy client software remain necessary, browser-delivered JavaScript depends on its serving origin, encryption does not prove sender identity or file safety, and operators need a way to respond to abuse. Do not imply encryption removes hosting-provider obligations or guarantees legal immunity.
@@ -1084,8 +1084,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
       parsed through the production reader, restart at an entry boundary, a
       separate persisted-offset/idempotence contract test, cancellation and invalid
       progress. Run the full Android unit/app/instrumentation build command from
-      `android/`: `JAVA_HOME=/opt/android-studio/jbr ./gradlew :app:testDebugUnitTest
-  :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon`.
+      `android/`: `JAVA_HOME=/opt/android-studio/jbr ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon`.
       All 127 tests pass with zero failures/errors/skips; both APKs build. The
       large file test verifies the application parser, not native SQLite engine
       memory behavior or a physical-device oversized migration.
@@ -1124,3 +1123,58 @@ and iOS guest storage/queues still need bounded local reads and writes.
       deployment/full-plan gates. Unsupported individual values still require
       explicit recovery rather than truncation. The live service is unchanged
       and the full plan remains open.
+
+### External TLS proxy and deployment restore checkpoint
+
+- [x] Add `deploy/external-proxy.compose.yml` and gateway/trust Caddyfiles for
+      external HTTPS gateway → compiled HTTP web proxy → backend. Compose removes
+      the inner proxy's published ports and edge network. Only the gateway is
+      public; all services preserve non-root execution, read-only roots, dropped
+      capabilities, no-new-privileges, bounded processes/memory/CPU/tmp and rotating
+      logs. Gateway TLS state has separate persistent volumes.
+- [x] Default bundled Caddy trusts no upstream gateway. An optional explicit
+      gateway `/32` policy enables strict client resolution, and Caddy forwards a
+      single resolved client address. The backend still trusts only its immediate
+      inner proxy `/32`. Document standalone empty trust and both supplied proxy
+      layouts, canonical `PUBLIC_URL`, HTTPS authentication over private HTTP
+      hops, subnet conflicts and stable Compose project/volume identities.
+- [x] Add and run `python3 tools/test_external_proxy.py` successfully against
+      current built backend/web images. The isolated stack uses random disposable
+      credentials, exact project labels, separate internal networks, loopback-only
+      ingress and an explicit private test CA with strict certificate validation.
+      No host trust installation, verification bypass, APK certificate or live
+      deployment modification occurs. CA signing material is not mounted into
+      containers. Cleanup removes project containers/networks/volumes/image tags
+      and private temporary files, including failed runs.
+- [x] Verify missing/foreign/spoofed Origin rejection, secure HttpOnly/SameSite
+      cookies, no-store headers, administrator policy persistence, mandatory
+      regular-account password replacement, owner SSE first-frame delivery before
+      response completion and public receive-slot availability/revocation through
+      both proxies. In-memory login buckets reset only on the disposable backend;
+      twelve varied spoofed-header requests from one actual peer yield ten 401s
+      then two 429s, while a second actual peer gets 401. Repeat this for external
+      TLS, an untrusted direct inner-proxy peer and an untrusted direct backend
+      peer; every case passes within one refill interval.
+- [x] Exercise durable pause, backend restart, offline original-volume → backup →
+      separate restored working volume, deliberate resume and logout/restart.
+      Preserve the original and backup until test cleanup. Restored settings,
+      pause, sessions and revoked receive-slot denial persist; logout remains
+      revoked after another restart. No parallel writer attaches to the original
+      database during copying. These are control-plane restore checks, not a
+      ciphertext, client-key or gateway ACME-state restore test.
+- [x] Fix test-fixture failures without changing production security behavior:
+      add required CA signing/key-identifier extensions for strict OpenSSL
+      validation, and use a supported rotating-log file count for helper clients.
+      A bounded read-only delta review finds no actionable deployment/trust/
+      isolation flaw. Focused final backend
+      `go test -race ./internal/api -run 'Test(TrustedClientIP|InvalidTrustedProxiesRejected|RateLimiterBoundsIdentityTracking)$' -count=1`
+      passes (1.020 s), including IPv6/mapped addresses, malformed chains,
+      reject-all trust defaults and bounded limiter identities. Ruff formatting/
+      lint, Python syntax/CLI, Markdown/YAML formatting and diff checks pass;
+      a separate Docker inventory confirms zero remaining test resources.
+- [ ] Complete public ACME issuance/renewal, operator-specific gateway/CDN/IPv6
+      layouts, gateway certificate-state restore and all remaining native/device,
+      recipient and full-plan release gates. Test CA verification does not prove
+      publicly trusted certificate issuance, provider billing protection or an
+      operator's actual backup. The running development instance is unchanged;
+      the full plan remains open.

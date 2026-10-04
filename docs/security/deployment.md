@@ -56,7 +56,82 @@ preferably individual `/32` or `/128` addresses. Do not trust `0.0.0.0/0`,
 The proxy must overwrite client-supplied forwarding headers. If another trusted
 proxy sits before bundled Caddy, configure Caddy's own explicit trusted-proxy
 policy as well; the default assumes Caddy receives the client connection.
-External proxy chains still require deployment-specific integration tests.
+The backend receives a single resolved client address from bundled Caddy. Caddy
+trusts no upstream gateway by default; the optional `/etc/caddy/proxy-trust/*.caddy`
+glob is empty unless an operator mounts an explicit policy. With a gateway policy,
+Caddy resolves the client using strict right-to-left parsing and normalizes its
+outgoing `X-Forwarded-For`. Backend trust remains limited to bundled Caddy's socket
+address. This follows [Caddy's proxy trust settings](https://caddyserver.com/docs/caddyfile/options#trusted_proxies)
+and [header handling](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers).
+
+## External TLS gateway example
+
+[The external-proxy Compose overlay](../../deploy/external-proxy.compose.yml) adds
+a separate Caddy TLS gateway in front of the bundled static/API proxy. It requires
+Docker Compose 2.24.4 or newer, because ordinary list merging would leave the
+inner proxy's public ports exposed. The overlay explicitly removes those ports
+and replaces network membership. See [Compose merge behavior](https://docs.docker.com/reference/compose-file/merge/#replace-value).
+
+The resulting path is external HTTPS gateway → bundled HTTP web proxy → backend.
+Only the gateway publishes ports. Both private hops remain on internal networks;
+the gateway also has an edge network for public certificate issuance. All three
+services retain non-root execution, read-only roots, dropped capabilities, process/
+memory ceilings and rotating logs. Gateway TLS state uses separate persistent
+volumes. The gateway and web proxy share the same compiled image.
+
+Use a bare public hostname in `PSST_DOMAIN` (no `http://` or `https://` prefix), set
+`PUBLIC_URL=https://that-hostname`, and keep `AUTH_ALLOW_INSECURE_HTTP=false`.
+The inner HTTP hop does **not** require enabling insecure authentication. The
+backend's canonical origin comes from `PUBLIC_URL`, never forwarded scheme/Host
+headers; web login and cookie mutations require that exact public Origin.
+
+From the repository root, using the same Compose project name and environment
+file as the intended deployment:
+
+```sh
+docker compose -f docker-compose.yml -f deploy/external-proxy.compose.yml config --quiet
+docker compose -f docker-compose.yml -f deploy/external-proxy.compose.yml up -d --build
+```
+
+Changing the project name also changes named-volume identities. Preserve it during
+an upgrade and take the documented stopped backup first. Do not start this gateway
+beside an existing proxy already listening on the same public ports.
+
+The extra internal subnet defaults to `172.30.194.0/29`: gateway `.2`, web proxy `.3`.
+For an overlap, change `PSST_EXTERNAL_PROXY_SUBNET`, `PSST_EXTERNAL_PROXY_IP` and
+`PSST_WEB_PROXY_IP` together. The web proxy trusts only the gateway's exact `/32`;
+the backend still trusts only the web proxy's address on the original backend
+network. These IPv4 example addresses are not general trusted-network ranges.
+
+If integrating an existing external proxy, keep backend/web listeners private,
+attach the gateway to the intended proxy network, and replace the example gateway
+address with its actual socket source. Route every path through the web proxy,
+preserve the public Host/scheme, overwrite client-supplied forwarding headers, and
+support streamed uploads/responses and SSE. Never substitute a broad private CIDR
+for the exact gateway policy. Operator-specific gateways, CDNs and IPv6 layouts
+still need their own integration checks.
+
+The repository's disposable TLS/proxy/restore check is:
+
+```sh
+python3 tools/test_external_proxy.py
+```
+
+It builds current sources under a unique project, generates a private **test-only**
+certificate authority, verifies certificates in isolated clients, and removes its
+containers, volumes, image tags and temporary files. It does not install trust on
+the host or in an APK, use a certificate-verification bypass, or modify the live
+development instance. Public deployment uses Caddy's automatic HTTPS rather than
+this test certificate. Public ACME issuance and renewal remain separate gates.
+
+The gate verifies real first-frame SSE delivery, canonical-origin authentication,
+secure cookies, control-plane restart/restore and client-address throttling with
+two distinct container peers. Varying forged forwarding headers cannot evade the
+same-peer bucket or combine independent peers. The restore fixture covers backend
+settings, pause, sessions and receive-slot revocation; it does not restore file
+ciphertext, client keys or gateway certificate state. Docker/Compose, OpenSSL and
+image build/pull access are required. The helper Python image remains in Docker's
+shared dependency cache; uniquely tagged application test images are removed.
 
 ## Existing volume ownership
 

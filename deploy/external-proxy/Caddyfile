@@ -1,0 +1,14 @@
+{
+	http_port {$CADDY_HTTP_PORT:8080}
+	https_port {$CADDY_HTTPS_PORT:8443}
+}
+
+{$PSST_DOMAIN} {
+	# Normally empty: public hostnames use Caddy's automatic HTTPS. The
+	# isolated integration harness mounts its private fixture certificate here.
+	import /etc/caddy/tls.d/*.caddy
+
+	# No upstream proxies are trusted at this gateway. Caddy overwrites
+	# untrusted forwarding headers and preserves the public Host/scheme.
+	reverse_proxy caddy:8080
+}

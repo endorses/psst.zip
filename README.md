@@ -134,6 +134,9 @@ an address they can reach.
 
 See [Caddy's HTTPS setup](https://caddyserver.com/docs/quick-starts/https).
 HTTPS certificate verification remains enabled in all clients.
+For a separate TLS gateway in front of the bundled web proxy, see the
+[external-proxy deployment example](docs/security/deployment.md#external-tls-gateway-example),
+including exact proxy trust, private listeners and the disposable integration check.
 
 ## Accounts and connected devices
 
