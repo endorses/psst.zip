@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { cleanupOverview, storageChecks } from "../admin-resource-fixture";
+import { cleanupOverview, storageChecks, counterChecks } from "../admin-resource-fixture";
 
 async function admin(page: Page) {
+  await page.route("**/api/v1/admin/counter-checks", (route) =>
+    route.fulfill({ json: counterChecks }),
+  );
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ json: { user: { id: "admin", role: "admin", username: "admin" } } }),
   );

@@ -5,9 +5,13 @@ import {
   resourceID,
   receiveID,
   storageChecks,
+  counterChecks,
 } from "../admin-resource-fixture";
 
 async function session(page: Page, role = "admin") {
+  await page.route("**/api/v1/admin/counter-checks", (route) =>
+    route.fulfill({ json: counterChecks }),
+  );
   await page.route("**/api/v1/admin/storage-checks", (route) =>
     route.fulfill({ json: storageChecks }),
   );
@@ -45,6 +49,47 @@ async function session(page: Page, role = "admin") {
     }),
   );
 }
+
+test("resources with missing summaries keep metadata and recovery actions without false zero totals", async ({
+  page,
+}) => {
+  await session(page);
+  const item = adminResource({
+    type: "slot",
+    status: "waiting",
+    totals_available: false,
+    file_count: 0,
+    child_transfer_count: 0,
+    reserved_bytes: 0,
+    occupied_bytes_estimate: 0,
+    manifest_bytes: 0,
+  });
+  await page.route("**/api/v1/admin/resources?**", (route) =>
+    route.fulfill({ json: { resources: [item], next_cursor: null } }),
+  );
+  await page.route(`**/api/v1/admin/resources/slot/${resourceID}`, (route) =>
+    route.fulfill({ json: item }),
+  );
+  await page.goto("/?view=resources");
+  const row = page.locator(`[data-resource-id="${resourceID}"]`);
+  await expect(row).toContainText("Storage totals awaiting repair");
+  await expect(row).toContainText("Receive link active");
+  await expect(row).not.toContainText("0 files");
+  await expect(row).not.toContainText("Waiting for files");
+  await row.getByRole("button", { name: "Inspect" }).click();
+  const detail = page.getByRole("region", { name: "Resource details", exact: true });
+  await expect(detail).toContainText("Storage totals awaiting repair");
+  await expect(detail).toContainText("Member");
+  await expect(detail).toContainText("Created");
+  await expect(detail).not.toContainText("Reserved storage");
+  await expect(detail.locator("dt").filter({ hasText: /^Files$/ })).toHaveCount(0);
+  await expect(detail.getByRole("heading", { name: "Related security activity" })).toBeVisible();
+  await detail.getByRole("button", { name: "Revoke", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(resourceID);
+  await expect(dialog.getByRole("button", { name: "Revoke and delete" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+});
 
 test("resource pages replace rows, preserve failed pages, and show owner and parent inbox details", async ({
   page,

@@ -83,6 +83,7 @@ type AdminResource struct {
 	ExpiresAt             time.Time             `json:"expires_at"`
 	PendingExpiresAt      *time.Time            `json:"pending_expires_at"`
 	Status                string                `json:"status"`
+	TotalsAvailable       bool                  `json:"totals_available"`
 	FileCount             int64                 `json:"file_count"`
 	ChildTransferCount    int64                 `json:"child_transfer_count"`
 	ReservedBytes         int64                 `json:"reserved_bytes"`
@@ -161,13 +162,15 @@ func adminResourceSelect(kind string, indexes ...string) string {
 		parent = `(SELECT slot_id FROM slot_transfers WHERE transfer_id=r.id ORDER BY slot_id LIMIT 1)`
 		pending = "r.pending_expires_at"
 	}
-	return `SELECT r.id,` + parent + `,r.owner_id,u.username,COALESCE(u.disabled,0),r.created_at,r.expires_at,` + pending + `,r.status,c.file_count,c.child_transfer_count,c.reserved_bytes,c.occupied_bytes,c.manifest_bytes,CAST(r.created_at AS TEXT) FROM ` + kind + `s r` + index + ` JOIN admin_resource_totals c ON c.kind='` + kind + `' AND c.resource_id=r.id LEFT JOIN users u ON u.id=r.owner_id`
+	// Derived summaries are optional recovery metadata. Losing a summary must
+	// not hide the canonical resource from inspection, revocation or cleanup.
+	return `SELECT r.id,` + parent + `,r.owner_id,u.username,COALESCE(u.disabled,0),r.created_at,r.expires_at,` + pending + `,r.status,c.resource_id IS NOT NULL,COALESCE(c.file_count,0),COALESCE(c.child_transfer_count,0),COALESCE(c.reserved_bytes,0),COALESCE(c.occupied_bytes,0),COALESCE(c.manifest_bytes,0),CAST(r.created_at AS TEXT) FROM ` + kind + `s r` + index + ` LEFT JOIN admin_resource_totals c ON c.kind='` + kind + `' AND c.resource_id=r.id LEFT JOIN users u ON u.id=r.owner_id`
 }
 func scanAdminResource(row interface{ Scan(...any) error }, kind string) (AdminResource, error) {
 	item := AdminResource{Type: kind}
 	var parent, owner, name sql.NullString
 	var pending sql.NullTime
-	err := row.Scan(&item.ID, &parent, &owner, &name, &item.OwnerDisabled, &item.CreatedAt, &item.ExpiresAt, &pending, &item.Status, &item.FileCount, &item.ChildTransferCount, &item.ReservedBytes, &item.OccupiedBytesEstimate, &item.ManifestBytes, &item.createdText)
+	err := row.Scan(&item.ID, &parent, &owner, &name, &item.OwnerDisabled, &item.CreatedAt, &item.ExpiresAt, &pending, &item.Status, &item.TotalsAvailable, &item.FileCount, &item.ChildTransferCount, &item.ReservedBytes, &item.OccupiedBytesEstimate, &item.ManifestBytes, &item.createdText)
 	if parent.Valid {
 		item.ParentSlotID = &parent.String
 	}

@@ -514,3 +514,43 @@ cross-platform capacity work, not fulfilled by the server-only payload checks.
       complete security plan.
 - [ ] Complete orphan inventory, counter reconstruction and effective capacity;
       deletion hardening alone does not complete crash reconciliation.
+
+### Derived storage counter reconstruction, 2026-10-04
+
+- [x] Reconstruct administrative resource totals and cleanup/file-check summary
+      counts from authoritative database rows. Bound source work and queued jobs,
+      retain partial work across restart, guard publication against source changes,
+      continue past failed/hot resources and expose incomplete coverage. Preserve
+      all lifetime inbox/download/traffic allowances; do not duplicate the live
+      quota view or infer historical consumption from surviving files.
+- [x] Keep resources with missing summary rows visible to administrators through
+      indexed left joins and an explicit `totals_available` flag. Hide unknown
+      counts/bytes in the UI while retaining ownership, parent, lifecycle, related
+      events and recovery actions. Database/index and real HTTP regressions pass,
+      including revocation/retry before repair and exact restored totals afterward.
+- [x] Add separate administrator counter status and independent web refresh with
+      bounded validation, preserved stale snapshots and progress/retry/error
+      states. Thirteen focused resource/counter/payload-check browser tests pass,
+      including a narrow viewport and missing-summary recovery. Web check and
+      production build pass. Queue counts describe currently queued work, not all
+      unresolved resources; incomplete-pass status covers deferred discovery/retry.
+- [x] Resolve bounded review findings: reject seek-key renames while preserving
+      no-op writer guards; recover from idle database failures with a fresh pass;
+      require another bounded pass after inbox membership changes during inbox
+      verification. This prevents already checked inboxes retaining corrupt child
+      deltas, including when a child disappears before its own repair publishes.
+      Link/unlink/deletion regressions, unchanged-summary convergence and idle
+      membership write guards pass. Normal idle membership updates do not restart
+      verification; continuing changes during a pass can keep coverage pending.
+- [x] Verify key immutability or full revision coverage for every seek key,
+      saturated retry queues, singleton summary restoration, overflow rejection,
+      cancellation, restart and exact preservation of lifetime counters. Finish
+      combined backend race verification and record the bounded review findings.
+      The settled-source `go test -race ./...` run passes (database 151.657 s;
+      API 158.425 s and worker 16.322 s reused from the preceding same-source
+      run). All final counter/source regressions separately pass with the race
+      detector (32.511 s). Web production build, type checks, 59 unit/integration
+      tests and the 13 focused browser cases pass. Formatting and diff checks pass.
+- [ ] Continue orphan filesystem inventory/recovery, public effective capacity,
+      remaining query bounds and deployment/native release gates. This database
+      work does not establish disk health or restore lost historical consumption.

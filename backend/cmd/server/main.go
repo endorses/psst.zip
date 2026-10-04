@@ -71,6 +71,9 @@ func main() {
 	}
 	resetCtx, resetCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	err = queries.ResetReconciliationScan(resetCtx)
+	if err == nil {
+		err = queries.ResetCounterRebuild(resetCtx)
+	}
 	resetCancel()
 	if err != nil {
 		log.Fatal("could not initialize stored-file checks")
@@ -95,6 +98,8 @@ func main() {
 
 	reconcileDone := make(chan struct{})
 	go func() { defer close(reconcileDone); reconcile.Run(ctx, queries, fs, time.Second) }()
+	counterDone := make(chan struct{})
+	go func() { defer close(counterDone); reconcile.RunCounters(ctx, queries, time.Second) }()
 	go srv.RunIncidentMonitor(ctx)
 	auditDone := make(chan struct{})
 	go func() { defer close(auditDone); srv.RunSecurityAudit(ctx) }()
@@ -124,6 +129,11 @@ func main() {
 		case <-reconcileDone:
 		case <-time.After(5 * time.Second):
 			log.Print("stored-file checker shutdown timed out; checks remain pending")
+		}
+		select {
+		case <-counterDone:
+		case <-time.After(3 * time.Second):
+			log.Print("storage counter checker shutdown timed out; checks remain pending")
 		}
 		// Stop the periodic writer before the final bounded flush. Authentication
 		// counters never delay shutdown indefinitely or gate recovery requests.

@@ -14,6 +14,7 @@ export function adminResource(overrides: Partial<AdminResource> = {}): AdminReso
     expires_at: "2030-10-04T12:00:00Z",
     pending_expires_at: null,
     status: "complete",
+    totals_available: true,
     file_count: 2,
     child_transfer_count: 0,
     reserved_bytes: 2097152,
@@ -38,6 +39,15 @@ export const storageChecks = {
   busy_count: 0,
   unavailable_count: 0,
   failed_count: 0,
+  last_scan_completed_at: "2026-10-04T12:00:00Z",
+  scan_pending: false,
+};
+
+export const counterChecks = {
+  state: "checked",
+  pending_count: 0,
+  failed_count: 0,
+  busy_count: 0,
   last_scan_completed_at: "2026-10-04T12:00:00Z",
   scan_pending: false,
 };

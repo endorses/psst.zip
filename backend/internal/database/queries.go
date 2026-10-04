@@ -53,11 +53,12 @@ type Slot struct {
 
 // Queries wraps a *sql.DB and provides typed query methods.
 type Queries struct {
-	db                *sql.DB
-	capacity          capacityConfig
-	incidentNamespace string
-	auditDegraded     atomic.Bool
-	reconciliation    reconciliationTracker
+	counterRebuildFailure atomic.Pointer[counterFailureMarker]
+	db                    *sql.DB
+	capacity              capacityConfig
+	incidentNamespace     string
+	auditDegraded         atomic.Bool
+	reconciliation        reconciliationTracker
 }
 
 // NewQueries returns a new Queries instance.

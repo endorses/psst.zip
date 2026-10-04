@@ -77,12 +77,64 @@ retry confirms durable removal before deleting database metadata. Application
 resource and reader locks remain necessary. These checks do not make arbitrary
 privileged filesystem renames or mount changes atomic with cleanup.
 
+## Database summary reconstruction
+
+Storage admission uses the `resource_usage` database view, calculated from
+canonical rows. It does not depend on the administrative resource summaries.
+The separate counter worker checks derived resource totals and the cleanup and
+file-check summary counts. It restores missing resource summaries and removes
+summaries for resources that no longer exist. Until a missing summary is repaired,
+the resource remains visible in the administrator inventory with its totals
+explicitly unavailable; lookup, revocation and cleanup remain accessible.
+
+Reconstruction reads canonical files, manifests and inbox membership rather than
+trusting child summaries. It stages bounded work in the database and checks source
+revisions under the writer lock before replacing a summary. A resource that
+changes during reconstruction must be retried, allowing other resources to make
+progress. Inbox membership changes after inbox discovery begins require another
+pass: ordinary membership accounting can temporarily copy an unrepaired child
+summary into an already checked inbox. This also covers a child removed before
+its own repair finishes. Continued membership changes can keep verification
+pending, without blocking upload admission or other reconstruction jobs. Restart
+invalidates completed coverage but preserves valid partial jobs.
+
+Each step consumes at most 64 source-row/probe units, and at most 64 jobs can be
+queued. If blocked jobs fill that queue, discovery can defer them to another
+complete pass so later healthy resources are still reached. Deferred work keeps
+coverage incomplete. Queue counts therefore describe the current queue, not
+every resource still needing verification. Existing identity keys cannot be
+renamed during a scan. Timestamp-only retries do not invalidate a summary's
+source revision when its counted state is unchanged.
+
+Normal writes maintain the derived counters transactionally after a completed
+pass; the counter worker then avoids idle database writes. A database failure
+during an idle check invalidates coverage and starts a fresh verification pass
+when the database becomes available again. Missing cleanup or
+file-check summary rows are recreated with conservative default scan cursors,
+while repair of existing rows preserves their operational metadata. Overflow or
+invalid source values prevent publication instead of producing wrapped totals.
+
+The Resources page's **Counter checks** panel reports queued, retrying and failed
+work separately from physical payload checks. Its administrator-only
+`/api/v1/admin/counter-checks` response is non-cacheable. A stale or failed status
+request keeps the last snapshot with an explicit warning. Counter verification
+does not imply a complete disk inventory or that an independently restored backup
+is consistent.
+
+Reconstruction never reduces cumulative receive-file/byte allowances, received
+submission counts, download attempts or traffic history. Those values cannot be
+recovered from the remaining files after historical data has been deleted. Use
+matching database and payload backups; counter reconstruction cannot recreate
+consumption that is absent from a restored database.
+
 ## Scope still to complete
 
 - [ ] Discover and safely account for or remove orphan filesystem entries that
       have no database file row.
-- [ ] Reconstruct and validate all capacity counters after a mismatched restore,
-      while preserving lifetime abuse allowances.
+- [ ] Validate database and physical-capacity consistency after a mismatched
+      restore. Derived database summaries are reconstructed as described above;
+      lost lifetime allowances require matching historical database state and
+      cannot be inferred from surviving payloads.
 - [ ] Integrate reconciliation coverage with effective-capacity admission and
       public guest capacity responses.
 - [ ] Perform the complete backup/restore and hostile-client release exercises

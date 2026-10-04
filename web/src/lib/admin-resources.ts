@@ -22,6 +22,7 @@ export interface AdminResource {
   expires_at: string;
   pending_expires_at: string | null;
   status: string;
+  totals_available: boolean;
   file_count: number;
   child_transfer_count: number;
   reserved_bytes: number;
@@ -82,6 +83,7 @@ function validResource(value: AdminResource): boolean {
     (value.owner_id === null || isResourceID(value.owner_id)) &&
     (value.owner_username === null || boundedText(value.owner_username)) &&
     typeof value.owner_disabled === "boolean" &&
+    typeof value.totals_available === "boolean" &&
     timestamp(value.created_at) &&
     timestamp(value.expires_at) &&
     optionalTime(value.pending_expires_at) &&
@@ -236,6 +238,8 @@ export const resourceStatus = (value: AdminResource) =>
         ? "Ready to download"
         : value.status === "pending"
           ? "Upload unfinished"
-          : value.file_count > 0
-            ? "Files received"
-            : "Waiting for files";
+          : !value.totals_available
+            ? "Receive link active"
+            : value.file_count > 0
+              ? "Files received"
+              : "Waiting for files";

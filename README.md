@@ -181,6 +181,9 @@ pending work and failures until server-file removal is confirmed.
 [Stored-file recovery](docs/security/storage-recovery.md) repairs unpublished
 upload offsets and blocks inconsistent published payloads. The resource manager
 shows the progress and failures of bounded database-file checks.
+Separate counter checks rebuild derived storage summaries from canonical rows
+without resetting historical link allowances; missing summaries do not hide
+resources from administrators.
 
 An optional [abuse contact](docs/security/abuse-contact.md) lets administrators
 publish a contact email. Web and mobile clients prepare a local report reference

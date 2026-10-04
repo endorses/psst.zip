@@ -22,6 +22,7 @@
   } from "$lib/admin-resources";
   import SecurityEvents from "./SecurityEvents.svelte";
   import StorageChecks from "./StorageChecks.svelte";
+  import CounterChecks from "./CounterChecks.svelte";
   import AdminResourceRevoke from "./AdminResourceRevoke.svelte";
   let result = $state<AdminResourcePage | null>(null),
     overview = $state<CleanupOverview | null>(null);
@@ -290,6 +291,7 @@
   {:else if !cleanupError}<p role="status">Loading cleanup status…</p>{/if}
 </section>
 <StorageChecks />
+<CounterChecks />
 <form
   class="filters"
   onsubmit={(event) => {
@@ -342,10 +344,12 @@
       <div>
         <strong>{resourceLabel(item)}</strong>
         <p>
-          {resourceStatus(item)} · {item.file_count} files · {formatSize(
-            item.occupied_bytes_estimate,
-          )} estimated occupied
+          {resourceStatus(item)}
+          {#if item.totals_available}
+            · {item.file_count} files · {formatSize(item.occupied_bytes_estimate)} estimated occupied
+          {/if}
         </p>
+        {#if !item.totals_available}<p class="muted">Storage totals awaiting repair</p>{/if}
         <p>
           Owner: {item.owner_username ?? item.owner_id ?? "Unknown account"}{item.owner_disabled
             ? " (sign-in disabled)"
@@ -411,6 +415,7 @@
       </p>{/if}
     {#if detail}
       <h3>{resourceLabel(detail)} · {resourceStatus(detail)}</h3>
+      {#if !detail.totals_available}<p class="muted">Storage totals awaiting repair</p>{/if}
       <dl>
         <div>
           <dt>Owner</dt>
@@ -420,14 +425,14 @@
               : ""}<code>{detail.owner_id ?? "No owner recorded"}</code>
           </dd>
         </div>
-        <div>
-          <dt>Files</dt>
-          <dd>{detail.file_count}</dd>
-        </div>
-        <div>
-          <dt>Received transfers</dt>
-          <dd>{detail.child_transfer_count}</dd>
-        </div>
+        {#if detail.totals_available}<div>
+            <dt>Files</dt>
+            <dd>{detail.file_count}</dd>
+          </div>
+          <div>
+            <dt>Received transfers</dt>
+            <dd>{detail.child_transfer_count}</dd>
+          </div>{/if}
         <div>
           <dt>Created</dt>
           <dd>{utcTime(detail.created_at)}</dd>
@@ -440,18 +445,18 @@
             <dt>Unfinished upload expires</dt>
             <dd>{utcTime(detail.pending_expires_at)}</dd>
           </div>{/if}
-        <div>
-          <dt>Reserved storage</dt>
-          <dd>{formatSize(detail.reserved_bytes)}</dd>
-        </div>
-        <div>
-          <dt>Estimated occupied storage</dt>
-          <dd>{formatSize(detail.occupied_bytes_estimate)}</dd>
-        </div>
-        <div>
-          <dt>Encrypted manifest portion</dt>
-          <dd>{formatSize(detail.manifest_bytes)}</dd>
-        </div>
+        {#if detail.totals_available}<div>
+            <dt>Reserved storage</dt>
+            <dd>{formatSize(detail.reserved_bytes)}</dd>
+          </div>
+          <div>
+            <dt>Estimated occupied storage</dt>
+            <dd>{formatSize(detail.occupied_bytes_estimate)}</dd>
+          </div>
+          <div>
+            <dt>Encrypted manifest portion</dt>
+            <dd>{formatSize(detail.manifest_bytes)}</dd>
+          </div>{/if}
         {#if detail.parent_slot_id}<div>
             <dt>Parent receive link</dt>
             <dd>
