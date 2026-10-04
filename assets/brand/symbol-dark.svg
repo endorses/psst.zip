@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none"><title>psst.zip</title><ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#5eead4" d="M12 59C27 55 40 28 54 32C60 33 64 39 64 39C69 34 74 30 81 32C95 35 104 53 116 59C98 67 81 62 64 65C46 62 29 67 12 59Z" />
-  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#5eead4" d="M15 68C34 73 48 66 64 69C81 66 96 72 113 68C103 90 85 101 64 101C43 101 25 90 15 68Z" />
-  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#ecf5f1" stroke="#172b2a" stroke-width="3.5" stroke-linejoin="round" d="M58 112L59 52C59 40 74 40 75 52L77 112Q77 116 73 116H62Q58 116 58 112Z" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none"><title>psst.zip</title><ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#5eead4" d="M12 58C24 54 36 29 49 32C55 33 60 37 64 39C69 35 74 31 79 32C94 33 105 55 116 58C100 64 82 54 64 56C45 54 28 64 12 58Z" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#5eead4" d="M15 62C32 64 48 60 64 62C80 60 96 64 113 62C101 78 84 91 64 91C44 91 28 79 15 62Z" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#172b2a" d="M52 91L53 58C54 40 77 40 77 58V92Z" />
+  <ns0:path xmlns:ns0="http://www.w3.org/2000/svg" fill="#ecf5f1" d="M50 114L56 58C57 44 74 44 74 58V93C84 93 87 100 87 108V114Q87 116 85 116H52Q50 116 50 114Z" />
 </svg>

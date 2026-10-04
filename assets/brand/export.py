@@ -121,17 +121,13 @@ def android_vector(source, destination, adaptive=False):
 
 def main():
     symbol = body_of(BRAND / "symbol.svg")
-    dark_symbol = symbol.replace("#0f766e", "#5eead4").replace(
-        'fill="#5eead4" stroke=', 'fill="#ecf5f1" stroke='
-    )
+    dark_symbol = symbol.replace("#5eead4", "#ecf5f1").replace("#0f766e", "#5eead4")
     write(BRAND / "symbol-dark.svg", svg(dark_symbol))
     outlines, width = wordmark()
     for appearance, color in (("light", "#172b2a"), ("dark", "#ecf5f1")):
         content = symbol
         if appearance == "dark":
-            content = content.replace("#0f766e", "#5eead4").replace(
-                'fill="#5eead4" stroke=', 'fill="#ecf5f1" stroke='
-            )
+            content = dark_symbol
         write(
             BRAND / f"logo-{appearance}.svg",
             svg(content + f'<g fill="{color}">{outlines}</g>', f"0 0 {width:.2f} 128"),
@@ -149,7 +145,7 @@ def main():
         BRAND / "app-icon.svg",
         svg(
             '<path fill="#0b1917" d="M0 0H128V128H0Z"/>'
-            + f'<g transform="translate(9 2) scale(.86)">{symbol.replace("#0f766e", "#5eead4").replace(chr(34) + "#5eead4" + chr(34) + " stroke=", chr(34) + "#ecf5f1" + chr(34) + " stroke=")}</g>'
+            + f'<g transform="translate(9 2) scale(.86)">{dark_symbol}</g>'
         ),
     )
     web = ROOT / "web/static"

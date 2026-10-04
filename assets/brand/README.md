@@ -1,6 +1,6 @@
 # psst.zip brand assets
 
-The symbol is a pair of softly shaped lips and a vertical finger making a shushing gesture. `symbol.svg` is the editable path master. `symbol-dark.svg` and `symbol-monochrome.svg` support dark backgrounds and monochrome launcher treatments. The horizontal lockups keep the exact **psst.zip** spelling; use the symbol alone for launcher icons and favicons.
+The symbol follows the approved draft: wide, softly curved lips and an upright index finger connected to a visible palm and curled-hand silhouette. Preserve the hand base and the gently curved mouth opening; a standalone finger reads as a tube. `symbol.svg` is the editable path master. `symbol-dark.svg` and `symbol-monochrome.svg` support dark backgrounds and monochrome launcher treatments. The horizontal lockups keep the exact **psst.zip** spelling; use the symbol alone for launcher icons and favicons.
 
 The artwork was redrawn as vector paths from the approved AI-generated concept. It contains no emoji artwork or traced raster pixels and is distributed under the repository's Apache-2.0 license. Nunito at weight 800 provides the wordmark; the unmodified variable font and its SIL Open Font License are in `fonts/`. Source: [Google Fonts / Nunito](https://github.com/google/fonts/tree/main/ofl/nunito). Outlined production exports require no installed font. Editable wordmark SVGs use live text; install the bundled Nunito font before editing them.
 
