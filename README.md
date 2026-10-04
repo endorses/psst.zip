@@ -319,6 +319,11 @@ transfers through authenticated owner-only endpoints; owner-only
 can query its own minimal `GET /api/v1/transfers/{id}/upload-status` with its
 resource capability to resolve a lost completion response without reading inbox contents.
 
+Inbox [event streams](docs/security/inbox-events.md) share one lifecycle poller
+per active inbox, have bounded queues and connection lifetimes, and disconnect
+slow or no-longer-authorized subscribers. Clients refresh authorized inbox
+metadata after missed notifications; events are not a durable replay log.
+
 Send creation offers an optional **Maximum downloads per file**. Receive creation
 offers an optional **Maximum files received**. Zero/unset disables only that
 creator-selected cap; server restrictions still apply. Limits are checked against

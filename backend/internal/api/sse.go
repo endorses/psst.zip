@@ -1,7 +1,7 @@
 package api
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -10,138 +10,232 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// SSEHub manages SSE subscriptions by key (e.g., slot ID).
+const (
+	maxEventStreams      = 256
+	maxInboxEventStreams = 16
+	eventQueueSize       = 16
+	eventStreamLifetime  = 10 * time.Minute
+	eventCheckTimeout    = 2 * time.Second
+)
+
+type inboxEventCheck func(context.Context, string, string, []string) (map[string]bool, error)
+
+type eventSubscriber struct {
+	group   *inboxEventGroup
+	session string
+	events  chan string
+	cancel  context.CancelFunc
+}
+type inboxEventGroup struct {
+	key, owner string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	done       chan struct{}
+	readers    map[*eventSubscriber]struct{}
+}
+
+// SSEHub bounds fanout and shares one lifecycle worker per active inbox. It is
+// only subscribed after owner authentication and global/scoped stream admission.
 type SSEHub struct {
-	mu      sync.RWMutex
-	clients map[string]map[chan string]struct{}
+	mu     sync.Mutex
+	groups map[string]*inboxEventGroup
+	total  int
+	check  inboxEventCheck
+	ticker func() (<-chan time.Time, func())
 }
 
-// NewSSEHub creates an SSEHub.
-func NewSSEHub() *SSEHub {
-	return &SSEHub{
-		clients: make(map[string]map[chan string]struct{}),
-	}
+func newSSEHub(check inboxEventCheck, interval time.Duration) *SSEHub {
+	return &SSEHub{groups: make(map[string]*inboxEventGroup), check: check, ticker: func() (<-chan time.Time, func()) {
+		ticker := time.NewTicker(interval)
+		return ticker.C, ticker.Stop
+	}}
 }
 
-// Subscribe returns a channel that receives events for the given key.
-func (h *SSEHub) Subscribe(key string) chan string {
+func (h *SSEHub) subscribe(key, owner, session string, cancel context.CancelFunc) *eventSubscriber {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	total := 0
-	for _, clients := range h.clients {
-		total += len(clients)
-	}
-	if total >= 256 || len(h.clients[key]) >= 16 {
+	group := h.groups[key]
+	if h.total >= maxEventStreams || (group != nil && (group.owner != owner || len(group.readers) >= maxInboxEventStreams)) {
 		return nil
 	}
-	ch := make(chan string, 16)
-	if h.clients[key] == nil {
-		h.clients[key] = make(map[chan string]struct{})
+	if group == nil {
+		ctx, stop := context.WithCancel(context.Background())
+		group = &inboxEventGroup{key: key, owner: owner, ctx: ctx, cancel: stop, done: make(chan struct{}), readers: make(map[*eventSubscriber]struct{})}
+		h.groups[key] = group
+		go h.watch(group)
 	}
-	h.clients[key][ch] = struct{}{}
-	return ch
+	reader := &eventSubscriber{group: group, session: session, events: make(chan string, eventQueueSize), cancel: cancel}
+	group.readers[reader] = struct{}{}
+	h.total++
+	return reader
 }
 
-// Unsubscribe removes a subscriber.
-func (h *SSEHub) Unsubscribe(key string, ch chan string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+// removeLocked is idempotent. Cancel the HTTP context as well as removing the
+// queue: a subscriber may already be blocked writing an earlier event.
+func (h *SSEHub) removeLocked(reader *eventSubscriber) {
+	group := reader.group
+	if _, ok := group.readers[reader]; !ok {
+		return
+	}
+	delete(group.readers, reader)
+	h.total--
+	reader.cancel()
+	if len(group.readers) == 0 {
+		if h.groups[group.key] == group {
+			delete(h.groups, group.key)
+		}
+		group.cancel()
+	}
+}
 
-	if subs, ok := h.clients[key]; ok {
-		delete(subs, ch)
-		if len(subs) == 0 {
-			delete(h.clients, key)
+func (h *SSEHub) unsubscribe(reader *eventSubscriber) {
+	h.mu.Lock()
+	h.removeLocked(reader)
+	last := len(reader.group.readers) == 0
+	h.mu.Unlock()
+	// The last request joins its worker before leaving Server.WaitForRequests, so
+	// database shutdown cannot race a lifecycle query from an abandoned inbox.
+	if last {
+		<-reader.group.done
+	}
+}
+
+func (h *SSEHub) watch(group *inboxEventGroup) {
+	defer close(group.done)
+	ticks, stop := h.ticker()
+	defer stop()
+	for {
+		select {
+		case <-group.ctx.Done():
+			return
+		case <-ticks:
+			h.mu.Lock()
+			readers := make([]*eventSubscriber, 0, len(group.readers))
+			sessions := make([]string, 0, len(group.readers))
+			seen := make(map[string]bool)
+			for reader := range group.readers {
+				readers = append(readers, reader)
+				if !seen[reader.session] {
+					seen[reader.session] = true
+					sessions = append(sessions, reader.session)
+				}
+			}
+			h.mu.Unlock()
+			if len(readers) == 0 {
+				return
+			}
+			ctx, cancel := context.WithTimeout(group.ctx, eventCheckTimeout)
+			active, err := h.check(ctx, group.key, group.owner, sessions)
+			cancel()
+			h.mu.Lock()
+			// Validate only the captured readers; a new session may have subscribed
+			// while the query ran. Its initial authorization is checked by the handler.
+			for _, reader := range readers {
+				if err != nil || !active[reader.session] {
+					h.removeLocked(reader)
+				}
+			}
+			h.mu.Unlock()
 		}
 	}
-	close(ch)
 }
 
-// Send broadcasts a message to all subscribers of the given key.
-func (h *SSEHub) Send(key string, msg string) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for ch := range h.clients[key] {
+// Send never waits for a subscriber. Overflow terminates that subscriber instead
+// of silently losing events and presenting an apparently complete inbox view.
+func (h *SSEHub) Send(key, msg string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	group := h.groups[key]
+	if group == nil {
+		return
+	}
+	for reader := range group.readers {
 		select {
-		case ch <- msg:
+		case reader.events <- msg:
 		default:
-			// Drop if subscriber is too slow.
+			h.removeLocked(reader)
 		}
 	}
 }
 
 func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 	slotID := chi.URLParam(r, "slotID")
-
 	if !isValidUUID(slotID) {
 		writeError(w, http.StatusBadRequest, "invalid slot ID")
 		return
 	}
-	ch := s.sseHub.Subscribe(slotID)
-	if ch == nil {
-		w.Header().Set("Retry-After", "5")
-		writeError(w, 429, "event stream limit reached")
-		return
-	}
-	defer s.sseHub.Unsubscribe(slotID, ch)
-
 	slot, err := s.queries.GetSlot(slotID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
-
 	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
-	expires := time.NewTimer(min(time.Until(slot.ExpiresAt), 10*time.Minute))
-	defer expires.Stop()
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+
+	ctx, cancel := context.WithTimeout(r.Context(), min(time.Until(slot.ExpiresAt), eventStreamLifetime))
+	defer cancel()
+	// This lifetime includes blocked network writes. Stop and join the callback
+	// before outer middleware clears deadlines for a reusable connection.
+	callbackDone := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { defer close(callbackDone); cancelRequestIO(r) })
+	var reader *eventSubscriber
+	defer func() {
+		if !stop() {
+			<-callbackDone
+		}
+		if reader != nil {
+			s.sseHub.unsubscribe(reader)
+		}
+	}()
+	principal := identity(r)
+	reader = s.sseHub.subscribe(slotID, principal.user.ID, principal.session.ID, cancel)
+	if reader == nil {
+		w.Header().Set("Retry-After", "5")
+		policyError(w, http.StatusTooManyRequests, "stream_limit", "event stream limit reached")
 		return
 	}
-
+	authorized := func() (bool, error) {
+		checkCtx, stop := context.WithTimeout(ctx, eventCheckTimeout)
+		defer stop()
+		active, err := s.sseHub.check(checkCtx, slotID, principal.user.ID, []string{principal.session.ID})
+		return err == nil && active[principal.session.ID] && ctx.Err() == nil, err
+	}
+	if valid, err := authorized(); !valid {
+		if err != nil {
+			policyError(w, http.StatusServiceUnavailable, "inbox_events_unavailable", "inbox events are temporarily unavailable")
+		} else {
+			writeError(w, http.StatusForbidden, "inbox read authorization changed")
+		}
+		return
+	}
+	controller := http.NewResponseController(w)
+	writeEvent := func(event string) bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		if _, err := fmt.Fprint(w, event); err != nil {
+			return false
+		}
+		return controller.Flush() == nil
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-
-	// Send initial connected event.
-	fmt.Fprintf(w, "event: connected\ndata: %s\n\n", slotID)
-	flusher.Flush()
-
-	check := time.NewTicker(time.Second)
-	defer check.Stop()
-	ctx := r.Context()
+	if !writeEvent(fmt.Sprintf("event: connected\ndata: %s\n\n", slotID)) {
+		return
+	}
 	for {
 		select {
-		case <-check.C:
-			if valid, err := s.queries.InboxSessionActive(identity(r).session.ID, identity(r).user.ID); err != nil || !valid {
-				return
-			}
-			current, err := s.queries.GetSlot(slotID)
-			if err == nil && current.Status != "revoked" && time.Now().Before(current.ExpiresAt) {
-				continue
-			}
-			if err == nil || err == sql.ErrNoRows {
-				return
-			}
-		case <-expires.C:
-			return
 		case <-ctx.Done():
 			return
-		case msg, ok := <-ch:
-			if valid, err := s.queries.InboxSessionActive(identity(r).session.ID, identity(r).user.ID); err != nil || !valid {
+		case msg := <-reader.events:
+			// A queued message must not disclose child IDs after session revocation or
+			// ownership change, even before the next shared lifecycle tick.
+			if valid, _ := authorized(); !valid || !writeEvent("data: "+msg+"\n\n") {
 				return
 			}
-			if !ok {
-				return
-			}
-			fmt.Fprintf(w, "data: %s\n\n", msg)
-			flusher.Flush()
 			if msg == slotDeletedEvent {
 				return
 			}

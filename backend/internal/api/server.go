@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -41,7 +42,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 		cfg:                 cfg,
 		queries:             q,
 		fileStore:           fs,
-		sseHub:              NewSSEHub(),
+		sseHub:              newSSEHub(q.InboxEventSessions, time.Second),
 		loginAccounts:       newRateLimiter(1.0/30, 10),
 		passwordWork:        make(chan struct{}, 4),
 		admission:           newStreamAdmission(cfg),

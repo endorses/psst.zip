@@ -1,6 +1,11 @@
 package database
 
-import "time"
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+)
 
 // CreateReceiveSlot persists immutable submission policy in the same allocation.
 func (q *Queries) CreateReceiveSlot(id string, expires time.Time, hash []byte, owner string, protocol int, publicKey string, maxFiles int) error {
@@ -17,9 +22,39 @@ func (q *Queries) TransferReceiveProtocol(transfer string) (int, error) {
 	return protocol, err
 }
 
-// Inbox streams must stop when their session/account loses read authorization.
-func (q *Queries) InboxSessionActive(session, user string) (bool, error) {
-	var expires time.Time
-	err := q.db.QueryRow(`SELECT s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.user_id=? AND u.disabled=0 AND u.role='user' AND u.must_change_password=0`, session, user).Scan(&expires)
-	return err == nil && time.Now().Before(expires), err
+// InboxEventSessions checks all distinct readers of one inbox in a single query.
+// Both periodic lifecycle checks and checks immediately before event disclosure
+// use this predicate, so ownership changes cannot leave an old stream authorized.
+func (q *Queries) InboxEventSessions(ctx context.Context, slot, owner string, sessions []string) (map[string]bool, error) {
+	if len(sessions) == 0 || len(sessions) > 16 {
+		return nil, fmt.Errorf("invalid inbox event reader count")
+	}
+	args := []any{slot, owner}
+	placeholders := make([]string, len(sessions))
+	for i, session := range sessions {
+		placeholders[i] = "?"
+		args = append(args, session)
+	}
+	rows, err := q.db.QueryContext(ctx, `SELECT se.id, se.expires_at, sl.expires_at
+ FROM slots sl JOIN users u ON u.id=sl.owner_id JOIN sessions se ON se.user_id=u.id
+ WHERE sl.id=? AND sl.owner_id=? AND sl.status!='revoked'
+ AND u.disabled=0 AND u.role='user' AND u.must_change_password=0
+ AND se.id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	active := make(map[string]bool, len(sessions))
+	now := time.Now()
+	for rows.Next() {
+		var id string
+		var sessionExpiry, slotExpiry time.Time
+		if err := rows.Scan(&id, &sessionExpiry, &slotExpiry); err != nil {
+			return nil, err
+		}
+		if now.Before(sessionExpiry) && now.Before(slotExpiry) {
+			active[id] = true
+		}
+	}
+	return active, rows.Err()
 }
