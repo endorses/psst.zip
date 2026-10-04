@@ -54,7 +54,6 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(s.trackRequests)
 	r.Use(requestLimits)
-	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(securityHeadersMiddleware)
@@ -75,6 +74,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/config", s.publicConfig)
 		r.With(s.requireAdmin).Patch("/admin/settings", s.updateSettings)
 		r.With(s.requireAdmin).Get("/admin/resource-policy", s.getResourcePolicy)
+		r.With(s.requireAdmin).Get("/admin/incident-state", s.getIncidentState)
+		r.With(s.requireAdmin).Patch("/admin/incident-state", s.updateIncidentState)
+		r.With(s.requireAdmin).Post("/admin/users/{userID}/shutdown", s.shutdownAccount)
 		r.With(s.requireAdmin).Patch("/admin/resource-policy", s.updateResourcePolicy)
 		r.With(s.requireRegularUser).Get("/auth/usage", s.accountUsage)
 		r.With(s.requireAdmin).Get("/admin/overview", s.getOverview)
@@ -83,10 +85,10 @@ func (s *Server) Router() http.Handler {
 		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
-		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/transfers", s.createTransfer)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/transfers", s.createTransfer)
 		r.With(s.requireTransferRead).Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
-		r.With(s.requireUpload).Post("/transfers/{transferID}/complete", s.completeTransfer)
+		r.With(s.requireUpload, s.requirePublicTransfers).Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.With(s.requireTransferRead).Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
 		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
 		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/manifest", s.downloadManifest)
@@ -95,7 +97,7 @@ func (s *Server) Router() http.Handler {
 
 		// Tus file upload endpoints
 		r.Options("/transfers/{transferID}/files", tus.ServeOptions)
-		r.With(s.requireUpload).Post("/transfers/{transferID}/files", s.tusCreate)
+		r.With(s.requireUpload, s.requirePublicTransfers).Post("/transfers/{transferID}/files", s.tusCreate)
 		r.With(s.requireUpload).Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
 		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
 
@@ -103,7 +105,7 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
-		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/slots", s.createSlot)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/slots", s.createSlot)
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}", s.getSlot)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)
@@ -111,7 +113,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/slots/{slotID}/availability", s.slotAvailability)
 
 		// Slot-scoped transfer creation
-		r.With(rateLimitMiddleware(creationRL, s.clientIP)).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requirePublicTransfers).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
 	})
 
 	return r
@@ -127,7 +129,7 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, HEAD, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Tus-Resumable, Upload-Length, Upload-Offset, Upload-Metadata")
-		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension")
+		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension, X-Psst-Error-Code")
 
 		if origin != "*" {
 			w.Header().Set("Vary", "Origin")

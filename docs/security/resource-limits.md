@@ -76,9 +76,24 @@ one volume are unsupported.
 
 The public configuration publishes policy ceilings. Authenticated usage views
 show quota headroom and explicitly retain a stale/error state when refresh fails.
-The final admission decision uses current server/filesystem state, which may
-change after a UI refresh. A complete public snapshot of effective instantaneous
-upload capacity is not yet provided.
+`GET /api/v1/auth/usage` and `GET/PATCH /api/v1/admin/resource-policy` also return
+a timestamped `capacity` snapshot. Account snapshots use the lesser of account
+and server headroom; they expose the account's usage, not other users' records.
+Database counters are read together in one transaction. The filesystem check
+subtracts the configured reserve, 1 MiB of metadata/WAL room, and outstanding
+declared file bytes not yet written. A separate database volume must also have
+metadata room. `available_wire_bytes` refers to encrypted file allocations;
+manifests need their own space, and transfer/inbox object ceilings still apply.
+
+Snapshot state is `ready`, `blocked`, or `unknown`. Known quota/disk exhaustion
+reports zero; a failed or unconfigured filesystem check reports `unknown` with
+null bytes rather than inventing zero. Policy and usage remain readable for
+recovery when disk probing fails. Available object counts and the check time
+are included. The web UI distinguishes these states and explains that a snapshot
+is not a reservation. Pauses, per-link limits and final allocation checks still
+apply, and concurrent work can change availability immediately. Public/guest
+effective-capacity integration and explicit reconciliation-state reporting are
+not yet complete.
 
 ## Bounded history
 
@@ -91,5 +106,6 @@ than treating unseen records as deleted. Very large native history still needs
 a separate incremental browsing UX; the hard bound is deliberate.
 
 Account/session metadata retention, audit/traffic-table retention, enforceable
-traffic budgets and emergency public suspension are separate plan requirements.
-This policy does not claim to implement them or bound a hosting provider's bill.
+traffic budgets are separate plan requirements. Manual [incident controls](incident-response.md)
+can pause payload traffic or shut down an account; storage policy itself does
+not enforce a hosting provider's traffic bill.

@@ -343,7 +343,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                     e is AdminTransferForbiddenException,
                             error =
                                 if (
-                                    e is zip.psst.android.data.UnsupportedLinkPolicyException ||
+                                    e is zip.psst.shared.api.TransferPolicyException ||
+                                        e is zip.psst.android.data.UnsupportedLinkPolicyException ||
                                         e is PasswordChangeRequiredException ||
                                         e is AdminTransferForbiddenException
                                 )
@@ -364,9 +365,14 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                     _uiState.update {
                                         it.copy(
                                             error =
-                                                app.getString(
-                                                    zip.psst.android.R.string.cleanup_failed
-                                                )
+                                                listOfNotNull(
+                                                        it.error,
+                                                        app.getString(
+                                                            zip.psst.android.R.string.cleanup_failed
+                                                        ),
+                                                    )
+                                                    .distinct()
+                                                    .joinToString("\n")
                                         )
                                     }
                             }

@@ -75,6 +75,20 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 
 	id, err := h.store.CreateUpload(transferID, length)
 	if err != nil {
+		if errors.Is(err, database.ErrTransfersPaused) || errors.Is(err, database.ErrAccountDisabled) || errors.Is(err, database.ErrResourceRevoked) {
+			code, status := "public_transfers_paused", 503
+			if errors.Is(err, database.ErrAccountDisabled) {
+				code, status = "account_disabled", 403
+			}
+			if errors.Is(err, database.ErrResourceRevoked) {
+				code, status = "resource_revoked", 410
+			}
+			w.Header().Set("X-Psst-Error-Code", code)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
+			return
+		}
 		if errors.Is(err, database.ErrResourceLimit) || errors.Is(err, database.ErrDiskCapacity) {
 			code, status := "resource_limit", http.StatusForbidden
 			if errors.Is(err, database.ErrDiskCapacity) {

@@ -37,7 +37,7 @@ func (s *tusStore) CreateUpload(transferID string, size int64) (string, error) {
 		if err == database.ErrSlotQuota {
 			return "", tus.ErrUploadLimit
 		}
-		return "", err
+		return "", database.IncidentError(err)
 	}
 	return id, nil
 }

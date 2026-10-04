@@ -105,3 +105,42 @@ test("a disk-reserve rejection stops the guest PATCH without HEAD or automatic r
     else Reflect.deleteProperty(globalThis, "window");
   }
 });
+
+test("effective disk snapshots keep unknown distinct from zero and reject inconsistent headroom", () => {
+  const capacity = {
+    checked_at: "2026-10-04T12:00:00Z",
+    state: "ready",
+    scope: "account",
+    available_wire_bytes: 500,
+    available_files: 2,
+    available_transfers: 3,
+    available_slots: 4,
+  };
+  const input = { policy: resourcePolicy, usage: resourceUsage, capacity };
+  assert.equal(validateResourceSnapshot(input).capacity?.available_wire_bytes, 500);
+  assert.equal(
+    validateResourceSnapshot({
+      ...input,
+      capacity: { ...capacity, state: "unknown", available_wire_bytes: null },
+    }).capacity?.available_wire_bytes,
+    null,
+  );
+  assert.equal(
+    validateResourceSnapshot({
+      ...input,
+      capacity: { ...capacity, state: "blocked", available_wire_bytes: 0 },
+    }).capacity?.state,
+    "blocked",
+  );
+  for (const mutation of [
+    { state: "unknown" },
+    { state: "blocked" },
+    { available_wire_bytes: -1 },
+    { available_files: NaN },
+    { checked_at: "bad date" },
+    { scope: "other" },
+  ])
+    assert.throws(() =>
+      validateResourceSnapshot({ ...input, capacity: { ...capacity, ...mutation } }),
+    );
+});

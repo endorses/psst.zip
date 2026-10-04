@@ -41,7 +41,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(expiry)
 
 	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash, identity(r).user.ID); err != nil {
-		if resourceFailure(w, err) {
+		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create transfer")
@@ -72,7 +72,11 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
+	if t.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return
+	}
+	if !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
 		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return
 	}
@@ -140,6 +144,9 @@ func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := s.queries.CompleteTransfer(id); err != nil {
+		if incidentFailure(w, err) {
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -198,7 +205,7 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.queries.SaveManifest(id, data); err != nil {
-		if resourceFailure(w, err) {
+		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to save manifest")
@@ -399,7 +406,11 @@ func (s *Server) activeTransfer(w http.ResponseWriter, id string, mutable bool) 
 		writeError(w, http.StatusNotFound, "transfer not found")
 		return nil
 	}
-	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
+	if t.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return nil
+	}
+	if !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
 		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return nil
 	}
@@ -457,7 +468,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(expiry)
 
 	if err := s.queries.CreateReceiveSlot(id, expiresAt, hash, identity(r).user.ID, req.ReceiveProtocol, req.RecipientPublicKey, req.MaxFiles); err != nil {
-		if resourceFailure(w, err) {
+		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create slot")
@@ -488,7 +499,11 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+	if slot.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return
+	}
+	if !time.Now().Before(slot.ExpiresAt) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
@@ -550,7 +565,11 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+	if slot.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return
+	}
+	if !time.Now().Before(slot.ExpiresAt) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
@@ -583,7 +602,7 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		expiresAt = slot.ExpiresAt
 	}
 	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash, s.cfg.MaxSlotTransfers); err != nil {
-		if resourceFailure(w, err) {
+		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
 		if err == database.ErrSlotFileQuota {

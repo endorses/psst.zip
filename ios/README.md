@@ -106,7 +106,7 @@ Both scanned downloads and owner inbox saves preflight manifests and free space.
 
 ### Receive encryption validation
 
-Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy and limit parser against pinned Apple `swift-crypto` 3.12.3. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve and integer limits. This verifies the portable crypto implementation; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
+Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy, limit parser, history collector and incident error mapper against pinned Apple `swift-crypto` 3.12.3. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve, integer limits, bounded history and strict pause/revocation status-code matching. This verifies portable implementations; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
 
 - [x] Seven portable Swift tests passed through the Docker harness, including all three provider fixtures and low-order inputs. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate.
 - [ ] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
@@ -127,3 +127,16 @@ batch, preserving local names and records from other contexts.
 - [x] The portable Swift harness passes eleven crypto/safety/history tests, including four pagination cases. Swift syntax, formatting and source gates pass.
 - [ ] Run `NavigationHistoryTests.testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames` and the complete XCTest suite on macOS/iOS. The added coordinated-persistence test has not run in Linux.
 - [ ] Verify multi-page History against the real server, interrupted second-page loading, account switching, restored local files and very large history on a device. Portable collector tests do not validate native URLSession/UI/file-coordination behavior.
+
+## Incident-control validation
+
+Pause/revocation errors use local messages, with strict HTTP status/code matching and
+typed Kotlin exceptions through the documented NSError bridge. Sending in the app
+and share extension, owner inbox saving, and guest upload/download preserve existing
+saved files. History/inbox polling stops after lost authentication or link revocation.
+See [incident response](../docs/security/incident-response.md) for server behavior.
+
+- [x] Thirteen portable Swift tests passed, including bounded/malformed incident responses and mismatched status/code pairs. Swift syntax parsing, source gates and formatting pass.
+- [ ] Build the app and extension on macOS to verify the generated Kotlin exception bridge; the Linux harness deliberately cannot import `Shared`.
+- [ ] On an iPhone/iPad, pause during upload, manifest retrieval and a multi-file receive; verify explicit retry after resume preserves previously saved files and does not silently restart payload work. Shut down the signed-in account and confirm polling stops, sign-in recovery appears, old links remain unavailable after reenable, and local Open/Share still works.
+- [ ] Verify URLSession's lower-level retry behavior for interrupted quota-consuming downloads. There is no application-level automatic payload retry, but disabling every transport retry has not been established on iOS.

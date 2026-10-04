@@ -64,6 +64,8 @@ internal suspend fun cleanupGuestUpload(
         require(transfer.id == transferId)
         if (transfer.status == zip.psst.shared.model.TransferStatus.COMPLETE) return true
         client.transfers.delete(transferId, token)
+    } catch (_: zip.psst.shared.api.ResourceRevokedException) {
+        // Revoked upload capabilities cannot accept further content.
     } catch (e: io.ktor.client.plugins.ClientRequestException) {
         if (e.response.status.value !in listOf(404, 410)) throw e
     }

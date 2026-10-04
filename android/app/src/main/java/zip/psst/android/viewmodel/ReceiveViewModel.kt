@@ -357,7 +357,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     e is AdminTransferForbiddenException,
                             error =
                                 if (
-                                    e is zip.psst.android.data.UnsupportedLinkPolicyException ||
+                                    e is zip.psst.shared.api.TransferPolicyException ||
+                                        e is zip.psst.android.data.UnsupportedLinkPolicyException ||
                                         e is PasswordChangeRequiredException ||
                                         e is AdminTransferForbiddenException
                                 )
@@ -426,11 +427,22 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            if (e is AuthenticationRequiredException) {
+                sseJob?.cancel()
+                pollJob?.cancel()
+                _uiState.update {
+                    it.copy(requiresLogin = true, error = e.message, connectionError = false)
+                }
+                return
+            }
             if (
-                e is io.ktor.client.plugins.ClientRequestException &&
-                    e.response.status.value in listOf(404, 410)
+                e is zip.psst.shared.api.ResourceRevokedException ||
+                    (e is io.ktor.client.plugins.ClientRequestException &&
+                        e.response.status.value in listOf(404, 410))
             ) {
                 app.database.transferHistoryDao().updateStatus(slotId, "unavailable")
+                sseJob?.cancel()
+                pollJob?.cancel()
                 _uiState.update {
                     if (it.slotId == slotId)
                         it.copy(slotStatus = "unavailable", connectionError = false)
@@ -644,8 +656,13 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
+                            requiresLogin = e is AuthenticationRequiredException,
                             error =
-                                if (e is zip.psst.android.data.InsufficientDownloadSpaceException)
+                                if (
+                                    e is zip.psst.android.data.InsufficientDownloadSpaceException ||
+                                        e is zip.psst.shared.api.TransferPolicyException ||
+                                        e is AuthenticationRequiredException
+                                )
                                     e.message
                                 else
                                     app.getString(

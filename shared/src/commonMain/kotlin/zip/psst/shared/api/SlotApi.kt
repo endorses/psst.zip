@@ -85,9 +85,12 @@ class SlotApi(
                 contentType(ContentType.Application.Json)
                 setBody(mapOf<String, String>())
             }
+        response.checkAccountRestriction()
         require(response.status.value == 201) {
             "The receive link is unavailable or cannot accept more files"
         }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
         return response.readControlJson<Transfer>(4096).also {
             require(
                 UrlHelper.isResourceId(it.id) &&
@@ -112,6 +115,8 @@ class SlotApi(
                 expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
             }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
         return response.readControlJson<DropSlot>().also { require(it.id == slotId) }
     }
 
@@ -125,9 +130,13 @@ class SlotApi(
     fun events(slotId: String): Flow<SlotEvent> = flow {
         httpClient
             .prepareGet("${config.apiBaseUrl}/slots/$slotId/events") {
+                expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
             }
             .execute { response ->
+                response.checkAccountRestriction()
+                if (response.status.value == 401 && sessionToken != null)
+                    throw AuthenticationRequiredException()
                 require(response.status.value == 200) { "Inbox notifications are unavailable" }
                 val channel = response.bodyAsChannel()
                 var currentEvent = ""

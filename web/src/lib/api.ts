@@ -2,6 +2,7 @@ import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
 import { validateLinkLimit } from "./link-limits.ts";
 import { resourceLimitError } from "./resource-policy.ts";
+import { transferStateError } from "./incident-state.ts";
 
 /**
  * Thin wrapper around the backend REST API.
@@ -16,7 +17,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       .clone()
       .json()
       .catch(() => null);
-    const policyError = resourceLimitError(error?.code);
+    const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
+    const policyError = transferStateError(code) ?? resourceLimitError(code);
     if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);
@@ -31,7 +33,8 @@ async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
       .clone()
       .json()
       .catch(() => null);
-    const policyError = resourceLimitError(error?.code);
+    const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
+    const policyError = transferStateError(code) ?? resourceLimitError(code);
     if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);

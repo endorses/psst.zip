@@ -6,6 +6,7 @@
   import { getSlotAvailability, type SlotAvailability } from "$lib/api";
   import SendPanel from "$lib/components/SendPanel.svelte";
   import { BRAND } from "$lib/brand";
+  import { TransferStateError } from "$lib/incident-state";
   let reconnect = $state(false);
   let availability = $state<SlotAvailability | null>(null);
   let ready = $state(false),
@@ -44,6 +45,11 @@
       }
       ready = true;
     } catch (e) {
+      if (e instanceof TransferStateError) {
+        error = e.message;
+        reconnect = false;
+        return;
+      }
       reconnect = !(e instanceof Error && (e.message.includes("404") || e.message.includes("410")));
       error =
         e instanceof Error && (e.message.includes("404") || e.message.includes("410"))

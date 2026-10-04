@@ -31,6 +31,36 @@
       <dd>{capacityLabel(remainingCapacity(quota.storage, snapshot.usage.reserved_bytes))}</dd>
     </div>
   </dl>
+  {#if snapshot.capacity}
+    <div class="capacity-snapshot" aria-label="Current upload capacity">
+      {#if snapshot.capacity.state === "unknown"}
+        <p class="notice">
+          Current disk capacity could not be checked. The quota figures above are still available;
+          refresh before trying a new upload.
+        </p>
+      {:else if snapshot.capacity.state === "blocked"}
+        <p class="notice">
+          {snapshot.capacity.reason === "disk_capacity"
+            ? "New file allocations are blocked by the disk safety reserve."
+            : "New file allocations have reached a server or account quota."} Existing local files and
+          administrative recovery remain available.
+        </p>
+      {:else}
+        <p>
+          <strong
+            >{capacityLabel(snapshot.capacity.available_wire_bytes!)} currently available for new encrypted
+            file allocations.</strong
+          >
+        </p>
+      {/if}
+      <p class="muted small">
+        Checked {new Date(snapshot.capacity.checked_at).toLocaleString()}. This includes server-wide
+        limits and the disk reserve, but is not a reservation. Encryption and manifests also consume
+        space; other uploads can change availability. Transfer pauses and per-link limits apply
+        separately.
+      </p>
+    </div>
+  {/if}
   <div class="table-scroll">
     <table>
       <caption>Current object allocations</caption>

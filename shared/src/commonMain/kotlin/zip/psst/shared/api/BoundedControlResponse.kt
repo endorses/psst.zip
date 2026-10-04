@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 internal suspend inline fun <reified T> HttpResponse.readControlJson(
     maxBytes: Int = 128 * 1024
 ): T {
+    checkAccountRestriction()
     if (status.value in 400..499) throw ClientRequestException(this, "Transfer request rejected")
     if (status.value in 500..599) throw ServerResponseException(this, "Transfer server unavailable")
     require(status.value in 200..299) { "Unexpected transfer response" }

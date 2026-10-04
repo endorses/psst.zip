@@ -102,6 +102,7 @@ var migrations = []string{
 	`ALTER TABLE slots ADD COLUMN reserved_files INTEGER NOT NULL DEFAULT 0 CHECK(typeof(reserved_files)='integer' AND reserved_files>=0)`,
 	`UPDATE slots SET reserved_files=(SELECT COUNT(*) FROM files f JOIN slot_transfers st ON st.transfer_id=f.transfer_id WHERE st.slot_id=slots.id)`,
 	resourceMigration(),
+	incidentMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

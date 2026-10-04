@@ -16,6 +16,13 @@ func TestResourcePolicyAdminAuthorizationAndAccountUsage(t *testing.T) {
 	authRequest(t, env, "GET", "/admin/resource-policy", env.userToken, nil, 403)
 	authRequest(t, env, "PATCH", "/admin/resource-policy", env.userToken, map[string]int{"server_files": 2}, 403)
 	got := authRequest(t, env, "GET", "/admin/resource-policy", env.authToken, nil, 200)
+	capacity := got["capacity"].(map[string]any)
+	if capacity["scope"] != "server" {
+		t.Fatal(capacity)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, capacity["checked_at"].(string)); err != nil {
+		t.Fatal(err)
+	}
 	policy := got["policy"].(map[string]any)
 	if policy["server_storage_bytes"] != float64(10<<30) || policy["pending_upload_seconds"] != float64(86400) {
 		t.Fatal(policy)
@@ -30,11 +37,19 @@ func TestResourcePolicyAdminAuthorizationAndAccountUsage(t *testing.T) {
 		t.Fatal(rejected)
 	}
 	authRequest(t, env, "GET", "/transfers/"+id, "", nil, 200)
-	usage := authRequest(t, env, "GET", "/auth/usage", env.userToken, nil, 200)["usage"].(map[string]any)
+	accountSnapshot := authRequest(t, env, "GET", "/auth/usage", env.userToken, nil, 200)
+	usage := accountSnapshot["usage"].(map[string]any)
 	if usage["transfers"] != float64(1) {
 		t.Fatal(usage)
 	}
+	accountCapacity := accountSnapshot["capacity"].(map[string]any)
+	if accountCapacity["scope"] != "account" || accountCapacity["available_transfers"] != float64(0) {
+		t.Fatal(accountCapacity)
+	}
 	public := authRequest(t, env, "GET", "/config", "", nil, 200)
+	if public["capacity"] != nil || public["usage"] != nil {
+		t.Fatal("public config exposed private capacity/usage")
+	}
 	if public["resource_policy"].(map[string]any)["account_transfers"] != float64(1) {
 		t.Fatal(public)
 	}

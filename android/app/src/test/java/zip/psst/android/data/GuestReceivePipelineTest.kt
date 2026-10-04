@@ -45,6 +45,61 @@ class GuestReceivePipelineTest {
     private fun row() = GuestDownload("identity", "https://example.com", "transfer", files = files)
 
     @Test
+    fun operatorPauseKeepsSavedCheckpointAndExplicitResumeRequestsOnlyMissingFile() = runBlocking {
+        val requests = mutableListOf<String>()
+        var paused = true
+        val encrypted = ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, plain)
+        val client =
+            ApiClient(
+                ServerConfig("https://external.test"),
+                HttpClient(
+                    MockEngine { request ->
+                        val id = request.url.encodedPath.substringAfterLast('/')
+                        requests += id
+                        if (id == "b" && paused)
+                            respond(
+                                """{"code":"public_transfers_paused"}""",
+                                HttpStatusCode.ServiceUnavailable,
+                            )
+                        else respond(encrypted)
+                    }
+                ),
+            )
+        val checkpoints = mutableListOf<SavedGuestFile>()
+        suspend fun receive() =
+            receiveGuestFiles(
+                client,
+                "transfer",
+                files,
+                key,
+                checkpoints.map { it.blobId }.toSet(),
+                { _, _, _ -> },
+                { _, _ -> },
+                { file, content ->
+                    content { actual -> assertArrayEquals(plain, actual) }
+                    saved(file.blobId)
+                },
+                { checkpoints += it },
+            )
+        try {
+            try {
+                receive()
+                fail("Pause was ignored")
+            } catch (error: zip.psst.shared.api.PublicTransfersPausedException) {
+                assertTrue(error.message!!.contains("Retry after"))
+            }
+            assertEquals(listOf("a"), checkpoints.map { it.blobId })
+            assertEquals(listOf("a", "b"), requests)
+            paused = false
+            receive() // Explicit caller retry after the operator resumes service.
+            assertEquals(listOf("a", "b"), checkpoints.map { it.blobId })
+            assertEquals(listOf("a", "b", "b"), requests)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun actualResponseMustMatchManifestBeforePublicationWithoutAutomaticRetries() = runTest {
         val encrypted = ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, plain)
         for (body in listOf(encrypted.copyOf(encrypted.size - 1), encrypted + byteArrayOf(1))) {

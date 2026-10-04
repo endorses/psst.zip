@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 )
 
@@ -50,13 +51,24 @@ type Slot struct {
 
 // Queries wraps a *sql.DB and provides typed query methods.
 type Queries struct {
-	db       *sql.DB
-	capacity capacityConfig
+	db                *sql.DB
+	capacity          capacityConfig
+	incidentNamespace string
 }
 
 // NewQueries returns a new Queries instance.
 func NewQueries(db *sql.DB) *Queries {
-	return &Queries{db: db}
+	var sequence int
+	var name, path string
+	_ = db.QueryRow(`PRAGMA database_list`).Scan(&sequence, &name, &path)
+	if path != "" {
+		if absolute, err := filepath.Abs(path); err == nil {
+			path = absolute
+		}
+	} else {
+		path = fmt.Sprintf("memory:%p", db)
+	}
+	return &Queries{db: db, incidentNamespace: path}
 }
 
 // --- Transfers ---

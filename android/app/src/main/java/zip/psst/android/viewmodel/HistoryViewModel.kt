@@ -51,6 +51,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     val offline = MutableStateFlow(false)
     val accountIssue = MutableStateFlow<String?>(null)
+    val transferIssue = MutableStateFlow<String?>(null)
     private var refreshJob: Job? = null
     private val deleteJobs = mutableMapOf<String, Job>()
 
@@ -65,6 +66,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 deleteJobs.values.toList().forEach { it.cancel() }
                 _deletionError.value = null
                 accountIssue.value = null
+                transferIssue.value = null
             }
         }
     }
@@ -85,6 +87,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refresh() {
+        transferIssue.value = null
         refreshJob?.cancel()
         refreshJob =
             viewModelScope.launch(Dispatchers.IO) {
@@ -146,6 +149,14 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                             )
                         } catch (e: CancellationException) {
                             throw e
+                        } catch (e: zip.psst.shared.api.TransferPolicyException) {
+                            transferIssue.value = e.message
+                            offline.value = false
+                            return@launch
+                        } catch (e: AuthenticationRequiredException) {
+                            accountIssue.value = e.message
+                            offline.value = false
+                            return@launch
                         } catch (_: Exception) {
                             failed = true
                             break

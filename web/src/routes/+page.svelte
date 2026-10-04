@@ -17,6 +17,8 @@
   import ServerSettings from "$lib/components/ServerSettings.svelte";
   import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
   import AccountUsage from "$lib/components/AccountUsage.svelte";
+  import PublicTransferControl from "$lib/components/PublicTransferControl.svelte";
+  import IncidentConfirmDialog from "$lib/components/IncidentConfirmDialog.svelte";
   import { loadResourcePage, loadUsersPage } from "$lib/resource-history";
   import { resourceFileCount, receivedFileCount } from "$lib/account";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
@@ -163,6 +165,7 @@
     newConfirmation = $state("");
 
   let pendingDelete = $state<{ id: string; kind: "transfers" | "slots" } | null>(null);
+  let accountAction = $state<{ account: User; mode: "disable" | "shutdown" } | null>(null);
   let received = $state<{ id: string; url: string; count: number }[]>([]);
   onMount(() => {
     void initialize();
@@ -402,6 +405,7 @@
     receiveNeedsKey = false;
     maxFiles = 0;
     pendingDelete = null;
+    accountAction = null;
     liveMessage = "";
     password = "";
     newPassword = "";
@@ -636,6 +640,35 @@
         keepFocus: true,
         noScroll: true,
       });
+    });
+  }
+  async function confirmAccountAction() {
+    if (!accountAction) return;
+    const target = accountAction;
+    const owner = epoch;
+    await act(async () => {
+      if (target.mode === "disable") {
+        const result = await request<{ user: User }>(`/admin/users/${target.account.id}`, "PATCH", {
+          disabled: true,
+        });
+        if (owner !== epoch) return;
+        users = users.map((item) => (item.id === result.user.id ? result.user : item));
+        notice =
+          "Sign-in disabled and sessions/pairings revoked. Existing public links remain active; use incident shutdown to revoke them.";
+      } else {
+        const result = await request<{
+          user: User;
+          revoked_sessions: number;
+          revoked_pairings: number;
+          revoked_transfers: number;
+          revoked_slots: number;
+          cleanup_pending: boolean;
+        }>(`/admin/users/${target.account.id}/shutdown`, "POST", {});
+        if (owner !== epoch) return;
+        users = users.map((item) => (item.id === result.user.id ? result.user : item));
+        notice = `Incident shutdown applied: ${result.revoked_sessions} sessions, ${result.revoked_pairings} pairing grants, ${result.revoked_transfers} transfers and ${result.revoked_slots} receive links revoked. Server cleanup is pending. Downloaded copies remain. Re-enabling sign-in will not restore revoked links.`;
+      }
+      accountAction = null;
     });
   }
   async function checkReceived(id: string) {
@@ -955,6 +988,7 @@
         {#if tab === "Overview"}<AdminOverview />
         {:else if tab === "Traffic"}<TrafficPanel />
         {:else if tab === "Server"}<h1>Server settings</h1>
+          <PublicTransferControl />
           <ServerSettings />
           <ResourcePolicySettings />
         {:else if tab === "Settings"}<h1>Settings</h1>
@@ -1246,7 +1280,9 @@
         {:else if tab === "Users"}
           <h1>Manage users</h1>
           <p class="muted">
-            Only administrators can create accounts. Disabling an account signs out its devices.
+            Only administrators can create accounts. Disabling sign-in signs out devices and cancels
+            pairing grants; existing public links remain active. Incident shutdown also revokes all
+            of the account's links and schedules server-file cleanup.
           </p>
           {#if usersPrevious.length || usersNext}<nav aria-label="Account pages">
               <button disabled={busy || !usersPrevious.length} onclick={() => turnUsers("previous")}
@@ -1278,18 +1314,50 @@
                   }}>Reset password</button
                 ><button
                   disabled={busy || account.id === user.id}
-                  onclick={() =>
-                    act(async () => {
+                  onclick={() => {
+                    if (!account.disabled) {
+                      error = "";
+                      accountAction = { account, mode: "disable" };
+                      return;
+                    }
+                    void act(async () => {
                       const updated = await request<{ user: User }>(
                         `/admin/users/${account.id}`,
                         "PATCH",
                         { disabled: !account.disabled },
                       );
                       users = users.map((u) => (u.id === updated.user.id ? updated.user : u));
-                    })}>{account.disabled ? "Enable" : "Disable"}</button
+                    });
+                  }}>{account.disabled ? "Enable sign-in" : "Disable sign-in"}</button
                 >
+                {#if account.role === "user"}<button
+                    class="danger"
+                    disabled={busy}
+                    onclick={() => {
+                      error = "";
+                      accountAction = { account, mode: "shutdown" };
+                    }}>Incident shutdown</button
+                  >{/if}
               </div>
             </article>{/each}
+          {#if accountAction}<IncidentConfirmDialog
+              title={accountAction.mode === "disable"
+                ? `Disable sign-in for ${accountAction.account.username}?`
+                : `Shut down ${accountAction.account.username}'s transfers?`}
+              description={accountAction.mode === "disable"
+                ? "Disable future sign-in, revoke this account's sessions and cancel its pairing grants. Existing public receive and download links will keep working. To revoke those links too, cancel and choose Incident shutdown."
+                : "Disable this account, revoke all sessions and pairing grants, revoke every existing send and receive link, stop active transfers, and schedule deletion of its server files. Already downloaded copies remain. Re-enabling the account will not restore these links."}
+              action={accountAction.mode === "disable"
+                ? "Disable sign-in only"
+                : "Shut down account and revoke all links"}
+              {busy}
+              {error}
+              oncancel={() => {
+                accountAction = null;
+                error = "";
+              }}
+              onconfirm={confirmAccountAction}
+            />{/if}
           {#if resetId}<form
               class="confirm"
               onsubmit={(e) => {

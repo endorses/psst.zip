@@ -162,8 +162,15 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                                     },
                                 offline = false,
                             )
+                        if (refreshed.status == "unavailable") return@launch
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: zip.psst.shared.api.TransferPolicyException) {
+                        _uiState.value = _uiState.value.copy(offline = false, error = e.message)
+                        return@launch
+                    } catch (e: zip.psst.shared.api.AuthenticationRequiredException) {
+                        _uiState.value = _uiState.value.copy(offline = false, error = e.message)
+                        return@launch
                     } catch (_: Exception) {
                         _uiState.value = _uiState.value.copy(offline = true)
                     }

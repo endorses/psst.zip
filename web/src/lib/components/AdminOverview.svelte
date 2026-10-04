@@ -10,6 +10,7 @@
   import { utcTime, type Overview } from "$lib/admin";
   import { formatSize } from "$lib/upload-job.svelte";
   import RevokeDialog from "./RevokeDialog.svelte";
+  import PublicTransferControl from "./PublicTransferControl.svelte";
   import { loadResourcePage } from "$lib/resource-history";
   let data = $state<Overview | null>(null),
     resources = $state<(Resource & { kind: "transfers" | "slots" })[]>([]),
@@ -120,6 +121,7 @@
   <button disabled={busy} onclick={load}>Refresh</button>
 </div>
 <p class="muted">Manage your private transfer server.</p>
+<PublicTransferControl />
 {#if error}<p class="error" role="alert">
     {error}
     {data ? "Previous metrics may be stale." : ""}

@@ -150,8 +150,9 @@ internal suspend fun refreshHistoryEntry(
                 throw e
             } catch (error: Exception) {
                 if (
-                    error is io.ktor.client.plugins.ClientRequestException &&
-                        error.response.status.value in listOf(404, 410)
+                    error is zip.psst.shared.api.ResourceRevokedException ||
+                        (error is io.ktor.client.plugins.ClientRequestException &&
+                            error.response.status.value in listOf(404, 410))
                 )
                     dao.updateStatus(id, "unavailable")
                 else if (reportFailure) throw error

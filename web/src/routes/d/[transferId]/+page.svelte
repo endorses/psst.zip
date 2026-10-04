@@ -13,6 +13,7 @@
     type TransferInfo,
   } from "$lib/api";
   import { accountRequest, type User } from "$lib/account";
+  import { TransferStateError, transferStateError, detectPublicPause } from "$lib/incident-state";
   import { loadReceiveKey } from "$lib/receive-keys";
   import { decodeReceiveEnvelope, openSubmissionKey } from "$lib/receive-crypto";
   import { wireSize } from "$lib/chunked-files";
@@ -125,7 +126,12 @@
       status = "ready";
     } catch (err) {
       status = "error";
-      if (err instanceof Error && (err.message.includes("401") || err.message.includes("403"))) {
+      if (err instanceof TransferStateError) {
+        errorMessage = err.message;
+      } else if (
+        err instanceof Error &&
+        (err.message.includes("401") || err.message.includes("403"))
+      ) {
         errorMessage = "Sign in as the inbox owner to save these files.";
       } else if (
         err instanceof Error &&
@@ -195,6 +201,10 @@
     try {
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => null);
+        const stopped = transferStateError(
+          failure?.code ?? response.headers.get("X-Psst-Error-Code"),
+        );
+        if (stopped) throw stopped;
         if (failure?.code === "download_limit")
           throw new Error(
             "This file's download allowance is exhausted. Ask the sender for a new link.",
@@ -202,6 +212,9 @@
         throw new Error("Could not download file");
       }
       yield* decryptFileStream(key, entry, response.body, signal);
+    } catch (cause) {
+      if (cause instanceof TransferStateError || signal.aborted) throw cause;
+      throw (await detectPublicPause(signal)) ?? cause;
     } finally {
       transferInfo = await getTransferInfo(transferId).catch(() => transferInfo);
     }
@@ -240,7 +253,8 @@
       await sink?.abort().catch(() => {});
       errorMessage =
         err instanceof Error &&
-        (err.message === LARGE_SAVE_MESSAGE ||
+        (err instanceof TransferStateError ||
+          err.message === LARGE_SAVE_MESSAGE ||
           err.message.includes("download allowance is exhausted"))
           ? err.message
           : err instanceof DOMException && err.name === "AbortError"
@@ -287,7 +301,9 @@
     } catch (err) {
       status = "ready";
       errorMessage =
-        err instanceof Error && err.message.includes("download allowance is exhausted")
+        err instanceof Error &&
+        (err instanceof TransferStateError ||
+          err.message.includes("download allowance is exhausted"))
           ? err.message
           : err instanceof DOMException && err.name === "AbortError"
             ? "Saving stopped. You can retry the same files."

@@ -52,8 +52,9 @@ test("admin manages accounts while regular users cannot administer others", asyn
   expect((await adminRequest.post("/api/v1/transfers")).status()).toBe(403);
   expect((await adminRequest.get("/api/v1/auth/resources")).status()).toBe(403);
   expect((await adminRequest.get("/api/v1/auth/resources?all=true")).ok()).toBe(true);
-  await row.getByRole("button", { name: "Disable", exact: true }).click();
-  await expect(row.getByRole("button", { name: "Enable", exact: true })).toBeVisible();
+  await row.getByRole("button", { name: "Disable sign-in", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Disable sign-in only" }).click();
+  await expect(row.getByRole("button", { name: "Enable sign-in", exact: true })).toBeVisible();
   expect((await member.post("/api/v1/transfers")).status()).toBe(401);
   await member.dispose();
   await anonymous.dispose();
@@ -121,6 +122,7 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   await row.getByRole("button", { name: "Revoke", exact: true }).click();
   await page.getByRole("button", { name: "Revoke and delete" }).click();
   await expect(page.getByRole("status")).toContainText("Link revoked");
-  expect((await anonymous.get(`/api/v1/slots/${id}`)).status()).toBe(404);
+  expect((await anonymous.get(`/api/v1/slots/${id}`)).status()).toBe(401);
+  expect((await anonymous.get(`/api/v1/slots/${id}/availability`)).status()).toBe(404);
   await anonymous.dispose();
 });

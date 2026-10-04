@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/endorses/psst.zip/backend/internal/config"
+	"github.com/endorses/psst.zip/backend/internal/database"
 	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
@@ -121,6 +122,9 @@ func (s *Server) admitPayload(next http.Handler) http.Handler { return s.admitSt
 func (s *Server) admitEvents(next http.Handler) http.Handler  { return s.admitStream(next, true) }
 func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !events && !s.allowPublicTransfers(w) {
+			return
+		}
 		transfer, slot := chi.URLParam(r, "transferID"), chi.URLParam(r, "slotID")
 		var owner string
 		var expires time.Time
@@ -147,7 +151,7 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 				return
 			}
 			if resource.Status == "revoked" {
-				writeError(w, 410, "transfer expired or revoked")
+				incidentFailure(w, database.ErrResourceRevoked)
 				return
 			}
 			expires = resource.ExpiresAt
@@ -166,6 +170,16 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 			}
 			if len(slots) > 0 {
 				slot = slots[0]
+				// Historical inbox children may predate transfer.owner_id. Attribute their
+				// streams to the inbox owner so shutdown cancels those reads as well.
+				inboxOwner, err := s.queries.Owner("slot", slot)
+				if err != nil {
+					writeError(w, 500, "database error")
+					return
+				}
+				if inboxOwner != "" {
+					owner = inboxOwner
+				}
 			}
 		}
 		if !time.Now().Before(expires) {
@@ -187,12 +201,19 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 		if events {
 			operationID = "slot:" + slot
 		}
-		unregister, err := store.RegisterStream(operationID, cancel)
+		scopes := []string{s.ownerScope(owner)}
+		if !events {
+			scopes = append(scopes, s.payloadScope())
+		}
+		unregister, err := store.RegisterScopedStream(operationID, cancel, scopes...)
 		if err != nil {
 			streamBusy(w)
 			return
 		}
 		defer unregister()
+		if !events && !s.allowPublicTransfers(w) {
+			return
+		}
 		r = r.WithContext(ctx)
 		callbackDone := make(chan struct{})
 		stop := context.AfterFunc(ctx, func() { defer close(callbackDone); cancelRequestIO(r) })

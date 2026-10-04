@@ -1,3 +1,6 @@
+import { resourceLimitError } from "./resource-policy.ts";
+import { transferStateError } from "./incident-state.ts";
+
 export interface User {
   id: string;
   username: string;
@@ -65,7 +68,7 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
-    let code: string | undefined;
+    let code = response.headers.get("X-Psst-Error-Code") ?? undefined;
     let detail = (await response.text()).slice(0, 300);
     try {
       const parsed: unknown = JSON.parse(detail);
@@ -88,7 +91,10 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     }
     throw new AccountError(
       response.status,
-      resourceLimitError(code)?.message || detail || `Request failed (${response.status})`,
+      transferStateError(code)?.message ||
+        resourceLimitError(code)?.message ||
+        detail ||
+        `Request failed (${response.status})`,
       code,
     );
   }
@@ -109,4 +115,3 @@ export function saveLinks(id: string, links: Record<string, string>) {
     /* Sharing remains available without persistent storage. */
   }
 }
-import { resourceLimitError } from "./resource-policy.ts";

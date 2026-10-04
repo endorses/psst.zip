@@ -78,6 +78,7 @@ fun HistoryScreen(
     val allHistory by viewModel.history.collectAsState()
     val offline by viewModel.offline.collectAsState()
     val accountIssue by viewModel.accountIssue.collectAsState()
+    val transferIssue by viewModel.transferIssue.collectAsState()
     var filter by remember { mutableStateOf(initialFilter) }
     val downloads by guest.state.collectAsState()
     val history = unifiedHistory(allHistory, downloads.history, filter)
@@ -280,6 +281,9 @@ fun HistoryScreen(
                     Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+            transferIssue?.let {
+                Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
             }
             accountIssue?.let { message ->
                 Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)

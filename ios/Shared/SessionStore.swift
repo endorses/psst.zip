@@ -143,6 +143,11 @@ enum AccountHTTP {
         if method == "DELETE", response.statusCode == 404 {
             return Data()
         }
+        if let incident = TransferIncident.response(status: response.statusCode, body: data,
+                                                    codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"))
+        {
+            throw incident
+        }
         if response.statusCode == 401 {
             if token != nil {
                 NotificationCenter.default.post(name: .sessionExpired, object: origin, userInfo: ["sessionToken": token!])

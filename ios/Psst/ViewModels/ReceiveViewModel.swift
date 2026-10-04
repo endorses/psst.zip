@@ -122,7 +122,7 @@ final class ReceiveViewModel {
                 }
             }
             await serverConfig.refreshAccount()
-            state = .failed((error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.") : String(localized: "Receive link creation stopped. Its record remains in History so you can revoke it.")))
+            state = .failed(TransferIncident.from(error)?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.") : String(localized: "Receive link creation stopped. Its record remains in History so you can revoke it.")))
         }
     }
 
@@ -149,7 +149,7 @@ final class ReceiveViewModel {
             lastUpdated = Date()
             connectionError = nil
             return true
-        } catch AccountError.unavailable {
+        } catch AccountError.unavailable, TransferIncident.revoked {
             var updated = record
             updated.state = updated.isExpired ? .expired : .revoked
             try? historyStore.update(updated)
@@ -157,13 +157,23 @@ final class ReceiveViewModel {
             connectionError = String(localized: "This link expired or was revoked.")
             return false
         } catch {
+            if let incident = TransferIncident.from(error) {
+                if incident == .revoked {
+                    var updated = record
+                    updated.state = .revoked
+                    try? historyStore.update(updated)
+                    self.record = updated
+                }
+                connectionError = incident.localizedDescription
+                return false
+            }
             // Ktor errors cross the Swift bridge without AccountError status mapping.
             // Confirm only failed reads through the native HTTP status mapper, using
             // the current matching account; ordinary polling remains one request.
             if !Task.isCancelled, let session = serverConfig.session, record.belongs(to: session) {
                 do {
                     _ = try await AccountHTTP.request(server: session.serverURL, path: "slots/" + record.id, token: session.token)
-                } catch AccountError.unavailable {
+                } catch AccountError.unavailable, TransferIncident.revoked {
                     var updated = record
                     updated.state = updated.isExpired ? .expired : .revoked
                     try? historyStore.update(updated)
@@ -184,6 +194,11 @@ final class ReceiveViewModel {
         var delay: UInt64 = 3
         while !Task.isCancelled {
             let ok = await refresh()
+            guard let session = serverConfig.session, record?.belongs(to: session) == true,
+                  !serverConfig.needsSignIn else { return }
+            if record?.state == .revoked || record?.isExpired == true {
+                return
+            }
             delay = ok ? 3 : min(30, delay * 2)
             do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }
         }
@@ -304,7 +319,7 @@ final class ReceiveViewModel {
             state = .complete
         } catch {
             state = .waiting
-            savingError = String(localized: "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.")
+            savingError = TransferIncident.from(error)?.localizedDescription ?? String(localized: "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.")
         }
     }
 

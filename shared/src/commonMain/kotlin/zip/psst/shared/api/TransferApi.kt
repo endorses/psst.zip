@@ -59,6 +59,8 @@ class TransferApi(
                 expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
             }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
         return response.readControlJson<Transfer>().also {
             require(it.id == transferId) { "The server returned details for a different transfer" }
         }
@@ -72,6 +74,8 @@ class TransferApi(
                 expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
             }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
         return response.readControlJson<Transfer>(4096).also { require(it.id == transferId) }
     }
 
@@ -110,9 +114,11 @@ class TransferApi(
         val response =
             withTimeout(5_000L) {
                 httpClient.post("${config.apiBaseUrl}/transfers/$transferId/downloaded") {
+                    expectSuccess = false
                     sessionToken?.let { bearerAuth(it) }
                 }
             }
+        response.checkAccountRestriction()
         require(response.status == HttpStatusCode.NoContent) {
             "Download acknowledgement failed: ${response.status}"
         }
@@ -185,6 +191,9 @@ class TransferApi(
                 sessionToken?.let { bearerAuth(it) }
             }
             .execute { response ->
+                response.checkAccountRestriction()
+                if (response.status.value == 401 && sessionToken != null)
+                    throw AuthenticationRequiredException()
                 require(response.status.value == 200) { "Download failed: ${response.status}" }
                 val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
                 require(declared == null || declared == wireSize) {
@@ -221,6 +230,9 @@ class TransferApi(
                 sessionToken?.let { bearerAuth(it) }
             }
             .execute { response ->
+                response.checkAccountRestriction()
+                if (response.status.value == 401 && sessionToken != null)
+                    throw AuthenticationRequiredException()
                 require(response.status.value in 200..299) { "Download failed: ${response.status}" }
                 val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
                 require(declaredSize == null || declaredSize in 0..maxBytes.toLong()) {

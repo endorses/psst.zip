@@ -154,6 +154,13 @@ sign in again after changing the password. Restricted accounts can only inspect
 their sign-in state, change the password and sign out until replacement succeeds.
 The last enabled administrator cannot be disabled.
 
+For incidents, administrators can persistently pause payload transfers or shut
+down an account and revoke all its links. These are separate from disabling
+future sign-in. See [incident response and local recovery](docs/security/incident-response.md)
+for scope, cleanup behavior and the `server pause`, `resume` and `incident-status`
+commands. Recent-authentication and second-factor protection remain pending in
+the security plan.
+
 The API enforces these rules for existing cookie and app sessions, including
 upload continuation. Older clients may need an update to display the dedicated
 password/role messages. Existing admin-owned public links remain valid until

@@ -2,6 +2,9 @@ import { test, expect, type Page } from "@playwright/test";
 import { resourcePolicy, resourceUsage } from "../resource-policy-fixture";
 
 async function session(page: Page, role: "admin" | "user" = "user") {
+  await page.route("**/api/v1/admin/incident-state", (route) =>
+    route.fulfill({ json: { public_transfers_paused: false, updated_at: "2026-10-04T00:00:00Z" } }),
+  );
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ json: { user: { id: `policy-${role}`, username: role, role } } }),
   );
@@ -257,5 +260,51 @@ for (const role of ["user", "admin"] as const) {
       "File count unavailable",
     );
     expect(detailedRequests).toBe(0);
+  });
+}
+
+for (const state of ["ready", "blocked", "unknown"] as const) {
+  test(`account capacity distinguishes ${state} disk state from quota headroom`, async ({
+    page,
+  }) => {
+    await session(page);
+    await page.route("**/api/v1/auth/usage", (route) =>
+      route.fulfill({
+        json: {
+          policy: resourcePolicy,
+          usage: resourceUsage,
+          capacity: {
+            checked_at: "2026-10-04T14:00:00Z",
+            scope: "account",
+            state,
+            available_wire_bytes:
+              state === "unknown" ? null : state === "ready" ? 8 * 1024 ** 2 : 0,
+            available_files: 12,
+            available_transfers: 3,
+            available_slots: 2,
+            ...(state === "blocked" ? { reason: "disk_capacity" } : {}),
+            ...(state === "unknown" ? { reason: "capacity_unavailable" } : {}),
+          },
+        },
+      }),
+    );
+    await page.goto("/?view=settings");
+    await page.getByText("Account storage and resource usage", { exact: true }).click();
+    const capacity = page.getByLabel("Current upload capacity");
+    await expect(capacity).toContainText(
+      state === "ready"
+        ? "8 MiB currently available"
+        : state === "blocked"
+          ? "blocked by the disk safety reserve"
+          : "Current disk capacity could not be checked",
+    );
+    await expect(capacity).toContainText("not a reservation");
+    await expect(capacity).toContainText("Transfer pauses and per-link limits apply separately");
+    const quota = page
+      .getByLabel("Account resource usage")
+      .locator("dl > div")
+      .filter({ hasText: "Available within storage quota" });
+    await expect(quota).toContainText("1 GiB");
+    if (state !== "ready") await expect(capacity).not.toContainText("currently available for new");
   });
 }

@@ -4,5 +4,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 
 actual fun createPlatformHttpClient(): HttpClient {
-    return HttpClient(OkHttp) { applyClientPolicy() }
+    return HttpClient(OkHttp) {
+        applyClientPolicy()
+        engine { config { retryOnConnectionFailure(false) } }
+    }
 }

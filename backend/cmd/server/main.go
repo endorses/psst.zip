@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,11 +15,28 @@ import (
 	"github.com/endorses/psst.zip/backend/internal/cleanup"
 	"github.com/endorses/psst.zip/backend/internal/config"
 	"github.com/endorses/psst.zip/backend/internal/database"
+	"github.com/endorses/psst.zip/backend/internal/incidentcli"
 	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
+	if len(os.Args) > 1 {
+		if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+			fmt.Fprint(os.Stdout, incidentcli.Usage)
+			return
+		}
+		if len(os.Args) != 2 {
+			fmt.Fprint(os.Stderr, incidentcli.Usage)
+			os.Exit(2)
+		}
+		if err := incidentcli.Run(cfg.DBPath, os.Args[1], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprint(os.Stderr, incidentcli.Usage)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Ensure data directories exist.
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
@@ -54,6 +72,8 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	go srv.RunIncidentMonitor(ctx)
 
 	// Start cleanup worker.
 	worker := cleanup.NewWorker(queries, fs, cfg.CleanupInterval)

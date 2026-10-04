@@ -15,19 +15,25 @@ var activeStreams = struct {
 	count      int
 }{operations: make(map[string]map[*streamOperation]struct{}), readers: make(map[string]*readerGroup)}
 
-type streamOperation struct{ cancel context.CancelFunc }
+type streamOperation struct {
+	cancel context.CancelFunc
+	scopes []string
+}
 type readerGroup struct {
 	count int
 	done  chan struct{}
 }
 
 func RegisterStream(id string, cancel context.CancelFunc) (func(), error) {
+	return RegisterScopedStream(id, cancel)
+}
+func RegisterScopedStream(id string, cancel context.CancelFunc, scopes ...string) (func(), error) {
 	activeStreams.Lock()
 	if activeStreams.count >= 4096 || (len(activeStreams.operations[id]) == 0 && len(activeStreams.operations) >= maxLockKeys) {
 		activeStreams.Unlock()
 		return nil, ErrResourceBusy
 	}
-	operation := &streamOperation{cancel: cancel}
+	operation := &streamOperation{cancel: cancel, scopes: append([]string(nil), scopes...)}
 	if activeStreams.operations[id] == nil {
 		activeStreams.operations[id] = make(map[*streamOperation]struct{})
 	}
@@ -107,5 +113,25 @@ func WaitForReaders(ctx context.Context, id string) error {
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+// CancelStreamScope snapshots the bounded registry before invoking cancellation.
+func CancelStreamScope(scope string) {
+	activeStreams.Lock()
+	operations := []*streamOperation{}
+	for _, group := range activeStreams.operations {
+		for operation := range group {
+			for _, candidate := range operation.scopes {
+				if candidate == scope {
+					operations = append(operations, operation)
+					break
+				}
+			}
+		}
+	}
+	activeStreams.Unlock()
+	for _, operation := range operations {
+		operation.cancel()
 	}
 }

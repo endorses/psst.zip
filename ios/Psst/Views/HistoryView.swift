@@ -138,7 +138,7 @@ struct HistoryView: View {
             .task(id: "\(visible)-\(scenePhase)-\(config.accountID ?? "")") {
                 guard visible, scenePhase == .active, config.isConfigured else { return }
                 var delay: UInt64 = 5
-                while !Task.isCancelled {
+                while !Task.isCancelled, !config.needsSignIn, config.isConfigured {
                     let success = await refresh()
                     delay = success ? 5 : min(30, delay * 2)
                     do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }
@@ -230,7 +230,9 @@ private struct HistoryDetail: View {
         .task(id: scenePhase) {
             guard scenePhase == .active, record.isSlot != true else { return }
             var delay: UInt64 = 5
-            while !Task.isCancelled, let session = config.session, record.canManage(as: session) {
+            while !Task.isCancelled, !config.needsSignIn, let session = config.session,
+                  record.canManage(as: session), current.state != .revoked, !current.isExpired
+            {
                 do { try await history.refresh(session: session)
                     stale = false
                     delay = 5

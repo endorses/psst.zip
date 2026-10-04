@@ -57,7 +57,7 @@ func (w *Worker) sweepTransfers() {
 	}
 	for _, id := range ids {
 		if err := TryRemoveTransfer(w.queries, w.files, id); err != nil {
-			log.Printf("cleanup: remove expired or revoked transfer %s: %v", id, err)
+			log.Printf("cleanup: expired or revoked transfer removal failed")
 		}
 	}
 }
@@ -70,9 +70,9 @@ func (w *Worker) sweepSlots() {
 	}
 	for _, id := range ids {
 		if err := TryRemoveSlot(w.queries, w.files, id); err != nil {
-			log.Printf("cleanup: delete slot %s: %v", id, err)
+			log.Printf("cleanup: slot removal failed")
 		} else {
-			log.Printf("cleanup: removed expired slot %s", id)
+			log.Printf("cleanup: expired slot removed")
 		}
 	}
 }
@@ -89,7 +89,7 @@ func (w *Worker) sweepExhaustedPayloads() {
 	for _, id := range ids {
 		unlock, err := store.TryLockTransfer(id)
 		if err != nil {
-			log.Printf("cleanup: busy exhausted transfer %s; retry next sweep", id)
+			log.Printf("cleanup: busy exhausted transfer; retry next sweep")
 			continue
 		}
 		if store.HasReaders(id) {
@@ -102,7 +102,7 @@ func (w *Worker) sweepExhaustedPayloads() {
 		}
 		unlock()
 		if err != nil {
-			log.Printf("cleanup: delete exhausted payloads for transfer %s: %v", id, err)
+			log.Printf("cleanup: exhausted payload removal failed")
 		}
 	}
 }

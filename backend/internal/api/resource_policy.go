@@ -22,18 +22,13 @@ func resourceFailure(w http.ResponseWriter, err error) bool {
 	return true
 }
 func (s *Server) resourceState(w http.ResponseWriter, owner string) {
-	p, err := s.queries.ResourcePolicy()
+	snapshot, err := s.queries.ResourceSnapshot(owner)
 	if err != nil {
-		writeError(w, 500, "could not read resource policy")
-		return
-	}
-	u, err := s.queries.ResourceUsage(owner)
-	if err != nil {
-		writeError(w, 500, "could not read resource usage")
+		writeError(w, 500, "could not read resource capacity")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"policy": p, "usage": u})
+	writeJSON(w, 200, snapshot)
 }
 func (s *Server) getResourcePolicy(w http.ResponseWriter, r *http.Request) { s.resourceState(w, "") }
 func (s *Server) accountUsage(w http.ResponseWriter, r *http.Request) {

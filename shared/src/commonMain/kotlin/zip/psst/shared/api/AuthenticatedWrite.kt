@@ -23,32 +23,50 @@ class AdminTransferForbiddenException :
         "Administrator accounts manage the server. Sign in with a regular account to transfer files."
     )
 
+/** Operator actions must not be mistaken for an expired login or retried automatically. */
+open class TransferPolicyException(message: String) : IllegalArgumentException(message)
+
+class PublicTransfersPausedException :
+    TransferPolicyException(
+        "The server administrator has paused file transfers. Your saved files are safe. Retry after the administrator resumes transfers."
+    )
+
+class ResourceRevokedException :
+    TransferPolicyException(
+        "This link is no longer available. Ask the sender for a new link. Files already saved on this device are still available."
+    )
+
 internal suspend fun HttpResponse.checkAccountRestriction() {
-    if (status.value != 403) return
+    if (status.value !in listOf(403, 410, 503)) return
     val code =
-        try {
-            val channel = bodyAsChannel()
-            val bytes = ByteArray(4097)
-            var total = 0
-            while (total < bytes.size) {
-                val count = channel.readAvailable(bytes, total, bytes.size - total)
-                if (count == -1) break
-                total += count
+        headers["X-Psst-Error-Code"]?.takeIf { it.length <= 64 }
+            ?: try {
+                val channel = bodyAsChannel()
+                val bytes = ByteArray(4097)
+                var total = 0
+                while (total < bytes.size) {
+                    val count = channel.readAvailable(bytes, total, bytes.size - total)
+                    if (count == -1) break
+                    total += count
+                }
+                if (total > 4096) null
+                else
+                    Json.parseToJsonElement(bytes.copyOf(total).decodeToString())
+                        .jsonObject["code"]
+                        ?.jsonPrimitive
+                        ?.content
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
             }
-            if (total > 4096) null
-            else
-                Json.parseToJsonElement(bytes.copyOf(total).decodeToString())
-                    .jsonObject["code"]
-                    ?.jsonPrimitive
-                    ?.content
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        }
     when (code) {
-        "password_change_required" -> throw PasswordChangeRequiredException()
-        "admin_transfer_forbidden" -> throw AdminTransferForbiddenException()
+        "password_change_required" ->
+            if (status.value == 403) throw PasswordChangeRequiredException()
+        "admin_transfer_forbidden" ->
+            if (status.value == 403) throw AdminTransferForbiddenException()
+        "public_transfers_paused" -> if (status.value == 503) throw PublicTransfersPausedException()
+        "resource_revoked" -> if (status.value == 410) throw ResourceRevokedException()
     }
 }
 

@@ -7,6 +7,7 @@ import { getSlotAvailability } from "./api";
 import { parseReceiveFragment } from "./receive-keys";
 import { sealSubmissionKey, encodeReceiveEnvelope } from "./receive-crypto";
 import { validateLinkLimit } from "./link-limits";
+import { TransferStateError, transferStateError } from "./incident-state";
 export function formatSize(bytes: number) {
   if (!bytes) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB"];
@@ -113,7 +114,8 @@ export class UploadJob {
           .clone()
           .json()
           .catch(() => null);
-        const policyError = resourceLimitError(body?.code);
+        const code = body?.code ?? res.headers.get("X-Psst-Error-Code");
+        const policyError = transferStateError(code) ?? resourceLimitError(code);
         if (policyError) throw policyError;
       }
       if (!res.ok && res.status === 403) {
@@ -308,7 +310,8 @@ export class UploadJob {
       ];
       this.error =
         error instanceof Error &&
-        (error instanceof ResourceLimitError ||
+        (error instanceof TransferStateError ||
+          error instanceof ResourceLimitError ||
           safeErrors.includes(error.message) ||
           /^Files must be no larger than [0-9.]+ MiB\.$/.test(error.message) ||
           error.message ===

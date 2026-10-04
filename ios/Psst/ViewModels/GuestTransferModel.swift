@@ -194,7 +194,7 @@ final class GuestTransferModel {
                 await refreshAttempts(record)
             }
             stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
-            self.error = (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
+            self.error = TransferIncident.from(error)?.localizedDescription ?? (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
         }
     }
 
@@ -276,7 +276,7 @@ final class GuestTransferModel {
             uploadComplete = true; stage = "Files sent"
         } catch {
             stage = "Upload stopped"
-            self.error = "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
+            self.error = TransferIncident.from(error)?.localizedDescription ?? "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
             if finished {
                 uploadComplete = true; stage = "Files sent"; self.error = nil
                 return
@@ -334,7 +334,7 @@ enum GuestUploadCleanup {
             if status.status == "expired" || status.status == "revoked" {
                 return false
             }
-        } catch AccountError.unavailable { return false }
+        } catch AccountError.unavailable, TransferIncident.revoked { return false }
         try await client.transfers.delete(transferId: transferID, deleteToken: capability)
         return false
     }

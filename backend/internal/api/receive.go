@@ -13,6 +13,7 @@ import (
 )
 
 func policyError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("X-Psst-Error-Code", code)
 	writeJSON(w, status, map[string]string{"code": code, "error": message})
 }
 func validTransferPolicy(w http.ResponseWriter, req CreateTransferRequest) bool {
@@ -91,7 +92,11 @@ func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "slot not found")
 		return
 	}
-	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
+	if slot.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return
+	}
+	if !time.Now().Before(slot.ExpiresAt) {
 		policyError(w, 410, "link_unavailable", "receive link expired or revoked")
 		return
 	}

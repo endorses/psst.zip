@@ -1,6 +1,7 @@
 import { encryptFile, wireSize } from "./chunked-files.ts";
 import type { EncryptionKey } from "./crypto.ts";
 import { ResourceLimitError, resourceLimitError } from "./resource-policy.ts";
+import { TransferStateError, transferStateError, detectPublicPause } from "./incident-state.ts";
 
 /** One authenticated frame in memory; reconcile a lost PATCH response with tus HEAD. */
 export async function uploadEncryptedFile(options: {
@@ -25,7 +26,8 @@ export async function uploadEncryptedFile(options: {
   });
   if (!creation.ok) {
     const error = await creation.json().catch(() => null);
-    const policyError = resourceLimitError(error?.code);
+    const code = error?.code ?? creation.headers.get("X-Psst-Error-Code");
+    const policyError = transferStateError(code) ?? resourceLimitError(code);
     if (policyError) throw policyError;
     if (error?.code === "receive_file_limit")
       throw new Error(
@@ -76,7 +78,10 @@ export async function uploadEncryptedFile(options: {
         options.onProgress(offset);
       } catch (cause) {
         signal.throwIfAborted();
-        if (cause instanceof ResourceLimitError) throw cause;
+        if (cause instanceof ResourceLimitError || cause instanceof TransferStateError) throw cause;
+        const paused = await detectPublicPause(signal);
+        signal.throwIfAborted();
+        if (paused) throw paused;
         if (++failures > 3) throw cause;
         const head = await fetch(url, {
           method: "HEAD",
@@ -85,6 +90,9 @@ export async function uploadEncryptedFile(options: {
           cache: "no-store",
           credentials: options.token ? "omit" : "same-origin",
         });
+        const headCode = head.headers.get("X-Psst-Error-Code");
+        const stopped = transferStateError(headCode) ?? resourceLimitError(headCode);
+        if (stopped) throw stopped;
         const text = head.headers.get("Upload-Offset"),
           next = Number(text);
         if (!head.ok || text === null || !Number.isSafeInteger(next) || next < offset || next > end)
@@ -109,7 +117,8 @@ function patchFrame(
       async (response) => {
         if (!response.ok) {
           const error = await response.json().catch(() => null);
-          const policyError = resourceLimitError(error?.code);
+          const code = error?.code ?? response.headers.get("X-Psst-Error-Code");
+          const policyError = transferStateError(code) ?? resourceLimitError(code);
           if (policyError) throw policyError;
         }
         const offset = response.headers.get("Upload-Offset");
@@ -129,7 +138,13 @@ function patchFrame(
       finish();
       if (xhr.status < 200 || xhr.status >= 300) {
         try {
-          const policyError = resourceLimitError(JSON.parse(xhr.responseText).code);
+          let code = xhr.getResponseHeader("X-Psst-Error-Code");
+          try {
+            code = JSON.parse(xhr.responseText).code ?? code;
+          } catch {
+            /* HEAD/proxy responses may carry only the stable header. */
+          }
+          const policyError = transferStateError(code) ?? resourceLimitError(code);
           if (policyError) {
             reject(policyError);
             return;

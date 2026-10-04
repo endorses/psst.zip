@@ -156,7 +156,7 @@ func (s *Server) slotOwnerActive(w http.ResponseWriter, id string) bool {
 	}
 	u, err := s.queries.UserByID(owner)
 	if err != nil || u.Disabled {
-		writeError(w, 403, "receive link owner is disabled")
+		incidentFailure(w, database.ErrAccountDisabled)
 		return false
 	}
 	return true
@@ -171,6 +171,10 @@ func (s *Server) requireUpload(next http.Handler) http.Handler {
 		t, err := s.queries.GetTransfer(id)
 		if err != nil {
 			writeError(w, 404, "transfer not found")
+			return
+		}
+		if t.Status == "revoked" {
+			incidentFailure(w, database.ErrResourceRevoked)
 			return
 		}
 		slots, err := s.queries.TransferSlotIDs(id)

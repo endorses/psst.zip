@@ -206,7 +206,7 @@ final class SendViewModel {
                     return
                 }
             }
-            state = .failed((error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
+            state = .failed(TransferIncident.from(error)?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
         }
     }
 }

@@ -20,9 +20,20 @@ export interface ResourceUsage {
   transfers: number;
   slots: number;
 }
+export interface CapacitySnapshot {
+  checked_at: string;
+  state: "ready" | "blocked" | "unknown";
+  reason?: string;
+  scope: "server" | "account";
+  available_wire_bytes: number | null;
+  available_files: number;
+  available_transfers: number;
+  available_slots: number;
+}
 export interface ResourceSnapshot {
   policy: ResourcePolicy;
   usage: ResourceUsage;
+  capacity?: CapacitySnapshot;
 }
 export const policyFields: {
   key: keyof ResourcePolicy;
@@ -155,7 +166,32 @@ export function validateResourceSnapshot(value: unknown): ResourceSnapshot {
       throw new Error("Resource usage is unavailable. Retry to refresh the measurements.");
   if (snapshot.usage.occupied_bytes > snapshot.usage.reserved_bytes)
     throw new Error("Resource usage needs reconciliation. Retry to refresh the measurements.");
-  return { policy, usage: { ...snapshot.usage } };
+  const capacity = snapshot.capacity;
+  if (capacity !== undefined) {
+    if (
+      !capacity ||
+      !["ready", "blocked", "unknown"].includes(capacity.state) ||
+      !["server", "account"].includes(capacity.scope) ||
+      !Number.isFinite(Date.parse(capacity.checked_at))
+    )
+      throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+    for (const field of ["available_files", "available_transfers", "available_slots"] as const)
+      if (!Number.isSafeInteger(capacity[field]) || capacity[field] < 0)
+        throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+    if (
+      capacity.state === "unknown"
+        ? capacity.available_wire_bytes !== null
+        : !Number.isSafeInteger(capacity.available_wire_bytes) || capacity.available_wire_bytes! < 0
+    )
+      throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+    if (capacity.state === "blocked" && capacity.available_wire_bytes !== 0)
+      throw new Error("Current upload capacity is inconsistent. Retry to refresh it.");
+  }
+  return {
+    policy,
+    usage: { ...snapshot.usage },
+    ...(capacity ? { capacity: { ...capacity } } : {}),
+  };
 }
 
 export function remainingCapacity(limit: number, reserved: number): number {

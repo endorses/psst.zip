@@ -382,6 +382,16 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     throw e
+                } catch (e: zip.psst.shared.api.TransferPolicyException) {
+                    _state.update {
+                        it.copy(
+                            stage =
+                                if (e is zip.psst.shared.api.PublicTransfersPausedException)
+                                    "Transfers paused"
+                                else "Link unavailable",
+                            error = e.message,
+                        )
+                    }
                 } catch (e: InsufficientDownloadSpaceException) {
                     _state.update { it.copy(stage = "More storage needed") }
                     error(requireNotNull(e.message))
@@ -571,6 +581,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } catch (e: CancellationException) {
                     throw e
+                } catch (e: zip.psst.shared.api.TransferPolicyException) {
+                    error(requireNotNull(e.message))
                 } catch (_: Exception) {
                     error(
                         "This receive link is unavailable, exhausted or uses an unsupported encryption version."
@@ -678,6 +690,16 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: CancellationException) {
                     _state.update { it.copy(stage = "Upload cancelled") }
                     throw e
+                } catch (e: zip.psst.shared.api.TransferPolicyException) {
+                    _state.update {
+                        it.copy(
+                            stage =
+                                if (e is zip.psst.shared.api.PublicTransfersPausedException)
+                                    "Transfers paused"
+                                else "Link unavailable",
+                            error = e.message,
+                        )
+                    }
                 } catch (_: Exception) {
                     error(
                         "Could not send files. Check your connection, file sizes and whether the receive link is still available."
@@ -718,7 +740,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                                 )
                                             }
                                         else if (!resolution.journalCleared)
-                                            error("Upload stopped. Cleanup can be retried later.")
+                                            _state.update {
+                                                it.copy(
+                                                    notice =
+                                                        "Upload stopped. Cleanup can be retried later."
+                                                )
+                                            }
                                     } finally {
                                         if (scoped == null) checkClient.close()
                                     }
@@ -735,9 +762,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                         )
                                     }
                                 else
-                                    error(
-                                        "Upload stopped, but its incomplete server files could not be removed. They will remain until server expiry."
-                                    )
+                                    _state.update {
+                                        it.copy(
+                                            notice =
+                                                "Upload stopped, but its incomplete server files could not be removed. They will remain until server expiry."
+                                        )
+                                    }
                             }
                         }
                         scoped?.close()
