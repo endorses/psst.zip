@@ -97,8 +97,9 @@ go test -race ./...
 
 The [implementation plan](../plans/security-abuse-prevention-and-link-limits.md)
 records the executed migration, accounting, concurrent issuance, bounded-cleanup
-and UI cases. These controls do not provide a security audit trail or an abuse
-reporting service; those remain separate requirements. Backups can contain older
+and UI cases. Separate [security activity](security-activity.md) controls retain
+bounded administrator audit metadata, and optional [abuse contact](abuse-contact.md)
+supports operator reporting without an in-app mail relay. Backups can contain older
 records and must have their own retention/access policy. Restoring an old backup
 can also restore revoked credentials and old accounting; use the documented
 incident/recovery controls before reopening public traffic.

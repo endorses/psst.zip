@@ -1,6 +1,6 @@
-# Private receive encryption: cross-platform implementation proposal
+# Private receive encryption: protocol and validation
 
-Status: implementation and validation record, 2026-10-04. Browser cryptographic foundations, private receive flows and pinned dependencies are implemented. Android Tink and Swift provider adapters have interoperated with browser fixtures; native platform validation remains pending. This supports section 1 of [the security implementation plan](../plans/security-abuse-prevention-and-link-limits.md). Linux/Node checks do not establish native iOS or real LAN device validation.
+Status: implementation and validation record, 2026-10-04. Browser cryptographic foundations, private receive flows and pinned dependencies are implemented. Android Tink and Swift provider adapters have interoperated with browser fixtures. Chromium receive/decrypt/save passed on a real non-loopback LAN HTTP origin; native iOS and remaining physical-device validation are pending. This supports section 1 of [the security implementation plan](../plans/security-abuse-prevention-and-link-limits.md). Linux/Node checks do not establish a native iOS build.
 
 ## Decision
 
@@ -25,7 +25,7 @@ wrapped = enc[32] || ciphertextAndTag[48]
 
 Validate canonical UUIDs before decoding, exact lengths, suite/version, and recipient-key equality. Construct `info` from the expected slot and submission identity, not untrusted envelope values accepted without comparison. A wrapped key is exactly 80 bytes; it does not include an AES nonce, a Tink key ID, a protobuf keyset, or a CryptoKit `AES.GCM.SealedBox.combined` structure. HPKE manages its nonce internally. The RFC-defined KEM output sizes and suite identifiers are specified in [RFC 9180](https://www.rfc-editor.org/rfc/rfc9180.html).
 
-The frozen manifest envelope is `ASCII("PSSTRCV2")[8] || wrapped[80] || encryptedManifest`. Its total size is at least 116 bytes (including the existing 12-byte nonce and 16-byte AES-GCM tag) and at most 1,048,576 bytes, including framing. A parser validates framing and bounds; successful HPKE opening and AES manifest authentication are still required before trusting contents. Appended data fails AES authentication. The forthcoming public URL is `/u/{slotUUID}#v2.{base64urlRecipientPublicKey32}`; standalone send URLs retain their existing format. Seal only once per submission; a resumable retry reuses its persisted envelope and encrypted resources. For a replacement submission, generate a new submission key and HPKE context. Bind transfer/submission identity to prevent copying a valid envelope to another transfer.
+The frozen manifest envelope is `ASCII("PSSTRCV2")[8] || wrapped[80] || encryptedManifest`. Its total size is at least 116 bytes (including the existing 12-byte nonce and 16-byte AES-GCM tag) and at most 1,048,576 bytes, including framing. A parser validates framing and bounds; successful HPKE opening and AES manifest authentication are still required before trusting contents. Appended data fails AES authentication. The public URL is `/u/{slotUUID}#v2.{base64urlRecipientPublicKey32}`; standalone send URLs retain their existing format. Seal only once per submission; a resumable retry reuses its persisted envelope and encrypted resources. For a replacement submission, generate a new submission key and HPKE context. Bind transfer/submission identity to prevent copying a valid envelope to another transfer.
 
 This removes shared decryption material from upload invitations. It must accompany owner-only inbox listing, events, child content and delivery operations. Encrypting separate submission keys cannot fix authorization by itself. HPKE Base permits anonymous senders and does not prove content is safe. Replay to the same identity still requires application immutability/idempotency rules. No private key synchronization is implied by pairing.
 
@@ -33,7 +33,7 @@ This removes shared decryption material from upload invitations. It must accompa
 
 ### Android
 
-Candidate dependency: `com.google.crypto.tink:tink-android:1.23.0` in `shared`'s `androidMain`, pinned exactly. [Google's setup guide](https://developers.google.com/tink/setup/java) lists this release and supports Android API 24+. The project minimum is API 26 and JVM target 17 (`shared/gradle/libs.versions.toml`, `shared/build.gradle.kts`), so these declared requirements fit. Artifact resolution and the Android provider JVM tests have passed. Device validation remains pending.
+Pinned dependency: `com.google.crypto.tink:tink-android:1.23.0` in `shared`'s `androidMain`, pinned exactly. [Google's setup guide](https://developers.google.com/tink/setup/java) lists this release and supports Android API 24+. The project minimum is API 26 and JVM target 17 (`shared/gradle/libs.versions.toml`, `shared/build.gradle.kts`), so these declared requirements fit. Artifact resolution and the Android provider JVM tests have passed. Device validation remains pending.
 
 Build `HpkeParameters` with `KemId.DHKEM_X25519_HKDF_SHA256`, `KdfId.HKDF_SHA256`, `AeadId.AES_256_GCM`, and `Variant.NO_PREFIX`. The [public parameter definitions](https://raw.githubusercontent.com/tink-crypto/tink-java/main/src/main/java/com/google/crypto/tink/hybrid/HpkeParameters.java) expose this exact suite and empty-prefix variant.
 
@@ -100,14 +100,59 @@ Chromium browser regression tests exercise the complete receive creation, anonym
 
 Available checks passed: `npm run check` (zero errors/warnings), `npm run build`, all 34 Node unit/integration tests (including eight crypto/storage cases), the initial 17 focused Playwright regressions, and seven final compatibility/limit/private-inbox flows. The latter includes the Chromium no-SubtleCrypto workflow. Browser runs use `PSST_TEST_BACKEND_PORT=18789 PSST_TEST_BACKEND_URL=http://127.0.0.1:18789 npm run test:browser` with disposable test servers. Native CryptoKit/device and real LAN checks below remain explicitly pending.
 
+## Combined sender and authorization regression
+
+`web/tests/browser/receive-confidentiality.spec.ts` submits two independently
+encrypted manifests and chunked files to a real disposable backend using the
+production client cryptographic helpers. Each anonymous sender knows the complete
+invitation and its own submission key. Anonymous clients, both uploader
+capabilities, an unrelated regular account and an administrator are denied inbox,
+event, membership, child metadata, manifest, file and receipt access. The owner
+recovers both keys and plaintexts, then saves one through the actual browser UI.
+
+The test supplies the victim's envelope and file directly outside the API. The
+other sender's AES key cannot authenticate either ciphertext; the invitation's
+public key or an unrelated private key cannot open the wrapped key. Swapped
+submission contexts and wrappers fail. Denied reads do not consume file download
+attempts or publish a delivery acknowledgement. Both normal and no-SubtleCrypto
+variants run against the same server enforcement without disabling rate limits.
+
+`backend/internal/api/receive_authority_change_test.go` separately verifies session
+revocation/expiry, disabled accounts, changed roles, required password replacement
+and moved inbox ownership across all direct read and receipt endpoints. Valid
+stored payloads make each request a real authorization check. Denials preserve
+download counters and receipt state; the new canonical regular owner can read
+and acknowledge despite the child's historical ownership. Those backend fixtures
+are opaque bytes, so the combined browser regression supplies encryption evidence.
+
+Run the isolated regressions from the repository root:
+
+```sh
+cd backend
+go test -race ./internal/api -run '^TestPrivateInboxReadAuthorityChanges$' -count=1
+cd ../web
+PSST_TEST_BACKEND_PORT=18789 PSST_TEST_BACKEND_URL=http://127.0.0.1:18789 npm run test:browser -- tests/browser/receive-confidentiality.spec.ts
+```
+
+The Playwright configuration creates a temporary database/storage and removes
+them on shutdown. Use unoccupied test ports and never point these fixtures at an
+operator's running instance. Portable provider tests and these browser workflows
+do not validate native CryptoKit, Keychain/App Group protection or iOS builds.
+
+The implementation plan records the earlier independent protocol review and its
+two corrected Android findings. A bounded delta review through `bf4dc8a` examined
+subsequent scoped storage migration, tombstones, exact membership and checkpoint
+integration and found no concrete new defect. Neither review is an external
+cryptographic audit or penetration test.
+
 ## Required validation before protocol completion
 
 - [ ] Freeze context/envelope bytes and dependency versions with backend, Android, iOS and web implementations; review malformed/unknown-version behavior and legacy read-only migration.
 - [ ] Import the [CFRG HPKE test vectors](https://github.com/cfrg/draft-irtf-cfrg-hpke/blob/master/test-vectors.json), pinned to a commit. Select `mode=0`, `kem_id=32`, `kdf_id=1`, `aead_id=2`. Run supported vectors at each provider boundary; Tink's public hybrid API cannot consume vectors with nonempty AAD, so do not falsely claim those vectors tested through it.
 - [x] Generate checked-in **public-test-only** fixed-recipient, fixed-context, empty-AAD one-shot fixtures. Use independently maintained implementations to validate them. Where deterministic ephemeral injection is unavailable in a public API, test decryption of known fixtures plus randomized cross-provider roundtrips; do not patch production RNG for determinism.
 - [ ] Complete all sender/recipient pairs among Android Tink, iOS CryptoKit, browser noble, and an independent WebCrypto-backed HPKE path. Verify exact 32-byte public key, 32-byte encapsulation, 48-byte sealed key and 80-byte wrapper lengths, and explicit absence of Tink's prefix.
-- [ ] Repeat browser tests with `crypto.subtle` removed while retaining `getRandomValues`; test a real non-loopback LAN HTTP browser. Verify missing CSPRNG fails closed. HTTP still cannot authenticate delivered JavaScript.
+- [x] Repeat browser tests with `crypto.subtle` removed while retaining `getRandomValues`; test a real non-loopback LAN HTTP browser. Verify missing CSPRNG fails closed. The earlier production-helper/browser tests and the 2026-10-04 disposable NIC-address Chromium run provide this evidence. HTTP still cannot authenticate delivered JavaScript.
 - [ ] Reject modified `enc`, ciphertext/tag, slot ID, submission ID, public key, suite/version, lengths and trailing data. Reject wrong recipient private key and invalid/low-order X25519 inputs. Test two independent uploaders, envelope swapping and wrong-context replay.
 - [ ] Run Android JVM tests and API-26-compatible device/emulator tests; run iOS app and share-extension builds plus XCTest on macOS, including minimum iOS 17 deployment. Linux source review or a Swift Crypto build does not establish that CryptoKit/extension validation passed.
 - [ ] Verify key persistence/restore, cancellation and resumed upload envelope reuse, account switching, owner device without private keys, legacy inbox reads and no credentials/private-key/fragment disclosure in network requests or logs.
-- [ ] Obtain a bounded independent review of protocol binding, wrappers, key lifecycle and source-level dependency use before declaring section 1 complete.
+- [x] Obtain a bounded independent review of protocol binding, wrappers, key lifecycle and source-level dependency use before declaring section 1 complete. The plan records the initial review and corrected Android findings; a later scoped storage/membership delta review found no new defect. Native platform and remaining protocol gates above stay open.

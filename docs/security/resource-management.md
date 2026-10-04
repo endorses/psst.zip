@@ -105,8 +105,11 @@ of the pending total, not additional resources.
 These controls do not establish complete disk/database reconciliation after a
 crash, power loss, external filesystem changes or a restored backup. In
 particular, committed upload offsets are not proof that every physical byte is
-present, and this resource manager does not enumerate orphan disk entries.
-Those reconciliation and release-validation requirements remain open in the
+present. Separate bounded [storage recovery](storage-recovery.md) workers inspect
+referenced payloads, reconstruct derived counters and inventory supported orphan
+disk entries. Their panels report independent coverage, queues and failures;
+successful deletion alone does not establish a fully reconciled restore.
+Remaining restoration and release-validation requirements are recorded in the
 [security implementation plan](../plans/security-abuse-prevention-and-link-limits.md).
 See [incident response](incident-response.md), [resource limits](resource-limits.md)
 and [security activity](security-activity.md) for related policy and recovery

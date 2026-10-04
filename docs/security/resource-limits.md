@@ -91,22 +91,30 @@ null bytes rather than inventing zero. Policy and usage remain readable for
 recovery when disk probing fails. Available object counts and the check time
 are included. The web UI distinguishes these states and explains that a snapshot
 is not a reservation. Pauses, per-link limits and final allocation checks still
-apply, and concurrent work can change availability immediately. Public/guest
-effective-capacity integration and explicit reconciliation-state reporting are
-not yet complete.
+apply, and concurrent work can change availability immediately. Public receive
+availability includes a scoped `upload_capacity` snapshot with effective file,
+selection-byte and count limits. Browser, Android and iOS check the complete
+accumulated selection before upload; final allocation remains authoritative.
+Administrator Resources separately reports stored-file, counter and orphan
+recovery status; a capacity snapshot alone does not prove reconciliation is
+complete. See [storage recovery](storage-recovery.md) for those coverage limits.
 
 ## Bounded history
 
 Resource and administrator-user queries accept `limit` (1–100) and an opaque
 `after` cursor, returning `next_cursor` or null. The web UI loads one 50-entry
-page at a time. Native complete-snapshot synchronization uses at most 100 pages,
-a 1 MiB response bound per page, and a 30-second aggregate deadline. A failed,
-repeated-cursor or oversized scan leaves existing local history intact rather
-than treating unseen records as deleted. Very large native history still needs
-a separate incremental browsing UX; the hard bound is deliberate.
+page at a time. Android and iOS also browse one server page at a time and keep
+local links/downloads in independently indexed pages. First/Previous/Next controls
+retain at most 100 previous cursors while allowing further forward traversal.
+Page merges preserve names, keys and save checkpoints; absence from a page is
+not evidence of deletion. Failed or obsolete requests retain the current page.
+See [history pagination](history-pagination.md) and
+[local storage](local-history-storage.md) for request bounds, migration exceptions
+and remaining native validation.
 
 Account/session records and daily traffic have separate
-[metadata limits and retention](metadata-retention.md). A bounded security audit
-trail remains a separate plan requirement. Manual [incident controls](incident-response.md)
+[metadata limits and retention](metadata-retention.md). The bounded administrator
+audit trail has its own [retention and failure policy](security-activity.md).
+Manual [incident controls](incident-response.md)
 can pause payload traffic or shut down an account; storage policy itself does
 not enforce a hosting provider's traffic bill.
