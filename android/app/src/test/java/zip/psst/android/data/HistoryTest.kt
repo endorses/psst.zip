@@ -223,13 +223,8 @@ class HistoryTest {
             dao.recordSavedFile("slot", "child/blob-a")
             dao.mergeReceived("slot", ReceivedSnapshot(mapOf("child" to ReceivedChild(2))))
             val stored = dao.getById("slot")!!
-            assertEquals(
-                setOf("child/blob-a"),
-                kotlinx.serialization.json.Json.decodeFromString<Set<String>>(
-                    stored.savedFileIdsJson
-                ),
-            )
-            assertEquals(1, stored.savedFileCount())
+            assertEquals(setOf("child/blob-a"), dao.savedFiles(stored, listOf("child")))
+            assertEquals(1L, stored.checkpointSavedFiles)
             assertEquals("has_uploads", stored.status)
         }
 
@@ -338,7 +333,7 @@ class HistoryTest {
         assertEquals(unseen, dao.getById("unseen"))
     }
 
-    private class MemoryDao(initial: TransferHistoryEntity) : TransferHistoryDao {
+    internal open class MemoryDao(initial: TransferHistoryEntity) : CheckpointTestDao() {
         private val rows = MutableStateFlow(listOf(initial))
 
         override fun observePage(

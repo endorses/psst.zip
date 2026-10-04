@@ -27,8 +27,10 @@ enum SecretStore {
     }
 
     private static func query(_ name: String) -> [String: Any] {
-        var value: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                    kSecAttrService as String: "zip.psst.ios.sessions", kSecAttrAccount as String: name]
+        var value: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "zip.psst.ios.sessions", kSecAttrAccount as String: name,
+        ]
         if let group {
             value[kSecAttrAccessGroup as String] = group
         }
@@ -44,9 +46,23 @@ enum SecretStore {
         return result as? Data
     }
 
+    /// Migration must never mistake a locked or unavailable Keychain for an empty source.
+    static func readStrict(_ name: String) throws -> Data? {
+        var value = query(name)
+        value[kSecReturnData as String] = true
+        value[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(value as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else { throw AccountError.storage }
+        return data
+    }
+
     static func write(_ data: Data, name: String) throws {
-        let attributes: [String: Any] = [kSecValueData as String: data,
-                                         kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
         let status = SecItemUpdate(query(name) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
             var item = query(name)
@@ -71,7 +87,11 @@ enum AccountError: LocalizedError {
     case signIn, changed, address, storage, request, pairing, unavailable, administrator, passwordChange, passwordPolicy
     var errorDescription: String? {
         switch self {
-        case .administrator: String(localized: "Administrator accounts manage the server on the website. Sign in with a regular account to transfer files. You can still scan public links without signing in.")
+        case .administrator:
+            String(
+                localized:
+                    "Administrator accounts manage the server on the website. Sign in with a regular account to transfer files. You can still scan public links without signing in."
+            )
         case .passwordChange: String(localized: "Replace your temporary password before continuing.")
         case .passwordPolicy: String(localized: "Check your current password. The new password must differ and contain 12–72 UTF-8 bytes.")
         case .signIn: String(localized: "Sign in again to continue.")
@@ -87,10 +107,11 @@ enum AccountError: LocalizedError {
 
 /// Redirects are forbidden for all authenticated requests: credentials stay on their originating server.
 final class NoRedirects: NSObject, URLSessionTaskDelegate {
-    func urlSession(_: URLSession, task _: URLSessionTask,
-                    willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
-                    completionHandler: @escaping (URLRequest?) -> Void)
-    {
+    func urlSession(
+        _: URLSession, task _: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
         completionHandler(nil)
     }
 }
@@ -98,10 +119,11 @@ final class NoRedirects: NSObject, URLSessionTaskDelegate {
 enum AccountHTTP {
     static func origin(_ raw: String) throws -> String {
         guard let url = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-              let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
-              url.port == nil || (1 ... 65535).contains(url.port!) else { throw AccountError.address }
+            ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+            let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
+            url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
+            url.port == nil || (1...65535).contains(url.port!)
+        else { throw AccountError.address }
         var canonical = url
         canonical.scheme = url.scheme?.lowercased()
         canonical.host = host.lowercased()
@@ -110,11 +132,12 @@ enum AccountHTTP {
         return value
     }
 
-    static func request(server: String, path: String, method: String = "GET", token: String? = nil,
-                        body: [String: String]? = nil, maximumBytes: Int = 1_048_576,
-                        timeout: TimeInterval = 15) async throws -> Data
-    {
-        guard (1 ... 1_048_576).contains(maximumBytes), (1 ... 15).contains(timeout) else { throw AccountError.request }
+    static func request(
+        server: String, path: String, method: String = "GET", token: String? = nil,
+        body: [String: String]? = nil, maximumBytes: Int = 1_048_576,
+        timeout: TimeInterval = 15
+    ) async throws -> Data {
+        guard (1...1_048_576).contains(maximumBytes), (1...15).contains(timeout) else { throw AccountError.request }
         let origin = try origin(server)
         guard let url = URL(string: origin + "/api/v1/" + path) else { throw AccountError.address }
         var request = URLRequest(url: url, timeoutInterval: timeout)
@@ -144,9 +167,10 @@ enum AccountHTTP {
         if method == "DELETE", response.statusCode == 404 {
             return Data()
         }
-        if let incident = TransferIncident.response(status: response.statusCode, body: data,
-                                                    codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"),
-                                                    retryHeader: response.value(forHTTPHeaderField: "X-Psst-Retry-At"))
+        if let incident = TransferIncident.response(
+            status: response.statusCode, body: data,
+            codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"),
+            retryHeader: response.value(forHTTPHeaderField: "X-Psst-Retry-At"))
         {
             throw incident
         }
@@ -170,7 +194,7 @@ enum AccountHTTP {
         if response.statusCode == 404 || response.statusCode == 410 {
             throw AccountError.unavailable
         }
-        guard (200 ... 299).contains(response.statusCode) else {
+        guard (200...299).contains(response.statusCode) else {
             throw path.contains("pairings") ? AccountError.pairing : AccountError.request
         }
         return data

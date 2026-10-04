@@ -252,7 +252,7 @@ class HistoryDeletionTest {
     private class MemoryDao(
         initial: TransferHistoryEntity,
         private val events: MutableList<String> = mutableListOf(),
-    ) : TransferHistoryDao {
+    ) : CheckpointTestDao() {
         private val rows = MutableStateFlow(listOf(initial))
 
         override fun observePage(

@@ -223,11 +223,38 @@ fun ReceiveScreen(
             } else if (
                 state.page?.completedTransfers?.isNotEmpty() == true &&
                     !state.shownSaved &&
+                    state.checkpointState == "ready" &&
                     !state.keyUnavailable &&
                     state.slotStatus != "unavailable"
             ) {
                 Button(onClick = viewModel::downloadReceivedFiles, enabled = !state.isPaging) {
                     Text("Save shown uploads")
+                }
+            }
+            if (state.checkpointState != "ready") {
+                Text(
+                    if (state.checkpointState == "recovery")
+                        "Older saved checkpoints need recovery. Their original records and saved files are retained; saving is paused to avoid duplicate downloads."
+                    else
+                        "Importing saved-file checkpoints. Saved files remain on this device; saving resumes when the import finishes."
+                )
+                TextButton(
+                    onClick = viewModel::continueCheckpointImport,
+                    enabled = !state.isPaging,
+                ) {
+                    Text(
+                        if (state.checkpointState == "recovery") "Retry checkpoint import"
+                        else "Continue checkpoint import"
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.open_downloads))
                 }
             }
             if (state.downloadComplete || state.savedFileCount > 0) {

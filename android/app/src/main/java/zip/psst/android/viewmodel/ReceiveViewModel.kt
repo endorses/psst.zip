@@ -9,6 +9,7 @@ import zip.psst.android.data.InboxPager
 import zip.psst.android.data.InboxReadIdentity
 import zip.psst.android.data.ReceivedSnapshot
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.checkpointScope
 import zip.psst.android.data.decodeInboxKeyMarker
 import zip.psst.android.data.decryptInboxManifest
 import zip.psst.android.data.optionalLinkLimit
@@ -16,8 +17,6 @@ import zip.psst.android.data.parseHistoryExpiry
 import zip.psst.android.data.receiveAndSaveChild
 import zip.psst.android.data.receivedSnapshot
 import zip.psst.android.data.retrySavedDownloadAcknowledgements
-import zip.psst.android.data.savedFileCount
-import zip.psst.android.data.savedTransferIds
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
@@ -45,7 +44,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 
 data class ReceiveUiState(
     val page: DropSlot? = null,
@@ -71,6 +69,7 @@ data class ReceiveUiState(
     val downloadComplete: Boolean = false,
     val connectionError: Boolean = false,
     val savedFileCount: Int = 0,
+    val checkpointState: String = "ready",
     val keyUnavailable: Boolean = false,
     val downloadConsent: zip.psst.android.data.InboxDownloadConsent? = null,
 )
@@ -202,6 +201,38 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             val id = _uiState.value.slotId
             val client = slotClient
             if (id != null && client != null) listenForEvents(client, id)
+        }
+    }
+
+    fun continueCheckpointImport() {
+        val id = _uiState.value.slotId ?: return
+        val client = slotClient ?: return
+        val access = app.prefs.historyAccess.value
+        val revision = pageRevision
+        fun current() =
+            app.prefs.historyAccess.value == access &&
+                _uiState.value.slotId == id &&
+                slotClient === client &&
+                pageRevision == revision
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dao = app.database.transferHistoryDao()
+                val row = dao.getById(id) ?: return@launch
+                if (!current() || access != slotAccess || !access.permits(row)) return@launch
+                if (_uiState.value.checkpointState == "recovery")
+                    dao.retryCheckpointMigration(id, row.checkpointScope())
+                if (current()) refreshSlot(client, id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (current())
+                    _uiState.update {
+                        it.copy(
+                            error =
+                                "Saved checkpoints could not be imported. Original records and saved files are retained. Check device storage and retry."
+                        )
+                    }
+            }
         }
     }
 
@@ -494,7 +525,21 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             val snapshot = slot.receivedSnapshot()
             historyMutex.withLock {
                 if (!current()) return@withLock
-                val row = app.database.transferHistoryDao().mergeReceived(slotId, snapshot)
+                val dao = app.database.transferHistoryDao()
+                val row =
+                    dao.mergeReceived(
+                        slotId,
+                        snapshot,
+                        expectedScope = visibleRow.checkpointScope(),
+                    )
+                val savedChildren =
+                    row?.let {
+                            dao.savedChildren(
+                                it,
+                                slot.completedTransfers.map { child -> child.transferId },
+                            )
+                        }
+                        .orEmpty()
                 if (row != null && current()) {
                     _uiState.update {
                         it.copy(
@@ -508,9 +553,13 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             shownSaved =
                                 slot.completedTransfers.isNotEmpty() &&
                                     slot.completedTransfers.all { child ->
-                                        child.transferId in row.savedTransferIds()
+                                        child.transferId in savedChildren
                                     },
-                            savedFileCount = row.savedFileCount(),
+                            savedFileCount =
+                                row.checkpointSavedFiles
+                                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                                    .toInt(),
+                            checkpointState = row.checkpointState,
                             maxFiles = slot.maxFiles,
                             remainingFiles = slot.remainingFiles,
                             reservedFiles = slot.reservedFiles,
@@ -520,9 +569,13 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             }
             if (pageRevision == revision && app.prefs.historyAccess.value == request.access)
                 retrySavedDownloadAcknowledgements(
-                    visibleRow,
+                    app.database
+                        .transferHistoryDao()
+                        .savedChildren(
+                            requireNotNull(app.database.transferHistoryDao().getById(slotId)),
+                            slot.completedTransfers.map { it.transferId },
+                        ),
                     client,
-                    slot.completedTransfers.map { it.transferId }.toSet(),
                 )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -630,9 +683,18 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     ) {
                         "The inbox receive key does not match this device."
                     }
-                    val latest = dao.mergeReceived(slotId, slot.receivedSnapshot()) ?: row
+                    val latest =
+                        dao.mergeReceived(
+                            slotId,
+                            slot.receivedSnapshot(),
+                            expectedScope = row.checkpointScope(),
+                        ) ?: row
+                    require(latest.checkpointState == "ready") {
+                        "Saved checkpoints are still being imported. Continue local checkpoint import before saving."
+                    }
+                    val savedChildren = dao.savedChildren(latest, selected.map { it.transferId })
                     checkCurrent()
-                    val transfers = selected.filter { it.transferId !in latest.savedTransferIds() }
+                    val transfers = selected.filter { it.transferId !in savedChildren }
                     require(transfers.isNotEmpty()) { "No new completed uploads to save" }
                     val received = mutableListOf<Pair<String, FileMetadata>>()
                     val childKeys = mutableMapOf<String, ByteArray>()
@@ -673,10 +735,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     require(totalFiles == transfers.sumOf { it.fileCount }) {
                         "Manifest file count mismatch"
                     }
-                    val savedIds =
-                        Json.decodeFromString<Set<String>>(
-                            dao.getById(slotId)?.savedFileIdsJson ?: "[]"
-                        )
+                    val savedIds = dao.savedFiles(latest, transfers.map { it.transferId })
                     val preflight =
                         zip.psst.android.data.InboxDownloadPreflight.inspect(
                             row.serverUrl,
@@ -702,6 +761,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     var savedFiles = 0
                     for (transfer in transfers) {
                         checkCurrent()
+                        var savedOutput: zip.psst.android.data.SavedGuestFile? = null
                         receiveAndSaveChild(
                             client = client,
                             transferId = transfer.transferId,
@@ -713,7 +773,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             saveFile = { fileMeta, plaintext ->
                                 checkCurrent()
                                 saver.requireSpace(remainingBytes)
-                                saver.save(fileMeta, plaintext) {}
+                                savedOutput = saver.save(fileMeta, plaintext) {}
                             },
                             recordSaved = { child ->
                                 checkCurrent()
@@ -725,18 +785,22 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                             partial = true,
                                         ),
                                         saved = true,
+                                        expectedScope = row.checkpointScope(),
                                     )
                                 }
                             },
                             alreadySaved =
-                                Json.decodeFromString<Set<String>>(
-                                        dao.getById(slotId)?.savedFileIdsJson ?: "[]"
-                                    )
-                                    .filter { it.startsWith("${transfer.transferId}/") }
+                                dao.savedFiles(latest, listOf(transfer.transferId))
                                     .map { it.substringAfter('/') }
                                     .toSet(),
                             recordFileSaved = { blobId ->
-                                dao.recordSavedFile(slotId, "${transfer.transferId}/$blobId")
+                                dao.recordSavedFile(
+                                    slotId,
+                                    "${transfer.transferId}/$blobId",
+                                    row.checkpointScope(),
+                                    savedOutput?.uri,
+                                )
+                                savedOutput = null
                                 remainingBytes -=
                                     received
                                         .first {
@@ -745,13 +809,16 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                         }
                                         .second
                                         .size
-                                val savedCount =
-                                    Json.decodeFromString<Set<String>>(
-                                            dao.getById(slotId)?.savedFileIdsJson ?: "[]"
-                                        )
-                                        .size
+                                val savedCount = dao.getById(slotId)?.checkpointSavedFiles ?: 0
                                 if (app.prefs.historyAccess.value == access)
-                                    _uiState.update { it.copy(savedFileCount = savedCount) }
+                                    _uiState.update {
+                                        it.copy(
+                                            savedFileCount =
+                                                savedCount
+                                                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                                                    .toInt()
+                                        )
+                                    }
                             },
                             onFileSaved = {
                                 checkCurrent()
@@ -769,6 +836,17 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     historyMutex.withLock {
                         checkCurrent()
                         val updated = dao.getById(slotId)
+                        val savedChildren =
+                            updated
+                                ?.let {
+                                    dao.savedChildren(
+                                        it,
+                                        selectedPage.completedTransfers.map { child ->
+                                            child.transferId
+                                        },
+                                    )
+                                }
+                                .orEmpty()
                         checkCurrent()
                         _uiState.update {
                             if (it.slotId == slotId)
@@ -779,8 +857,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     downloadComplete = false,
                                     shownSaved =
                                         selectedPage.completedTransfers.all { child ->
-                                            child.transferId in
-                                                (updated?.savedTransferIds() ?: emptySet())
+                                            child.transferId in savedChildren
                                         },
                                 )
                             else it

@@ -222,3 +222,50 @@ This validates the exact Foundation database/parser, not the iOS application.
       termination, low storage, changed/missing original data, protected files
       while locked, concurrent app/share-extension writes and account switching.
       Confirm old keys/local files remain usable and failed import offers retry.
+
+### Guest history and retry storage
+
+Guest downloads now use indexed local pages and exact record updates. Both legacy
+history formats import incrementally, preserving original sources and Keychain
+identities. Receipt and publication-recovery jobs remain independent of visible
+history rows; removing an item keeps saved files and pending delivery confirmation.
+Owner receipts and unfinished guest uploads use separate indexed retry queues,
+with cleanup capabilities retained only in Keychain.
+
+Run `python3 ios/scripts/test_guest_store.py` for the actual guest storage and
+local-page models against real SQLite with explicit Apple/crypto/network boundary
+stubs. Run `python3 ios/scripts/test_device_retry_queue.py` for the actual queue
+and legacy-array parser. These offline harnesses clean their temporary workspaces;
+they do not prove Keychain/protection, networking, cryptography or native UI behavior.
+
+- [ ] Build app and extension on macOS and run the native XCTest suite, including
+      `GuestDownloadTests`, after regenerating the project.
+- [ ] On a device, migrate both legacy guest formats and old receipt/cleanup
+      journals, terminate during import, and verify saved paths, pending receipts
+      and cleanup capabilities after relaunch. Test locked/unavailable Keychain
+      without creating an empty migration marker or replacing an existing key.
+- [ ] Exercise downloaded-history pagination and failed navigation, local removal
+      with a pending receipt, multiple unavailable origins, corrupted metadata,
+      publication interruption, cancellation and low storage. Verify valid jobs
+      progress, pending originals remain preserved and recovery feedback is visible.
+
+### Indexed inbox checkpoints
+
+Inbox paths and child completion state now use individually indexed records in the
+same transaction domain as account history. Legacy maps move into retained source
+rows and import in resumable batches before account history becomes writable.
+Normal status refreshes cannot replace already committed saves. New file entries
+also retain their expected length; legacy entries without a length keep their
+previous existence-only check.
+
+Run `python3 ios/scripts/test_receive_checkpoints.py` for the actual account store,
+checkpoint storage and local-link page model using real SQLite with explicit
+Apple/account/crypto boundary stubs. It covers large inboxes, bounded child pages,
+restart, concurrent updates, scoping, truncation and malformed preserved sources.
+
+- [ ] Run `ReceiveCheckpointTests`, `TransferWorkflowTests` and
+      `NavigationHistoryTests` in Xcode and build the app/share extension.
+- [ ] On device, interrupt normalization and per-file saving, change accounts,
+      exhaust storage and fail a page metadata write. Verify the previous page
+      keeps matching save state, successful files are skipped on retry, truncated
+      files need saving again and delivery confirmation survives interruption.

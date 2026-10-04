@@ -1,51 +1,30 @@
 import Foundation
 
-/// Persistent per-file checkpoint. Successful writes are committed before advancing to another file.
-/// A receipt is eligible only after every manifest file has been saved; retry never changes slot identity.
+/// One child transfer, capped to the protocol's 100 files. The parent history
+/// record never owns a growing collection of paths or completed child IDs.
 struct ReceiveCheckpoint {
-    private(set) var record: TransferRecord
-    let fileExists: (String) -> Bool
-    var slotID: String {
-        record.id
-    }
+    let slotID: String
+    let transferID: String
+    private(set) var paths: [String: String]
+    var sizes: [String: Int64] = [:]
+    private(set) var complete: Bool
+    let fileExists: (String, Int64?) -> Bool
 
-    func needsFile(transferID: String, blobID: String) -> Bool {
-        guard let path = record.savedFiles?[transferID + "/" + blobID] else { return true }
-        return !fileExists(path)
+    func needsFile(blobID: String) -> Bool {
+        guard let path = paths[blobID] else { return true }
+        return !fileExists(path, sizes[blobID])
     }
-
-    mutating func saved(transferID: String, blobID: String, path: String, size: Int64, title: String) {
-        let identity = transferID + "/" + blobID
-        if record.savedFiles?[identity] == nil {
-            record.totalSize += size
-        }
-        if record.savedFiles == nil {
-            record.savedFiles = [:]
-        }
-        record.savedFiles?[identity] = path
-        record.title = record.title ?? title
+    func readyToAcknowledge(blobIDs: [String]) -> Bool {
+        !blobIDs.isEmpty && blobIDs.count <= 100 && Set(blobIDs).count == blobIDs.count && blobIDs.allSatisfy { !needsFile(blobID: $0) }
     }
-
-    func readyToAcknowledge(transferID: String, blobIDs: [String]) -> Bool {
-        !blobIDs.isEmpty && blobIDs.allSatisfy { !needsFile(transferID: transferID, blobID: $0) }
-    }
-
-    mutating func completed(transferID: String, blobIDs: [String]) -> Bool {
-        guard readyToAcknowledge(transferID: transferID, blobIDs: blobIDs) else { return false }
-        if !(record.savedTransfers ?? []).contains(transferID) {
-            record.savedTransfers = (record.savedTransfers ?? []) + [transferID]
-        }
-        return true
+    var savedPaths: [String] { paths.compactMap { fileExists($0.value, sizes[$0.key]) ? $0.value : nil } }
+    func isSaved(fileCount: Int) -> Bool {
+        complete && fileCount > 0 && fileCount <= 100 && paths.count == fileCount && paths.allSatisfy { fileExists($0.value, sizes[$0.key]) }
     }
 }
 
 struct JobIdentity {
     let session: DeviceSession
-    func accepts(_ current: DeviceSession?, cancelled: Bool) -> Bool {
-        !cancelled && current == session
-    }
-
-    func mayResume(as current: DeviceSession?) -> Bool {
-        current?.accountID == session.accountID
-    }
+    func accepts(_ current: DeviceSession?, cancelled: Bool) -> Bool { !cancelled && current == session }
+    func mayResume(as current: DeviceSession?) -> Bool { current?.accountID == session.accountID }
 }

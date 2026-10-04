@@ -31,6 +31,7 @@ final class ReceiveViewModel {
     private(set) var pageWindow = InboxPageWindow()
     private(set) var totalReceivedFiles: Int64?
     private(set) var refreshing = false
+    private var checkpoints: [String: ReceiveCheckpoint] = [:]
     private var pageID = UUID()
     private var loadedSession: DeviceSession?
     private var refreshID = UUID()
@@ -79,13 +80,17 @@ final class ReceiveViewModel {
         self.maxFiles = maxFiles
         if let record {
             state = .waiting
-            receivedFileURLs = (record.savedFiles ?? [:]).values.compactMap { savedURL($0) }
         }
     }
 
-    private func savedURL(_ name: String) -> URL? {
+    private func savedURL(_ name: String, expectedSize: Int64? = nil) -> URL? {
+        guard ReceiveCheckpointStorage.validPath(name) else { return nil }
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(name)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        if let expectedSize {
+            guard let actual = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(actual) == expectedSize else { return nil }
+        }
+        return url
     }
 
     func createDropSlot() async {
@@ -154,16 +159,26 @@ final class ReceiveViewModel {
     }
 
     private func isSaved(_ transfer: SlotTransfer, in entry: TransferRecord) -> Bool {
-        guard (entry.savedTransfers ?? []).contains(transfer.transferId) else { return false }
-        let prefix = transfer.transferId + "/"
-        let count = (entry.savedFiles ?? [:]).filter { $0.key.hasPrefix(prefix) && savedURL($0.value) != nil }.count
-        return count == Int(transfer.fileCount)
+        checkpoints[transfer.transferId]?.isSaved(fileCount: Int(transfer.fileCount)) == true
     }
 
-    private func historyState(_ entry: TransferRecord, status: DropSlot, window: InboxPageWindow) -> TransferState {
+    private func loadCheckpoints(_ entry: TransferRecord, transfers: [SlotTransfer]) throws {
+        let loaded = try historyStore.receiveCheckpoints(parent: entry, transferIDs: transfers.map(\.transferId), fileExists: { self.savedURL($0, expectedSize: $1) != nil })
+        checkpoints = loaded
+        receivedFileURLs = loaded.values.flatMap(\.savedPaths).compactMap { savedURL($0) }
+    }
+
+    private func reloadCheckpoint(_ entry: TransferRecord, transferID: String) throws {
+        let loaded = try historyStore.receiveCheckpoints(parent: entry, transferIDs: [transferID], fileExists: { self.savedURL($0, expectedSize: $1) != nil })
+        checkpoints[transferID] = loaded[transferID]
+        receivedFileURLs = checkpoints.values.flatMap(\.savedPaths).compactMap { savedURL($0) }
+    }
+
+    private func historyState(_ entry: TransferRecord, status: DropSlot, window: InboxPageWindow, savedCheckpoints: [String: ReceiveCheckpoint]? = nil) -> TransferState {
         let complete = status.completedTransfers.filter { $0.fileCount > 0 }
         let visible = Dictionary(uniqueKeysWithValues: complete.map { ($0.transferId, Int($0.fileCount)) })
-        let saved = Set(complete.filter { isSaved($0, in: entry) }.map(\.transferId))
+        let evidence = savedCheckpoints ?? checkpoints
+        let saved = Set(complete.filter { evidence[$0.transferId]?.isSaved(fileCount: Int($0.fileCount)) == true }.map(\.transferId))
         let total = status.summary?.ready == true ? status.summary?.completedFiles?.int64Value : nil
         if InboxSaveScope.coversInbox(cursor: window.cursor, next: status.nextCursor, total: total, visible: visible, saved: saved) { return .saved }
         return (total ?? Int64(entry.fileCount)) == 0 && complete.isEmpty ? .inProgress : .complete
@@ -212,15 +227,22 @@ final class ReceiveViewModel {
             updated.receiveProtocol = Int(status.receiveProtocol)
             updated.maxFiles = Int(status.maxFiles)
             updated.reservedFiles = status.reservedFiles
-            updated.state = historyState(updated, status: status, window: nextWindow)
+            let nextTransfers = status.completedTransfers.filter { $0.fileCount > 0 }
+            let nextCheckpoints = try historyStore.receiveCheckpoints(
+                parent: updated, transferIDs: nextTransfers.map(\.transferId), fileExists: { self.savedURL($0, expectedSize: $1) != nil })
+            updated.state = historyState(updated, status: status, window: nextWindow, savedCheckpoints: nextCheckpoints)
             try historyStore.update(updated)
+            // Publish the entire page only after its durable metadata update.
+            // A failed navigation keeps the previous rows and checkpoint evidence.
+            checkpoints = nextCheckpoints
+            receivedFileURLs = nextCheckpoints.values.flatMap(\.savedPaths).compactMap { savedURL($0) }
             self.record = updated
             if pageWindow.cursor != nextWindow.cursor { savingError = nil }
             pageWindow = nextWindow
             pageID = UUID()
             loadedSession = session
             totalReceivedFiles = total
-            arrivals = status.completedTransfers.filter { $0.fileCount > 0 }
+            arrivals = nextTransfers
             if state == .complete { state = .waiting }
             lastUpdated = Date()
             connectionError = nil
@@ -302,7 +324,6 @@ final class ReceiveViewModel {
 
     private func saveFiles(scope: InboxSaveScope, session: DeviceSession, approved: [String: Data]? = nil) async {
         guard var entry = record else { return }
-        var checkpoint = ReceiveCheckpoint(record: entry, fileExists: { self.savedURL($0) != nil })
         savingError = nil
         pendingConsent = nil
         do {
@@ -323,6 +344,7 @@ final class ReceiveViewModel {
             let status = try await client.slots.getPage(slotId: entry.id, after: scope.cursor, limit: 50)
             try serverConfig.check(session)
             guard scope.accepts(pageID: pageID, cursor: pageWindow.cursor, available: Set(status.completedTransfers.map(\.transferId))) else { throw AccountError.changed }
+            try loadCheckpoints(entry, transfers: status.completedTransfers.filter { $0.fileCount > 0 })
             let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let relativeDirectory = "Received/" + session.userID + "/" + entry.id
             let directory = documents.appendingPathComponent(relativeDirectory)
@@ -355,7 +377,8 @@ final class ReceiveViewModel {
                 let metadata = try await client.transfers.get(transferId: transfer.transferId)
                 _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: metadata)
                 fingerprints[transfer.transferId] = Data(SHA256.hash(data: bytes.toData()))
-                remainingSizes.append(contentsOf: manifest.files.filter { checkpoint.needsFile(transferID: transfer.transferId, blobID: $0.blobId) }.map(\.size))
+                guard let checkpoint = checkpoints[transfer.transferId] else { throw AccountError.storage }
+                remainingSizes.append(contentsOf: manifest.files.filter { checkpoint.needsFile(blobID: $0.blobId) }.map(\.size))
                 prepared.append((transfer.transferId, key, manifest))
             }
             try serverConfig.check(session)
@@ -372,7 +395,8 @@ final class ReceiveViewModel {
                 let manifest = preparedTransfer.manifest
                 for (index, file) in manifest.files.enumerated() {
                     try serverConfig.check(session)
-                    if !checkpoint.needsFile(transferID: transferID, blobID: file.blobId) {
+                    guard let checkpoint = checkpoints[transferID] else { throw AccountError.storage }
+                    if !checkpoint.needsFile(blobID: file.blobId) {
                         continue
                     }
                     state = .downloading(progress: Double(index) / Double(manifest.files.count))
@@ -387,17 +411,17 @@ final class ReceiveViewModel {
                     } else {
                         try FileManager.default.moveItem(at: temporary, to: destination)
                     }
-                    checkpoint.saved(transferID: transferID, blobID: file.blobId, path: relative, size: file.size, title: file.name)
-                    entry = checkpoint.record
-                    try historyStore.update(entry)
+                    entry = try historyStore.saveReceivedFile(parent: entry, transferID: transferID, blobID: file.blobId, path: relative, size: file.size, title: file.name)
                     record = entry
-                    receivedFileURLs = (entry.savedFiles ?? [:]).values.compactMap { savedURL($0) }
+                    try reloadCheckpoint(entry, transferID: transferID)
                 }
-                guard checkpoint.completed(transferID: transferID, blobIDs: manifest.files.map(\.blobId)) else { throw AccountError.request }
-                entry = checkpoint.record
-                try historyStore.update(entry)
-                record = entry
-                DownloadAcknowledgements.shared.enqueue(serverURL: session.serverURL, transferID: transferID, ownerID: session.userID)
+                guard let checkpoint = checkpoints[transferID], checkpoint.readyToAcknowledge(blobIDs: manifest.files.map(\.blobId)) else { throw AccountError.request }
+                // Persist the independent receipt first. A kill before the child
+                // completion marker retries safely instead of losing the receipt.
+                try DownloadAcknowledgements.shared.enqueue(serverURL: session.serverURL, transferID: transferID, ownerID: session.userID)
+                try historyStore.completeReceivedTransfer(
+                    parent: entry, transferID: transferID, blobIDs: manifest.files.map(\.blobId), fileExists: { self.savedURL($0, expectedSize: $1) != nil })
+                try reloadCheckpoint(entry, transferID: transferID)
                 await DownloadAcknowledgements.shared.flush()
             }
             try serverConfig.check(session)

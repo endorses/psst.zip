@@ -82,20 +82,14 @@ class AccountHistoryTest {
                     savedTransferIdsJson = "[\"child\"]",
                     savedFileIdsJson = "[\"child/blob\"]",
                 )
-        val merged =
-            mergeAccountResource(
-                local,
-                incoming(),
-                access,
-                ReceivedSnapshot(mapOf("child" to ReceivedChild(2))),
-            )!!
+        val merged = mergeAccountResource(local, incoming(), access)!!
         assertEquals(local.encryptionKey, merged.encryptionKey)
         assertEquals(local.deletionToken, merged.deletionToken)
         assertEquals(local.title, merged.title)
         assertEquals(local.savedFileIdsJson, merged.savedFileIdsJson)
         assertEquals(local.savedTransferIdsJson, merged.savedTransferIdsJson)
         assertEquals(123L, merged.totalSize)
-        assertEquals("complete", merged.status)
+        assertEquals("has_uploads", merged.status)
     }
 
     @Test

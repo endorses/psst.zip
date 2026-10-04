@@ -18,8 +18,10 @@ struct TransferRecord: Identifiable, Codable {
     var title: String? = nil
     var customTitle: String? = nil
     var isSlot: Bool? = nil
+    // Legacy import fields only. Normal storage moves them to indexed checkpoints.
     var savedFiles: [String: String]? = nil
     var savedTransfers: [String]? = nil
+    var checkpointVersion: Int? = nil
     var receiveProtocol: Int? = nil
     var maxFiles: Int? = nil
     var reservedFiles: Int64? = nil

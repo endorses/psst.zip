@@ -59,7 +59,7 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             try execute("PRAGMA synchronous=FULL")
             try transaction { database in
                 let version = try database.integer("PRAGMA user_version")
-                guard version == 0 || version == 1 else { throw Failure.unsupportedSchema }
+                guard (0...2).contains(version) else { throw Failure.unsupportedSchema }
                 if version == 0 {
                     try database.execute(
                         """
@@ -84,6 +84,9 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                         PRAGMA user_version=1;
                         """)
                 }
+                if version < 2 {
+                    try database.execute("ALTER TABLE migrations ADD COLUMN stream_state TEXT NOT NULL DEFAULT ''; PRAGMA user_version=2;")
+                }
             }
         } catch {
             if let connection { sqlite3_close_v2(connection) }
@@ -106,6 +109,18 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         try transaction { database in
             try database.run("DELETE FROM tombstones WHERE id=?", strings: [record.id])
             try database.insert(record, replacing: true)
+        }
+    }
+
+    /// Imports a derived legacy job without replacing current work or reviving
+    /// deleted work. Safe inside a migration decode callback: its savepoint is
+    /// committed or rolled back with the enclosing batch and progress marker.
+    @discardableResult
+    func importIfAbsent(_ record: Record) throws -> Bool {
+        try Self.validate(record)
+        return try transaction { database in
+            try database.insert(record, replacing: false)
+            return sqlite3_changes(database.connection) > 0
         }
     }
 
@@ -134,6 +149,35 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                 }
             }
             return false
+        }
+    }
+
+    struct MigrationEntry {
+        let id: String
+        let kind: String
+    }
+    struct MigrationPage {
+        let entries: [MigrationEntry]
+        let nextID: String?
+    }
+
+    /// Migration discovery only: a bounded primary-key seek across all scopes.
+    /// Opaque bodies are not loaded while looking for records needing upgrade.
+    func migrationPage(afterID: String? = nil, limit: Int = 25) throws -> MigrationPage {
+        guard (1...100).contains(limit), afterID.map({ Self.valid($0, maximum: 4096) }) ?? true else { throw Failure.invalidPage }
+        return try synchronized {
+            let sql = "SELECT id,kind FROM records" + (afterID == nil ? "" : " WHERE id>?") + " ORDER BY id LIMIT ?"
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+            if let afterID { try bind(afterID, to: statement, at: 1) }
+            try check(sqlite3_bind_int(statement, afterID == nil ? 1 : 2, Int32(limit + 1)))
+            var entries: [MigrationEntry] = []
+            while try step(statement) {
+                entries.append(MigrationEntry(id: try text(statement, 0, maximum: 4096), kind: try text(statement, 1, maximum: 128)))
+            }
+            let more = entries.count > limit
+            if more { entries.removeLast() }
+            return MigrationPage(entries: entries, nextID: more ? entries.last?.id : nil)
         }
     }
 
@@ -203,13 +247,24 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     /// removed here. A failed decode, oversized record, source change or commit
     /// rolls back the batch and its progress; newer rows and tombstones win.
     func migrateJSONBatch(source: URL, key: String, limit: Int = 100, decode: (Data) throws -> Record) throws -> MigrationProgress {
+        try migrateJSON(source: source, key: key, limit: limit, snapshot: false) { _, data in try decode(data) }
+    }
+
+    /// Streams either a legacy root array (named "records") or a snapshot with
+    /// records/receipts arrays, in source order. Each batch shares one marker.
+    func migrateJSONSnapshotBatch(source: URL, key: String, limit: Int = 100, decode: (String, Data) throws -> Record) throws -> MigrationProgress {
+        try migrateJSON(source: source, key: key, limit: limit, snapshot: true, decode: decode)
+    }
+
+    private func migrateJSON(source: URL, key: String, limit: Int, snapshot: Bool, decode: (String, Data) throws -> Record) throws -> MigrationProgress {
         guard Self.valid(key, maximum: 4096), (1...100).contains(limit) else { throw Failure.invalidPage }
         return try transaction { database in
             var offset: Int64 = 0
             var processed: Int64 = 0
             var inserted: Int64 = 0
             var previousSource: String?
-            let statement = try database.prepare("SELECT source,offset,processed,inserted,complete FROM migrations WHERE id=?")
+            var streamState = ""
+            let statement = try database.prepare("SELECT source,offset,processed,inserted,complete,stream_state FROM migrations WHERE id=?")
             defer { sqlite3_finalize(statement) }
             try database.bind(key, to: statement, at: 1)
             if try database.step(statement) {
@@ -222,18 +277,19 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                     return MigrationProgress(processed: processed, inserted: inserted, complete: true)
                 }
                 guard sqlite3_column_int(statement, 4) == 0 else { throw Failure.invalidRecord }
+                streamState = try database.text(statement, 5, maximum: 1024, allowEmpty: true)
             }
-            let stream = try HistoryJSONStream(url: source, maximumObjectBytes: Self.maximumRecordBytes)
+            let stream = try HistoryJSONStream(url: source, maximumObjectBytes: Self.maximumRecordBytes, snapshot: snapshot)
             defer { stream.close() }
             if let previousSource, previousSource != stream.identity { throw Failure.migrationSourceChanged }
-            try stream.resume(at: offset)
+            try stream.resume(at: offset, state: streamState)
             var complete = false
             for _ in 0..<limit {
                 guard let data = try stream.next() else {
                     complete = true
                     break
                 }
-                let record = try decode(data)
+                let record = try decode(stream.elementArray, data)
                 try Self.validate(record)
                 try database.insert(record, replacing: false)
                 guard processed < Int64.max, inserted < Int64.max else { throw Failure.tooLarge }
@@ -244,7 +300,7 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             if !complete { complete = try stream.finishIfAtEnd() }
             try stream.verifyUnchanged()
             let save = try database.prepare(
-                "INSERT INTO migrations(id,source,offset,processed,inserted,complete) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET offset=excluded.offset,processed=excluded.processed,inserted=excluded.inserted,complete=excluded.complete"
+                "INSERT INTO migrations(id,source,offset,processed,inserted,complete,stream_state) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET offset=excluded.offset,processed=excluded.processed,inserted=excluded.inserted,complete=excluded.complete,stream_state=excluded.stream_state"
             )
             defer { sqlite3_finalize(save) }
             try database.bind(key, to: save, at: 1)
@@ -253,6 +309,7 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             try database.check(sqlite3_bind_int64(save, 4, processed))
             try database.check(sqlite3_bind_int64(save, 5, inserted))
             try database.check(sqlite3_bind_int(save, 6, complete ? 1 : 0))
+            try database.bind(stream.checkpoint(), to: save, at: 7)
             _ = try database.step(save)
             return MigrationProgress(processed: processed, inserted: inserted, complete: complete)
         }
@@ -412,13 +469,13 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         try check(sqlite3_bind_text(statement, index, value, -1, transient))
     }
 
-    private func text(_ statement: OpaquePointer, _ index: Int32, maximum: Int) throws -> String {
+    private func text(_ statement: OpaquePointer, _ index: Int32, maximum: Int, allowEmpty: Bool = false) throws -> String {
         guard sqlite3_column_type(statement, index) == SQLITE_TEXT,
             sqlite3_column_bytes(statement, index) <= maximum,
             let pointer = sqlite3_column_text(statement, index)
         else { throw Failure.invalidRecord }
         let data = Data(bytes: pointer, count: Int(sqlite3_column_bytes(statement, index)))
-        guard let value = String(data: data, encoding: .utf8), Self.valid(value, maximum: maximum) else { throw Failure.invalidRecord }
+        guard let value = String(data: data, encoding: .utf8), (allowEmpty && value.isEmpty) || Self.valid(value, maximum: maximum) else { throw Failure.invalidRecord }
         return value
     }
 

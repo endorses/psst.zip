@@ -38,13 +38,19 @@ data class TransferHistoryEntity(
     val automaticTitle: String? = null,
     @ColumnInfo(defaultValue = "''") val originScope: String = localHistoryScope(serverUrl),
     @ColumnInfo(defaultValue = "0") val summaryUpdating: Boolean = false,
+    @ColumnInfo(defaultValue = "'pending'") val checkpointState: String = "ready",
+    @ColumnInfo(defaultValue = "0") val checkpointColumn: Int = 0,
+    @ColumnInfo(defaultValue = "0") val checkpointOffset: Long = 0,
+    @ColumnInfo(defaultValue = "0") val checkpointKnownFiles: Long = 0,
+    @ColumnInfo(defaultValue = "0") val checkpointKnownBytes: Long = 0,
+    @ColumnInfo(defaultValue = "0") val checkpointSavedFiles: Long = 0,
     @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
 )
 
 @Dao
-interface TransferHistoryDao {
+interface TransferHistoryDao : InboxCheckpointQueries {
     @Query(ACCOUNT_LOCAL_PAGE_SQL)
     fun observeLocalPage(
         accountId: String,
@@ -57,7 +63,7 @@ interface TransferHistoryDao {
     fun hasLegacy(): Flow<Boolean>
 
     @Query(
-        "SELECT * FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC"
+        "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC"
     )
     fun observePage(
         ids: List<String>,
@@ -69,20 +75,45 @@ interface TransferHistoryDao {
 
     @Query("DELETE FROM transfer_history WHERE id = :id") suspend fun delete(id: String)
 
-    @Query("UPDATE transfer_history SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: String, status: String)
+    @Transaction
+    suspend fun updateStatus(id: String, status: String) {
+        getById(id)?.let { archiveCheckpoints(it) }
+        writeStatus(id, status)
+    }
 
-    @Update suspend fun update(entity: TransferHistoryEntity)
+    @Query("UPDATE transfer_history SET status = :status WHERE id = :id")
+    suspend fun writeStatus(id: String, status: String)
+
+    @Transaction
+    suspend fun update(entity: TransferHistoryEntity) {
+        archiveCheckpoints(entity)
+        updateMetadata(entity.metadata())
+    }
+
+    suspend fun archiveCheckpoints(entity: TransferHistoryEntity) {
+        if (entity.checkpointState != "ready") {
+            archiveCheckpointSource(
+                entity.id,
+                entity.checkpointScope(),
+                entity.accountId,
+                entity.originScope,
+            )
+            clearArchivedCheckpointSource(entity.id, entity.checkpointScope())
+        }
+    }
+
+    @Update(entity = TransferHistoryEntity::class)
+    suspend fun updateMetadata(entity: TransferHistoryMetadata)
 
     @Query(
         "UPDATE transfer_history SET automaticTitle = :title WHERE id = :id AND automaticTitle IS NULL"
     )
-    suspend fun setTitleIfEmpty(id: String, title: String)
+    suspend fun writeTitleIfEmpty(id: String, title: String)
 
     @Query(
         "UPDATE transfer_history SET title = :title WHERE id = :id AND serverUrl = :serverUrl AND accountId = :accountId AND type = :type"
     )
-    suspend fun rename(
+    suspend fun writeRename(
         id: String,
         serverUrl: String,
         accountId: String,
@@ -91,33 +122,54 @@ interface TransferHistoryDao {
     )
 
     @Transaction
-    suspend fun mergeAccountResource(
-        incoming: TransferHistoryEntity,
-        access: HistoryAccess,
-        snapshot: ReceivedSnapshot? = null,
+    suspend fun setTitleIfEmpty(id: String, title: String) {
+        getById(id)?.let { archiveCheckpoints(it) }
+        writeTitleIfEmpty(id, title)
+    }
+
+    @Transaction
+    suspend fun rename(
+        id: String,
+        serverUrl: String,
+        accountId: String,
+        type: String,
+        title: String?,
     ) {
+        val row = getById(id) ?: return
+        if (row.serverUrl != serverUrl || row.accountId != accountId || row.type != type) return
+        archiveCheckpoints(row)
+        writeRename(id, serverUrl, accountId, type, title)
+    }
+
+    @Transaction
+    suspend fun retryCheckpointMigration(id: String, scope: String) {
+        val row = getById(id) ?: return
+        require(row.checkpointScope() == scope)
+        if (row.checkpointState == "recovery") update(row.copy(checkpointState = "pending"))
+    }
+
+    @Transaction
+    suspend fun mergeAccountResource(incoming: TransferHistoryEntity, access: HistoryAccess) {
         val current = getById(incoming.id)
-        val merged =
-            zip.psst.android.data.mergeAccountResource(current, incoming, access, snapshot) ?: return
+        val merged = zip.psst.android.data.mergeAccountResource(current, incoming, access) ?: return
         if (current == null) insert(merged) else if (merged != current) update(merged)
     }
 
     @Transaction
-    suspend fun recordSavedFile(id: String, fileId: String) {
-        val current = getById(id) ?: return
-        val saved =
-            kotlinx.serialization.json.Json.decodeFromString<Set<String>>(current.savedFileIdsJson)
-        update(
-            current.copy(
-                savedFileIdsJson =
-                    kotlinx.serialization.json.Json.encodeToString(
-                        kotlinx.serialization.builtins.SetSerializer(
-                            kotlinx.serialization.serializer<String>()
-                        ),
-                        saved + fileId,
-                    )
-            )
-        )
+    suspend fun recordSavedFile(
+        id: String,
+        fileId: String,
+        expectedScope: String? = null,
+        uri: String? = null,
+    ) {
+        val row = getById(id) ?: return
+        require(expectedScope == null || expectedScope == row.checkpointScope()) {
+            "Inbox ownership changed"
+        }
+        require(row.checkpointState == "ready") { "Saved checkpoints are still being imported" }
+        val parts = fileId.split('/')
+        require(parts.size == 2 && parts.all(::checkpointComponent))
+        update(insertSavedCheckpoint(row, parts[0], parts[1], uri))
     }
 
     @Transaction
@@ -125,11 +177,69 @@ interface TransferHistoryDao {
         id: String,
         snapshot: ReceivedSnapshot,
         saved: Boolean = false,
+        expectedScope: String? = null,
     ): TransferHistoryEntity? {
-        val current = getById(id) ?: return null
-        val updated = mergeReceivedHistory(current, snapshot, saved)
-        if (updated != current) update(updated)
-        return updated
+        require(snapshot.children.size <= 100)
+        var row = getById(id) ?: return null
+        require(expectedScope == null || expectedScope == row.checkpointScope()) {
+            "Inbox ownership changed"
+        }
+        row = advanceCheckpointMigration(row)
+        if (saved)
+            require(row.checkpointState == "ready") { "Saved checkpoints are still being imported" }
+        for ((childId, child) in snapshot.children) {
+            require(checkpointComponent(childId))
+            row =
+                mergeCheckpointChild(
+                    row,
+                    InboxChildCheckpoint(
+                        row.checkpointScope(),
+                        id,
+                        childId,
+                        child.fileCount,
+                        child.plaintextSize,
+                        saved,
+                    ),
+                )
+        }
+        val count =
+            if (snapshot.partial)
+                snapshot.completedFiles?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                    ?: row.fileCount
+            else
+                maxOf(
+                    row.fileCount,
+                    row.checkpointKnownFiles.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                )
+        row =
+            row.copy(
+                fileCount = count,
+                summaryUpdating =
+                    if (snapshot.summaryObserved) snapshot.completedFiles == null
+                    else row.summaryUpdating,
+                totalSize = maxOf(row.totalSize, row.checkpointKnownBytes),
+                expiresAt = snapshot.expiresAt ?: row.expiresAt,
+                status =
+                    when {
+                        count > 0 || snapshot.children.isNotEmpty() -> "has_uploads"
+                        row.status == "complete" -> "waiting"
+                        else -> row.status
+                    },
+            )
+        update(row)
+        return row
+    }
+
+    suspend fun savedChildren(row: TransferHistoryEntity, ids: List<String>): Set<String> {
+        require(ids.size <= 100)
+        if (row.checkpointState != "ready") return emptySet()
+        return checkpointSavedChildren(row.checkpointScope(), row.id, ids).toSet()
+    }
+
+    suspend fun savedFiles(row: TransferHistoryEntity, ids: List<String>): Set<String> {
+        require(ids.size <= 100)
+        require(row.checkpointState == "ready") { "Saved checkpoints are still being imported" }
+        return checkpointSavedFiles(row.checkpointScope(), row.id, ids).toSet()
     }
 
     @Transaction
@@ -140,15 +250,32 @@ interface TransferHistoryDao {
         return updated
     }
 
-    @Query("SELECT * FROM transfer_history WHERE id = :id")
+    @Query("SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE id = :id")
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 8, exportSchema = false)
+@Database(
+    entities =
+        [
+            TransferHistoryEntity::class,
+            InboxChildCheckpoint::class,
+            InboxFileCheckpoint::class,
+            InboxLegacyCheckpoint::class,
+        ],
+    version = 9,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
     companion object {
+        val MIGRATION_8_9 =
+            object : Migration(8, 9) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    INBOX_CHECKPOINT_SCHEMA.forEach(db::execSQL)
+                }
+            }
+
         val MIGRATION_7_8 =
             object : Migration(7, 8) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -225,6 +352,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
+                    MIGRATION_8_9,
                 )
                 .build()
         }

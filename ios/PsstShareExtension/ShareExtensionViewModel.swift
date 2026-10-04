@@ -25,10 +25,11 @@ final class ShareExtensionViewModel {
 
     private var originAccount: String?
     func prepare(_ urls: [URL]) {
-        do { _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
+        do {
+            _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
             files = urls
             originAccount = config.accountID
-        } catch { error = String(localized: "Files are encrypted in chunks. The server sets the maximum file size.") }
+        } catch { self.error = String(localized: "Files are encrypted in chunks. The server sets the maximum file size.") }
     }
 
     func start() {

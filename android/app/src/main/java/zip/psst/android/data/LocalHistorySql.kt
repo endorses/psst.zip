@@ -1,7 +1,7 @@
 package zip.psst.android.data
 
 internal const val ACCOUNT_LOCAL_PAGE_SQL =
-    "SELECT * FROM transfer_history WHERE accountId = :accountId AND originScope = :originScope AND (createdAt, id) < (:beforeTime, :beforeId) ORDER BY createdAt DESC, id DESC LIMIT 51"
+    "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE accountId = :accountId AND originScope = :originScope AND (createdAt, id) < (:beforeTime, :beforeId) ORDER BY createdAt DESC, id DESC LIMIT 51"
 internal const val ACCOUNT_SCOPE_COLUMN_SQL =
     "ALTER TABLE transfer_history ADD COLUMN originScope TEXT NOT NULL DEFAULT ''"
 internal const val ACCOUNT_SCOPE_BACKFILL_SQL =

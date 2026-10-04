@@ -47,13 +47,13 @@ struct ScanReceiveView: View {
                     if let message = store.error {
                         Text(message).foregroundStyle(PsstTheme.error)
                     }
-                    if let reportContext, model.currentID == nil || !store.records.contains(where: { $0.id == model.currentID }) {
+                    if let reportContext, model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil {
                         AbuseReportButton(context: reportContext).id(reportContext.id)
                     }
                     pairingPanel
                     uploadPanel
                     progressPanel
-                    if let id = model.currentID, let record = store.records.first(where: { $0.id == id }) {
+                    if let id = model.currentID, let record = try? store.find(id) {
                         GuestDownloadDetail(record: record)
                         Button("View in History", action: onHistory)
                     }
@@ -244,12 +244,12 @@ struct ScanReceiveView: View {
             guard let link = input.link else { return }
             reportContext = AbuseReportContext(origin: link.origin, resourceType: "transfer", resourceID: link.id)
             let id = GuestDownload.identity(origin: link.origin, transferID: link.id)
-            if let record = store.records.first(where: { $0.id == id }), store.requiresRedownloadConsent(record) {
+            if let record = try? store.find(id), store.requiresRedownloadConsent(record) {
                 // Validate the key without changing the stored working key before offering redownload.
                 do {
                     _ = try store.prepare(origin: link.origin, transferID: link.id, key: link.key.toData())
                     redownload = record
-                } catch { error = GuestError.conflictingKey.localizedDescription }
+                } catch { self.error = GuestError.conflictingKey.localizedDescription }
             } else {
                 model.receive(link)
             }

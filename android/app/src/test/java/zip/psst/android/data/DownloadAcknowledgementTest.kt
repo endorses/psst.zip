@@ -233,7 +233,7 @@ class DownloadAcknowledgementTest {
             )
             assertEquals("complete", saved.status)
             assertEquals(setOf("child"), saved.savedTransferIds())
-            retrySavedDownloadAcknowledgements(saved.copy(), client)
+            retrySavedDownloadAcknowledgements(saved.savedTransferIds(), client)
             assertEquals(1, gets)
             assertEquals(2, posts)
         } finally {
@@ -251,7 +251,7 @@ class DownloadAcknowledgementTest {
         try {
             val observed =
                 mergeReceivedHistory(row(), ReceivedSnapshot(mapOf("child" to ReceivedChild(1, 3))))
-            retrySavedDownloadAcknowledgements(observed, client)
+            retrySavedDownloadAcknowledgements(observed.savedTransferIds(), client)
             assertEquals(0, requests)
         } finally {
             client.close()

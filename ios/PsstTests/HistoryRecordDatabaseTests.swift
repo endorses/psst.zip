@@ -34,6 +34,167 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         if code != SQLITE_OK { throw Database.Failure.sqlite(code) }
     }
 
+    func testSnapshotResumesAcrossBothArraysAndPreservesNewerRowsAndDeletes() throws {
+        let folder = try directory()
+        let source = folder.appendingPathComponent("guest.json")
+        let url = folder.appendingPathComponent("records.sqlite")
+        let snapshot = [
+            "records": (0..<103).map { Legacy(id: "record-\($0)", note: "old") },
+            "receipts": (0..<104).map { Legacy(id: "receipt-\($0)", note: "old") },
+        ]
+        try JSONEncoder().encode(snapshot).write(to: source)
+        let original = try Data(contentsOf: source)
+        let db = try Database(url: url)
+        try db.write(record("record-102", body: Data("new".utf8)))
+        try db.remove("receipt-103")
+        var calls = 0
+        func convert(_ name: String, _ data: Data) throws -> Database.Record {
+            calls += 1
+            let old = try JSONDecoder().decode(Legacy.self, from: data)
+            return record(old.id, scope: "guest", kind: name, body: data)
+        }
+        let first = try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert)
+        XCTAssertEqual(first.processed, 100)
+        XCTAssertEqual(calls, 100)
+        XCTAssertFalse(first.complete)
+        let reopened = try Database(url: url)
+        let second = try reopened.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert)
+        XCTAssertEqual(second.processed, 200)
+        XCTAssertEqual(calls, 200)
+        let last = try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert)
+        XCTAssertEqual(last.processed, 207)
+        XCTAssertEqual(last.inserted, 205)
+        XCTAssertTrue(last.complete)
+        XCTAssertEqual(try db.read("record-102")?.body, Data("new".utf8))
+        XCTAssertNil(try db.read("receipt-103"))
+        XCTAssertEqual(try db.read("receipt-0")?.kind, "receipts")
+        XCTAssertEqual(try Data(contentsOf: source), original)
+        try FileManager.default.removeItem(at: source)
+        XCTAssertEqual(try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert), last)
+        XCTAssertEqual(calls, 207)
+    }
+
+    func testSnapshotBoundaryEmptyArraysAndRootArrayCompatibility() throws {
+        let folder = try directory()
+        let fixtures = [
+            (#"{"records":[{"id":"a","note":"x"}],"receipts":[{"id":"b","note":"x"}]}"#, ["records", "receipts"]),
+            (#"{"receipts":[],"records":[{"id":"a","note":"x"}]}"#, ["records"]),
+            (#"{"records":[],"receipts":[]}"#, []),
+            (#"{}"#, []),
+            (#"[{"id":"a","note":"x"}]"#, ["records"]),
+        ]
+        for (index, fixture) in fixtures.enumerated() {
+            let source = folder.appendingPathComponent("source-\(index).json")
+            try Data(fixture.0.utf8).write(to: source)
+            let db = try Database(url: folder.appendingPathComponent("db-\(index).sqlite"))
+            var arrays: [String] = []
+            var progress: Database.MigrationProgress
+            repeat {
+                progress = try db.migrateJSONSnapshotBatch(source: source, key: "guest", limit: 1) { name, data in
+                    arrays.append(name)
+                    return try self.decode(data)
+                }
+            } while !progress.complete
+            XCTAssertEqual(arrays, fixture.1)
+        }
+    }
+
+    func testSnapshotMalformedStructureAndDerivedImportRollback() throws {
+        let folder = try directory()
+        let fixtures = [
+            #"{"records":[],"records":[]}"#, #"{"unknown":[]}"#,
+            #"{"records":[],}"#, #"{"receipts":[{}]} trailing"#,
+            #"{"records":[{"id":"a","note":"x"}],"receipts":["#,
+            #"{"records":null}"#, #"{"records":[{},]}"#,
+        ]
+        for (index, json) in fixtures.enumerated() {
+            let source = folder.appendingPathComponent("bad-\(index).json")
+            try Data(json.utf8).write(to: source)
+            let db = try Database(url: folder.appendingPathComponent("bad-\(index).sqlite"))
+            XCTAssertThrowsError(try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, _ in self.record("bad") })
+            XCTAssertNil(try db.migrationProgress(key: "guest"))
+            XCTAssertNil(try db.read("bad"))
+            XCTAssertEqual(try String(contentsOf: source), json)
+        }
+        let source = folder.appendingPathComponent("derived.json")
+        try legacy(2, at: source)
+        let db = try Database(url: folder.appendingPathComponent("derived.sqlite"))
+        enum Expected: Error { case stop }
+        XCTAssertThrowsError(
+            try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, data in
+                try db.importIfAbsent(self.record("derived"))
+                if try JSONDecoder().decode(Legacy.self, from: data).id == "item-1" { throw Expected.stop }
+                return try self.decode(data)
+            })
+        XCTAssertNil(try db.read("derived"))
+        XCTAssertNil(try db.read("item-0"))
+        XCTAssertNil(try db.migrationProgress(key: "guest"))
+        try db.write(record("derived", body: Data("new".utf8)))
+        try db.remove("deleted")
+        _ = try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, data in
+            XCTAssertFalse(try db.importIfAbsent(self.record("derived")))
+            XCTAssertFalse(try db.importIfAbsent(self.record("deleted")))
+            return try self.decode(data)
+        }
+        XCTAssertEqual(try db.read("derived")?.body, Data("new".utf8))
+        XCTAssertNil(try db.read("deleted"))
+    }
+
+    func testSnapshotSourceChangeAndMigrationModeMismatchFailClosed() throws {
+        let folder = try directory()
+        let source = folder.appendingPathComponent("guest.json")
+        let original = #"{"records":[{"id":"a","note":"x"},{"id":"b","note":"x"}],"receipts":[]}"#
+        try Data(original.utf8).write(to: source)
+        let db = try Database(url: folder.appendingPathComponent("records.sqlite"))
+        _ = try db.migrateJSONSnapshotBatch(source: source, key: "guest", limit: 1) { _, data in try self.decode(data) }
+        XCTAssertThrowsError(try db.migrateJSONBatch(source: source, key: "guest", decode: decode))
+        try Data(original.replacingOccurrences(of: "note", with: "nope").utf8).write(to: source)
+        XCTAssertThrowsError(try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, data in try self.decode(data) })
+        XCTAssertEqual(try db.migrationProgress(key: "guest")?.processed, 1)
+        XCTAssertNil(try db.read("b"))
+    }
+
+    func testVersionOneDatabaseUpgradePreservesRootArrayMigrationProgress() throws {
+        let folder = try directory()
+        let url = folder.appendingPathComponent("records.sqlite")
+        let source = folder.appendingPathComponent("legacy.json")
+        try legacy(2, at: source)
+        do {
+            let db = try Database(url: url)
+            _ = try db.migrateJSONBatch(source: source, key: "legacy", limit: 1, decode: decode)
+        }
+        try rawSQL(url, "ALTER TABLE migrations DROP COLUMN stream_state; PRAGMA user_version=1;")
+        let db = try Database(url: url)
+        let progress = try db.migrateJSONBatch(source: source, key: "legacy", decode: decode)
+        XCTAssertEqual(progress.processed, 2)
+        XCTAssertTrue(progress.complete)
+        XCTAssertNotNil(try db.read("item-0"))
+        XCTAssertNotNil(try db.read("item-1"))
+    }
+
+    func testMigrationDiscoveryUsesBoundedPrimaryKeyPagesAcrossScopes() throws {
+        let url = try directory().appendingPathComponent("records.sqlite")
+        let db = try Database(url: url)
+        try db.transaction { db in
+            for index in 0..<251 { try db.write(record(String(format: "id-%04d", index), scope: "scope-\(index)", kind: index % 2 == 0 ? "slot" : "transfer")) }
+        }
+        // Discovery reads metadata only, including a row whose body cannot decode.
+        try rawSQL(url, "UPDATE records SET body='invalid', body_bytes=-1 WHERE id='id-0000'")
+        var cursor: String?
+        var ids: [String] = []
+        repeat {
+            let page = try db.migrationPage(afterID: cursor, limit: 25)
+            XCTAssertLessThanOrEqual(page.entries.count, 25)
+            ids += page.entries.map(\.id)
+            cursor = page.nextID
+        } while cursor != nil
+        XCTAssertEqual(ids.count, 251)
+        XCTAssertEqual(Set(ids).count, 251)
+        XCTAssertEqual(ids, ids.sorted())
+        XCTAssertThrowsError(try db.migrationPage(limit: 101))
+        XCTAssertThrowsError(try db.migrationPage(afterID: ""))
+    }
+
     func testWritesReadsUpdatesRemovalsAndReopenedConnection() throws {
         let url = try directory().appendingPathComponent("records.sqlite")
         let db = try Database(url: url)

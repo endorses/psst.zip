@@ -70,12 +70,12 @@ final class TransferHistoryStore {
         let existing = try database.migrationProgress(key: "account-history-v2")
         if let existing, existing.complete {
             importedRecords = existing.processed
-            isReady = true
+            isReady = try normalizeCheckpoints(database)
             return
         }
         if !FileManager.default.fileExists(atPath: fileURL.path) {
             guard existing == nil, !legacySourceExpected else { throw AccountError.storage }
-            isReady = true
+            isReady = try normalizeCheckpoints(database)
             return
         }
         let original = defaults.string(forKey: "legacyHistoryServerURL")
@@ -90,11 +90,16 @@ final class TransferHistoryStore {
                 }
                 if record.serverURL == nil, let original { record.serverURL = try? AccountHTTP.origin(original) }
             }
-            return try self.stored(record)
+            let original = try self.stored(record)
+            return try self.stored(ReceiveCheckpointStorage.stage(database, record: record, original: original))
         }
         importedRecords = progress.processed
-        isReady = progress.complete
+        if progress.complete { isReady = try normalizeCheckpoints(database) } else { isReady = false }
         revision &+= 1
+    }
+
+    private func normalizeCheckpoints(_ database: HistoryRecordDatabase) throws -> Bool {
+        try ReceiveCheckpointStorage.migrateBatch(database, decode: { try self.decoder().decode(TransferRecord.self, from: $0) }, encode: stored)
     }
 
     func finishMigration() async {
@@ -197,10 +202,16 @@ final class TransferHistoryStore {
                 remaining -= row.body.count
                 return try decoder().decode(TransferRecord.self, from: row.body)
             }
+            let prior = Dictionary(uniqueKeysWithValues: values.map { ($0.localID, $0) })
             change(&values)
             guard values.count <= 100, values.allSatisfy({ requested.contains($0.localID) }), Set(values.map(\.localID)).count == values.count else { throw AccountError.storage }
             var remainingWriteBytes = HistoryRecordDatabase.maximumPageBytes
-            for record in values {
+            for var record in values {
+                guard (record.savedFiles ?? [:]).isEmpty, (record.savedTransfers ?? []).isEmpty else { throw AccountError.storage }
+                if record.isSlot == true {
+                    record.totalSize = max(record.totalSize, prior[record.localID]?.totalSize ?? 0)
+                    record = ReceiveCheckpointStorage.stripped(record)
+                }
                 let row = try stored(record)
                 guard row.body.count <= remainingWriteBytes else { throw AccountError.storage }
                 remainingWriteBytes -= row.body.count
@@ -210,6 +221,60 @@ final class TransferHistoryStore {
         }
         revision &+= 1
     }
+    /// Load only the currently visible inbox children. Every child is capped at
+    /// 100 indexed files and combined path bytes remain below the page budget.
+    func receiveCheckpoints(parent: TransferRecord, transferIDs: [String], fileExists: @escaping (String, Int64?) -> Bool) throws -> [String: ReceiveCheckpoint] {
+        guard transferIDs.count <= 50, Set(transferIDs).count == transferIDs.count else { throw AccountError.storage }
+        return try readyDatabase().transaction { database in
+            guard let row = try database.read(parent.localID) else { throw AccountError.storage }
+            let current = try decoder().decode(TransferRecord.self, from: row.body)
+            var result: [String: ReceiveCheckpoint] = [:]
+            var remaining = HistoryRecordDatabase.maximumPageBytes
+            for id in transferIDs {
+                let value = try ReceiveCheckpointStorage.load(database, parent: current, transferID: id, fileExists: fileExists)
+                for path in value.paths.values {
+                    guard path.utf8.count <= remaining else { throw AccountError.storage }
+                    remaining -= path.utf8.count
+                }
+                result[id] = value
+            }
+            return result
+        }
+    }
+
+    @discardableResult
+    func saveReceivedFile(parent: TransferRecord, transferID: String, blobID: String, path: String, size: Int64, title: String) throws -> TransferRecord {
+        let result = try readyDatabase().transaction { database in
+            guard let row = try database.read(parent.localID) else { throw AccountError.storage }
+            var current = try decoder().decode(TransferRecord.self, from: row.body)
+            guard current.checkpointVersion == 1 else { throw AccountError.storage }
+            let inserted = try ReceiveCheckpointStorage.save(
+                database, parent: current,
+                file: .init(transferID: transferID, blobID: blobID, path: path, size: size))
+            if inserted {
+                let total = current.totalSize.addingReportingOverflow(size)
+                guard !total.overflow, total.partialValue >= 0 else { throw AccountError.storage }
+                current.totalSize = total.partialValue
+            }
+            current.title = current.title ?? String(title.prefix(1024))
+            try database.write(stored(current))
+            return current
+        }
+        revision &+= 1
+        return result
+    }
+
+    func completeReceivedTransfer(parent: TransferRecord, transferID: String, blobIDs: [String], fileExists: @escaping (String, Int64?) -> Bool) throws {
+        try readyDatabase().transaction { database in
+            guard let row = try database.read(parent.localID) else { throw AccountError.storage }
+            let current = try decoder().decode(TransferRecord.self, from: row.body)
+            let checkpoint = try ReceiveCheckpointStorage.load(database, parent: current, transferID: transferID, fileExists: fileExists)
+            guard checkpoint.readyToAcknowledge(blobIDs: blobIDs) else { throw AccountError.storage }
+            try ReceiveCheckpointStorage.complete(database, parent: current, transferID: transferID)
+        }
+        revision &+= 1
+    }
+
     func revoke(_ record: TransferRecord, session: DeviceSession) async throws {
         guard record.canManage(as: session), SecretStore.session == session else { throw AccountError.changed }
         let path = (record.isSlot == true ? "slots/" : "transfers/") + record.id

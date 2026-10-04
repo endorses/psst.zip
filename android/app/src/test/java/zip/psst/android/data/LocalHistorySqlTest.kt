@@ -58,7 +58,11 @@ class LocalHistorySqlTest {
             db.exec(ACCOUNT_SCOPE_BACKFILL_SQL)
             db.exec(ACCOUNT_PAGE_INDEX_SQL)
             val sql =
-                ACCOUNT_LOCAL_PAGE_SQL.replace(":accountId", "?")
+                ACCOUNT_LOCAL_PAGE_SQL.replace(
+                        HISTORY_METADATA_PROJECTION,
+                        "id,accountId,serverUrl,createdAt,encryptionKey,receivedTransfersJson",
+                    )
+                    .replace(":accountId", "?")
                     .replace(":originScope", "?")
                     .replace(":beforeTime", "?")
                     .replace(":beforeId", "?")

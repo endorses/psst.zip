@@ -73,7 +73,7 @@ Remote pagination does not finish local storage bounds. Browser link/name metada
 now uses exact IndexedDB entries, Android account and guest history use indexed
 local pages, and iOS account history uses a shared SQLite store with resumable
 legacy import. These changes preserve original migration sources and local keys.
-Growing mobile inbox checkpoint maps and iOS guest history/queues remain separate
-work. See [local history storage](local-history-storage.md) for the bounds,
+Mobile inbox checkpoints and iOS guest history/retry queues now use indexed records
+as well. See [local history storage](local-history-storage.md) for the bounds,
 migration exceptions and remaining checks. Native iOS builds and device checks
 remain pending on macOS/Xcode; portable Swift checks are not an iOS build.

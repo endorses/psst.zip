@@ -6,7 +6,7 @@ import Foundation
     import Glibc
 #endif
 
-/// Reads one object from a legacy JSON root array at a time. Progress offsets
+/// Reads one object from a legacy JSON root array or guest snapshot at a time. Progress offsets
 /// always identify the next object, never a partially parsed record. Parsing is
 /// bounded to 16 MiB per object by the database caller, 256 nesting levels and
 /// 1 MiB of whitespace between tokens. Exceeding a bound preserves the source.
@@ -23,6 +23,14 @@ final class HistoryJSONStream {
         let changedNanoseconds: Int64
     }
 
+    private struct SnapshotState: Codable {
+        var objectRoot = false
+        var arrays: [String] = []
+        var current = "records"
+    }
+    private let snapshot: Bool
+    private var snapshotState = SnapshotState()
+    private(set) var elementArray = "records"
     let identity: String
     private(set) var offset: Int64 = 0
     private let original: Identity
@@ -35,8 +43,9 @@ final class HistoryJSONStream {
     private var finished = false
     private var closed = false
 
-    init(url: URL, maximumObjectBytes: Int) throws {
+    init(url: URL, maximumObjectBytes: Int, snapshot: Bool = false) throws {
         guard url.isFileURL, maximumObjectBytes > 0 else { throw Failure.invalidSource }
+        self.snapshot = snapshot
         source = url
         file = try FileHandle(forReadingFrom: url)
         self.maximumObjectBytes = maximumObjectBytes
@@ -70,8 +79,23 @@ final class HistoryJSONStream {
         else { throw Failure.sourceChanged }
     }
 
-    func resume(at offset: Int64) throws {
+    func checkpoint() throws -> String {
+        snapshot ? String(decoding: try JSONEncoder().encode(snapshotState), as: UTF8.self) : ""
+    }
+
+    func resume(at offset: Int64, state: String = "") throws {
         guard offset >= 0, offset <= original.size else { throw Failure.invalidArray }
+        if snapshot && offset > 0 {
+            guard state.utf8.count <= 1024, !state.isEmpty else { throw Failure.invalidArray }
+            snapshotState = try JSONDecoder().decode(SnapshotState.self, from: Data(state.utf8))
+            guard snapshotState.arrays.count <= 2, Set(snapshotState.arrays).count == snapshotState.arrays.count,
+                snapshotState.arrays.allSatisfy({ $0 == "records" || $0 == "receipts" }),
+                snapshotState.current == "records" || snapshotState.current == "receipts",
+                snapshotState.objectRoot ? snapshotState.arrays.contains(snapshotState.current) : snapshotState.arrays.isEmpty && snapshotState.current == "records"
+            else { throw Failure.invalidArray }
+        } else {
+            guard state.isEmpty else { throw Failure.invalidArray }
+        }
         try file.seek(toOffset: UInt64(offset))
         buffer = Data()
         position = 0
@@ -84,15 +108,18 @@ final class HistoryJSONStream {
         if finished { return nil }
         try skipWhitespace()
         if atBeginning {
-            guard try take() == 91 else { throw Failure.invalidArray }  // [
+            let root = try take()
             atBeginning = false
-            try skipWhitespace()
-            if try peek() == 93 {  // ]: an empty root array
-                _ = try take()
-                try finish()
-                return nil
+            if root == 123 && snapshot {
+                snapshotState.objectRoot = true
+                try beginMember(allowEnd: true)
+            } else {
+                guard root == 91 else { throw Failure.invalidArray }
+                try beginArrayContents()
             }
+            if finished { return nil }
         }
+        elementArray = snapshotState.current
         guard try take() == 123 else { throw Failure.invalidArray }  // {
         var data = Data([123])
         var expected: [UInt8] = [125]
@@ -121,7 +148,7 @@ final class HistoryJSONStream {
         case 44:  // ,: resumable offset points to the next complete object
             try skipWhitespace()
             guard try peek() == 123 else { throw Failure.invalidArray }
-        case 93: try finish()
+        case 93: try finishArray()
         default: throw Failure.invalidArray
         }
         return data
@@ -132,6 +159,53 @@ final class HistoryJSONStream {
         try skipWhitespace()
         guard try peek() == 123 else { throw Failure.invalidArray }
         return false
+    }
+
+    private func beginArrayContents() throws {
+        try skipWhitespace()
+        if try peek() == 93 {
+            _ = try take()
+            try finishArray()
+        } else {
+            guard try peek() == 123 else { throw Failure.invalidArray }
+        }
+    }
+
+    private func beginMember(allowEnd: Bool) throws {
+        try skipWhitespace()
+        if try peek() == 125, allowEnd {
+            _ = try take()
+            try finish()
+            return
+        }
+        guard snapshotState.arrays.count < 2, try take() == 34 else { throw Failure.invalidArray }
+        var key = Data([34])
+        var escaped = false
+        while true {
+            guard let byte = try take() else { throw Failure.invalidArray }
+            guard key.count < 128 else { throw Failure.tooLarge }
+            key.append(byte)
+            if escaped { escaped = false } else if byte == 92 { escaped = true } else if byte == 34 { break }
+        }
+        let name = try JSONDecoder().decode(String.self, from: key)
+        guard name == "records" || name == "receipts", !snapshotState.arrays.contains(name) else { throw Failure.invalidArray }
+        snapshotState.arrays.append(name)
+        snapshotState.current = name
+        try skipWhitespace()
+        guard try take() == 58 else { throw Failure.invalidArray }
+        try skipWhitespace()
+        guard try take() == 91 else { throw Failure.invalidArray }
+        try beginArrayContents()
+    }
+
+    private func finishArray() throws {
+        guard snapshotState.objectRoot else { return try finish() }
+        try skipWhitespace()
+        switch try take() {
+        case 44: try beginMember(allowEnd: false)
+        case 125: try finish()
+        default: throw Failure.invalidArray
+        }
     }
 
     private func finish() throws {

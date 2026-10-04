@@ -155,10 +155,10 @@ final class NavigationHistoryTests: XCTestCase {
         let largePath = String(repeating: "a", count: 9 * 1024 * 1024)
         XCTAssertThrowsError(
             try store.mutate(ids: [first.localID, second.localID]) { records in
-                for index in records.indices { records[index].savedFiles = ["file": largePath] }
+                for index in records.indices { records[index].customTitle = largePath }
             })
-        XCTAssertNil(try store.record(first.localID)?.savedFiles)
-        XCTAssertNil(try store.record(second.localID)?.savedFiles)
+        XCTAssertNil(try store.record(first.localID)?.customTitle)
+        XCTAssertNil(try store.record(second.localID)?.customTitle)
     }
 
     func testHistoryPageMergePreservesUnloadedRecordsAndConcurrentCheckpoints() throws {
@@ -179,8 +179,8 @@ final class NavigationHistoryTests: XCTestCase {
         try store.add(owned("unloaded"))
         let secondWriter = TransferHistoryStore(defaults: defaults, fileURL: file)
         var updated = local
-        updated.savedFiles = ["child|file": "Received/file"]
-        updated.savedTransfers = ["child"]
+        _ = try secondWriter.saveReceivedFile(parent: updated, transferID: "child", blobID: "file", path: "Received/file", size: 3, title: "file")
+        try secondWriter.completeReceivedTransfer(parent: updated, transferID: "child", blobIDs: ["file"], fileExists: { _, _ in true })
         updated.customTitle = "Concurrent local name"
         try secondWriter.update(updated)
         let unknown =
@@ -190,14 +190,15 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(merged.fileCount, 3)
         XCTAssertEqual(merged.serverSummaryKnown, false)
         XCTAssertEqual(merged.shareURL, local.shareURL)
-        XCTAssertEqual(merged.savedFiles, updated.savedFiles)
-        XCTAssertEqual(merged.savedTransfers, updated.savedTransfers)
+        XCTAssertNil(merged.savedFiles)
+        XCTAssertNil(merged.savedTransfers)
+        XCTAssertTrue(try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?.isSaved(fileCount: 1) == true)
         XCTAssertEqual(merged.customTitle, updated.customTitle)
         XCTAssertNotEqual(store.visible(for: session).first { $0.id == "unloaded" }?.state, .revoked)
         let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(of: "updating", with: "ready")
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(ready.utf8)), session: session)
         XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.fileCount, 1)
-        XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.savedFiles, updated.savedFiles)
+        XCTAssertTrue(try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?.isSaved(fileCount: 1) == true)
     }
 
     func testIndexedHistoryImportAndPagesPreserveEveryRecord() async throws {

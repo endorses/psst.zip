@@ -13,20 +13,23 @@ enum StreamedFiles {
     }
 
     @MainActor
-    static func receive(client: ApiClient, transferID: String, file: FileMetadata, key: KotlinByteArray,
-                        progress: @escaping @MainActor (Int64) -> Void = { _ in }) async throws -> URL
-    {
+    static func receive(
+        client: ApiClient, transferID: String, file: FileMetadata, key: KotlinByteArray,
+        progress: @escaping @MainActor (Int64) -> Void = { _ in }
+    ) async throws -> URL {
         guard file.encoding == "chunked-v1", file.chunkSize == Int32(chunkBytes), !file.encryptionId.isEmpty else { throw AccountError.request }
         let writer = try AuthenticatedFileWriter(file: file, key: key)
         do {
-            try await client.transfers.downloadFileChunks(transferId: transferID, fileId: file.blobId,
-                                                          wireSize: ChunkedFileCrypto.shared.wireSize(totalSize: file.size),
-                                                          chunkBytes: Int32(frameBytes), onChunk: { frame in
-                                                              let accepted = writer.accept(frame)
-                                                              let count = writer.written
-                                                              Task { @MainActor in progress(count) }
-                                                              return KotlinBoolean(bool: accepted)
-                                                          })
+            try await client.transfers.downloadFileChunks(
+                transferId: transferID, fileId: file.blobId,
+                wireSize: ChunkedFileCrypto.shared.wireSize(totalSize: file.size),
+                chunkBytes: Int32(frameBytes),
+                onChunk: { frame in
+                    let accepted = writer.accept(frame)
+                    let count = writer.written
+                    Task { @MainActor in progress(count) }
+                    return KotlinBoolean(bool: accepted)
+                })
             try Task.checkCancellation()
             return try writer.finish()
         } catch {
@@ -40,6 +43,7 @@ enum StreamedFiles {
         defer { try? handle.close() }
         var hash = SHA256()
         while let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty {
+            try Task.checkCancellation()
             hash.update(data: data)
         }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
@@ -61,7 +65,8 @@ final class AuthenticatedFileWriter {
     }
 
     init(file: FileMetadata, key: KotlinByteArray) throws {
-        self.file = file; self.key = key
+        self.file = file
+        self.key = key
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Receiving", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         url = directory.appendingPathComponent(UUID().uuidString + ".pending")
@@ -76,8 +81,12 @@ final class AuthenticatedFileWriter {
                 let plaintext = try ChunkedFileCrypto.shared.decrypt(key: key, id: file.encryptionId, totalSize: file.size, index: next, frame: frame).toData()
                 try ReceiveSafety.checkSpace(at: url.deletingLastPathComponent(), additional: Int64(plaintext.count))
                 try handle.write(contentsOf: plaintext)
-                count += Int64(plaintext.count); next += 1
-            } catch { failure = error; return false }
+                count += Int64(plaintext.count)
+                next += 1
+            } catch {
+                failure = error
+                return false
+            }
             return true
         }
     }
@@ -88,12 +97,16 @@ final class AuthenticatedFileWriter {
                 throw failure
             }
             guard count == file.size, next == max(1, (file.size + Int64(StreamedFiles.chunkBytes) - 1) / Int64(StreamedFiles.chunkBytes)) else { throw AccountError.request }
-            try handle.synchronize(); try handle.close()
+            try handle.synchronize()
+            try handle.close()
             return url
         }
     }
 
     func discard() {
-        lock.withLock { try? handle.close(); try? FileManager.default.removeItem(at: url) }
+        lock.withLock {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }

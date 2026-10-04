@@ -1,11 +1,13 @@
 import CoreImage
-@testable import Psst
 import XCTest
+
+@testable import Psst
 
 final class TransferWorkflowTests: XCTestCase {
     private func record() -> TransferRecord {
-        TransferRecord(id: "original-slot", direction: .received, state: .complete, createdAt: Date(),
-                       fileCount: 2, totalSize: 0, shareURL: nil, serverURL: "https://one.example", ownerID: "alice", isSlot: true)
+        TransferRecord(
+            id: "original-slot", direction: .received, state: .complete, createdAt: Date(),
+            fileCount: 2, totalSize: 0, shareURL: nil, serverURL: "https://one.example", ownerID: "alice", isSlot: true)
     }
 
     func testPrivateInboxSecretIsScopedAndNotSerializedIntoHistory() throws {
@@ -38,35 +40,29 @@ final class TransferWorkflowTests: XCTestCase {
     }
 
     func testPartialSaveRetryKeepsOriginalSlotAndSkipsSuccessfulFile() throws {
-        var checkpoint = ReceiveCheckpoint(record: record(), fileExists: { $0 == "saved-first" })
-        checkpoint.saved(transferID: "child", blobID: "first", path: "saved-first", size: 10, title: "notes.txt")
-        let persisted = try JSONEncoder().encode(checkpoint.record)
-        let reopened = try JSONDecoder().decode(TransferRecord.self, from: persisted)
-        let retry = ReceiveCheckpoint(record: reopened, fileExists: { $0 == "saved-first" })
+        let retry = ReceiveCheckpoint(
+            slotID: "original-slot", transferID: "child", paths: ["first": "saved-first"], complete: false, fileExists: { path, _ in path == "saved-first" })
         XCTAssertEqual(retry.slotID, "original-slot")
-        XCTAssertFalse(retry.needsFile(transferID: "child", blobID: "first"))
-        XCTAssertTrue(retry.needsFile(transferID: "child", blobID: "second"))
-        XCTAssertFalse(retry.readyToAcknowledge(transferID: "child", blobIDs: ["first", "second"]))
+        XCTAssertFalse(retry.needsFile(blobID: "first"))
+        XCTAssertTrue(retry.needsFile(blobID: "second"))
+        XCTAssertFalse(retry.readyToAcknowledge(blobIDs: ["first", "second"]))
     }
 
     func testAcknowledgementOnlyAfterAllSavedAndCountsDoNotDoubleOnRetry() {
-        var checkpoint = ReceiveCheckpoint(record: record(), fileExists: { _ in true })
-        XCTAssertFalse(checkpoint.completed(transferID: "child", blobIDs: []))
-        checkpoint.saved(transferID: "child", blobID: "first", path: "first", size: 10, title: "notes.txt")
-        XCTAssertFalse(checkpoint.completed(transferID: "child", blobIDs: ["first", "second"]))
-        checkpoint.saved(transferID: "child", blobID: "second", path: "second", size: 20, title: "other.txt")
-        checkpoint.saved(transferID: "child", blobID: "first", path: "first", size: 10, title: "notes.txt")
-        XCTAssertTrue(checkpoint.completed(transferID: "child", blobIDs: ["first", "second"]))
-        XCTAssertTrue(checkpoint.completed(transferID: "child", blobIDs: ["first", "second"]))
-        XCTAssertEqual(checkpoint.record.totalSize, 30)
-        XCTAssertEqual(checkpoint.record.savedTransfers, ["child"])
+        let checkpoint = ReceiveCheckpoint(
+            slotID: "original-slot", transferID: "child", paths: ["first": "first", "second": "second"], complete: true, fileExists: { _, _ in true })
+        XCTAssertFalse(checkpoint.readyToAcknowledge(blobIDs: []))
+        XCTAssertFalse(checkpoint.readyToAcknowledge(blobIDs: ["first", "first"]))
+        XCTAssertTrue(checkpoint.readyToAcknowledge(blobIDs: ["first", "second"]))
+        XCTAssertTrue(checkpoint.isSaved(fileCount: 2))
+        XCTAssertFalse(checkpoint.isSaved(fileCount: 3))
     }
 
     func testMissingLocalFileIsSavedAgain() {
-        var checkpoint = ReceiveCheckpoint(record: record(), fileExists: { _ in false })
-        checkpoint.saved(transferID: "child", blobID: "first", path: "deleted", size: 10, title: "notes.txt")
-        XCTAssertTrue(checkpoint.needsFile(transferID: "child", blobID: "first"))
-        XCTAssertFalse(checkpoint.readyToAcknowledge(transferID: "child", blobIDs: ["first"]))
+        let checkpoint = ReceiveCheckpoint(slotID: "original-slot", transferID: "child", paths: ["first": "deleted"], complete: true, fileExists: { _, _ in false })
+        XCTAssertTrue(checkpoint.needsFile(blobID: "first"))
+        XCTAssertFalse(checkpoint.readyToAcknowledge(blobIDs: ["first"]))
+        XCTAssertFalse(checkpoint.isSaved(fileCount: 1))
     }
 
     func testOldHistoryDecodesWithoutAssigningAnotherAccountsOwnership() throws {
@@ -136,12 +132,14 @@ final class TransferWorkflowTests: XCTestCase {
         let first = directory.appendingPathComponent("first.txt")
         try Data("first".utf8).write(to: first)
         do {
-            _ = try await ShareSelection.loadAll([0, 1], load: { index in
-                if index == 0 {
-                    return first
-                }
-                throw ShareSelectionError.tooLarge
-            })
+            _ = try await ShareSelection.loadAll(
+                [0, 1],
+                load: { index in
+                    if index == 0 {
+                        return first
+                    }
+                    throw ShareSelectionError.tooLarge
+                })
             XCTFail("An oversized attachment must reject the entire selection")
         } catch {
             XCTAssertEqual(error as? ShareSelectionError, .tooLarge)
@@ -157,12 +155,14 @@ final class TransferWorkflowTests: XCTestCase {
         let first = directory.appendingPathComponent("first.txt")
         try Data("first".utf8).write(to: first)
         do {
-            _ = try await ShareSelection.loadAll([0, 1], load: { index in
-                if index == 0 {
-                    return first
-                }
-                throw NSError(domain: "provider", code: 1)
-            })
+            _ = try await ShareSelection.loadAll(
+                [0, 1],
+                load: { index in
+                    if index == 0 {
+                        return first
+                    }
+                    throw NSError(domain: "provider", code: 1)
+                })
             XCTFail("An unreadable attachment must reject the entire selection")
         } catch {
             XCTAssertEqual(error as? ShareSelectionError, .unreadable)
@@ -189,13 +189,16 @@ final class TransferWorkflowTests: XCTestCase {
         let native = try XCTUnwrap(QRCodeGenerator.generate(from: link, size: 1)?.cgImage)
         var pixels = [UInt8](repeating: 255, count: native.width * native.height)
         try pixels.withUnsafeMutableBytes { bytes in
-            let canvas = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: native.width, height: native.height, bitsPerComponent: 8, bytesPerRow: native.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+            let canvas = try XCTUnwrap(
+                CGContext(
+                    data: bytes.baseAddress, width: native.width, height: native.height, bitsPerComponent: 8, bytesPerRow: native.width, space: CGColorSpaceCreateDeviceGray(),
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue))
             canvas.draw(native, in: CGRect(x: 0, y: 0, width: native.width, height: native.height))
         }
         var darkColumns = Set<Int>()
         var darkRows = Set<Int>()
-        for y in 0 ..< native.height {
-            for x in 0 ..< native.width where pixels[y * native.width + x] < 128 {
+        for y in 0..<native.height {
+            for x in 0..<native.width where pixels[y * native.width + x] < 128 {
                 darkColumns.insert(x)
                 darkRows.insert(y)
             }
@@ -208,8 +211,10 @@ final class TransferWorkflowTests: XCTestCase {
         let scaled = try XCTUnwrap(QRCodeGenerator.generate(from: link, size: 1080)?.cgImage)
         XCTAssertEqual(scaled.width, native.width * (1080 / native.width))
         XCTAssertEqual(scaled.width, scaled.height)
-        let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: CIContext(),
-                                                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+        let detector = try XCTUnwrap(
+            CIDetector(
+                ofType: CIDetectorTypeQRCode, context: CIContext(),
+                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
         let feature = try XCTUnwrap(detector.features(in: CIImage(cgImage: scaled)).first as? CIQRCodeFeature)
         XCTAssertEqual(feature.messageString, link)
     }

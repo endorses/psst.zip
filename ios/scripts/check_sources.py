@@ -47,7 +47,9 @@ assert "completionHandler(nil)" in read("Shared/SessionStore.swift")
 assert "sessionToken: session.token" in read("Shared/ServerConfigManager.swift")
 assert "HistorySnapshot.load" in read("Psst/ViewModels/HistoryPageViewModel.swift")
 assert '"auth/resources?limit=' in read("Shared/HistorySnapshot.swift")
-assert "checkpoint.completed" in read("Psst/ViewModels/ReceiveViewModel.swift")
+assert "historyStore.completeReceivedTransfer" in read(
+    "Psst/ViewModels/ReceiveViewModel.swift"
+)
 assert "record == nil" in read("Psst/ViewModels/ReceiveViewModel.swift")
 assert "history.revoke" in read("Psst/Views/HistoryView.swift")
 assert "group.zip.psst.ios" in read("Shared/AppConstants.swift")
@@ -137,7 +139,9 @@ assert "sessionToken" not in read("Psst/ViewModels/GuestTransferModel.swift")
 assert "GuestUploadCleanup" in read("Psst/ViewModels/GuestTransferModel.swift")
 assert "SecretStore.write(key" in read("Psst/Services/GuestDownloadStore.swift")
 assert "transfers.delete" not in read("Psst/Services/GuestDownloadStore.swift")
-assert "remainingReceipts" in read("Psst/Services/GuestDownloadStore.swift")
+# Wiring only: independent receipt rows survive local history removal. Runtime
+# preservation and retry behavior are covered by the guest storage tests.
+assert 'kinds: ["receipt"]' in read("Psst/Services/GuestDownloadStore.swift")
 assert "ScanInputClassifier.shared.classify" in read("Shared/ServerConfigManager.swift")
 assert "testKillAfterPublicationReconcilesIntentBeforeReceipt" in read(
     "PsstTests/GuestDownloadTests.swift"

@@ -59,6 +59,6 @@ final class DeviceHistoryPageViewModel {
             records = page.records
             next = page.next
             error = nil
-        } catch { error = "Local links could not be read. The previous page has been kept. Restore storage access and retry." }
+        } catch { self.error = "Local links could not be read. The previous page has been kept. Restore storage access and retry." }
     }
 }

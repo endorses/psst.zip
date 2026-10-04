@@ -1,73 +1,88 @@
 import Foundation
 import Shared
 
-/// Retry delivery receipts without downloading already decrypted files again.
+/// Indexed receipt retries; owner-scoped work never borrows another account's session.
 @MainActor
 final class DownloadAcknowledgements {
     static let shared = DownloadAcknowledgements()
-
-    private struct Pending: Codable, Equatable {
+    private struct Pending: Codable {
         let serverURL: String
         let transferID: String
-        var ownerID: String? = nil
+        var ownerID: String?
     }
-
-    private let storageKey = "pendingDownloadAcknowledgements"
+    private let storage = DeviceRetryStorage(kind: "download-receipts")
     private var isFlushing = false
-    private var pending: [Pending] = []
+    private init() {}
 
-    private init() {
-        let data = AppConstants.sharedDefaults.data(forKey: storageKey) ?? Data()
-        pending = (try? JSONDecoder().decode([Pending].self, from: data)) ?? []
+    func enqueue(serverURL: String, transferID: String, ownerID: String? = nil) throws {
+        do {
+            try storage.queue().enqueue(.init(origin: serverURL, transferID: transferID, ownerID: ownerID))
+            DeviceRetryStatus.shared.receiptError = nil
+        } catch {
+            DeviceRetryStatus.shared.receiptError = Self.storageMessage
+            throw error
+        }
     }
-
-    func enqueue(serverURL: String, transferID: String, ownerID: String? = nil) {
-        let receipt = Pending(serverURL: serverURL, transferID: transferID, ownerID: ownerID)
-        guard !pending.contains(receipt) else { return }
-        pending.append(receipt)
-        persist()
-    }
-
+    private static let storageMessage =
+        "Delivery confirmations could not be saved or read. Saved files and existing confirmation records are preserved. Restore storage access and retry."
     func flush() async {
         guard !isFlushing else { return }
         isFlushing = true
-        defer { isFlushing = false }
-        // Each request has a five-second timeout in the shared API.
-        // Rotate unsuccessful entries so an offline host cannot starve other hosts.
-        var attempted: [Pending] = []
-        for _ in 0 ..< 4 {
-            guard !Task.isCancelled,
-                  let receipt = pending.first(where: { !attempted.contains($0) }) else { return }
-            attempted.append(receipt)
-            var token: String?
-            if let ownerID = receipt.ownerID {
-                guard let session = SecretStore.session, session.canTransfer,
-                      session.userID == ownerID, session.serverURL == receipt.serverURL else { continue }
-                token = session.token
+        defer {
+            isFlushing = false
+            DeviceRetryStatus.shared.importingReceipts = false
+        }
+        do {
+            DeviceRetryStatus.shared.importingReceipts = true
+            while true {
+                try Task.checkCancellation()
+                let complete = try storage.migrate(
+                    read: {
+                        guard let value = AppConstants.sharedDefaults.object(forKey: "pendingDownloadAcknowledgements") else { return nil }
+                        guard let data = value as? Data else { throw AccountError.storage }
+                        return data
+                    },
+                    decode: { data in
+                        let old = try JSONDecoder().decode(Pending.self, from: data)
+                        return .init(origin: old.serverURL, transferID: old.transferID, ownerID: old.ownerID)
+                    })
+                if complete { break }
+                await Task.yield()
             }
-            let client = ApiClient(
-                config: ServerConfig(baseUrl: receipt.serverURL),
-                httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token
-            )
-            do {
-                try await client.transfers.acknowledgeDownload(transferId: receipt.transferID)
-                pending.removeAll { $0 == receipt }
-            } catch {
-                if Task.isCancelled {
-                    client.close()
-                    return
+            DeviceRetryStatus.shared.importingReceipts = false
+            let queue = try storage.queue()
+            var scopes = ["anonymous"]
+            if let session = SecretStore.session, session.canTransfer {
+                scopes.append(DeviceRetryQueue.identity([session.serverURL, session.userID]))
+            }
+            let jobs = try queue.batch(scopes: scopes)
+            var unavailable = false
+            for receipt in jobs.jobs {
+                try Task.checkCancellation()
+                var token: String?
+                if let ownerID = receipt.ownerID {
+                    guard let session = SecretStore.session, session.canTransfer,
+                        session.userID == ownerID, session.serverURL == receipt.origin
+                    else { continue }
+                    token = session.token
                 }
-                pending.removeAll { $0 == receipt }
-                pending.append(receipt)
+                let client = ApiClient(config: ServerConfig(baseUrl: receipt.origin), httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token)
+                defer { client.close() }
+                do {
+                    try await client.transfers.acknowledgeDownload(transferId: receipt.transferID)
+                    try queue.remove(receipt)
+                } catch {
+                    try Task.checkCancellation()
+                    try queue.rotate(receipt)
+                    unavailable = true
+                }
             }
-            client.close()
-            persist()
-        }
-    }
-
-    private func persist() {
-        if let data = try? JSONEncoder().encode(pending) {
-            AppConstants.sharedDefaults.set(data, forKey: storageKey)
-        }
+            DeviceRetryStatus.shared.receiptError =
+                jobs.hadInvalidJobs
+                ? "Some saved confirmation records could not be read. They are preserved; other confirmations will continue. Restore local storage or retry."
+                : unavailable ? "Some delivery confirmations are waiting for a connection. Saved files remain available. Retry when connected." : nil
+        } catch is CancellationError {
+            // Committed import progress and queued jobs remain intact.
+        } catch { DeviceRetryStatus.shared.receiptError = Self.storageMessage }
     }
 }

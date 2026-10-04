@@ -9,8 +9,6 @@ import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 @Serializable data class ReceivedChild(val fileCount: Int, val plaintextSize: Long? = null)
 
@@ -31,62 +29,6 @@ internal fun DropSlot.receivedSnapshot() =
         partial = paginated,
         summaryObserved = paginated,
     )
-
-internal fun TransferHistoryEntity.savedTransferIds(): Set<String> =
-    Json.decodeFromString(savedTransferIdsJson)
-
-internal fun TransferHistoryEntity.savedFileCount(): Int {
-    val perFile = Json.decodeFromString<Set<String>>(savedFileIdsJson).size
-    val children = Json.decodeFromString<Map<String, ReceivedChild>>(receivedTransfersJson)
-    return maxOf(perFile, savedTransferIds().sumOf { children[it]?.fileCount ?: 0 })
-}
-
-/** Merge under a Room transaction so delayed polls cannot undo a successful save. */
-internal fun mergeReceivedHistory(
-    current: TransferHistoryEntity,
-    snapshot: ReceivedSnapshot,
-    saved: Boolean = false,
-): TransferHistoryEntity {
-    val known = Json.decodeFromString<Map<String, ReceivedChild>>(current.receivedTransfersJson)
-    val children = known.toMutableMap()
-    for ((id, child) in snapshot.children) {
-        val previous = children[id]
-        children[id] =
-            ReceivedChild(
-                previous?.fileCount ?: child.fileCount,
-                child.plaintextSize ?: previous?.plaintextSize,
-            )
-    }
-    val savedIds = current.savedTransferIds() + if (saved) snapshot.children.keys else emptySet()
-    val knownCount =
-        children.values.sumOf { it.fileCount.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-    val count =
-        if (snapshot.partial) {
-            snapshot.completedFiles?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
-                ?: current.fileCount
-        } else maxOf(current.fileCount, knownCount)
-    val status =
-        when {
-            snapshot.partial && current.status == "complete" ->
-                if (count > 0) "has_uploads" else "waiting"
-            children.isEmpty() -> current.status
-            !snapshot.partial && knownCount == count && savedIds.containsAll(children.keys) ->
-                "complete"
-            children.isNotEmpty() || count > 0 -> "has_uploads"
-            else -> current.status
-        }
-    return current.copy(
-        fileCount = count,
-        summaryUpdating =
-            if (snapshot.summaryObserved) snapshot.completedFiles == null
-            else current.summaryUpdating,
-        totalSize = maxOf(current.totalSize, children.values.sumOf { it.plaintextSize ?: 0 }),
-        status = status,
-        receivedTransfersJson = Json.encodeToString(children.toMap()),
-        savedTransferIdsJson = Json.encodeToString(savedIds),
-        expiresAt = snapshot.expiresAt ?: current.expiresAt,
-    )
-}
 
 internal fun mergeSentHistory(
     current: TransferHistoryEntity,
@@ -129,11 +71,15 @@ internal suspend fun refreshHistoryEntry(
                 } else {
                     val slot = client.slots.get(row.id)
                     if (!contextCurrent()) throw CancellationException("Account changed")
-                    dao.mergeReceived(row.id, slot.receivedSnapshot())
+                    val updated =
+                        dao.mergeReceived(
+                            row.id,
+                            slot.receivedSnapshot(),
+                            expectedScope = row.checkpointScope(),
+                        ) ?: row
                     retrySavedDownloadAcknowledgements(
-                        row,
+                        dao.savedChildren(updated, slot.completedTransfers.map { it.transferId }),
                         client,
-                        slot.completedTransfers.map { it.transferId }.toSet(),
                     )
                 }
             } catch (e: CancellationException) {

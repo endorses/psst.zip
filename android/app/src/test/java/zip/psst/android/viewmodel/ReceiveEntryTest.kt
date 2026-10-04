@@ -26,11 +26,15 @@ class ReceiveEntryTest {
     @Test
     fun historyReopensTheOriginalSlotKeyAndSavedState() {
         val saved =
-            mergeReceivedHistory(
-                row(),
-                ReceivedSnapshot(mapOf("child" to ReceivedChild(2, 123))),
-                saved = true,
-            )
+            row()
+                .copy(
+                    status = "complete",
+                    fileCount = 2,
+                    totalSize = 123,
+                    checkpointSavedFiles = 2,
+                    checkpointKnownFiles = 2,
+                    checkpointKnownBytes = 123,
+                )
         val restored = restoreReceiveEntry(saved, access)
         assertEquals("original-slot", restored.slotId)
         assertEquals(key, restored.encryptionKey)

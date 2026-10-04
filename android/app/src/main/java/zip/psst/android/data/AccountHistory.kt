@@ -78,7 +78,6 @@ internal fun mergeAccountResource(
     current: TransferHistoryEntity?,
     incoming: TransferHistoryEntity,
     access: HistoryAccess,
-    snapshot: ReceivedSnapshot? = null,
 ): TransferHistoryEntity? {
     require(incoming.accountId == access.accountId && access.permits(incoming))
     // An ID collision must never adopt a legacy row or another account's key/capability.
@@ -89,7 +88,7 @@ internal fun mergeAccountResource(
                 !access.permits(current))
     )
         return null
-    var updated =
+    val updated =
         current?.copy(
             fileCount = if (incoming.summaryUpdating) current.fileCount else incoming.fileCount,
             summaryUpdating = incoming.summaryUpdating,
@@ -98,7 +97,5 @@ internal fun mergeAccountResource(
                 if (current.status == "failed" && incoming.status == "pending") "failed"
                 else incoming.status,
         ) ?: incoming
-    if (snapshot != null && incoming.status != "unavailable")
-        updated = mergeReceivedHistory(updated, snapshot)
     return updated
 }

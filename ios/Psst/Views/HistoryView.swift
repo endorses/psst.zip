@@ -13,6 +13,7 @@ struct HistoryView: View {
     @State private var error: String?
     @State private var page = HistoryPageViewModel()
     @State private var devicePage = DeviceHistoryPageViewModel()
+    @State private var guestPage = GuestHistoryPageViewModel()
     @State private var showDevice = false
     @State private var sessionGeneration = UUID()
     @State private var visible = false
@@ -24,7 +25,7 @@ struct HistoryView: View {
         let owned = deviceMode ? (devicePage.session == config.session ? devicePage.records : []) : (page.loadedSession == config.session ? page.records : [])
         return HistoryEntry.combine(
             account: owned,
-            downloads: deviceMode ? guests.records : [], session: config.session, filter: filter)
+            downloads: deviceMode ? guestPage.records : [], session: config.session, filter: filter)
     }
     private var working: Bool { busy || page.loading }
 
@@ -50,6 +51,19 @@ struct HistoryView: View {
                             Button("First links page") { if let session = config.session { devicePage.first(history: history, session: session) } }.disabled(working)
                         }
                         if let error = devicePage.error { Text(error).foregroundStyle(PsstTheme.error) }
+                    }
+                    if filter == .all || filter == .downloaded {
+                        HStack {
+                            Text("Downloads page \(guestPage.number)")
+                            Spacer()
+                            Button("Previous") { guestPage.backward(store: guests) }.disabled(working || !guestPage.canGoBack)
+                            Button("Next") { guestPage.forward(store: guests) }.disabled(working || guestPage.next == nil)
+                        }
+                        if guestPage.number > 1 { Button("First downloads page") { guestPage.first(store: guests) }.disabled(working) }
+                        if let error = guestPage.error ?? guests.error { Text(error).foregroundStyle(PsstTheme.error) }
+                        if guests.hasPendingReceipts {
+                            Button("Retry delivery confirmations") { Task { await guests.flushReceipts() } }.disabled(working)
+                        }
                     }
                 } else {
                     HStack {
@@ -238,6 +252,7 @@ struct HistoryView: View {
                 if !value && filter == .downloaded { filter = .all }
                 reloadLocal()
             }
+            .onChange(of: guests.revision) { _, _ in if deviceMode { guestPage.refresh(store: guests) } }
             .onChange(of: history.revision) { _, _ in
                 if deviceMode { reloadLocal() } else { page.refreshLocal(history: history, session: config.session) }
             }
@@ -245,6 +260,7 @@ struct HistoryView: View {
     }
 
     private func reloadLocal() {
+        guestPage.refresh(store: guests)
         devicePage.refresh(history: history, session: config.session, filter: filter)
     }
     private func navigateLocal(back: Bool) {

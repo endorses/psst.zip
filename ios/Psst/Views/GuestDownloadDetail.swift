@@ -9,7 +9,7 @@ struct GuestDownloadDetail: View {
     @State private var preview: URL?
     @State private var redownload = false
     private var current: GuestDownload {
-        store.records.first { $0.id == record.id } ?? record
+        (try? store.find(record.id)) ?? record
     }
 
     var body: some View {
@@ -51,7 +51,11 @@ struct GuestDownloadDetail: View {
                     }
                     Spacer()
                     if let url = store.url(file) {
-                        Button { preview = url } label: { Image(systemName: "doc.viewfinder").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Open " + file.name)
+                        Button {
+                            preview = url
+                        } label: {
+                            Image(systemName: "doc.viewfinder").frame(minWidth: 44, minHeight: 44)
+                        }.accessibilityLabel("Open " + file.name)
                         ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Share " + file.name)
                     } else {
                         Text("Not saved").font(.caption)

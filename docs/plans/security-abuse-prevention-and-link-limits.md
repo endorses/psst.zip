@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Work still includes indexed local-history storage, independent protocol review, and deployment/client verification. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
+Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Indexed local history, guest retry queues and inbox checkpoints now have implementation evidence below; exceptional legacy-source recovery and native validation remain open. Work still includes independent protocol review and deployment/client verification. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
 
 Protect self-hosted operators and recipients from confidentiality failures, resource exhaustion, unexpected traffic costs, compromised accounts and malicious submissions. Include optional per-link download/receive limits across web, Android and iOS, including sending through the iOS share extension. Preserve straightforward default workflows, public standalone download links, public receive submission, administrator-only management accounts, chunked encryption, configurable maximum file size and delivery acknowledgements. A public receive link grants submission access, not permission to read other submissions.
 
@@ -941,11 +941,83 @@ and iOS guest storage/queues still need bounded local reads and writes.
 - [x] Document migration exceptions, source retention and pending work in
       `docs/security/local-history-storage.md`, update history documentation and
       format sources. Disposable test harnesses and task caches were cleaned.
-- [ ] Normalize growing per-inbox mobile save/checkpoint maps. Finish indexed iOS
+- [x] Normalize growing per-inbox mobile save/checkpoint maps. Finish indexed iOS
       guest history and device-wide receipt/upload-cleanup queues; a bounded page
       count does not bound a single growing row or a separate whole-collection
-      queue. Keep the broad local-storage requirement open until these are done.
+      queue. Completed in the following checkpoint; exceptional legacy-source
+      recovery and native iOS validation keep the broad storage requirement open.
 - [ ] Verify native iOS App Group/SQLite linkage, protected-file behavior, app/share-
       extension migration and device flows, plus real Android Room/Keystore/
       AtomicFile migration and recovery. Continue independent protocol review and
       deployment/client release gates. No live deployment changed.
+
+### Guest history, retry queues and inbox checkpoints, 2026-10-04
+
+- [x] Stream both legacy iOS guest-history formats into indexed individual records
+      and independent receipt/publication-recovery jobs. Preserve originals and
+      keys, resume import from committed offsets and block premature mutations.
+      Use explicit 50-row downloaded-history pages and exact active-transfer
+      lookups instead of reading/sorting the entire collection.
+- [x] Reconcile exact guest transfers or four queued candidates with cancellable
+      file hashing off the main actor. Re-read current metadata before committing
+      so delayed checks cannot restore deletion or replace newer publication.
+      Retain receipt jobs after history removal and rotate failed/malformed work.
+      Focused review corrected swallowed digest errors and a corrupt receipt
+      blocking later jobs; regression tests cover both.
+- [x] Replace iOS owner-receipt and guest-upload-cleanup arrays with scoped indexed
+      queues. Keep capabilities in per-job Keychain entries; strict reads distinguish
+      inaccessible storage from absence. Preserve legacy blobs, commit bounded
+      parser progress and prevent retired jobs from being imported again. Select
+      four eligible retry jobs, skipping the active upload, and expose errors
+      without discarding pending work. Malformed jobs are preserved and rotated
+      rather than starving healthy candidates.
+- [x] Verify 13 portable guest-store/page-model tests using actual storage/model
+      sources with real SQLite and explicit Apple/crypto/network boundary stubs.
+      Verify six actual retry-queue/parser tests. The page-model compile found an
+      error-property shadowing failure; the affected page models and scanner/share
+      error handlers now use explicit property access. These checks are not a
+      native iOS build or cryptographic validation.
+- [x] Normalize Android inbox checkpoints into scoped child/file tables and scalar
+      counters. Atomically archive legacy columns before clearing the active row;
+      resume UTF-8 parsing from committed offsets with bounded entry batches.
+      Normal history projections/updates exclude archived JSON. A focused review
+      found an uncaught recovery-read failure; the guarded recovery action now
+      preserves cancellation/context and reports storage errors. All 124 Android
+      unit tests pass and the debug APK builds.
+- [x] Normalize iOS inbox checkpoints into scoped per-file/child rows in the shared
+      history transaction domain. Retain immutable legacy sources, discover one
+      metadata entry per step and commit at most 32 imported entries per batch.
+      Gate account history until normalization finishes; reject stale growing maps,
+      preserve counters and coordinate exact saves across connections. New file
+      lengths detect truncated output; legacy unknown lengths remain explicit.
+      Persist receipt work before child completion. Commit page metadata before
+      publishing matching checkpoint/UI state, preserving the previous page on
+      a failed navigation write.
+- [x] Verify 11 exact-source checkpoint/account-store/local-page-model tests and
+      22 foundation tests. Cases include 1,000 children with constant parent body,
+      per-child limits, account/origin isolation, concurrent saves, resumable
+      legacy import, existing SQLite history without original JSON, malformed
+      retained sources, newer rows/tombstones, truncation and metadata-only
+      discovery. All Swift syntax/source gates pass; full native iOS tests remain
+      unrun. Format sources and document migration limitations without claiming
+      successful import of arbitrarily large old blobs.
+- [x] Run four native AndroidJUnitRunner migration phases on a disposable API36.1
+      emulator with airplane mode and separate prepare/resume processes, confirmed
+      by different PIDs after force-stop. Verify real Room 7→8→9 schema validation,
+      persisted 64-entry continuation, scoped Keystore reads, 260 saved-file counter,
+      new path/checkpoint deduplication, origin/account isolation and injected
+      archive-clear rollback. Verify guest AtomicFile backup recovery, 139-row
+      bounded traversal, retained sources, deletion tombstones, newer receipt state,
+      pending receipts and encrypted cleanup capabilities after restart. No physical
+      device, user AVD, live server or real account was used.
+- [x] Run the final formatted Android unit/app/instrumentation build with
+      `JAVA_HOME=/opt/android-studio/jbr ./gradlew :app:testDebugUnitTest
+    :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon`:
+      124 unit tests, zero failures/errors/skips, and both APKs built. Stop the
+      disposable emulator, verify no connected devices remain, and remove its
+      task-owned AVD/data/log/cache directory. Record native reproduction commands
+      in `docs/security/local-history-storage.md`.
+- [ ] Complete physical-device/older-Android/low-storage UI checks and macOS/iOS
+      App Group, UI, Keychain and share-extension release checks, alongside
+      exceptional oversized legacy-source recovery and the remaining full-plan
+      release requirements.

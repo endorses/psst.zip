@@ -3,7 +3,6 @@ package zip.psst.android.viewmodel
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.decodeInboxKeyMarker
-import zip.psst.android.data.savedFileCount
 import zip.psst.shared.model.UrlHelper
 
 /** Existing links are restored entirely from the scoped local record; this never creates a slot. */
@@ -27,7 +26,8 @@ internal fun restoreReceiveEntry(
         legacyReadOnly = !row.encryptionKey.startsWith("v2."),
         slotStatus = row.status,
         downloadComplete = row.status == "complete",
-        savedFileCount = row.savedFileCount(),
+        savedFileCount = row.checkpointSavedFiles.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        checkpointState = row.checkpointState,
     )
 }
 

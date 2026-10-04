@@ -1,7 +1,8 @@
 import Foundation
-@testable import Psst
 import Shared
 import XCTest
+
+@testable import Psst
 
 @MainActor
 final class GuestDownloadTests: XCTestCase {
@@ -13,10 +14,12 @@ final class GuestDownloadTests: XCTestCase {
     }
 
     private func record() -> GuestDownload {
-        GuestDownload(id: GuestDownload.identity(origin: "https://one.example", transferID: "transfer"), origin: "https://one.example", transferID: "transfer", files: [
-            GuestFile(id: "one", name: "same.txt", size: 3, mime: "text/plain"),
-            GuestFile(id: "two", name: "same.txt", size: 3, mime: "text/plain"),
-        ])
+        GuestDownload(
+            id: GuestDownload.identity(origin: "https://one.example", transferID: "transfer"), origin: "https://one.example", transferID: "transfer",
+            files: [
+                GuestFile(id: "one", name: "same.txt", size: 3, mime: "text/plain"),
+                GuestFile(id: "two", name: "same.txt", size: 3, mime: "text/plain"),
+            ])
     }
 
     func testDownloadCountersKeepUnknownDistinctFromExhaustedAndSavedCopyOpenable() throws {
@@ -26,7 +29,7 @@ final class GuestDownloadTests: XCTestCase {
         entry.remainingDownloads = ["one": 0]
         try store.save(Data("abc".utf8), index: 0, record: &entry)
         let reopened = GuestDownloadStore(root: root)
-        let restored = try XCTUnwrap(reopened.records.first)
+        let restored = try XCTUnwrap(reopened.find(record().id))
         XCTAssertEqual(restored.remainingDownloads?["one"], 0)
         XCTAssertNil(restored.remainingDownloads?["two"])
         XCTAssertNotNil(reopened.url(restored.files[0]))
@@ -46,7 +49,7 @@ final class GuestDownloadTests: XCTestCase {
         try store.update(entry)
         try store.save(Data("one".utf8), index: 0, record: &entry)
         let reopened = GuestDownloadStore(root: root)
-        var resumed = try XCTUnwrap(reopened.records.first)
+        var resumed = try XCTUnwrap(reopened.find(record().id))
         XCTAssertNotNil(reopened.url(resumed.files[0]))
         XCTAssertNil(reopened.url(resumed.files[1]))
         XCTAssertFalse(resumed.complete)
@@ -57,7 +60,7 @@ final class GuestDownloadTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(reopened.url(resumed.files[1]))), Data("two".utf8))
     }
 
-    func testKillAfterPublicationReconcilesIntentBeforeReceipt() throws {
+    func testKillAfterPublicationReconcilesIntentBeforeReceipt() async throws {
         let root = try directory()
         let store = GuestDownloadStore(root: root)
         var entry = record()
@@ -70,14 +73,15 @@ final class GuestDownloadTests: XCTestCase {
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Received"), withIntermediateDirectories: true)
         try data.write(to: root.appendingPathComponent(path), options: .atomic)
         let reopened = GuestDownloadStore(root: root)
-        let saved = try XCTUnwrap(reopened.records.first)
+        try await reopened.reconcile(entry.id)
+        let saved = try XCTUnwrap(reopened.find(record().id))
         XCTAssertTrue(saved.files[0].saved)
         XCTAssertTrue(saved.complete)
         XCTAssertTrue(saved.receiptPending)
         XCTAssertNotNil(reopened.url(saved.files[0]))
     }
 
-    func testIncompleteWriteIsRemovedAndNeverReceipted() throws {
+    func testIncompleteWriteIsRemovedAndNeverReceipted() async throws {
         let root = try directory()
         let store = GuestDownloadStore(root: root)
         var entry = record()
@@ -87,8 +91,9 @@ final class GuestDownloadTests: XCTestCase {
         let pending = root.appendingPathComponent("partial.txt.pending")
         try Data("o".utf8).write(to: pending)
         let reopened = GuestDownloadStore(root: root)
+        try await reopened.reconcile(entry.id)
         XCTAssertFalse(FileManager.default.fileExists(atPath: pending.path))
-        XCTAssertFalse(try XCTUnwrap(reopened.records.first).receiptPending)
+        XCTAssertFalse(try XCTUnwrap(reopened.find(record().id)).receiptPending)
         XCTAssertNil(reopened.url(entry.files[0]))
     }
 
@@ -98,14 +103,14 @@ final class GuestDownloadTests: XCTestCase {
         var entry = record()
         entry.files = [entry.files[0]]
         try store.save(Data("one".utf8), index: 0, record: &entry)
-        entry.complete = true; entry.receiptPending = true
+        entry.complete = true
+        entry.receiptPending = true
         try store.update(entry)
         let saved = try XCTUnwrap(store.url(entry.files[0]))
         try store.remove(entry)
-        XCTAssertTrue(store.records.isEmpty)
+        XCTAssertTrue(try store.page().records.isEmpty)
         XCTAssertEqual(try Data(contentsOf: saved), Data("one".utf8))
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("guest-downloads.json"))) as? [String: Any])
-        XCTAssertEqual((json["receipts"] as? [[String: String]])?.count, 1)
+        XCTAssertTrue(store.hasPendingReceipts)
     }
 
     func testMissingOrTruncatedOutputIsNotASuccessfulCheckpoint() throws {
@@ -138,8 +143,8 @@ final class GuestDownloadTests: XCTestCase {
         try store.update(entry)
         try Data("blocking file".utf8).write(to: root.appendingPathComponent("Received"))
         XCTAssertThrowsError(try store.save(Data("one".utf8), index: 0, record: &entry))
-        XCTAssertFalse(try XCTUnwrap(store.records.first).files[0].saved)
-        XCTAssertFalse(try XCTUnwrap(store.records.first).receiptPending)
+        XCTAssertFalse(try XCTUnwrap(store.find(record().id)).files[0].saved)
+        XCTAssertFalse(try XCTUnwrap(store.find(record().id)).receiptPending)
     }
 
     func testTraversalRejectedAndPortableNamesSanitized() throws {
@@ -155,7 +160,7 @@ final class GuestDownloadTests: XCTestCase {
         var entry = record()
         try store.update(entry)
         XCTAssertThrowsError(try store.save(Data("wrong length".utf8), index: 0, record: &entry))
-        XCTAssertNil(store.records.first?.files[0].relativePath)
+        XCTAssertNil(try store.find(record().id)?.files[0].relativePath)
     }
 
     func testCancelledSaveRemovesTemporaryFileAndRetainsCheckpoint() async throws {
@@ -167,8 +172,11 @@ final class GuestDownloadTests: XCTestCase {
             try store.save(Data("one".utf8), index: 0, record: &entry)
         }
         job.cancel()
-        do { try await job.value; XCTFail("Expected cancellation") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
-        let row = try XCTUnwrap(store.records.first)
+        do {
+            try await job.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        let row = try XCTUnwrap(store.find(record().id))
         XCTAssertFalse(row.files[0].saved)
         XCTAssertNil(store.url(row.files[0]))
         let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
@@ -181,11 +189,12 @@ final class GuestDownloadTests: XCTestCase {
         var entry = record()
         entry.files = [entry.files[0]]
         try store.save(Data("one".utf8), index: 0, record: &entry)
-        entry.complete = true; entry.receiptPending = true
+        entry.complete = true
+        entry.receiptPending = true
         try store.update(entry)
         await store.flushReceipts { _, _ in throw AccountError.request }
-        XCTAssertTrue(try XCTUnwrap(store.records.first).complete)
-        XCTAssertTrue(try XCTUnwrap(store.records.first).receiptPending)
+        XCTAssertTrue(try XCTUnwrap(store.find(record().id)).complete)
+        XCTAssertTrue(try XCTUnwrap(store.find(record().id)).receiptPending)
         try store.remove(entry)
         let reopened = GuestDownloadStore(root: root)
         var delivered = 0
@@ -207,9 +216,92 @@ final class GuestDownloadTests: XCTestCase {
         let accountBytes = Data("existing account history".utf8)
         try accountBytes.write(to: account)
         let store = GuestDownloadStore(root: root)
-        XCTAssertEqual(store.records, [entry])
+        XCTAssertEqual(try store.page().records, [entry])
         try store.update(entry)
         XCTAssertEqual(try Data(contentsOf: account), accountBytes)
+    }
+
+    func testLargeSnapshotMigrationPagesAndRetainsOriginalAndIndependentReceipt() async throws {
+        let root = try directory()
+        let rows = (0..<130).map { index in
+            let transfer = "transfer-" + String(index)
+            return GuestDownload(
+                id: GuestDownload.identity(origin: "https://one.example", transferID: transfer), origin: "https://one.example", transferID: transfer,
+                createdAt: Date(timeIntervalSince1970: Double(index)))
+        }
+        struct LegacyReceipt: Encodable {
+            let origin: String
+            let transferID: String
+        }
+        struct LegacySnapshot: Encodable {
+            let records: [GuestDownload]
+            let receipts: [LegacyReceipt]
+        }
+        let original = try JSONEncoder().encode(LegacySnapshot(records: rows, receipts: [LegacyReceipt(origin: "https://one.example", transferID: "removed")]))
+        let file = root.appendingPathComponent("guest-downloads.json")
+        try original.write(to: file)
+        let interrupted = GuestDownloadStore(root: root)
+        XCTAssertFalse(interrupted.isReady)
+        XCTAssertThrowsError(try interrupted.update(record()))
+        let restored = GuestDownloadStore(root: root)
+        await restored.finishMigration()
+        XCTAssertTrue(restored.isReady)
+        var cursor: HistoryRecordDatabase.Cursor?
+        var ids: [String] = []
+        repeat {
+            let page = try restored.page(after: cursor)
+            XCTAssertLessThanOrEqual(page.records.count, 50)
+            ids += page.records.map(\.id)
+            cursor = page.next
+        } while cursor != nil
+        XCTAssertEqual(ids.count, 130)
+        XCTAssertEqual(Set(ids), Set(rows.map(\.id)))
+        XCTAssertEqual(try restored.find(rows[0].id), rows[0])
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        var receipts = 0
+        await restored.flushReceipts { _, transfer in
+            XCTAssertEqual(transfer, "removed")
+            receipts += 1
+        }
+        XCTAssertEqual(receipts, 1)
+        try restored.remove(rows[0])
+        let reopened = GuestDownloadStore(root: root)
+        XCTAssertTrue(reopened.isReady)
+        XCTAssertNil(try reopened.find(rows[0].id))
+        XCTAssertFalse(reopened.hasPendingReceipts)
+        XCTAssertEqual(try Data(contentsOf: file), original)
+    }
+
+    func testReceiptRetriesAreBoundedFairAndSuccessSurvivesStaleCheckpoint() async throws {
+        let store = try GuestDownloadStore(root: directory())
+        var entries: [GuestDownload] = []
+        for index in 0..<9 {
+            let transfer = "queued-" + String(index)
+            var entry = GuestDownload(id: GuestDownload.identity(origin: "https://one.example", transferID: transfer), origin: "https://one.example", transferID: transfer)
+            entry.receiptPending = true
+            try store.update(entry)
+            entries.append(entry)
+        }
+        var attempted: [String] = []
+        await store.flushReceipts { _, transfer in
+            attempted.append(transfer)
+            throw AccountError.request
+        }
+        XCTAssertEqual(attempted.count, 4)
+        let first = Set(attempted)
+        attempted = []
+        await store.flushReceipts { _, transfer in
+            attempted.append(transfer)
+            throw AccountError.request
+        }
+        XCTAssertEqual(attempted.count, 4)
+        XCTAssertTrue(first.isDisjoint(with: attempted))
+        var delivered: String?
+        await store.flushReceipts { _, transfer in delivered = transfer }
+        let stale = try XCTUnwrap(entries.first { $0.transferID == delivered })
+        try store.update(stale)
+        XCTAssertTrue(try XCTUnwrap(store.find(stale.id)).receiptDelivered)
+        XCTAssertFalse(try XCTUnwrap(store.find(stale.id)).receiptPending)
     }
 
     func testAuthenticatedDecryptionRejectsWrongKeyAndTampering() throws {
@@ -243,7 +335,7 @@ final class GuestDownloadTests: XCTestCase {
         XCTAssertEqual(model.error, GuestError.redownloadConsent.localizedDescription)
         await Task.yield()
         XCTAssertFalse(model.active)
-        XCTAssertEqual(store.records.first, entry)
+        XCTAssertEqual(try store.find(record().id), entry)
         model.resume(entry, allowRedownload: true)
         XCTAssertTrue(model.active, "Explicit consent permits retrying missing output")
         model.cancel()

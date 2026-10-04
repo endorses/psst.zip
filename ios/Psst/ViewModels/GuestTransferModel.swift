@@ -81,7 +81,11 @@ final class GuestTransferModel {
 
     private func begin(_ requested: GuestDownload, allowRedownload: Bool, approved: [GuestFile]?, availableOnly: Bool = false) {
         guard !active else { return }
-        let record = store.records.first { $0.id == requested.id } ?? requested
+        let record: GuestDownload
+        do { record = try store.find(requested.id) ?? requested } catch {
+            self.error = "Local received history could not be read. Restore storage access and retry."
+            return
+        }
         currentID = record.id
         pendingConsent = nil
         error = nil
@@ -111,8 +115,8 @@ final class GuestTransferModel {
         do {
             let client = try GuestNetwork.client(record.origin)
             self.client = client
-            try store.reconcile()
-            record = store.records.first { $0.id == original.id } ?? original
+            try await store.reconcile(original.id)
+            record = try store.find(original.id) ?? original
             guard let key = SecretStore.read(record.keyReference), key.count == 32 else { throw GuestError.missingKey }
             stage = "Inspecting transfer"
             let transfer = try await client.transfers.get(transferId: record.transferID)
@@ -195,7 +199,7 @@ final class GuestTransferModel {
                 return
             }
             await refreshAttempts(record)
-            record = store.records.first { $0.id == record.id } ?? record
+            record = try store.find(record.id) ?? record
             record.complete = true
             record.receiptPending = !record.receiptDelivered
             try store.update(record)
@@ -232,7 +236,7 @@ final class GuestTransferModel {
             defer { client.close() }
             let transfer = try await client.transfers.get(transferId: requested.transferID)
             guard transfer.id == requested.transferID,
-                var record = store.records.first(where: { $0.id == requested.id })
+                var record = try store.find(requested.id)
             else { return }
             record.remainingDownloads = Self.remainingAttempts(transfer)
             try store.update(record)
@@ -340,7 +344,7 @@ final class GuestTransferModel {
     }
 }
 
-/// Keychain-only cleanup journal survives cancellation, sign-out and process interruption.
+/// Indexed cleanup metadata; each resource capability remains exclusively in Keychain.
 @MainActor
 enum GuestUploadCleanup {
     struct Entry: Codable, Sendable {
@@ -348,22 +352,47 @@ enum GuestUploadCleanup {
         let transferID: String
         let capability: String
     }
-    private static let name = "guest-upload-cleanup"
+    private static let storage = DeviceRetryStorage(kind: "guest-upload-cleanup")
     private static var flushing = false
     static var activeID: String?
-    private static func read() throws -> [Entry] {
-        guard let data = SecretStore.read(name) else { return [] }
-        return try JSONDecoder().decode([Entry].self, from: data)
+    private static let storageMessage = "Unfinished upload cleanup could not be read or saved. Existing cleanup credentials are preserved. Restore storage access and retry."
+    private static func reference(origin: String, transferID: String) -> String {
+        "guest-upload-cleanup-v2:" + DeviceRetryQueue.identity([origin, transferID])
     }
-
+    private static func job(origin: String, transferID: String) -> DeviceRetryQueue.Job {
+        .init(origin: origin, transferID: transferID, keyReference: reference(origin: origin, transferID: transferID))
+    }
+    private static func saveCapability(_ capability: String, reference: String) throws {
+        guard !capability.isEmpty, capability.utf8.count <= 8192 else { throw AccountError.storage }
+        let bytes = Data(capability.utf8)
+        if let old = try SecretStore.readStrict(reference) {
+            guard old == bytes else { throw AccountError.storage }
+        } else {
+            try SecretStore.write(bytes, name: reference)
+        }
+    }
     static func enqueue(origin: String, transferID: String, capability: String) throws {
-        var entries = try read()
-        entries.append(Entry(origin: origin, transferID: transferID, capability: capability))
-        try SecretStore.write(JSONEncoder().encode(entries), name: name)
+        do {
+            let record = job(origin: origin, transferID: transferID)
+            try DeviceRetryQueue.validate(record)
+            try saveCapability(capability, reference: record.keyReference!)
+            try storage.queue().enqueue(record)
+            DeviceRetryStatus.shared.cleanupError = nil
+        } catch {
+            DeviceRetryStatus.shared.cleanupError = storageMessage
+            throw error
+        }
     }
-
     static func remove(origin: String, transferID: String) throws {
-        try SecretStore.write(JSONEncoder().encode(read().filter { $0.origin != origin || $0.transferID != transferID }), name: name)
+        do {
+            let record = job(origin: origin, transferID: transferID)
+            // Commit retirement first, so a crash/import cannot resurrect a completed job.
+            try storage.queue().remove(record)
+            SecretStore.remove(record.keyReference!)
+        } catch {
+            DeviceRetryStatus.shared.cleanupError = storageMessage
+            throw error
+        }
     }
 
     /// Returns true when a lost finalization response concealed a successful upload.
@@ -386,21 +415,60 @@ enum GuestUploadCleanup {
     }
 
     static func flush() async {
-        guard !flushing, let entries = try? read() else { return }
+        guard !flushing else { return }
         flushing = true
-        defer { flushing = false }
-        for entry in entries.prefix(4) {
-            guard activeID != entry.origin + "|" + entry.transferID else { continue }
-            do {
-                _ = try await attempt(origin: entry.origin, transferID: entry.transferID, capability: entry.capability)
-                try remove(origin: entry.origin, transferID: entry.transferID)
-            } catch {
-                // Retain capabilities on network failure, rotating offline hosts behind other work.
-                if var latest = try? read(), let index = latest.firstIndex(where: { $0.origin == entry.origin && $0.transferID == entry.transferID }) {
-                    latest.append(latest.remove(at: index))
-                    try? SecretStore.write(JSONEncoder().encode(latest), name: name)
+        defer {
+            flushing = false
+            DeviceRetryStatus.shared.importingCleanup = false
+        }
+        do {
+            DeviceRetryStatus.shared.importingCleanup = true
+            while true {
+                try Task.checkCancellation()
+                let complete = try storage.migrate(
+                    read: { try SecretStore.readStrict("guest-upload-cleanup") },
+                    decode: { data in
+                        let old = try JSONDecoder().decode(Entry.self, from: data)
+                        return job(origin: old.origin, transferID: old.transferID)
+                    },
+                    prepare: { data, record in
+                        let old = try JSONDecoder().decode(Entry.self, from: data)
+                        try saveCapability(old.capability, reference: record.keyReference!)
+                    })
+                if complete { break }
+                await Task.yield()
+            }
+            DeviceRetryStatus.shared.importingCleanup = false
+            let queue = try storage.queue()
+            // One extra indexed row lets an active upload be skipped without starving a retry.
+            let entries = try queue.batch(scopes: ["anonymous"], limit: 5)
+            var attempted = 0
+            var unavailable = false
+            for entry in entries.jobs {
+                try Task.checkCancellation()
+                guard attempted < 4 else { break }
+                guard activeID != entry.origin + "|" + entry.transferID else { continue }
+                attempted += 1
+                do {
+                    guard let reference = entry.keyReference,
+                        reference == self.reference(origin: entry.origin, transferID: entry.transferID),
+                        let bytes = try SecretStore.readStrict(reference), bytes.count <= 8192,
+                        let capability = String(data: bytes, encoding: .utf8), !capability.isEmpty
+                    else { throw AccountError.storage }
+                    _ = try await attempt(origin: entry.origin, transferID: entry.transferID, capability: capability)
+                    try remove(origin: entry.origin, transferID: entry.transferID)
+                } catch {
+                    try Task.checkCancellation()
+                    try queue.rotate(entry)
+                    unavailable = true
                 }
             }
-        }
+            DeviceRetryStatus.shared.cleanupError =
+                entries.hadInvalidJobs
+                ? "Some saved cleanup records could not be read. They are preserved; other cleanup will continue. Restore local storage or retry."
+                : unavailable ? "Some unfinished upload cleanup is still pending. Check the connection and device storage, then retry." : nil
+        } catch is CancellationError {
+            // A later foreground pass resumes committed migration and retries.
+        } catch { DeviceRetryStatus.shared.cleanupError = storageMessage }
     }
 }
