@@ -110,7 +110,7 @@ changing these environment variables later does not reset an existing password.
 After initialization, remove the bootstrap password from `.env`; manage accounts
 through the web UI. Keep `.env` private and out of version control.
 
-For development on a trusted LAN, explicitly set `PSST_DOMAIN=:80`,
+For development on a trusted LAN, explicitly set `PSST_DOMAIN=http://`,
 `PUBLIC_URL=http://<server-ip>`, and `AUTH_ALLOW_INSECURE_HTTP=true`.
 HTTP exposes login credentials and sessions to network observers; use HTTPS
 for normal hosting. Authentication is still required in development mode.
@@ -454,15 +454,17 @@ monitor remains observational.
 
 Docker Compose also accepts:
 
-| Variable      | Default | Description                                                                   |
-| ------------- | ------- | ----------------------------------------------------------------------------- |
-| `PSST_DOMAIN` | `:80`   | Caddy site address; default serves LAN HTTP, a domain enables automatic HTTPS |
-| `HTTP_PORT`   | `80`    | Host port mapped to Caddy HTTP                                                |
-| `HTTPS_PORT`  | `443`   | Host port mapped to Caddy HTTPS                                               |
+| Variable      | Default  | Description                                                                        |
+| ------------- | -------- | ---------------------------------------------------------------------------------- |
+| `PSST_DOMAIN` | required | Public hostname for automatic HTTPS; `http://` explicitly selects development HTTP |
+| `HTTP_PORT`   | `80`     | Host port mapped to Caddy HTTP                                                     |
+| `HTTPS_PORT`  | `443`    | Host port mapped to Caddy HTTPS                                                    |
 
-Compose still accepts `PSST_DOMAIN` as a compatibility fallback when
-`PSST_DOMAIN` is unset or empty. A nonempty `PSST_DOMAIN` takes precedence.
-When running Caddy directly with the supplied Caddyfile, set `PSST_DOMAIN`.
+Compose requires an explicit `PSST_DOMAIN`; it no longer silently starts an HTTP
+site. When running Caddy directly with the supplied Caddyfile, set `PSST_DOMAIN`.
+See [deployment hardening and recovery](docs/security/deployment.md) before
+upgrading an existing installation: the proxy now runs as UID/GID 10001 and
+existing certificate/configuration volumes need matching ownership.
 Existing Docker volumes and database paths retain their names to preserve stored data.
 
 ## Security model

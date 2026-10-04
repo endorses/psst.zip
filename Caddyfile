@@ -1,9 +1,17 @@
+{
+	http_port {$CADDY_HTTP_PORT:80}
+	https_port {$CADDY_HTTPS_PORT:443}
+}
+
 {$PSST_DOMAIN::80} {
 	# Protect login and pairing pages as well as API responses.
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
+		# Script hashes are emitted in the static HTML by SvelteKit. Frame
+		# ancestry needs an HTTP header because browsers ignore it in meta CSP.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
 	}
 
 	# The authenticated workspace scanner runs only in the root document.

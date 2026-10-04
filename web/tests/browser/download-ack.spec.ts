@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { encryptFileFrame } from "../../src/lib/chunked-files";
+import { encryptFileFrame, wireSize } from "../../src/lib/chunked-files";
 import { encryptManifest, exportKey, generateKey } from "../../src/lib/crypto";
 
 async function prepareDownload(
@@ -34,7 +34,12 @@ async function prepareDownload(
   const api = `**/api/v1/transfers/${id}`;
   await page.route(api, (route) =>
     route.fulfill({
-      json: { id, file_count: files.length, total_size: files.length * 34, downloaded_at: null },
+      json: {
+        id,
+        file_count: files.length,
+        total_size: files.length * wireSize(6),
+        downloaded_at: null,
+      },
     }),
   );
   await page.route(`${api}/manifest`, async (route) =>
@@ -127,7 +132,7 @@ test("wrong decryption keys never acknowledge even when metadata is accessible",
   expect(transfer.acknowledgments()).toBe(0);
 });
 
-for (const failure of ["corruptFile", "wrongSize", "failedFile"] as const) {
+for (const failure of ["corruptFile", "failedFile"] as const) {
   test(`${failure} prevents single-file and ZIP acknowledgment`, async ({ page }) => {
     const transfer = await prepareDownload(page, { [failure]: 1 });
     await downloadIndividual(page, 0);
@@ -142,6 +147,14 @@ for (const failure of ["corruptFile", "wrongSize", "failedFile"] as const) {
     expect(transfer.downloads()).toBe(1);
   });
 }
+
+test("manifest size mismatch is rejected before any file retrieval", async ({ page }) => {
+  const transfer = await prepareDownload(page, { wrongSize: 1 });
+  await expect(page.getByRole("heading", { name: "Cannot open files" })).toBeVisible();
+  expect(transfer.blobRequests()).toBe(0);
+  expect(transfer.acknowledgments()).toBe(0);
+  expect(transfer.downloads()).toBe(0);
+});
 
 test("failed acknowledgments retry without downloading files again", async ({ page }) => {
   const transfer = await prepareDownload(page, { count: 1, failAcknowledgment: true });
