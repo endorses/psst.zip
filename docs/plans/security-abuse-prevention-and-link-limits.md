@@ -1178,7 +1178,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
       lint, Python syntax/CLI, Markdown/YAML formatting and diff checks pass;
       a separate Docker inventory confirms zero remaining test resources.
 - [ ] Complete public ACME issuance/renewal, operator-specific gateway/CDN/IPv6
-      layouts, gateway certificate-state restore and all remaining native/device,
+      layouts and all remaining native/device,
       recipient and full-plan release gates. Test CA verification does not prove
       publicly trusted certificate issuance, provider billing protection or an
       operator's actual backup. The running development instance is unchanged;
@@ -1300,7 +1300,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
 - [x] Complete the separate isolated physical volume-pressure exercise recorded
       in the checkpoint below; the page-count test alone does not prove physical
       filesystem ENOSPC/WAL-write behavior.
-- [ ] Complete public ACME and certificate-state restore, native iOS
+- [ ] Complete public ACME, native iOS
       app/share-extension/device gates, physical/older Android and the remaining
       full-plan requirements. The running development deployment is unchanged.
 
@@ -1337,7 +1337,43 @@ and iOS guest storage/queues still need bounded local reads and writes.
       does not replace a production handler or database, and changes no running
       deployment. Document the supported minimum fixture reserve and tmpfs
       verification boundary in the resource-management guide.
-- [ ] Complete public ACME issuance/renewal, certificate-state restore and native
+- [ ] Complete public ACME issuance/renewal and native
       iOS/physical Android gates and the remaining full-plan requirements. These
       tmpfs checks do not prove power-loss durability or every operator's
       filesystem, quotas, storage drivers or provider configuration.
+
+### Gateway certificate-state restore checkpoint, 2026-10-05
+
+- [x] Extend the existing external-proxy harness with a focused
+      `--certificate-state` mode. Build current backend/web images and use the
+      supplied hardened gateway/private proxy stack with disposable loopback
+      ingress. Caddy's internal issuer creates managed test CA/leaf state in its
+      real data volume; fixture-only `skip_install_trust` prevents trust-store
+      installation. Production TLS files, host/APK trust and the development
+      deployment are unchanged.
+- [x] Stop the gateway's sole writer, retain original data/config volumes, copy
+      them read-only into separate backups, and restore new writable working
+      volumes. Bounded inventories compare every regular file's content digest,
+      permissions and owner/group through both copies. Require managed CA and
+      leaf keys and restrict all private keys to UID/GID 10001 with no group or
+      other-user access. Fail on unexpected symlinks, object counts or sizes.
+- [x] Recreate the gateway and inspect its actual restored volume mounts. Retain
+      the original client CA context; verified HTTPS must serve the identical
+      managed leaf fingerprint without retrusting a replacement CA. Original
+      backend administrator-session access remains valid. Repeat verified
+      health/session/leaf checks after another gateway restart, and confirm the
+      preserved original and backup volumes remain unchanged.
+- [x] Run final `python3 tools/test_external_proxy.py --certificate-state`:
+      managed certificate/configuration backup-to-new-volume restore, private-key
+      ownership/permissions, TLS trust, authenticated access and restart all pass.
+      Run `python3 tools/test_external_proxy.py`: the existing static-test-CA
+      origin/cookie, actual SSE/revocation, backend restart/restore and distinct
+      peer/spoofed-forwarding checks still pass. Both modes confirm removal of
+      their disposable containers, volumes, image tags and private temporary
+      files. Record the new mode and external-gateway volume requirements in the
+      deployment and cold backup guides; format sources/docs and check diffs.
+- [ ] Complete publicly trusted ACME issuance/renewal and operator-specific
+      deployment checks, native iOS/physical Android gates and the remaining
+      full-plan requirements. Internal issuer storage/restore verification does
+      not prove public ACME account/challenge/renewal behavior, a protected
+      operator backup, ciphertext/client-key restoration or power-loss durability.

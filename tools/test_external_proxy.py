@@ -5,16 +5,18 @@ Run from any directory: python3 tools/test_external_proxy.py
 Requires Docker Compose >=2.24.4, OpenSSL, and Docker build/pull access.
 Only uniquely named test resources are changed. No repository .env is read.
 TLS uses a disposable CA passed explicitly to clients, never global trust.
+--certificate-state exercises managed internal-CA storage backup/restore;
+it does not test public ACME issuance or renewal.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import http.client
 import json
 import os
-from pathlib import Path
 import secrets
 import shutil
 import signal
@@ -24,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 
 class GateFailure(Exception):
@@ -70,12 +73,13 @@ print(json.dumps({"statuses": statuses, "elapsed": time.monotonic() - started}))
 
 
 class Harness:
-    def __init__(self, client_image: str):
+    def __init__(self, client_image: str, certificate_state: bool = False):
         self.root = Path(__file__).resolve().parents[1]
         self.project = "psst-proxy-gate-" + secrets.token_hex(6)
         self.temp = Path(tempfile.mkdtemp(prefix=self.project + "-"))
         self.temp.chmod(0o700)
         self.client_image = client_image
+        self.certificate_state = certificate_state
         self.helpers: list[str] = []
         self.volumes: list[str] = []
         self.images = [self.project + "-backend", self.project + "-web"]
@@ -152,6 +156,17 @@ class Harness:
     def certificate(self) -> None:
         tls = self.temp / "tls"
         tls.mkdir(mode=0o755)
+        if self.certificate_state:
+            fixture = self.temp / "tls.d"
+            fixture.mkdir(mode=0o755)
+            (fixture / "test.caddy").write_text("tls internal\n")
+            # Fixture-only: do not install even this disposable root into the
+            # gateway's trust store. No host/APK trust store is ever changed.
+            gateway = (self.root / "deploy/external-proxy/Caddyfile").read_text()
+            (self.temp / "gateway.Caddyfile").write_text(
+                gateway.replace("{\n", "{\n\tskip_install_trust\n", 1)
+            )
+            return
         self.command(
             [
                 "openssl",
@@ -247,11 +262,16 @@ class Harness:
         )
         env_file.chmod(0o600)
         # JSON scalars are valid YAML; avoid ad hoc escaping of bind paths.
-        mounts = [
-            f"{self.temp / 'tls' / 'server.crt'}:/test-tls/server.crt:ro",
-            f"{self.temp / 'tls' / 'server.key'}:/test-tls/server.key:ro",
-            f"{self.temp / 'tls.d'}:/etc/caddy/tls.d:ro",
-        ]
+        mounts = [f"{self.temp / 'tls.d'}:/etc/caddy/tls.d:ro"]
+        if self.certificate_state:
+            mounts.append(f"{self.temp / 'gateway.Caddyfile'}:/etc/caddy/Caddyfile:ro")
+        else:
+            mounts.extend(
+                [
+                    f"{self.temp / 'tls' / 'server.crt'}:/test-tls/server.crt:ro",
+                    f"{self.temp / 'tls' / 'server.key'}:/test-tls/server.key:ro",
+                ]
+            )
         (self.temp / "fixture.compose.yml").write_text(
             "services:\n"
             f"  backend:\n    image: {self.images[0]}\n"
@@ -695,6 +715,276 @@ class Harness:
         self.expect(401, "GET", "/auth/me", cookie=saved)
         self.cookie = ""
 
+    def load_internal_ca(self) -> None:
+        destination = self.temp / "tls" / "ca.crt"
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                self.command(
+                    [
+                        "docker",
+                        "cp",
+                        self.container("external-proxy")
+                        + ":/data/caddy/pki/authorities/local/root.crt",
+                        str(destination),
+                    ],
+                    timeout=10,
+                )
+                destination.chmod(0o600)
+                self.context = ssl.create_default_context(cafile=str(destination))
+                return
+            except (GateFailure, OSError, ssl.SSLError):
+                time.sleep(0.5)
+        raise GateFailure(
+            "disposable gateway did not persist its internal CA within 60 seconds"
+        )
+
+    def leaf_fingerprint(self) -> str:
+        with (
+            socket.create_connection(("localhost", self.port), timeout=10) as peer,
+            self.context.wrap_socket(peer, server_hostname="localhost") as tls,
+        ):
+            certificate = tls.getpeercert(binary_form=True)
+            check(
+                bool(certificate),
+                "verified gateway did not provide a leaf certificate",
+            )
+            return hashlib.sha256(certificate).hexdigest()
+
+    def gateway_manifest(self, volume: str) -> dict:
+        # Report only digests/permissions of this stopped disposable state. Never
+        # export private key bytes, config contents or certificates to stdout.
+        script = """
+import hashlib, json, os, pathlib, stat
+root = pathlib.Path('/source')
+manifest = {}
+total = 0
+for parent, directories, files in os.walk(root, followlinks=False):
+    for name in directories:
+        if (pathlib.Path(parent) / name).is_symlink():
+            raise RuntimeError('unexpected storage symlink')
+    for name in files:
+        path = pathlib.Path(parent) / name
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 4 * 1024 * 1024:
+            raise RuntimeError('unexpected storage entry')
+        total += info.st_size
+        if len(manifest) >= 1000 or total > 16 * 1024 * 1024:
+            raise RuntimeError('unexpected storage size')
+        manifest[str(path.relative_to(root))] = {
+            'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+            'mode': stat.S_IMODE(info.st_mode),
+            'uid': info.st_uid, 'gid': info.st_gid,
+        }
+print(json.dumps(manifest))
+"""
+        name = self.project + "-gateway-inventory"
+        self.helpers.append(name)
+        raw = self.command(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--name",
+                name,
+                "--label",
+                f"com.docker.compose.project={self.project}",
+                "--network",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--user",
+                "10001:10001",
+                "--pids-limit",
+                "32",
+                "--memory",
+                "64m",
+                "--cpus",
+                "1",
+                "--log-driver",
+                "local",
+                "--log-opt",
+                "max-size=1m",
+                "--log-opt",
+                "max-file=2",
+                "--mount",
+                f"type=volume,source={volume},target=/source,readonly",
+                "--entrypoint",
+                "python3",
+                self.client_image,
+                "-c",
+                script,
+            ]
+        )
+        manifest = json.loads(raw)
+        check(bool(manifest), "gateway state snapshot was empty")
+        return manifest
+
+    def copy_gateway_volume(self, source: str, destination: str) -> None:
+        name = self.project + "-gateway-copy"
+        self.helpers.append(name)
+        self.command(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--name",
+                name,
+                "--label",
+                f"com.docker.compose.project={self.project}",
+                "--network",
+                "none",
+                "--read-only",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--user",
+                "10001:10001",
+                "--pids-limit",
+                "32",
+                "--memory",
+                "64m",
+                "--cpus",
+                "1",
+                "--log-driver",
+                "local",
+                "--log-opt",
+                "max-size=1m",
+                "--log-opt",
+                "max-file=2",
+                "--mount",
+                f"type=volume,source={source},target=/source,readonly",
+                "--mount",
+                f"type=volume,source={destination},target=/data",
+                "--entrypoint",
+                "/bin/sh",
+                self.images[1],
+                "-ec",
+                "cp -a /source/. /data/",
+            ]
+        )
+
+    def gateway_restore(self) -> None:
+        leaf = self.leaf_fingerprint()
+        details = self.inspect(self.container("external-proxy"))
+        original_container = details["Id"]
+        originals = {
+            field: next(
+                mount["Name"]
+                for mount in details["Mounts"]
+                if mount["Destination"] == path
+            )
+            for field, path in (("data", "/data"), ("config", "/config"))
+        }
+        # Stop the only gateway writer, keep its originals intact, snapshot them
+        # into backups, then restore separate NEW writable volumes.
+        self.compose("stop", "external-proxy")
+        original_manifests = {}
+        copies = {}
+        for field, source in originals.items():
+            original_manifests[field] = self.gateway_manifest(source)
+            copies[field] = {}
+            for stage in ("backup", "restored"):
+                target = self.project + f"-gateway-{field}-{stage}"
+                self.volumes.append(target)
+                self.command(
+                    [
+                        "docker",
+                        "volume",
+                        "create",
+                        "--label",
+                        f"com.docker.compose.project={self.project}",
+                        target,
+                    ]
+                )
+                copies[field][stage] = target
+            self.copy_gateway_volume(source, copies[field]["backup"])
+            self.copy_gateway_volume(copies[field]["backup"], copies[field]["restored"])
+            for stage in ("backup", "restored"):
+                check(
+                    self.gateway_manifest(copies[field][stage])
+                    == original_manifests[field],
+                    f"gateway {field} {stage} changed contents, ownership or permissions",
+                )
+        state = original_manifests["data"]
+        for path in (
+            "caddy/pki/authorities/local/root.key",
+            "caddy/pki/authorities/local/intermediate.key",
+        ):
+            check(
+                path in state and state[path]["mode"] & 0o077 == 0,
+                "gateway CA key was absent or readable by other users",
+            )
+        check(
+            any(path.endswith("/localhost.key") for path in state),
+            "managed gateway leaf key was absent from persistent state",
+        )
+        check(
+            all(
+                entry["mode"] & 0o077 == 0
+                and entry["uid"] == 10001
+                and entry["gid"] == 10001
+                for path, entry in state.items()
+                if path.endswith(".key")
+            ),
+            "gateway private key permissions or ownership were unsafe",
+        )
+        override = self.temp / "gateway-restore.compose.yml"
+        override.write_text(
+            "volumes:\n"
+            + "".join(
+                f"  external-proxy-{field}:\n    external: true\n    name: {copies[field]['restored']}\n"
+                for field in ("data", "config")
+            )
+        )
+        self.compose_files.append(override)
+        self.compose(
+            "up", "-d", "--no-build", "--no-deps", "--force-recreate", "external-proxy"
+        )
+        # Keep the original client CA context. Loading a newly generated CA here
+        # would hide lost certificate state and a trust-breaking restore.
+        self.wait_ready()
+        restored = self.inspect(self.container("external-proxy"))
+        check(restored["Id"] != original_container, "gateway was not recreated")
+        for field, path in (("data", "/data"), ("config", "/config")):
+            check(
+                next(
+                    mount["Name"]
+                    for mount in restored["Mounts"]
+                    if mount["Destination"] == path
+                )
+                == copies[field]["restored"],
+                f"gateway did not use restored {field} working volume",
+            )
+            check(
+                self.gateway_manifest(originals[field]) == original_manifests[field],
+                "gateway restore mutated its preserved original",
+            )
+            check(
+                self.gateway_manifest(copies[field]["backup"])
+                == original_manifests[field],
+                "gateway restore mutated its preserved backup",
+            )
+        check(
+            self.leaf_fingerprint() == leaf,
+            "restore silently replaced the managed leaf certificate",
+        )
+        self.expect(200, "GET", "/auth/me")
+        self.compose("restart", "external-proxy")
+        self.wait_ready()
+        check(
+            self.leaf_fingerprint() == leaf,
+            "restart after restore replaced its leaf certificate",
+        )
+        self.expect(200, "GET", "/auth/me")
+        phase(
+            "PASS gateway data/config backup-to-new-volume restore, private key permissions, original trust and authenticated restart"
+        )
+
     def helper(self, index: int) -> str:
         name = self.project + f"-client-{index}"
         self.helpers.append(name)
@@ -880,6 +1170,8 @@ class Harness:
         self.compose("build", "backend", "caddy", timeout=1200)
         self.command(["docker", "pull", self.client_image], timeout=600)
         self.compose("up", "-d", "--no-build")
+        if self.certificate_state:
+            self.load_internal_ca()
         self.wait_ready()
         self.check_hardening()
         phase(
@@ -889,6 +1181,9 @@ class Harness:
         phase(
             "PASS canonical Origin, foreign/missing/spoofed Origin denial, cookie flags, no-store and settings"
         )
+        if self.certificate_state:
+            self.gateway_restore()
+            return
         self.streams_and_revocation()
         phase(
             "PASS regular account password replacement, live SSE first event and public slot revocation"
@@ -907,6 +1202,11 @@ def main() -> int:
         default="python:3.13-alpine",
         help="Docker image with python3 and Python SSL stdlib (default: %(default)s)",
     )
+    parser.add_argument(
+        "--certificate-state",
+        action="store_true",
+        help="test managed internal-CA gateway data/config backup and restore instead of the static-certificate proxy flow",
+    )
     arguments = parser.parse_args()
 
     def interrupted(signum: int, frame: object) -> None:
@@ -914,7 +1214,7 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGHUP, interrupted)
-    harness = Harness(arguments.client_image)
+    harness = Harness(arguments.client_image, arguments.certificate_state)
     success = False
     try:
         harness.run()

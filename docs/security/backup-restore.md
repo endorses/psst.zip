@@ -128,6 +128,23 @@ the exact images if they may become unavailable, then create checksums covering
 all retained artifacts. Do not print `docker compose config` with live secrets.
 Do not use `docker compose down -v`: it removes storage rather than backing it up.
 
+For the external-proxy override, also identify the `external-proxy` container and
+its actual `/data` and `/config` volumes. Stop that gateway along with the backend
+and inner proxy; snapshot both gateway volumes with the matching gateway image
+and the same read-only helper pattern. Backing up only the inner `caddy` service
+omits the externally served certificate/account state. Preserve each proxy's
+distinct volume mapping and restore every component into its own new working
+volume with UID/GID and private-key permissions intact. Do not share a writable
+certificate volume between the original gateway and a restored copy.
+
+The repository's isolated managed-certificate exercise is
+`python3 tools/test_external_proxy.py --certificate-state`. It verifies stopped
+gateway data/config copies, unchanged originals/backups, private-key ownership
+and permissions, and continued certificate trust/authenticated access after
+restore and restart. It uses an internal test issuer and loopback-only ingress;
+it does not verify a publicly trusted ACME account's issuance/renewal or substitute
+for validating the operator's actual protected backup.
+
 ## Restore a separate working copy
 
 - [ ] Keep the original service and its data safe. Verify the backup's authenticity

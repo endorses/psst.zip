@@ -133,6 +133,26 @@ ciphertext, client keys or gateway certificate state. Docker/Compose, OpenSSL an
 image build/pull access are required. The helper Python image remains in Docker's
 shared dependency cache; uniquely tagged application test images are removed.
 
+The separate managed-certificate storage check is:
+
+```sh
+python3 tools/test_external_proxy.py --certificate-state
+```
+
+This mode uses Caddy's internal issuer on the disposable gateway, stops its sole
+writer, copies both `/data` and `/config` into backups, and restores new working
+volumes. It verifies content hashes, ownership and permissions, preserves the
+originals and backups unchanged, and checks the original leaf certificate and
+client trust after recreation and another restart. Authenticated access must
+continue with the original backend session. Only the test client explicitly trusts
+the disposable CA; fixture-only `skip_install_trust` prevents even container
+trust installation. See [Caddy's local HTTPS storage](https://caddyserver.com/docs/automatic-https#local-https)
+and [trust installation option](https://caddyserver.com/docs/caddyfile/options#skip_install_trust).
+No production TLS configuration is changed. Internal issuance does not use public
+ACME or prove public renewal, DNS/challenge reachability, or an operator's actual
+backup. Use the [cold backup runbook](backup-restore.md) for deployment-specific
+state capture and protected restore.
+
 ## Existing volume ownership
 
 Caddy now runs as UID/GID `10001:10001`. New named volumes inherit this ownership.
