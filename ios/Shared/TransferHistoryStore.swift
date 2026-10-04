@@ -1,147 +1,219 @@
 import Foundation
 
-/// Each mutation rereads the shared file under a coordinator so the extension cannot overwrite main-app history.
+/// Main app and share extension address individual records in the same SQLite store.
+/// Migration keeps its original JSON/preferences and checkpoints each import batch.
 @Observable
 @MainActor
 final class TransferHistoryStore {
-    private(set) var records: [TransferRecord] = []
+    private(set) var revision = 0
+    private(set) var isReady = false
+    private(set) var migrationError: String?
+    private(set) var importedRecords: Int64 = 0
     private let defaults: UserDefaults
     private let fileURL: URL?
+    private var database: HistoryRecordDatabase?
+    private var migrating = false
+    private var legacySourceExpected = false
+
     init(
         defaults: UserDefaults = AppConstants.sharedDefaults,
         fileURL: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json")
     ) {
         self.defaults = defaults
         self.fileURL = fileURL
-        // Preserve the pre-account server for old received records that never stored their own URL.
-        if defaults.string(forKey: "legacyHistoryServerURL") == nil,
-            defaults.data(forKey: AppConstants.transferHistoryKey) != nil,
-            let original = defaults.string(forKey: AppConstants.serverURLKey)
-        {
-            defaults.set(original, forKey: "legacyHistoryServerURL")
-        }
-        reload()
+        do {
+            try openDatabase()
+            try migrationStep()
+        } catch { migrationError = Self.storageMessage }
     }
 
+    private static let storageMessage = "Local history could not be opened or imported. Existing records and keys have been preserved. Restore storage access and retry."
     private func decoder() -> JSONDecoder {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
+        let result = JSONDecoder()
+        result.dateDecodingStrategy = .iso8601
+        return result
     }
-
     private func encoder() -> JSONEncoder {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        return e
+        let result = JSONEncoder()
+        result.dateEncodingStrategy = .iso8601
+        return result
+    }
+    private func openDatabase() throws {
+        guard database == nil else { return }
+        guard let fileURL else { throw AccountError.storage }
+        let directory = fileURL.deletingLastPathComponent().appendingPathComponent(fileURL.lastPathComponent + ".store", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
+        let opened = try HistoryRecordDatabase(url: directory.appendingPathComponent("records.sqlite3"))
+        // Older UserDefaults APIs expose Data as one allocation. Copy it once;
+        // parsing/import after this point streams the source and retains it.
+        if try opened.migrationProgress(key: "account-history-v2")?.complete != true,
+            !FileManager.default.fileExists(atPath: fileURL.path), let data = defaults.data(forKey: AppConstants.transferHistoryKey)
+        {
+            if defaults.string(forKey: "legacyHistoryServerURL") == nil, let original = defaults.string(forKey: AppConstants.serverURLKey) {
+                defaults.set(original, forKey: "legacyHistoryServerURL")
+            }
+            var coordinationError: NSError?
+            var copyError: Error?
+            NSFileCoordinator().coordinate(writingItemAt: fileURL, options: .forReplacing, error: &coordinationError) { target in
+                guard !FileManager.default.fileExists(atPath: target.path) else { return }
+                do { try data.write(to: target, options: [.atomic, .completeFileProtection]) } catch { copyError = error }
+            }
+            if let coordinationError { throw coordinationError }
+            if let copyError { throw copyError }
+        }
+        legacySourceExpected = FileManager.default.fileExists(atPath: fileURL.path)
+        database = opened
     }
 
-    private func read() throws -> [TransferRecord] {
-        let data: Data? =
-            if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
-                try Data(contentsOf: fileURL)
-            } else {
-                defaults.data(forKey: AppConstants.transferHistoryKey)
+    private func migrationStep() throws {
+        guard let database, let fileURL else { throw AccountError.storage }
+        let existing = try database.migrationProgress(key: "account-history-v2")
+        if let existing, existing.complete {
+            importedRecords = existing.processed
+            isReady = true
+            return
+        }
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            guard existing == nil, !legacySourceExpected else { throw AccountError.storage }
+            isReady = true
+            return
+        }
+        let original = defaults.string(forKey: "legacyHistoryServerURL")
+        let progress = try database.migrateJSONBatch(source: fileURL, key: "account-history-v2", limit: 25) { data in
+            var record = try self.decoder().decode(TransferRecord.self, from: data)
+            if record.ownerID == nil && record.serverURL == nil {
+                if var origin = URLComponents(string: record.shareURL ?? "") {
+                    origin.path = ""
+                    origin.query = nil
+                    origin.fragment = nil
+                    record.serverURL = try? AccountHTTP.origin(origin.string ?? "")
+                }
+                if record.serverURL == nil, let original { record.serverURL = try? AccountHTTP.origin(original) }
             }
-        guard let data else { return [] }
-        var values = try decoder().decode([TransferRecord].self, from: data)
-        for index in values.indices where values[index].ownerID == nil && values[index].serverURL == nil {
-            if var origin = URLComponents(string: values[index].shareURL ?? "") {
-                origin.path = ""
-                origin.query = nil
-                origin.fragment = nil
-                values[index].serverURL = try? AccountHTTP.origin(origin.string ?? "")
+            return try self.stored(record)
+        }
+        importedRecords = progress.processed
+        isReady = progress.complete
+        revision &+= 1
+    }
+
+    func finishMigration() async {
+        guard !migrating else { return }
+        migrating = true
+        defer { migrating = false }
+        migrationError = nil
+        do {
+            try openDatabase()
+            while !isReady, !Task.isCancelled {
+                try migrationStep()
+                await Task.yield()
             }
-            if values[index].serverURL == nil,
-                let original = defaults.string(forKey: "legacyHistoryServerURL")
-            {
-                values[index].serverURL = try? AccountHTTP.origin(original)
+        } catch { migrationError = Self.storageMessage }
+    }
+
+    private func readyDatabase() throws -> HistoryRecordDatabase {
+        guard isReady, let database else { throw AccountError.storage }
+        return database
+    }
+    private func stored(_ record: TransferRecord) throws -> HistoryRecordDatabase.Record {
+        HistoryRecordDatabase.Record(
+            id: record.localID,
+            scope: record.ownerID.flatMap { owner in record.serverURL.map { $0 + "|" + owner } } ?? "legacy",
+            kind: record.isSlot == true ? "slot" : "transfer", created: record.createdAt.timeIntervalSince1970, body: try encoder().encode(record))
+    }
+    func reload() { revision &+= 1 }
+    func record(_ localID: String) throws -> TransferRecord? {
+        _ = revision
+        guard let row = try readyDatabase().read(localID) else { return nil }
+        return try decoder().decode(TransferRecord.self, from: row.body)
+    }
+    func records(ids: [String], session: DeviceSession) throws -> [TransferRecord] {
+        guard ids.count <= 100, session.canTransfer else { throw AccountError.changed }
+        _ = revision
+        return try readyDatabase().transaction { database in
+            var remaining = HistoryRecordDatabase.maximumPageBytes
+            return try ids.compactMap { id in
+                guard let row = try database.read(id) else { return nil }
+                guard row.body.count <= remaining else { throw AccountError.storage }
+                remaining -= row.body.count
+                let record = try decoder().decode(TransferRecord.self, from: row.body)
+                return record.belongs(to: session) ? record : nil
             }
         }
-        return values
     }
-
-    func reload() {
-        // Keep the last successful read during a transient filesystem failure; writes always throw.
-        if let values = try? read() {
-            records = values
-        }
+    struct Page {
+        let records: [TransferRecord]
+        let next: HistoryRecordDatabase.Cursor?
     }
-
+    func page(session: DeviceSession, kinds: [String] = ["transfer", "slot"], after: HistoryRecordDatabase.Cursor? = nil) throws -> Page {
+        guard session.canTransfer else { throw AccountError.changed }
+        _ = revision
+        let value = try readyDatabase().page(scopes: [session.accountID], kinds: kinds, after: after, limit: 50)
+        return Page(records: try value.records.map { try decoder().decode(TransferRecord.self, from: $0.body) }, next: value.next)
+    }
+    var hasLegacyRecords: Bool {
+        _ = revision
+        return (try? readyDatabase().hasAny(scopes: ["legacy"], kinds: ["transfer", "slot"])) ?? false
+    }
+    /// Convenience for small first-page views; callers needing more must use page().
     func visible(for session: DeviceSession?) -> [TransferRecord] {
         guard let session else { return [] }
-        return records.filter { $0.canManage(as: session) }.sorted { $0.createdAt > $1.createdAt }
+        return (try? page(session: session).records) ?? []
     }
-
-    var legacyCount: Int {
-        records.filter { $0.ownerID == nil }.count
-    }
-
-    func add(_ record: TransferRecord) throws {
-        try update(record)
-    }
-
+    func add(_ record: TransferRecord) throws { try update(record) }
     func update(_ record: TransferRecord) throws {
-        try mutate { values in
-            // A polling refresh or in-flight receive checkpoint must not erase a concurrent rename.
-            let next = record.preservingLocalName(from: values.first(where: { $0.localID == record.localID }))
-            values.removeAll { $0.localID == record.localID }
-            values.insert(next, at: 0)
+        try mutate(ids: [record.localID]) { values in
+            values = [record.preservingLocalName(from: values.first)]
         }
     }
-
-    /// A paginated refresh commits once. Rewriting the complete history for each
-    /// row would make a large, valid snapshot quadratic in disk IO.
     func applySnapshot(_ records: [TransferRecord]) throws {
-        try mutate { values in
+        try mutate(ids: records.map(\.localID)) { values in
             let existing = Dictionary(values.map { ($0.localID, $0) }, uniquingKeysWith: { first, _ in first })
-            let incoming = Dictionary(records.map { ($0.localID, $0) }, uniquingKeysWith: { _, last in last })
-            values.removeAll { incoming[$0.localID] != nil }
-            values.append(contentsOf: incoming.values.map { $0.preservingLocalName(from: existing[$0.localID]) })
+            values = records.map { $0.preservingLocalName(from: existing[$0.localID]) }
         }
     }
-
     func rename(_ record: TransferRecord, name: String, session: DeviceSession) throws {
-        guard record.belongs(to: session), session.canTransfer, SecretStore.session?.accountID == session.accountID else { throw AccountError.changed }
+        guard record.belongs(to: session), session.canTransfer, SecretStore.session == session else { throw AccountError.changed }
         let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        try mutate { values in
-            guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
-            values[index].customTitle = normalized.isEmpty ? nil : String(normalized.prefix(200))
+        try mutate(ids: [record.localID]) { values in
+            guard !values.isEmpty else { return }
+            values[0].customTitle = normalized.isEmpty ? nil : String(normalized.prefix(200))
         }
     }
-
     func remove(_ record: TransferRecord) throws {
-        try mutate { $0.removeAll { $0.localID == record.localID } }
+        try readyDatabase().remove(record.localID)
+        revision &+= 1
         SecretStore.remove(record.vaultID)
     }
-
-    func mutate(_ change: (inout [TransferRecord]) -> Void) throws {
-        guard let fileURL else { throw AccountError.storage }
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var writeError: Error?
-        coordinator.coordinate(writingItemAt: fileURL, options: .forMerging, error: &coordinationError) { url in
-            do {
-                var values = try read()
-                change(&values)
-                try encoder().encode(values).write(to: url, options: [.atomic, .completeFileProtection])
-                records = values
-                defaults.removeObject(forKey: AppConstants.transferHistoryKey)
-            } catch { writeError = error }
+    /// Read/modify only the explicit identities inside one cross-process writer transaction.
+    func mutate(ids: [String], _ change: (inout [TransferRecord]) -> Void) throws {
+        guard ids.count <= 100 else { throw AccountError.storage }
+        let requested = Set(ids)
+        try readyDatabase().transaction { database in
+            var remaining = HistoryRecordDatabase.maximumPageBytes
+            var values = try requested.compactMap { id -> TransferRecord? in
+                guard let row = try database.read(id) else { return nil }
+                guard row.body.count <= remaining else { throw AccountError.storage }
+                remaining -= row.body.count
+                return try decoder().decode(TransferRecord.self, from: row.body)
+            }
+            change(&values)
+            guard values.count <= 100, values.allSatisfy({ requested.contains($0.localID) }), Set(values.map(\.localID)).count == values.count else { throw AccountError.storage }
+            var remainingWriteBytes = HistoryRecordDatabase.maximumPageBytes
+            for record in values {
+                let row = try stored(record)
+                guard row.body.count <= remainingWriteBytes else { throw AccountError.storage }
+                remainingWriteBytes -= row.body.count
+                try database.write(row)
+            }
+            for id in requested.subtracting(values.map(\.localID)) { try database.remove(id) }
         }
-        if let coordinationError {
-            throw coordinationError
-        }
-        if let writeError {
-            throw writeError
-        }
+        revision &+= 1
     }
-
     func revoke(_ record: TransferRecord, session: DeviceSession) async throws {
         guard record.canManage(as: session), SecretStore.session == session else { throw AccountError.changed }
         let path = (record.isSlot == true ? "slots/" : "transfers/") + record.id
-        _ = try await AccountHTTP.request(
-            server: session.serverURL, path: path, method: "DELETE",
-            token: record.capabilities?.deletionToken ?? session.token)
+        _ = try await AccountHTTP.request(server: session.serverURL, path: path, method: "DELETE", token: record.capabilities?.deletionToken ?? session.token)
         guard SecretStore.session == session else { throw AccountError.changed }
         try remove(record)
     }

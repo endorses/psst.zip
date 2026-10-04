@@ -6,6 +6,9 @@ import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import zip.psst.shared.model.FileMetadata
 import java.io.File
+import java.nio.file.DirectoryStream
+import java.nio.file.Files
+import java.nio.file.Path
 import java.security.KeyStore
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -54,26 +57,147 @@ class GuestDownloadStore(context: Context) {
         encodeDefaults = true
     }
 
+    private val index = GuestHistoryIndex(context.applicationContext)
+    private var legacyStream: DirectoryStream<Path>? = null
+    private var legacyIterator: Iterator<Path>? = null
+    private var importDone = false
+
+    /** Each call examines at most 64 directory entries, including keys and AtomicFile sidecars. */
     @Synchronized
-    fun all(): List<GuestDownload> =
-        entries("json").map { read(it.nameWithoutExtension) }.sortedByDescending { it.createdAt }
+    fun importLegacyBatch(): Boolean {
+        if (importDone || index.importComplete()) {
+            importDone = true
+            return false
+        }
+        if (legacyIterator == null) {
+            legacyStream = Files.newDirectoryStream(directory.toPath())
+            legacyIterator = legacyStream!!.iterator()
+        }
+        val iterator = legacyIterator!!
+        val more =
+            iterator.visitGuestImportBatch { path ->
+                val entry = guestLegacyEntry(path.fileName.toString())
+                if (entry != null) {
+                    val (kind, id) = entry
+                    if (!index.contains(kind, id)) {
+                        try {
+                            importRecord(kind, id)
+                        } catch (error: java.io.IOException) {
+                            index.put(kind, id, null, importing = true)
+                        } catch (error: IllegalArgumentException) {
+                            // Preserve the original metadata and key; later entries remain
+                            // browseable.
+                            index.put(kind, id, null, importing = true)
+                        }
+                    }
+                }
+            }
+        if (!more) {
+            legacyStream?.close()
+            legacyStream = null
+            legacyIterator = null
+            index.finishImport()
+            importDone = true
+        }
+        return more
+    }
 
     @Synchronized
-    fun read(identity: String): GuestDownload =
-        json.decodeFromString(
-            AtomicFile(File(directory, "$identity.json")).readFully().decodeToString()
+    fun page(after: LocalHistoryCursor?): GuestHistoryPage {
+        val rows = index.page(after)
+        val shown = rows.take(50)
+        return GuestHistoryPage(
+            shown.mapNotNull {
+                it.payload?.let { value -> json.decodeFromString<GuestDownload>(value) }
+            },
+            shown
+                .lastOrNull()
+                ?.takeIf { rows.size > 50 }
+                ?.let { LocalHistoryCursor(it.createdAt, it.identity) },
+            !importDone,
+            index.hasImportErrors(),
         )
+    }
+
+    @Synchronized
+    fun read(identity: String): GuestDownload {
+        require(validIdentity(identity))
+        if (!index.contains("json", identity)) importRecord("json", identity)
+        return json.decodeFromString(
+            requireNotNull(index.read("json", identity)) {
+                "Local transfer metadata is unavailable; any original metadata file is retained"
+            }
+        )
+    }
 
     @Synchronized
     fun save(record: GuestDownload) {
-        val file = AtomicFile(File(directory, "${record.identity}.json"))
-        writeAtomic(file, json.encodeToString(record).encodeToByteArray())
+        require(validIdentity(record.identity))
+        index.transaction {
+            check(!index.isDeleted("json", record.identity)) {
+                "This local history record was removed"
+            }
+            persist(record)
+        }
+    }
+
+    private fun persist(record: GuestDownload) {
+        index.put(
+            "json",
+            record.identity,
+            json.encodeToString(record),
+            record.createdAt,
+            record.complete && record.receiptPending,
+        )
+    }
+
+    /** Update only receipt state, retaining any newer saved-file checkpoint. */
+    @Synchronized
+    fun markReceiptSent(identity: String): GuestDownload {
+        lateinit var updated: GuestDownload
+        index.transaction {
+            updated = read(identity).copy(receiptPending = false)
+            save(updated)
+        }
+        return updated
+    }
+
+    private fun importRecord(kind: String, id: String) {
+        val payload =
+            AtomicFile(File(directory, "$id.$kind")).openRead().use { it.readGuestRecord() }
+        when (kind) {
+            "json" -> {
+                val record = json.decodeFromString<GuestDownload>(payload)
+                require(record.identity == id)
+                index.put(
+                    kind,
+                    id,
+                    payload,
+                    record.createdAt,
+                    record.complete && record.receiptPending,
+                    importing = true,
+                )
+            }
+            "receipt" -> {
+                require(json.decodeFromString<GuestReceipt>(payload).identity == id)
+                index.put(kind, id, payload, importing = true)
+            }
+            "upload" -> {
+                require(json.decodeFromString<GuestUploadCleanup>(payload).identity == id)
+                index.put(kind, id, payload, importing = true)
+            }
+        }
     }
 
     @Synchronized
     fun open(origin: String, transferId: String, key: ByteArray): GuestDownload {
         val id = identity(origin, transferId)
-        if (File(directory, "$id.json").exists() || File(directory, "$id.json.bak").exists()) {
+        if (
+            (index.contains("json", id) && !index.isDeleted("json", id)) ||
+                (!index.contains("json", id) &&
+                    (File(directory, "$id.json").exists() ||
+                        File(directory, "$id.json.bak").exists()))
+        ) {
             val existing = read(id)
             if (!MessageDigest.isEqual(readKey(id), key)) {
                 require(canReplaceGuestKey(existing)) { "This saved transfer has a different key" }
@@ -82,13 +206,16 @@ class GuestDownloadStore(context: Context) {
             return existing
         }
         writeKey(id, key)
-        return GuestDownload(id, origin, transferId).also(::save)
+        return GuestDownload(id, origin, transferId).also(::persist)
     }
 
     @Synchronized
     fun remove(identity: String) {
         val record = read(identity)
-        if (record.receiptPending) queueReceipt(record)
+        index.transaction {
+            if (record.receiptPending) queueReceipt(record)
+            index.tombstone("json", identity)
+        }
         deleteAtomic(File(directory, "$identity.json"))
         deleteAtomic(File(directory, "$identity.key"))
     }
@@ -108,18 +235,29 @@ class GuestDownloadStore(context: Context) {
     @Synchronized
     fun queueReceipt(record: GuestDownload) {
         val receipt = GuestReceipt(record.identity, record.origin, record.transferId)
-        val file = AtomicFile(File(directory, "${record.identity}.receipt"))
-        writeAtomic(file, json.encodeToString(receipt).encodeToByteArray())
+        index.put("receipt", record.identity, json.encodeToString(receipt))
     }
 
     @Synchronized
-    fun receipts(): List<GuestReceipt> =
-        entries("receipt").map {
-            json.decodeFromString(AtomicFile(it).readFully().decodeToString())
+    fun receipts(after: String? = null): List<GuestReceipt> =
+        index.queue("receipt", after).mapNotNull {
+            it.payload?.let { value -> json.decodeFromString<GuestReceipt>(value) }
         }
 
     @Synchronized
+    fun pendingDownloads(after: String? = null): List<GuestDownload> =
+        index.queue("json", after, pendingOnly = true).mapNotNull {
+            it.payload?.let { value -> json.decodeFromString<GuestDownload>(value) }
+        }
+
+    fun hasReceipts(): Boolean =
+        index.hasPending("receipt") || index.hasPending("json", pendingOnly = true)
+
+    fun hasUploads(): Boolean = index.hasPending("upload")
+
+    @Synchronized
     fun finishReceipt(identity: String) {
+        index.tombstone("receipt", identity)
         deleteAtomic(File(directory, "$identity.receipt"))
     }
 
@@ -127,17 +265,19 @@ class GuestDownloadStore(context: Context) {
     fun queueUpload(origin: String, transferId: String, token: String): GuestUploadCleanup {
         val entry = GuestUploadCleanup("upload-" + identity(origin, transferId), origin, transferId)
         writeKey(entry.identity, token.encodeToByteArray())
-        val file = AtomicFile(File(directory, "${entry.identity}.upload"))
-        writeAtomic(file, json.encodeToString(entry).encodeToByteArray())
+        index.put("upload", entry.identity, json.encodeToString(entry))
         return entry
     }
 
     @Synchronized
-    fun uploads(): List<GuestUploadCleanup> =
-        entries("upload").map { json.decodeFromString(AtomicFile(it).readFully().decodeToString()) }
+    fun uploads(after: String? = null): List<GuestUploadCleanup> =
+        index.queue("upload", after).mapNotNull {
+            it.payload?.let { value -> json.decodeFromString<GuestUploadCleanup>(value) }
+        }
 
     @Synchronized
     fun finishUpload(entry: GuestUploadCleanup) {
+        index.tombstone("upload", entry.identity)
         deleteAtomic(File(directory, "${entry.identity}.upload"))
         deleteAtomic(File(directory, "${entry.identity}.key"))
     }
@@ -150,10 +290,13 @@ class GuestDownloadStore(context: Context) {
         writeAtomic(file, cipher.iv + cipher.doFinal(key))
     }
 
-    private fun entries(extension: String): List<File> =
-        guestAtomicNames(directory.listFiles().orEmpty().map { it.name }, extension).map {
-            File(directory, it)
-        }
+    @Synchronized
+    fun close() {
+        legacyStream?.close()
+        legacyStream = null
+        legacyIterator = null
+        index.close()
+    }
 
     private fun deleteAtomic(file: File) {
         AtomicFile(file).delete()
@@ -213,3 +356,13 @@ internal fun canReplaceGuestKey(record: GuestDownload): Boolean =
 /** Older Android AtomicFile revisions can leave only the backup after an interrupted rename. */
 internal fun guestAtomicNames(names: List<String>, extension: String): List<String> =
     names.map { it.removeSuffix(".bak") }.filter { it.endsWith(".$extension") }.distinct()
+
+internal fun validIdentity(identity: String): Boolean =
+    identity.matches(Regex("(?:upload-)?[a-f0-9]{64}"))
+
+data class GuestHistoryPage(
+    val records: List<GuestDownload>,
+    val next: LocalHistoryCursor?,
+    val importing: Boolean,
+    val importErrors: Boolean,
+)

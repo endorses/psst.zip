@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
     testImplementation("io.ktor:ktor-client-mock:3.1.1")
     testImplementation("io.ktor:ktor-client-content-negotiation:3.1.1")
     testImplementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")

@@ -69,11 +69,11 @@ resources or refund lifetime allowances.
 
 ## Remaining storage and release checks
 
-Remote pagination does not finish local storage bounds. Android's server page uses
-scoped visible-ID Room queries, but the device-history view still loads its local
-collection. iOS still coordinates the shared JSON history file; page merges read
-the current file before changing metadata so concurrent save checkpoints survive.
-Indexed local storage and its migration remain separate tasks in the
-[security plan](../plans/security-abuse-prevention-and-link-limits.md). Browser
-local key/name maps also need their own storage work. Native iOS builds and device
-checks remain pending on macOS/Xcode; portable Swift checks are not an iOS build.
+Remote pagination does not finish local storage bounds. Browser link/name metadata
+now uses exact IndexedDB entries, Android account and guest history use indexed
+local pages, and iOS account history uses a shared SQLite store with resumable
+legacy import. These changes preserve original migration sources and local keys.
+Growing mobile inbox checkpoint maps and iOS guest history/queues remain separate
+work. See [local history storage](local-history-storage.md) for the bounds,
+migration exceptions and remaining checks. Native iOS builds and device checks
+remain pending on macOS/Xcode; portable Swift checks are not an iOS build.

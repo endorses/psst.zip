@@ -10,10 +10,31 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var historyFilter = HistoryFilter.all
     var body: some View {
+        Group {
+            if history.isReady {
+                workspace
+            } else {
+                VStack(spacing: 16) {
+                    Text("Preparing local history").font(.title2)
+                    if let error = history.migrationError {
+                        Text(error)
+                        Button("Retry") { Task { await history.finishMigration() } }
+                    } else {
+                        ProgressView()
+                        Text("Imported \(history.importedRecords) records. Your original history is preserved.").font(.footnote)
+                    }
+                }.padding()
+            }
+        }.modifier(PsstStyle()).task { await history.finishMigration() }
+    }
+    private var workspace: some View {
         TabView(selection: $selectedTab) {
             HomeView(receiving: false).tabItem { Label("Home", systemImage: "house") }.tag(0)
-            ScanReceiveView(isSelected: selectedTab == 1 && !settings) { historyFilter = .downloaded; selectedTab = 3 }
-                .tabItem { Label("Scan", systemImage: "qrcode.viewfinder") }.tag(1)
+            ScanReceiveView(isSelected: selectedTab == 1 && !settings) {
+                historyFilter = .downloaded
+                selectedTab = 3
+            }
+            .tabItem { Label("Scan", systemImage: "qrcode.viewfinder") }.tag(1)
             HomeView(receiving: true).tabItem { Label("Receive", systemImage: "square.and.arrow.down") }.tag(2)
             HistoryView(filter: $historyFilter).tabItem { Label("History", systemImage: "clock") }.tag(3)
         }
@@ -22,7 +43,11 @@ struct ContentView: View {
             HStack {
                 Text(config.indicator).font(.caption).lineLimit(1).truncationMode(.middle)
                 Spacer()
-                Button { settings = true } label: { Image(systemName: "gearshape").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Settings")
+                Button {
+                    settings = true
+                } label: {
+                    Image(systemName: "gearshape").frame(minWidth: 44, minHeight: 44)
+                }.accessibilityLabel("Settings")
             }.padding(.horizontal).background(PsstTheme.surface)
         }
         .sheet(isPresented: $settings) { NavigationStack { ServerConfigView() } }

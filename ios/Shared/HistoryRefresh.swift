@@ -5,7 +5,8 @@ extension TransferHistoryStore {
     /// Apply only returned identities under the same coordinated write that reads
     /// current local checkpoints. Unloaded identities are never inferred revoked.
     func mergeResourcePage(_ list: ResourceList, session: DeviceSession) throws {
-        try mutate { values in
+        let prefix = "resource|" + session.serverURL + "|" + session.userID + "|"
+        try mutate(ids: list.identities.map { prefix + $0 }) { values in
             var positions = Dictionary(values.enumerated().map { ($0.element.localID, $0.offset) }, uniquingKeysWith: { first, _ in first })
             func base(_ id: String, slot: Bool, created: String?, expires: String?) -> TransferRecord {
                 let key = "resource|" + session.serverURL + "|" + session.userID + "|" + id + (slot ? "|slot" : "|transfer")
@@ -84,7 +85,7 @@ extension TransferHistoryStore {
                 ["pending", "complete", "expired", "revoked"].contains(status.status)
             else { throw AccountError.request }
             guard SecretStore.session == session, !Task.isCancelled else { throw AccountError.changed }
-            try mutate { values in
+            try mutate(ids: [record.localID]) { values in
                 guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
                 values[index].fileCount = status.file_count
                 values[index].serverSummaryKnown = true
@@ -108,7 +109,7 @@ extension TransferHistoryStore {
             let unavailable: Bool
             if case AccountError.unavailable = error { unavailable = true } else { unavailable = TransferIncident.from(error) == .revoked }
             guard unavailable else { throw error }
-            try mutate { values in
+            try mutate(ids: [record.localID]) { values in
                 guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
                 values[index].state = values[index].isExpired ? .expired : .revoked
             }

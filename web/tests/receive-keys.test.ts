@@ -32,6 +32,8 @@ test("receive private keys are owner/inbox scoped and corrupt or unavailable sto
     assert.deepEqual(loadReceiveKey("alice", "inbox1"), pair);
     records.set("psst.receive-key.v2.alice.inbox1", '{"privateKey":"corrupt"}');
     assert.equal(loadReceiveKey("alice", "inbox1"), null);
+    records.set("psst.receive-key.v2.alice.inbox1", " ".repeat(513));
+    assert.equal(loadReceiveKey("alice", "inbox1"), null);
     localStorage.setItem = () => {
       throw new Error("storage unavailable");
     };

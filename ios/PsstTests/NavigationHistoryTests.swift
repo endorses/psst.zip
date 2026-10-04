@@ -109,10 +109,10 @@ final class NavigationHistoryTests: XCTestCase {
         try store.add(owned("shared-id", slot: true))
         let relaunched = TransferHistoryStore(defaults: defaults, fileURL: file)
         XCTAssertEqual(relaunched.visible(for: session).count, 2)
-        XCTAssertEqual(relaunched.records.first(where: { $0.isSlot != true })?.customTitle, "Private document")
-        XCTAssertNil(relaunched.records.first(where: { $0.isSlot == true })?.customTitle)
-        XCTAssertEqual(relaunched.records.first(where: { $0.isSlot != true })?.title, "report.pdf")
-        XCTAssertNil(defaults.data(forKey: AppConstants.transferHistoryKey))
+        XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document")
+        XCTAssertNil(relaunched.visible(for: session).first(where: { $0.isSlot == true })?.customTitle)
+        XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.title, "report.pdf")
+        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey))  // Migration retains its original source.
         let another = DeviceSession(serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other", expiresAt: "later")
         XCTAssertTrue(relaunched.visible(for: another).isEmpty)
     }
@@ -134,10 +134,31 @@ final class NavigationHistoryTests: XCTestCase {
         incoming.fileCount = 250
         try store.applySnapshot([incoming])
         let restored = TransferHistoryStore(defaults: defaults, fileURL: file)
-        XCTAssertEqual(restored.records.count, 2)
-        XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.fileCount, 250)
-        XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
-        XCTAssertNotNil(restored.records.first(where: { $0.id == "another" }))
+        XCTAssertEqual(restored.visible(for: session).count, 2)
+        XCTAssertEqual(restored.visible(for: session).first(where: { $0.id == "refreshed" })?.fileCount, 250)
+        XCTAssertEqual(restored.visible(for: session).first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
+        XCTAssertNotNil(restored.visible(for: session).first(where: { $0.id == "another" }))
+    }
+
+    func testOversizedBatchMutationRollsBackEveryChangedRecord() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "history-byte-budget-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = TransferHistoryStore(defaults: defaults, fileURL: directory.appendingPathComponent("history.json"))
+        let first = owned("first")
+        let second = owned("second")
+        try store.add(first)
+        try store.add(second)
+        let largePath = String(repeating: "a", count: 9 * 1024 * 1024)
+        XCTAssertThrowsError(
+            try store.mutate(ids: [first.localID, second.localID]) { records in
+                for index in records.indices { records[index].savedFiles = ["file": largePath] }
+            })
+        XCTAssertNil(try store.record(first.localID)?.savedFiles)
+        XCTAssertNil(try store.record(second.localID)?.savedFiles)
     }
 
     func testHistoryPageMergePreservesUnloadedRecordsAndConcurrentCheckpoints() throws {
@@ -165,18 +186,51 @@ final class NavigationHistoryTests: XCTestCase {
         let unknown =
             #"{"paginated":true,"transfers":[],"slots":[{"id":"01234567-89ab-cdef-0123-456789abcdef","status":"has_uploads","file_count":null,"completed_files":null,"total_size":null,"summary":{"state":"updating","file_count":null,"completed_files":null,"total_size":null}}],"next_cursor":"more"}"#
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(unknown.utf8)), session: session)
-        let merged = try XCTUnwrap(store.records.first { $0.id == id })
+        let merged = try XCTUnwrap(store.visible(for: session).first { $0.id == id })
         XCTAssertEqual(merged.fileCount, 3)
         XCTAssertEqual(merged.serverSummaryKnown, false)
         XCTAssertEqual(merged.shareURL, local.shareURL)
         XCTAssertEqual(merged.savedFiles, updated.savedFiles)
         XCTAssertEqual(merged.savedTransfers, updated.savedTransfers)
         XCTAssertEqual(merged.customTitle, updated.customTitle)
-        XCTAssertNotEqual(store.records.first { $0.id == "unloaded" }?.state, .revoked)
+        XCTAssertNotEqual(store.visible(for: session).first { $0.id == "unloaded" }?.state, .revoked)
         let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(of: "updating", with: "ready")
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(ready.utf8)), session: session)
-        XCTAssertEqual(store.records.first { $0.id == id }?.fileCount, 1)
-        XCTAssertEqual(store.records.first { $0.id == id }?.savedFiles, updated.savedFiles)
+        XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.fileCount, 1)
+        XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.savedFiles, updated.savedFiles)
+    }
+
+    func testIndexedHistoryImportAndPagesPreserveEveryRecord() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "history-indexed-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let file = directory.appendingPathComponent("history.json")
+        let original = (0..<130).map { owned("old-" + String($0)) }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let originalData = try encoder.encode(original)
+        try originalData.write(to: file)
+        let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertFalse(store.isReady)
+        XCTAssertThrowsError(try store.add(owned("new-before-import")))
+        await store.finishMigration()
+        XCTAssertTrue(store.isReady)
+        var next: HistoryRecordDatabase.Cursor?
+        var ids = Set<String>()
+        repeat {
+            let page = try store.page(session: session, after: next)
+            XCTAssertLessThanOrEqual(page.records.count, 50)
+            for record in page.records { XCTAssertTrue(ids.insert(record.id).inserted) }
+            next = page.next
+        } while next != nil
+        XCTAssertEqual(ids, Set(original.map(\.id)))
+        XCTAssertEqual(try Data(contentsOf: file), originalData)
+        let reopened = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertTrue(reopened.isReady)
+        XCTAssertEqual(try reopened.record(original[100].localID)?.id, original[100].id)
     }
 
     func testAdminAndRestrictedSessionsExposeOnlyDeviceDownloads() {

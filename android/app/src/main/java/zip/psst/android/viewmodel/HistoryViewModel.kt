@@ -6,7 +6,10 @@ import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.InboxPager
+import zip.psst.android.data.LocalHistoryCursor
+import zip.psst.android.data.LocalHistoryPager
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.localHistoryScope
 import zip.psst.android.data.revokeHistoryEntry
 import zip.psst.android.data.syncAccountHistory
 import zip.psst.shared.api.AdminTransferForbiddenException
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -35,6 +39,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class HistoryDeletionError(val id: String, val message: String)
+
+private data class LocalHistoryRequest(
+    val pager: LocalHistoryPager = LocalHistoryPager(),
+    val revision: Long = 0,
+)
+
+private data class LocalHistorySelection(
+    val state: AccountHistoryPageState,
+    val access: HistoryAccess,
+    val device: Boolean,
+    val local: LocalHistoryPager,
+)
 
 data class AccountHistoryPageState(
     val access: HistoryAccess? = null,
@@ -54,24 +70,69 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _deviceHistory = MutableStateFlow(false)
     val deviceHistory = _deviceHistory.asStateFlow()
     val legacyCount = MutableStateFlow(0)
+    val currentAccess = app.prefs.historyAccess
+    val localPager = MutableStateFlow(LocalHistoryPager())
+    private val localRequest = MutableStateFlow(LocalHistoryRequest())
+    val localLoading = MutableStateFlow(false)
+    val localIssue = MutableStateFlow<String?>(null)
+    val localNext = MutableStateFlow<LocalHistoryCursor?>(null)
     val history: StateFlow<List<TransferHistoryEntity>> =
-        combine(_pageState, app.prefs.historyAccess, _deviceHistory) { page, access, device ->
-                Triple(page, access, device)
+        combine(_pageState, app.prefs.historyAccess, _deviceHistory, localRequest) {
+                page,
+                access,
+                device,
+                local ->
+                LocalHistorySelection(page, access, device, local.pager)
             }
-            .flatMapLatest { (state, access, device) ->
-                if (device)
-                    dao.getAll().map { rows ->
-                        legacyCount.value = rows.count { it.accountId == null }
-                        rows.filter(access::permits)
-                    }
-                else {
+            .flatMapLatest { (state, access, device, local) ->
+                if (
+                    device &&
+                        access.accountId != null &&
+                        !access.isAdmin &&
+                        !access.mustChangePassword
+                ) {
+                    val cursor = local.cursor
+                    combine(
+                            dao.observeLocalPage(
+                                access.accountId,
+                                localHistoryScope(access.serverUrl),
+                                cursor?.createdAt ?: Long.MAX_VALUE,
+                                cursor?.id ?: "\uffff",
+                            ),
+                            dao.hasLegacy(),
+                        ) { rows, legacy ->
+                            if (app.prefs.historyAccess.value != access) return@combine emptyList()
+                            localPager.value = local
+                            localLoading.value = false
+                            localIssue.value = null
+                            legacyCount.value = if (legacy) 1 else 0
+                            localNext.value =
+                                rows
+                                    .take(50)
+                                    .lastOrNull()
+                                    ?.takeIf { rows.size > 50 }
+                                    ?.let { LocalHistoryCursor(it.createdAt, it.id) }
+                            rows.take(50)
+                        }
+                        .catch { error ->
+                            if (error is CancellationException) throw error
+                            localLoading.value = false
+                            localIssue.value =
+                                "Local account history could not be read. The current page has been retained. Retry."
+                        }
+                } else {
                     val ids =
                         state.page
                             ?.let {
                                 it.transfers.map { row -> row.id } + it.slots.map { row -> row.id }
                             }
                             .orEmpty()
-                    if (state.access != access || access.accountId == null || ids.isEmpty())
+                    if (
+                        device ||
+                            state.access != access ||
+                            access.accountId == null ||
+                            ids.isEmpty()
+                    )
                         flowOf(emptyList())
                     else dao.observePage(ids, access.serverUrl, access.accountId)
                 }
@@ -102,6 +163,11 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 revision++
                 _pageState.value = AccountHistoryPageState()
                 legacyCount.value = 0
+                localPager.value = LocalHistoryPager()
+                localRequest.value = LocalHistoryRequest()
+                localLoading.value = false
+                localIssue.value = null
+                localNext.value = null
                 deleteJobs.values.toList().forEach { it.cancel() }
                 _deletionError.value = null
                 accountIssue.value = null
@@ -132,6 +198,25 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         refreshJob?.cancel()
         _pageState.update { it.copy(loading = false) }
         if (!value && visible) startPolling()
+    }
+
+    fun firstLocalPage() = navigateLocal(LocalHistoryPager())
+
+    fun previousLocalPage() {
+        if (localPager.value.previous.isNotEmpty()) navigateLocal(localPager.value.back())
+    }
+
+    fun nextLocalPage() {
+        localNext.value?.let { navigateLocal(localPager.value.next(it)) }
+    }
+
+    fun retryLocalPage() = navigateLocal(localPager.value)
+
+    private fun navigateLocal(target: LocalHistoryPager) {
+        if (localLoading.value) return
+        localLoading.value = true
+        localIssue.value = null
+        localRequest.value = LocalHistoryRequest(target, localRequest.value.revision + 1)
     }
 
     fun firstPage() = navigate(InboxPager())

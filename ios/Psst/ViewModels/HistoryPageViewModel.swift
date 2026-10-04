@@ -5,6 +5,7 @@ import Foundation
 final class HistoryPageViewModel {
     private(set) var window = InboxPageWindow()
     private(set) var identities: Set<String> = []
+    private(set) var records: [TransferRecord] = []
     private(set) var loadedSession: DeviceSession?
     private(set) var loading = false
     private(set) var stale = false
@@ -15,6 +16,7 @@ final class HistoryPageViewModel {
         requestID = UUID()
         window = InboxPageWindow()
         identities = []
+        records = []
         loadedSession = nil
         loading = false
         stale = false
@@ -23,6 +25,14 @@ final class HistoryPageViewModel {
 
     func contains(_ record: TransferRecord, session: DeviceSession?) -> Bool {
         session == loadedSession && session != nil && identities.contains(record.id + (record.isSlot == true ? "|slot" : "|transfer"))
+    }
+
+    func refreshLocal(history: TransferHistoryStore, session: DeviceSession?) {
+        guard let session, loadedSession == session else { return }
+        do {
+            let prefix = "resource|" + session.serverURL + "|" + session.userID + "|"
+            records = try history.records(ids: identities.map { prefix + $0 }, session: session)
+        } catch { stale = true }
     }
 
     @discardableResult
@@ -59,6 +69,9 @@ final class HistoryPageViewModel {
             var committed = target
             try committed.accept(next: list.next_cursor)
             try history.mergeResourcePage(list, session: session)
+            let prefix = "resource|" + session.serverURL + "|" + session.userID + "|"
+            let records = try history.records(ids: list.identities.map { prefix + $0 }, session: session)
+            self.records = records
             window = committed
             identities = list.identities
             loadedSession = session

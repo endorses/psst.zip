@@ -3,20 +3,6 @@ export type HistoryLabels = Record<string, HistoryLabel>;
 export function labelKey(kind: "transfers" | "slots", id: string) {
   return `${kind}:${id}`;
 }
-export function loadLabels(account: string): HistoryLabels {
-  try {
-    return JSON.parse(localStorage.getItem(`psst.labels.${account}`) || "{}");
-  } catch {
-    return {};
-  }
-}
-export function saveLabels(account: string, labels: HistoryLabels) {
-  try {
-    localStorage.setItem(`psst.labels.${account}`, JSON.stringify(labels));
-  } catch {
-    /* Local-only labels remain usable for this session. */
-  }
-}
 export function labelFor(
   labels: HistoryLabels,
   kind: "transfers" | "slots",

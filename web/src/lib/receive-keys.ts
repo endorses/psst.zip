@@ -26,9 +26,9 @@ export function loadReceiveKey(
   slot: string,
 ): { publicKey: Uint8Array<ArrayBuffer>; privateKey: Uint8Array<ArrayBuffer> } | null {
   try {
-    const record = JSON.parse(
-      localStorage.getItem(keyName(owner, slot)) || "null",
-    ) as StoredKey | null;
+    const stored = localStorage.getItem(keyName(owner, slot));
+    if (stored === null || stored.length > 512) return null;
+    const record = JSON.parse(stored) as StoredKey | null;
     if (!record) return null;
     const publicKey = decodeReceivePublicKey(record.publicKey);
     const privateKey = decodeReceivePublicKey(record.privateKey);

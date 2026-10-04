@@ -12,6 +12,7 @@ struct HistoryView: View {
     @State private var failedDeletion: TransferRecord?
     @State private var error: String?
     @State private var page = HistoryPageViewModel()
+    @State private var devicePage = DeviceHistoryPageViewModel()
     @State private var showDevice = false
     @State private var sessionGeneration = UUID()
     @State private var visible = false
@@ -20,9 +21,9 @@ struct HistoryView: View {
     @State private var renameText = ""
     private var deviceMode: Bool { showDevice || config.session?.canTransfer != true }
     private var records: [HistoryEntry] {
-        let owned = history.visible(for: config.session)
+        let owned = deviceMode ? (devicePage.session == config.session ? devicePage.records : []) : (page.loadedSession == config.session ? page.records : [])
         return HistoryEntry.combine(
-            account: deviceMode ? owned : owned.filter { page.contains($0, session: config.session) },
+            account: owned,
             downloads: deviceMode ? guests.records : [], session: config.session, filter: filter)
     }
     private var working: Bool { busy || page.loading }
@@ -38,6 +39,18 @@ struct HistoryView: View {
                 }
                 if deviceMode {
                     Text("Links and files remembered on this device. Open an item to check its current server status.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+                    if config.session?.canTransfer == true && filter != .downloaded {
+                        HStack {
+                            Text("Links page \(devicePage.number)")
+                            Spacer()
+                            Button("Previous") { navigateLocal(back: true) }.disabled(working || !devicePage.canGoBack)
+                            Button("Next") { navigateLocal(back: false) }.disabled(working || devicePage.next == nil)
+                        }
+                        if devicePage.number > 1 {
+                            Button("First links page") { if let session = config.session { devicePage.first(history: history, session: session) } }.disabled(working)
+                        }
+                        if let error = devicePage.error { Text(error).foregroundStyle(PsstTheme.error) }
+                    }
                 } else {
                     HStack {
                         Text("Page \(page.window.number)")
@@ -52,7 +65,7 @@ struct HistoryView: View {
                 Picker("History filter", selection: $filter) {
                     ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.menu)
-                if history.legacyCount > 0 {
+                if history.hasLegacyRecords {
                     Text("Pre-account history is preserved. Manage pre-account server resources from the administrator website.").font(.footnote).foregroundStyle(
                         PsstTheme.secondary)
                 }
@@ -195,6 +208,7 @@ struct HistoryView: View {
                 visible = true
                 if filter == .downloaded { showDevice = true }
                 history.reload()
+                reloadLocal()
             }
             .onDisappear { visible = false }
             .task(id: "\(visible)-\(scenePhase)-\(sessionGeneration)-\(showDevice)") {
@@ -208,17 +222,35 @@ struct HistoryView: View {
             }
             .onChange(of: config.session) { _, _ in
                 page.invalidate()
+                devicePage.reset()
+                reloadLocal()
                 sessionGeneration = UUID()
                 renaming = nil
                 deleting = nil
                 failedDeletion = nil
                 error = nil
             }
-            .onChange(of: filter) { _, value in if value == .downloaded { showDevice = true } }
-            .onChange(of: showDevice) { _, value in if !value && filter == .downloaded { filter = .all } }
+            .onChange(of: filter) { _, value in
+                if value == .downloaded { showDevice = true }
+                reloadLocal()
+            }
+            .onChange(of: showDevice) { _, value in
+                if !value && filter == .downloaded { filter = .all }
+                reloadLocal()
+            }
+            .onChange(of: history.revision) { _, _ in
+                if deviceMode { reloadLocal() } else { page.refreshLocal(history: history, session: config.session) }
+            }
         }.modifier(PsstStyle())
     }
 
+    private func reloadLocal() {
+        devicePage.refresh(history: history, session: config.session, filter: filter)
+    }
+    private func navigateLocal(back: Bool) {
+        guard !working, let session = config.session else { return }
+        if back { devicePage.backward(history: history, session: session) } else { devicePage.forward(history: history, session: session) }
+    }
     private enum Navigation { case previous, next, first }
     private func navigate(_ direction: Navigation) {
         guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
@@ -234,6 +266,7 @@ struct HistoryView: View {
     private func refresh() async -> Bool {
         if deviceMode {
             history.reload()
+            reloadLocal()
             return true
         }
         guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return true }
@@ -270,7 +303,7 @@ private struct HistoryDetail: View {
     @State private var stale = false
     @State private var sessionGeneration = UUID()
     var current: TransferRecord {
-        history.visible(for: config.session).first { $0.localID == record.localID } ?? record
+        (try? history.record(record.localID)) ?? record
     }
 
     var body: some View {

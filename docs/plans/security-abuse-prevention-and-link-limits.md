@@ -819,9 +819,9 @@ preparation. Native iOS/device verification remains separate from implementation
 The owner-inbox checkpoint left account queries filtering receive children before
 their limit and computing canonical file/inbox aggregates. Native history refreshes
 drained remote pages. The following account-history checkpoint addresses these
-remote paths. The Android device-history view and iOS shared JSON history storage
-still need bounded local reads and writes; browser local key/name maps remain a
-separate storage task.
+remote paths. The local-history checkpoint below adds indexed browser metadata,
+Android account/guest pages and iOS account storage. Growing inbox checkpoint maps
+and iOS guest storage/queues still need bounded local reads and writes.
 
 - [x] Seek a bounded number of raw account-resource candidates using indexed
       ordering before filtering child transfers. Advance through filtered-only
@@ -850,7 +850,7 @@ separate storage task.
 - [x] Tighten web history page validation and response-byte bounds, preserve its
       explicit navigation and cap the previous-cursor stack. Display unknown
       summary counts without fabricating zero.
-- [ ] Bound browser local key/name map storage independently of remote metadata
+- [x] Bound browser local key/name map storage independently of remote metadata
       loading, preserving existing keys and user labels during any migration.
 - [ ] Verify large histories, filtered empty pages, repeated/malformed cursors,
       credential changes, concurrent saving/renaming, missing keys, local-only
@@ -902,3 +902,50 @@ separate storage task.
       record verification without deploying the partial security release. The
       live instance remains unchanged; independent protocol review, indexed local
       storage and the other release gates are still open.
+
+### Indexed local history checkpoint, 2026-10-04
+
+- [x] Replace browser whole-map link/name operations with account/type/ID-scoped
+      IndexedDB entries and exact visible-page reads. Import legacy maps in
+      resumable 25-entry batches, preserve original sources and per-inbox private
+      keys, and let newer edits/deletion tombstones win. Failed persistence keeps
+      the invitation copyable with explicit retry feedback. Legacy localStorage
+      necessarily allocates its original string; this migration exception is
+      documented rather than presented as a bounded initial read.
+- [x] Add indexed 50-row Android local account and guest pages with independent
+      navigation. Preserve failed-navigation pages and account/origin isolation.
+      Import guest directory entries in bounded batches with durable completion,
+      retained originals/keys and deletion tombstones. Bound receipt/cleanup retry
+      selection. Room index/backfill creation is a one-time table migration;
+      interrupted directory discovery restarts but skips imported payloads.
+- [x] Replace iOS shared account-history snapshots with exact SQLite records,
+      scoped pages and atomic cross-process read/modify/write transactions. Import
+      legacy JSON incrementally with transactional offsets; retain JSON/preferences
+      and Keychain identities. Block account writes until import completes. Main
+      app progress/retry and share-extension waiting preserve history; cancellation
+      and account changes prevent unintended uploads. Completed migration markers
+      survive restored/missing originals; incomplete imports reject changed sources.
+- [x] Bound SQLite record/page bodies and combined mutation input/output to 16 MiB.
+      Add a native regression proving oversized multi-record writes roll back all
+      changes. A focused foundation/wrapper review identified the output-batch
+      bound and it was corrected. Oversized old checkpoint blobs fail visibly with
+      sources preserved; their normalization remains required below.
+- [x] Verify all 77 web tests, five dedicated IndexedDB/migration/persistence browser
+      cases and 12 related history/inbox browser cases. Svelte check reports zero
+      errors/warnings and production build passes. Verify 116 Android unit tests
+      with no failures/errors/skips and build the debug APK. Sixteen exact-source
+      portable Swift SQLite tests pass, covering concurrent writers, busy timeout,
+      nested rollback, resumable import, tombstones, source changes, byte budgets,
+      stable ordering and indexed query plans. All Swift syntax parsing and iOS
+      source gates pass; native XCTest additions remain unrun on this Linux host.
+- [x] Document migration exceptions, source retention and pending work in
+      `docs/security/local-history-storage.md`, update history documentation and
+      format sources. Disposable test harnesses and task caches were cleaned.
+- [ ] Normalize growing per-inbox mobile save/checkpoint maps. Finish indexed iOS
+      guest history and device-wide receipt/upload-cleanup queues; a bounded page
+      count does not bound a single growing row or a separate whole-collection
+      queue. Keep the broad local-storage requirement open until these are done.
+- [ ] Verify native iOS App Group/SQLite linkage, protected-file behavior, app/share-
+      extension migration and device flows, plus real Android Room/Keystore/
+      AtomicFile migration and recovery. Continue independent protocol review and
+      deployment/client release gates. No live deployment changed.

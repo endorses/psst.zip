@@ -12,6 +12,8 @@ import zip.psst.android.data.GuestDownloadStore
 import zip.psst.android.data.GuestFileSaver
 import zip.psst.android.data.GuestUploadSource
 import zip.psst.android.data.InsufficientDownloadSpaceException
+import zip.psst.android.data.LocalHistoryCursor
+import zip.psst.android.data.LocalHistoryPager
 import zip.psst.android.data.PreparedGuestUpload
 import zip.psst.android.data.acknowledgeSavedDownload
 import zip.psst.android.data.appendGuestSelection
@@ -61,6 +63,15 @@ data class ScanState(
     val fileAttempts: Map<String, Long?> = emptyMap(),
 )
 
+data class GuestHistoryState(
+    val pager: LocalHistoryPager = LocalHistoryPager(),
+    val next: LocalHistoryCursor? = null,
+    val importing: Boolean = true,
+    val importErrors: Boolean = false,
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
 /** ViewModel retains only in-memory input; secret keys never enter navigation/saved bundles. */
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val store = GuestDownloadStore(application)
@@ -72,25 +83,67 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private var job: Job? = null
     private var capacityExpiry: Job? = null
 
+    private val _historyPage = MutableStateFlow(GuestHistoryState())
+    val historyPage = _historyPage.asStateFlow()
+    private var historyJob: Job? = null
+    private var receiptCursor: String? = null
+    private var downloadReceiptCursor: String? = null
+    private var cleanupCursor: String? = null
+
     init {
         refreshHistory()
     }
 
-    fun refreshHistory() {
-        try {
-            _state.update {
-                it.copy(
-                    history = store.all(),
-                    pendingCleanup = store.uploads().size,
-                    pendingReceipts =
-                        store.receipts().size + store.all().count { row -> row.receiptPending },
-                )
+    fun firstHistoryPage() = loadHistory(LocalHistoryPager())
+
+    fun previousHistoryPage() {
+        val current = _historyPage.value.pager
+        if (current.previous.isNotEmpty()) loadHistory(current.back())
+    }
+
+    fun nextHistoryPage() {
+        val current = _historyPage.value
+        current.next?.let { loadHistory(current.pager.next(it)) }
+    }
+
+    fun refreshHistory() = loadHistory(_historyPage.value.pager)
+
+    private fun loadHistory(target: LocalHistoryPager) {
+        if (historyJob?.isActive == true) return
+        _historyPage.update { it.copy(loading = true, error = null) }
+        historyJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    store.importLegacyBatch()
+                    val page = store.page(target.cursor)
+                    val pendingCleanup = if (store.hasUploads()) 1 else 0
+                    val pendingReceipts = if (store.hasReceipts()) 1 else 0
+                    _state.update {
+                        it.copy(
+                            history = page.records,
+                            pendingCleanup = pendingCleanup,
+                            pendingReceipts = pendingReceipts,
+                        )
+                    }
+                    _historyPage.value =
+                        GuestHistoryState(target, page.next, page.importing, page.importErrors)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    _historyPage.update {
+                        it.copy(
+                            loading = false,
+                            error =
+                                "Local history could not be read. The current page and saved files have been retained. Retry.",
+                        )
+                    }
+                }
             }
-        } catch (_: Exception) {
-            error(
-                "Local received history could not be read. Your saved files remain in Downloads/psst.zip."
-            )
-        }
+    }
+
+    override fun onCleared() {
+        viewModelScope.coroutineContext[Job]?.invokeOnCompletion { store.close() }
+        super.onCleared()
     }
 
     fun classify(raw: String): Boolean {
@@ -460,12 +513,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun sendReceipt(client: ApiClient, record: GuestDownload): GuestDownload {
         if (!record.receiptPending) return record
         if (acknowledgeSavedDownload(client, record.transferId)) {
-            val updated = record.copy(receiptPending = false)
-            try {
-                store.save(updated)
-            } catch (_: Exception) {
-                return record
-            }
+            val updated =
+                try {
+                    store.markReceiptSent(record.identity)
+                } catch (_: Exception) {
+                    return record
+                }
             _state.update {
                 if (it.record?.identity == updated.identity) it.copy(record = updated) else it
             }
@@ -500,7 +553,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 _state.update { it.copy(busy = true, stage = "Sending delivery receipts") }
                 try {
-                    for (record in store.all().filter { it.complete && it.receiptPending }) {
+                    val records = store.pendingDownloads(downloadReceiptCursor)
+                    if (records.isEmpty()) downloadReceiptCursor = null
+                    for (record in records) {
+                        downloadReceiptCursor = record.identity
                         val client = ApiClient.anonymous(record.origin)
                         try {
                             sendReceipt(client, record)
@@ -508,7 +564,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             client.close()
                         }
                     }
-                    for (receipt in store.receipts()) {
+                    val receipts = store.receipts(receiptCursor)
+                    if (receipts.isEmpty()) receiptCursor = null
+                    for (receipt in receipts) {
+                        receiptCursor = receipt.identity
                         val client = ApiClient.anonymous(receipt.origin)
                         try {
                             if (acknowledgeSavedDownload(client, receipt.transferId))
@@ -539,7 +598,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 try {
                     var failed = false
-                    for (entry in store.uploads()) {
+                    val uploads = store.uploads(cleanupCursor)
+                    if (uploads.isEmpty()) cleanupCursor = null
+                    for (entry in uploads) {
+                        cleanupCursor = entry.identity
                         ensureActive()
                         try {
                             val token = store.readKey(entry.identity).decodeToString()

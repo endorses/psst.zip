@@ -13,14 +13,7 @@
   import AdminResources from "$lib/components/AdminResources.svelte";
   import TrafficPanel from "$lib/components/TrafficPanel.svelte";
   import SecurityEvents from "$lib/components/SecurityEvents.svelte";
-  import {
-    loadLabels,
-    saveLabels,
-    labelFor,
-    labelKey,
-    compactTitle,
-    type HistoryLabels,
-  } from "$lib/history-labels";
+  import { labelFor, labelKey, compactTitle, type HistoryLabels } from "$lib/history-labels";
   import ServerSettings from "$lib/components/ServerSettings.svelte";
   import AbuseContactSettings from "$lib/components/AbuseContactSettings.svelte";
   import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
@@ -40,13 +33,18 @@
   import {
     accountRequest as request,
     AccountError,
-    loadLinks,
-    saveLinks,
     type User,
     type Session,
     type Resource,
   } from "$lib/account";
   import { createSlot, getSlotInbox, type InboxPage } from "$lib/api";
+  import {
+    loadLocalHistory,
+    saveLocalLink,
+    removeLocalLink,
+    updateLocalLabel,
+    type LocalHistoryPage,
+  } from "$lib/local-history";
   import { INBOX_PREVIOUS_WINDOW } from "$lib/inbox-page";
   import { exportKey } from "$lib/crypto";
   import { generateReceiveKeyPair } from "$lib/receive-crypto";
@@ -186,6 +184,8 @@
     transfers = $state<Resource[]>([]),
     slots = $state<Resource[]>([]);
   let links = $state<Record<string, string>>({});
+  let localHistoryWarning = $state("");
+  let localRetry = $state<(() => Promise<void>) | null>(null);
   let usersCursor = $state(""),
     usersNext = $state<string | null>(null),
     usersPrevious = $state<string[]>([]);
@@ -345,8 +345,10 @@
   }
   function loadAccount() {
     if (!user) return;
-    links = loadLinks(user.id);
-    labels = loadLabels(user.id);
+    links = {};
+    labels = {};
+    localHistoryWarning = "";
+    localRetry = null;
   }
   async function refreshHistory(
     owner = epoch,
@@ -370,6 +372,20 @@
     try {
       const result = await loadResourcePage(cursor, false, controller.signal);
       if (!current()) return true;
+      let local: LocalHistoryPage | null = null;
+      try {
+        local = await loadLocalHistory(
+          account!,
+          [
+            ...result.transfers.map((item) => ({ kind: "transfers" as const, id: item.id })),
+            ...result.slots.map((item) => ({ kind: "slots" as const, id: item.id })),
+          ],
+          controller.signal,
+        );
+      } catch {
+        if (controller.signal.aborted) return true;
+      }
+      if (!current()) return true;
       if (
         direction === "next" &&
         result.next_cursor &&
@@ -392,6 +408,12 @@
       historyNext = result.next_cursor;
       transfers = result.transfers;
       slots = result.slots;
+      links = local?.links ?? {};
+      labels = local?.labels ?? {};
+      if (!localRetry)
+        localHistoryWarning = local
+          ? ""
+          : "Local links and names could not be loaded. Existing browser data is unchanged. Check storage permissions and free space, then refresh to retry.";
       historyError = "";
     } catch (cause) {
       if (!current()) return true;
@@ -471,6 +493,21 @@
     try {
       const slot = await getSlotInbox(id, cursor, controller.signal);
       if (!current()) return;
+      let local: LocalHistoryPage | null = null;
+      try {
+        local = await loadLocalHistory(account!, [{ kind: "slots", id }], controller.signal);
+      } catch {
+        if (controller.signal.aborted) return;
+      }
+      if (!current()) return;
+      links = local?.links ?? {};
+      labels = local?.labels ?? {};
+      // Keep the active invitation copyable when persistence is unavailable.
+      receiveUrl = links[id] || receiveUrl;
+      if (!localRetry)
+        localHistoryWarning = local
+          ? ""
+          : "Local links and names could not be loaded. Existing browser data is unchanged. Check storage permissions and free space, then refresh to retry.";
       if (
         direction === "next" &&
         slot.next_cursor &&
@@ -585,6 +622,8 @@
     pairingQr = "";
     receiveUrl = "";
     links = {};
+    localHistoryWarning = "";
+    localRetry = null;
     received = [];
     transfers = [];
     slots = [];
@@ -703,17 +742,34 @@
     if (!factorRequired) password = "";
     loginCode = "";
   }
-  function remember(id: string, url: string, title?: string, size?: number) {
-    if (title && user) {
-      const key = labelKey("transfers", id);
-      labels = {
-        ...labels,
-        [key]: { ...labelFor(labels, "transfers", id), title, size: size ?? 0 },
-      };
-      saveLabels(user.id, labels);
+  async function remember(id: string, url: string, title?: string, size?: number) {
+    if (!user) return;
+    const account = user.id,
+      owner = epoch;
+    const retry = async () => {
+      if (owner === epoch && user?.id === account) await remember(id, url, title, size);
+    };
+    try {
+      await saveLocalLink(account, id, url);
+      const label = title
+        ? await updateLocalLabel(account, { kind: "transfers", id }, { title, size: size ?? 0 })
+        : undefined;
+      if (owner !== epoch || user?.id !== account) return;
+      if (tab === "Send" || (tab === "Receive" && receiveId === id)) {
+        links = { [id]: url };
+        if (label) labels = { [labelKey("transfers", id)]: label };
+      } else if (transfers.some((item) => item.id === id) || slots.some((item) => item.id === id)) {
+        links = { ...links, [id]: url };
+        if (label) labels = { ...labels, [labelKey("transfers", id)]: label };
+      }
+      localHistoryWarning = "";
+      localRetry = null;
+    } catch {
+      if (owner !== epoch || user?.id !== account) return;
+      localHistoryWarning =
+        "This link or its name could not be saved on this device. Copy the full link before leaving, or check browser storage permissions and space, then retry.";
+      localRetry = retry;
     }
-    links = { ...links, [id]: url };
-    if (user) saveLinks(user.id, links);
   }
   async function authorizeScanner(): Promise<boolean> {
     const owner = epoch;
@@ -857,10 +913,22 @@
       }
       if (owner !== epoch || user?.id !== account) return;
       receiveUrl = `${location.origin}/u/${slot.id}#v2.${publicKey}`;
-      remember(slot.id, receiveUrl);
+      await remember(slot.id, receiveUrl);
+      if (owner !== epoch || user?.id !== account) return;
       if (user && receiveName.trim()) {
-        labels = { ...labels, [labelKey("slots", slot.id)]: { custom: receiveName.trim() } };
-        saveLabels(user.id, labels);
+        try {
+          const label = await updateLocalLabel(
+            account,
+            { kind: "slots", id: slot.id },
+            { custom: receiveName.trim() },
+          );
+          if (owner !== epoch || user?.id !== account) return;
+          labels = { [labelKey("slots", slot.id)]: label };
+        } catch {
+          if (owner !== epoch || user?.id !== account) return;
+          localHistoryWarning =
+            "The receive link was created, but its name could not be saved on this device. Check browser storage and retry the name from History.";
+        }
       }
       receiveName = "";
       maxFiles = 0;
@@ -919,13 +987,22 @@
     if (!pendingDelete) return;
     const target = pendingDelete;
     await act(async () => {
+      const account = user!.id,
+        owner = epoch;
       await request(`/${target.kind}/${target.id}`, "DELETE");
+      try {
+        await removeLocalLink(account, target.id);
+        if (target.kind === "slots") removeReceiveKey(account, target.id);
+      } catch {
+        if (owner === epoch && user?.id === account)
+          localHistoryWarning =
+            "The server link was revoked, but its local copy could not be removed. Refresh after checking browser storage.";
+      }
+      if (owner !== epoch || user?.id !== account) return;
       transfers = transfers.filter((t) => t.id !== target.id);
       slots = slots.filter((s) => s.id !== target.id);
       delete links[target.id];
       links = { ...links };
-      if (user) saveLinks(user.id, links);
-      if (user && target.kind === "slots") removeReceiveKey(user.id, target.id);
       pendingDelete = null;
       notice = "Link revoked and server files deleted.";
     });
@@ -948,17 +1025,34 @@
       `${item.kind === "slots" ? "Receive link" : "Sent files"}${item.created_at ? " · " + new Date(item.created_at).toLocaleString() : ""}`
     );
   }
-  function rename() {
+  async function rename() {
     if (!user) return;
-    labels = {
-      ...labels,
-      [labelKey(renameKind, renameId)]: {
-        ...labelFor(labels, renameKind, renameId),
-        custom: renameValue.trim() || undefined,
-      },
-    };
-    saveLabels(user.id, labels);
-    renameId = "";
+    const account = user.id,
+      owner = epoch,
+      id = renameId,
+      kind = renameKind,
+      cursor = historyCursor,
+      currentTab = tab,
+      custom = renameValue.trim() || undefined;
+    try {
+      const label = await updateLocalLabel(account, { kind, id }, { custom });
+      if (
+        owner !== epoch ||
+        user?.id !== account ||
+        renameId !== id ||
+        renameKind !== kind ||
+        historyCursor !== cursor ||
+        tab !== currentTab
+      )
+        return;
+      labels = { ...labels, [labelKey(kind, id)]: label };
+      if (!localRetry) localHistoryWarning = "";
+      renameId = "";
+    } catch {
+      if (owner === epoch && user?.id === account)
+        localHistoryWarning =
+          "This name could not be saved on this device. Check browser storage permissions and space, then try Save name again.";
+    }
   }
   async function pair() {
     await act(async () => {
@@ -1250,6 +1344,8 @@
               error = "Your session ended. Sign in again.";
             }}
           />{/key}{/if}
+      {#if localHistoryWarning}<p class="notice" role="alert">{localHistoryWarning}</p>
+        {#if localRetry}<button onclick={() => localRetry?.()}>Retry saving link</button>{/if}{/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
           class="notice"
           role="status"

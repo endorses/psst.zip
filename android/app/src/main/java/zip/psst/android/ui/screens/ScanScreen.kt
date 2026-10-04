@@ -169,11 +169,13 @@ fun ScanScreen(
         ) {
             if (state.pendingReceipts > 0 && !state.busy && !accountState.isTesting) {
                 TextButton(onClick = viewModel::retryAllReceipts) {
-                    Text("Retry pending delivery receipts (${state.pendingReceipts})")
+                    Text("Retry next pending delivery receipts")
                 }
             }
             if (state.pendingCleanup > 0 && !state.busy && !accountState.isTesting) {
-                Text("${state.pendingCleanup} interrupted upload(s) need server cleanup.")
+                Text(
+                    "Interrupted uploads need server cleanup. Each retry processes a bounded batch."
+                )
                 TextButton(onClick = viewModel::retryCleanup) { Text("Retry upload cleanup") }
             }
             state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }

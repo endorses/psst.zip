@@ -354,7 +354,30 @@ class HistoryTest {
                 }
             }
 
-        override fun getAll(): Flow<List<TransferHistoryEntity>> = rows
+        private fun getAll(): Flow<List<TransferHistoryEntity>> = rows
+
+        override fun hasLegacy(): Flow<Boolean> =
+            rows.map { all -> all.any { it.accountId == null } }
+
+        override fun observeLocalPage(
+            accountId: String,
+            originScope: String,
+            beforeTime: Long,
+            beforeId: String,
+        ): Flow<List<TransferHistoryEntity>> =
+            rows.map { all ->
+                all.filter {
+                        it.accountId == accountId &&
+                            it.originScope == originScope &&
+                            (it.createdAt < beforeTime ||
+                                (it.createdAt == beforeTime && it.id < beforeId))
+                    }
+                    .sortedWith(
+                        compareByDescending<TransferHistoryEntity> { it.createdAt }
+                            .thenByDescending { it.id }
+                    )
+                    .take(51)
+            }
 
         override suspend fun insert(entity: TransferHistoryEntity) {
             rows.value += entity

@@ -203,3 +203,22 @@ above and exercise multiple Add actions, removal while a refresh is pending,
 switching same-origin invitations, unknown/exhausted/restored capacity, provider
 files changed after preflight and server allocation races. Verify preserved
 selection, no allocation on failed preflight, explicit retry and scoped cleanup.
+
+### Indexed account history
+
+The app and share extension now share an App Group SQLite store. Existing JSON
+and preferences remain as migration sources; import is resumable and account
+writes wait for completion. See [local history storage](../docs/security/local-history-storage.md)
+for record/page bounds, migration exceptions and remaining guest/checkpoint work.
+
+Run `python3 ios/scripts/test_history_database.py` for the offline portable
+SQLite and streaming-import XCTest harness. It removes its temporary workspace.
+This validates the exact Foundation database/parser, not the iOS application.
+
+- [ ] On macOS, regenerate the Xcode project and build/test the app and share
+      extension with the workflow above. Run `HistoryRecordDatabaseTests` and
+      `NavigationHistoryTests`, including migration and atomic batch rollback.
+- [ ] On device, exercise fresh install, large legacy import interrupted by app
+      termination, low storage, changed/missing original data, protected files
+      while locked, concurrent app/share-extension writes and account switching.
+      Confirm old keys/local files remain usable and failed import offers retry.

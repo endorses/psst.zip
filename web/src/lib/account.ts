@@ -158,18 +158,3 @@ export async function accountRequest<T>(
     ? (undefined as T)
     : (JSON.parse(await accountBody(response, maxResponseBytes)) as T);
 }
-// Only encryption links, never login credentials; separate accounts on shared browsers.
-export function loadLinks(id: string): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem(`psst.links.${id}`) || "{}");
-  } catch {
-    return {};
-  }
-}
-export function saveLinks(id: string, links: Record<string, string>) {
-  try {
-    localStorage.setItem(`psst.links.${id}`, JSON.stringify(links));
-  } catch {
-    /* Sharing remains available without persistent storage. */
-  }
-}

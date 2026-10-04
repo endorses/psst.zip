@@ -5,6 +5,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -17,7 +18,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import zip.psst.shared.model.Transfer
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "transfer_history")
+@Entity(
+    tableName = "transfer_history",
+    indices = [Index(value = ["accountId", "originScope", "createdAt", "id"])],
+)
 data class TransferHistoryEntity(
     @PrimaryKey val id: String,
     val type: String, // "sent" or "received"
@@ -32,6 +36,7 @@ data class TransferHistoryEntity(
     val accountId: String? = null,
     val title: String? = null,
     val automaticTitle: String? = null,
+    @ColumnInfo(defaultValue = "''") val originScope: String = localHistoryScope(serverUrl),
     @ColumnInfo(defaultValue = "0") val summaryUpdating: Boolean = false,
     @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
@@ -40,8 +45,16 @@ data class TransferHistoryEntity(
 
 @Dao
 interface TransferHistoryDao {
-    @Query("SELECT * FROM transfer_history ORDER BY createdAt DESC")
-    fun getAll(): Flow<List<TransferHistoryEntity>>
+    @Query(ACCOUNT_LOCAL_PAGE_SQL)
+    fun observeLocalPage(
+        accountId: String,
+        originScope: String,
+        beforeTime: Long,
+        beforeId: String,
+    ): Flow<List<TransferHistoryEntity>>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM transfer_history WHERE accountId IS NULL LIMIT 1)")
+    fun hasLegacy(): Flow<Boolean>
 
     @Query(
         "SELECT * FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC"
@@ -131,11 +144,20 @@ interface TransferHistoryDao {
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 7, exportSchema = false)
+@Database(entities = [TransferHistoryEntity::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
     companion object {
+        val MIGRATION_7_8 =
+            object : Migration(7, 8) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(ACCOUNT_SCOPE_COLUMN_SQL)
+                    db.execSQL(ACCOUNT_SCOPE_BACKFILL_SQL)
+                    db.execSQL(ACCOUNT_PAGE_INDEX_SQL)
+                }
+            }
+
         val MIGRATION_6_7 =
             object : Migration(6, 7) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -202,6 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_6_7,
+                    MIGRATION_7_8,
                 )
                 .build()
         }

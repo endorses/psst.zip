@@ -76,15 +76,22 @@ fun HistoryScreen(
     initialFilter: String = "all",
     viewModel: HistoryViewModel = viewModel(),
 ) {
-    val allHistory by viewModel.history.collectAsState()
+    val loadedHistory by viewModel.history.collectAsState()
+    val currentAccess by viewModel.currentAccess.collectAsState()
+    val allHistory = loadedHistory.filter(currentAccess::permits)
     val pageState by viewModel.pageState.collectAsState()
     val deviceHistory by viewModel.deviceHistory.collectAsState()
     val legacyCount by viewModel.legacyCount.collectAsState()
+    val localPager by viewModel.localPager.collectAsState()
+    val localNext by viewModel.localNext.collectAsState()
+    val localLoading by viewModel.localLoading.collectAsState()
+    val localIssue by viewModel.localIssue.collectAsState()
     val offline by viewModel.offline.collectAsState()
     val accountIssue by viewModel.accountIssue.collectAsState()
     val transferIssue by viewModel.transferIssue.collectAsState()
     var filter by remember { mutableStateOf(initialFilter) }
     val downloads by guest.state.collectAsState()
+    val guestPage by guest.historyPage.collectAsState()
     val history =
         unifiedHistory(allHistory, if (deviceHistory) downloads.history else emptyList(), filter)
     var removal by remember { mutableStateOf<GuestDownload?>(null) }
@@ -336,15 +343,96 @@ fun HistoryScreen(
                         )
                     }
             }
+            if (deviceHistory) {
+                Text(
+                    "Local account records · page ${localPager.number}",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row {
+                    TextButton(
+                        onClick = viewModel::firstLocalPage,
+                        enabled = !localLoading && localPager.cursor != null,
+                    ) {
+                        Text("First")
+                    }
+                    TextButton(
+                        onClick = viewModel::previousLocalPage,
+                        enabled = !localLoading && localPager.previous.isNotEmpty(),
+                    ) {
+                        Text("Previous")
+                    }
+                    TextButton(
+                        onClick = viewModel::nextLocalPage,
+                        enabled = !localLoading && localNext != null,
+                    ) {
+                        Text("Next")
+                    }
+                }
+            }
+            if (deviceHistory && localLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (deviceHistory)
+                localIssue?.let {
+                    Text(it, Modifier.padding(horizontal = 16.dp))
+                    TextButton(onClick = viewModel::retryLocalPage) { Text("Retry") }
+                }
+            if (deviceHistory && (filter == "all" || filter == "downloaded")) {
+                Text(
+                    "Downloads · page ${guestPage.pager.number} · filters apply to shown pages",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row {
+                    TextButton(
+                        onClick = guest::firstHistoryPage,
+                        enabled = !guestPage.loading && guestPage.pager.cursor != null,
+                    ) {
+                        Text("First")
+                    }
+                    TextButton(
+                        onClick = guest::previousHistoryPage,
+                        enabled = !guestPage.loading && guestPage.pager.previous.isNotEmpty(),
+                    ) {
+                        Text("Previous")
+                    }
+                    TextButton(
+                        onClick = guest::nextHistoryPage,
+                        enabled = !guestPage.loading && guestPage.next != null,
+                    ) {
+                        Text("Next")
+                    }
+                }
+                if (guestPage.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (guestPage.importing) {
+                    Text(
+                        "Older downloads are still being indexed. Imported records remain available; return to First to see newer arrivals.",
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = guest::refreshHistory, enabled = !guestPage.loading) {
+                        Text("Continue importing older downloads")
+                    }
+                }
+                if (guestPage.importErrors)
+                    Text(
+                        "Some older metadata could not be imported. Original records and key files have been retained; saved files remain in Downloads/psst.zip.",
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                guestPage.error?.let {
+                    Text(it, Modifier.padding(horizontal = 16.dp))
+                    TextButton(onClick = guest::refreshHistory) { Text("Retry") }
+                }
+            }
             if (deviceHistory && legacyCount > 0)
                 Text(
-                    "$legacyCount pre-account records are retained. Manage pre-account server resources from the administrator website.",
+                    "Pre-account records are retained. Manage pre-account server resources from the administrator website.",
                     Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
             if (downloads.pendingReceipts > 0 && !downloads.busy)
                 TextButton(onClick = guest::retryAllReceipts) {
-                    Text("Retry pending receipts (${downloads.pendingReceipts})")
+                    Text("Retry next pending receipts")
                 }
             downloads.error?.let {
                 Text(
