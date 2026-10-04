@@ -68,6 +68,15 @@ without following symlinks. Payloads must be regular files under the configured
 storage root. Storage configurations with symlinked directory components must
 use the actual directory path instead.
 
+Bounded resource cleanup also opens directories relative to held parent
+descriptors and unlinks entries without following symlinks. It checks directory
+identity during traversal, bounds enumeration/deletion work, and syncs parent
+directories before acknowledging removal. A sync or close failure keeps the
+cleanup task and its reservations, even if the file already appears absent;
+retry confirms durable removal before deleting database metadata. Application
+resource and reader locks remain necessary. These checks do not make arbitrary
+privileged filesystem renames or mount changes atomic with cleanup.
+
 ## Scope still to complete
 
 - [ ] Discover and safely account for or remove orphan filesystem entries that

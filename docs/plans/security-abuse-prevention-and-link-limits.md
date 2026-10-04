@@ -469,3 +469,48 @@ live siblings or follow unexpected symlinks/trees. Harden the existing bounded
 cleanup walk's pathname-open race before sharing deletion machinery with orphan
 recovery. Queue saturation, unsupported continuation and failed checks must
 remain visible rather than produce a successful scan state.
+
+Public capacity implementation decision: extend existing receive-link
+availability with a slot-scoped `upload_capacity` snapshot, not the authenticated
+owner usage response. Report a check timestamp, `ready | blocked | unknown`, a
+coarse link/capacity/unavailable reason, and nullable available encrypted bytes
+and file count for one new submission. Cap it by cumulative link allowances,
+the 100-file protocol ceiling, receiver/server headroom, child-transfer capacity
+and disk headroom; explicitly reserve manifest overhead. The snapshot is advisory
+and allocation remains authoritative. Unknown is neither zero nor unlimited.
+Keep capacity trust separate from payload integrity: an unrelated damaged
+published file or drift in display-only administrative counters must not globally
+block valid uploads. Incomplete accounting coverage must remain explicit without
+publishing owner usage, private issue counts or activity.
+
+Web, Android and iOS must validate the complete accumulated selection using
+encrypted wire sizes, including empty-file overhead, before allocating a child.
+Refresh capacity on opening, selection changes and immediately before allocation;
+preserve selections when capacity is unknown or an allocation race loses. The
+shared/native code currently lacks aggregate receive-byte preflight, and Android
+allocates before complete selection sizing. These are part of the remaining
+cross-platform capacity work, not fulfilled by the server-only payload checks.
+
+### Bounded deletion durability checkpoint, 2026-10-04
+
+- [x] Replaced bounded cleanup's pathname inspection/open sequence with
+      descriptor-relative no-follow traversal and unlink. Exact resource names,
+      shared enumeration/deletion budgets, depth limits and context checks remain
+      enforced. Opened directory identities are checked during traversal;
+      replaced symlinks are never followed. Parent-directory sync and close
+      failures prevent successful cleanup acknowledgment.
+- [x] Deterministic root/nested/opened-directory replacement tests preserve
+      outside sentinel files. Tests also cover configured-root replacement,
+      sync/close failure retries, exact names, budget/depth limits and multi-pass
+      progress. A cleanup integration regression verifies failure after physical
+      unlink retains metadata/reservations until a successful retry.
+- [x] Focused race tests pass for store (1.024 s), cleanup (6.457 s) and affected
+      API deletion/cleanup/resource flows (8.223 s). This follows the complete
+      passing backend race run in the preceding payload-recovery checkpoint;
+      no API or client contract changed in this deletion follow-up.
+- [x] Bounded independent cleanup review found no concrete defects in traversal,
+      replacement handling, work bounds, durability, retry or descriptor lifecycle.
+      Sources are formatted and diff checks pass. This review does not close the
+      complete security plan.
+- [ ] Complete orphan inventory, counter reconstruction and effective capacity;
+      deletion hardening alone does not complete crash reconciliation.

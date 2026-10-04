@@ -212,3 +212,68 @@ func TestCleanupMetadataDeletionFailureRetainsReservationAndRetries(t *testing.T
 		t.Fatal("missing payload did not safely retry", err)
 	}
 }
+
+type uncertainDeletionStore struct{ *store.DiskStore }
+
+func (s uncertainDeletionStore) DeleteAllBounded(ctx context.Context, id string, budget int) (bool, error) {
+	done, err := s.DiskStore.DeleteAllBounded(ctx, id, budget)
+	if err != nil || !done {
+		return done, err
+	}
+	// Model unlink succeeding before a directory sync/close failure. Absence
+	// alone does not authorize releasing the reservation on this attempt.
+	return false, errors.New("private directory durability failure")
+}
+
+func TestCleanupUncertainDeletionRetainsMetadataAndReservation(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := database.NewQueries(db)
+	disk, err := store.NewDiskStore(filepath.Join(dir, "payloads"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateTransfer("uncertain", time.Now().Add(-time.Hour), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateFile("file", "uncertain", 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := disk.Save("uncertain/file", strings.NewReader("data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SweepPending(context.Background(), q, uncertainDeletionStore{disk}); err == nil {
+		t.Fatal("uncertain deletion was acknowledged")
+	}
+	if info, err := disk.Inspect("uncertain/file"); err != nil || info.Exists {
+		t.Fatal("test did not remove physical payload", info, err)
+	}
+	if _, err := q.GetFile("file"); err != nil {
+		t.Fatal("uncertain deletion removed metadata", err)
+	}
+	state, err := q.ResourceCleanup("transfer", "uncertain")
+	if err != nil || state.State != "failed" || state.FailureCode != "storage_delete_failed" {
+		t.Fatal(state, err)
+	}
+	usage, err := q.ResourceUsage("")
+	if err != nil || usage.ReservedBytes != 4 {
+		t.Fatal("uncertain deletion refunded reservation", usage, err)
+	}
+	if err := q.RequestResourceCleanup("transfer", "uncertain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SweepPending(context.Background(), q, disk); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetTransfer("uncertain"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("successful durable retry did not release metadata", err)
+	}
+	usage, err = q.ResourceUsage("")
+	if err != nil || usage.ReservedBytes != 0 {
+		t.Fatal(usage, err)
+	}
+}
