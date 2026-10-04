@@ -2,7 +2,7 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="128" android:viewportHeight="128">
     <group android:scaleX=".60" android:scaleY=".60" android:translateX="25.6" android:translateY="20.8">
         <path android:pathData="M12 58C24 54 36 29 49 32C55 33 60 37 64 39C69 35 74 31 79 32C94 33 105 55 116 58C100 64 82 54 64 56C45 54 28 64 12 58Z" android:fillColor="#5eead4" />
-        <path android:pathData="M15 62C32 64 48 60 64 62C80 60 96 64 113 62C101 78 84 91 64 91C44 91 28 79 15 62Z" android:fillColor="#5eead4" />
+        <path android:pathData="M15 62C33 60 45 61 64 66C83 61 95 60 113 62C101 78 84 91 64 91C44 91 28 79 15 62Z" android:fillColor="#5eead4" />
         <path android:pathData="M52 91L53 58C54 40 77 40 77 58V92Z" android:fillColor="#172b2a" />
         <path android:pathData="M50 114L56 58C57 44 74 44 74 58V93C84 93 87 100 87 108V114Q87 116 85 116H52Q50 116 50 114Z" android:fillColor="#ecf5f1" />
     </group>
