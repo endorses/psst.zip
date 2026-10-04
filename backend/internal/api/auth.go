@@ -177,7 +177,7 @@ func (s *Server) requireUpload(next http.Handler) http.Handler {
 			incidentFailure(w, database.ErrResourceRevoked)
 			return
 		}
-		slots, err := s.queries.TransferSlotIDs(id)
+		slots, err := s.queries.TransferSlotIDsContext(r.Context(), id)
 		if err != nil {
 			writeError(w, 500, "database error")
 			return

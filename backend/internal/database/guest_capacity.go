@@ -32,9 +32,7 @@ func (l GuestCapacityLimits) normalized() GuestCapacityLimits {
 	if l.SlotTransfers <= 0 {
 		l.SlotTransfers = 20
 	}
-	if l.FilesPerTransfer <= 0 || l.FilesPerTransfer > 100 {
-		l.FilesPerTransfer = 100
-	}
+	l.FilesPerTransfer = EffectiveTransferFileLimit(l.FilesPerTransfer)
 	if l.ManifestBytes <= 0 || l.ManifestBytes > MaxManifestBytes {
 		l.ManifestBytes = MaxManifestBytes
 	}

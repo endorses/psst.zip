@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -57,13 +58,16 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
 	id := chi.URLParam(r, "transferID")
 	if !isValidUUID(id) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
 	}
 
-	t, err := s.queries.GetTransfer(id)
+	t, err := s.queries.GetTransferContext(ctx, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "transfer not found")
@@ -81,24 +85,32 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return
 	}
-	fileCount, totalSize, _ := s.queries.FileCountAndSize(id)
-	hasManifest, _ := s.queries.HasManifest(id)
+	files, totalSize, err := s.filePolicy(ctx, t)
+	if errors.Is(err, database.ErrTransferFileLimit) {
+		policyError(w, http.StatusConflict, "transfer_file_limit_exceeded", "transfer contains more than the supported 100 files")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	hasManifest, err := s.queries.HasManifestContext(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "database error")
+		return
+	}
 
 	resp := TransferResponse{
 		ID:            t.ID,
 		Status:        t.Status,
-		FileCount:     fileCount,
+		FileCount:     len(files),
 		TotalSize:     totalSize,
 		HasManifest:   hasManifest,
 		ExpiresAt:     t.ExpiresAt,
 		MaxDownloads:  t.MaxDownloads,
 		DownloadCount: t.DownloadCount,
 		CreatedAt:     t.CreatedAt,
-	}
-	resp.Files, err = s.filePolicy(t)
-	if err != nil {
-		writeError(w, 500, "database error")
-		return
+		Files:         files,
 	}
 	if t.CompletedAt.Valid {
 		resp.CompletedAt = &t.CompletedAt.Time
@@ -349,15 +361,6 @@ func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 	// Validate the transfer exists.
 	if s.activeTransfer(w, transferID, true) == nil {
 		return
-	}
-
-	// Validate max files per transfer.
-	if s.cfg.MaxFilesPerTransfer > 0 {
-		count, err := s.queries.FileCount(transferID)
-		if err == nil && count >= s.cfg.MaxFilesPerTransfer {
-			writeError(w, http.StatusBadRequest, "maximum file count reached for this transfer")
-			return
-		}
 	}
 
 	if !s.allowUploadSize(w, r) {

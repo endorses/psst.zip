@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -84,7 +85,11 @@ func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads in
 }
 
 func (q *Queries) GetTransfer(id string) (*Transfer, error) {
-	row := q.db.QueryRow(
+	return q.GetTransferContext(context.Background(), id)
+}
+
+func (q *Queries) GetTransferContext(ctx context.Context, id string) (*Transfer, error) {
+	row := q.db.QueryRowContext(ctx,
 		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash,pending_expires_at FROM transfers WHERE id = ?`, id,
 	)
 	t := &Transfer{}
@@ -192,9 +197,20 @@ func (q *Queries) UpdateFileOffset(id string, offset int64, complete bool) error
 	return err
 }
 
+// MaxTransferFiles matches the manifest/file-list ceiling understood by clients.
+const MaxTransferFiles = 100
+
+var ErrTransferFileLimit = errors.New("transfer contains more than the supported 100 files")
+
 func (q *Queries) ListFiles(transferID string) ([]File, error) {
-	rows, err := q.db.Query(
-		`SELECT id, transfer_id, size, upload_offset, upload_complete, payload_deleted, download_count, created_at FROM files WHERE transfer_id = ?`, transferID,
+	return q.ListFilesContext(context.Background(), transferID)
+}
+
+// ListFilesContext probes one extra indexed row so historical or externally
+// restored overages fail explicitly instead of returning a partial file list.
+func (q *Queries) ListFilesContext(ctx context.Context, transferID string) ([]File, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, transfer_id, size, upload_offset, upload_complete, payload_deleted, download_count, created_at FROM files INDEXED BY files_transfer_id_order WHERE transfer_id = ? ORDER BY id LIMIT ?`, transferID, MaxTransferFiles+1,
 	)
 	if err != nil {
 		return nil, err
@@ -203,6 +219,9 @@ func (q *Queries) ListFiles(transferID string) ([]File, error) {
 
 	var files []File
 	for rows.Next() {
+		if len(files) == MaxTransferFiles {
+			return nil, ErrTransferFileLimit
+		}
 		var f File
 		if err := rows.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.PayloadDeleted, &f.DownloadCount, &f.CreatedAt); err != nil {
 			return nil, err
@@ -261,7 +280,11 @@ func (q *Queries) GetManifest(transferID string) ([]byte, error) {
 }
 
 func (q *Queries) HasManifest(transferID string) (bool, error) {
-	row := q.db.QueryRow(`SELECT COUNT(*) FROM manifests WHERE transfer_id = ?`, transferID)
+	return q.HasManifestContext(context.Background(), transferID)
+}
+
+func (q *Queries) HasManifestContext(ctx context.Context, transferID string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM manifests WHERE transfer_id = ?`, transferID)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		return false, err
@@ -353,23 +376,6 @@ func (q *Queries) ExpiredSlotIDs() ([]string, error) { return q.cleanupIDs("slot
 func (q *Queries) DeleteSlot(id string) error {
 	_, err := q.db.Exec(`DELETE FROM slots WHERE id = ?`, id)
 	return err
-}
-
-func (q *Queries) TransferSlotIDs(transferID string) ([]string, error) {
-	rows, err := q.db.Query(`SELECT slot_id FROM slot_transfers WHERE transfer_id = ?`, transferID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 // AcknowledgeDownload records the first recipient report, never inferred from

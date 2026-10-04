@@ -8,7 +8,7 @@
   import { importKey, exportKey, decryptManifest } from "$lib/crypto";
   import {
     getTransferInfo,
-    getSlotInfo,
+    getSlotTransferMembership,
     downloadManifest,
     acknowledgeDownload,
     type TransferInfo,
@@ -31,11 +31,13 @@
 
   let controller: AbortController | null = null,
     disposed = false;
+  const loadController = new AbortController();
   let currentFile = $state(""),
     downloadBytes = $state(0);
   onDestroy(() => {
     disposed = true;
     controller?.abort();
+    loadController.abort();
   });
   let status = $state<Status>("loading");
   let errorMessage = $state("");
@@ -82,8 +84,6 @@
     }
 
     try {
-      transferInfo = await getTransferInfo(transferId);
-      const encryptedManifestData = await downloadManifest(transferId);
       if (inboxId) {
         if (!/^[0-9a-f-]{36}$/i.test(inboxId)) throw new Error("Invalid inbox");
         const { user } = await accountRequest<{ user: User }>("/auth/me");
@@ -93,13 +93,16 @@
             "This browser has no private key for this inbox. Use the device that created it.",
           );
         try {
-          const slot = await getSlotInfo(inboxId);
-          if (
-            slot.receive_protocol !== 2 ||
-            slot.recipient_public_key !== (await exportKey(pair.publicKey)) ||
-            !slot.transfers.some((item) => item.transfer_id === transferId)
-          )
+          const membership = await getSlotTransferMembership(
+            inboxId,
+            transferId,
+            loadController.signal,
+          );
+          if (disposed) return;
+          if (membership.recipient_public_key !== (await exportKey(pair.publicKey)))
             throw new Error("This file does not match the expected inbox.");
+          transferInfo = await getTransferInfo(transferId);
+          const encryptedManifestData = await downloadManifest(transferId);
           const envelope = decodeReceiveEnvelope(new Uint8Array(encryptedManifestData));
           const key = await openSubmissionKey(
             pair.privateKey,
@@ -117,7 +120,11 @@
         } finally {
           pair.privateKey.fill(0);
         }
-      } else manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
+      } else {
+        transferInfo = await getTransferInfo(transferId);
+        const encryptedManifestData = await downloadManifest(transferId);
+        manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
+      }
       if (
         transferInfo.file_count !== manifest.files.length ||
         transferInfo.total_size !==

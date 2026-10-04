@@ -172,7 +172,7 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 				writeError(w, 500, "database error")
 				return
 			}
-			slots, err := s.queries.TransferSlotIDs(transfer)
+			slots, err := s.queries.TransferSlotIDsContext(r.Context(), transfer)
 			if err != nil {
 				writeError(w, 500, "database error")
 				return

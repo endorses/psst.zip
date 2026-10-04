@@ -99,6 +99,13 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 			json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
 			return
 		}
+		if errors.Is(err, database.ErrTransferFileQuota) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Psst-Error-Code", "transfer_file_limit_exceeded")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"code": "transfer_file_limit_exceeded", "error": err.Error()})
+			return
+		}
 		if errors.Is(err, ErrUploadFileLimit) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)

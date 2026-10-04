@@ -9,8 +9,9 @@ import (
 
 // tusStore adapts database.Queries to the tus.Store interface.
 type tusStore struct {
-	queries     *database.Queries
-	maxSlotSize int64
+	queries             *database.Queries
+	maxSlotSize         int64
+	maxFilesPerTransfer int
 }
 
 var _ tus.Store = (*tusStore)(nil)
@@ -30,7 +31,7 @@ func (s *tusStore) GetUpload(id string) (*tus.UploadInfo, error) {
 
 func (s *tusStore) CreateUpload(transferID string, size int64) (string, error) {
 	id := uuid.New().String()
-	if err := s.queries.CreateFileWithQuota(id, transferID, size, s.maxSlotSize); err != nil {
+	if err := s.queries.CreateFileWithQuota(id, transferID, size, s.maxSlotSize, s.maxFilesPerTransfer); err != nil {
 		if err == database.ErrSlotFileQuota {
 			return "", tus.ErrUploadFileLimit
 		}

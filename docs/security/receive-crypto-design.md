@@ -71,6 +71,27 @@ New receive links contain only the public key (`#v2.<public32>`). The private pa
 
 Anonymous upload pages fetch the limited availability response and compare its immutable public key with the link before displaying upload controls and again before creating a submission. Each upload creates a fresh AES key and HPKE wrapper. Guest requests omit ambient cookies and use only their issued write capability; completion recovery uses the dedicated upload-status endpoint. Owner download routes retrieve the envelope with the owner session, verify inbox membership/key identity, and recover the AES key locally. Legacy inboxes remain owner-readable and reject new uploads.
 
+Opening an individual browser submission uses the owner-only exact lookup
+`GET /api/v1/slots/{slotID}/transfers/{transferID}/membership`. Its response contains
+only `slot_id`, `transfer_id`, `receive_protocol` and `recipient_public_key`.
+The browser verifies both identities, version 2 and its locally saved public key
+before fetching the encrypted manifest. This lookup does not enumerate sibling
+submissions or return counters, private keys or file contents. Missing membership
+is rejected; expired/revoked resources are unavailable. Records associated with
+multiple inboxes are rejected rather than choosing a parent for authorization or
+traffic attribution. The route uses the existing owner session and is not an
+additional public receive capability.
+
+Transfer metadata supports at most 100 files, matching the client manifest
+ceiling. An indexed 101-row probe rejects oversized historical/restored records
+with HTTP 409 `transfer_file_limit_exceeded`, without returning a partial list.
+New file allocations enforce the same ceiling atomically before consuming receive
+allowances. `MAX_FILES_PER_TRANSFER` may lower the limit; values above 100 or
+nonpositive values use 100. Concurrent allocations cannot exceed the effective
+count. This guard does not delete existing payloads or change individual file-size
+limits. Inbox pagination and whole-inbox summary bounds are separate work; the
+exact membership route alone does not make the inbox listing bounded.
+
 Creation controls expose fixed optional per-file download attempts and cumulative receive-file allocations. UI counters come from server responses, including reservations; interrupted download attempts consume allowance, and abandoned file allocations do not restore receive capacity. Regression coverage includes authenticated inbox retrieval, guest denial of child reads, file-limit exhaustion, scanner/version rejection, receive history reopening, and individual/ZIP saving.
 
 Before publishing a new receive invitation, the browser reads owner metadata and verifies the accepted protocol, exact public key and selected file limit. Before uploading standalone files with a selected download limit, it verifies the server accepted that value. A server that silently ignores new fields is rejected and the unused allocation is removed where possible. A metadata transport failure retains the owner allocation/private key for inspection or revocation instead of silently losing management state or publishing an unverified link.

@@ -39,7 +39,7 @@ type Config struct {
 	RateLimitBurst         int     // Global burst size (default 40)
 	RateLimitCreationBurst int     // Creation burst size (default 5)
 	MaxManifestSize        int64   // Max manifest upload size in bytes (default and maximum 1 MiB)
-	MaxFilesPerTransfer    int     // Max number of files per transfer (default 100)
+	MaxFilesPerTransfer    int     // Max number of files per transfer (default and protocol ceiling 100)
 }
 
 // Load reads configuration from environment variables with sensible defaults.

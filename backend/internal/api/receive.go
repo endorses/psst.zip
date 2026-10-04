@@ -68,13 +68,18 @@ func (s *Server) slotPolicy(response *SlotResponse, slot *database.Slot, counts 
 	}
 	return nil
 }
-func (s *Server) filePolicy(t *database.Transfer) ([]FileInfo, error) {
-	files, err := s.queries.ListFiles(t.ID)
+func (s *Server) filePolicy(ctx context.Context, t *database.Transfer) ([]FileInfo, int64, error) {
+	files, err := s.queries.ListFilesContext(ctx, t.ID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	result := make([]FileInfo, 0, len(files))
+	var total int64
 	for _, file := range files {
+		if file.Size < 0 || file.Size > math.MaxInt64-total {
+			return nil, 0, errors.New("invalid transfer file sizes")
+		}
+		total += file.Size
 		var remaining *int
 		if t.MaxDownloads > 0 {
 			n := max(0, t.MaxDownloads-file.DownloadCount)
@@ -82,7 +87,7 @@ func (s *Server) filePolicy(t *database.Transfer) ([]FileInfo, error) {
 		}
 		result = append(result, FileInfo{ID: file.ID, Size: file.Size, UploadOffset: file.UploadOffset, UploadComplete: file.UploadComplete, DownloadCount: file.DownloadCount, RemainingDownloads: remaining})
 	}
-	return result, nil
+	return result, total, nil
 }
 func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -140,9 +145,15 @@ func (s *Server) requireInboxOwner(next http.Handler) http.Handler {
 			writeError(w, 400, "invalid slot ID")
 			return
 		}
-		owner, err := s.queries.Owner("slot", id)
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		owner, err := s.queries.InboxOwnerContext(ctx, id)
+		cancel()
 		if err != nil {
-			writeError(w, 404, "slot not found")
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, 404, "slot not found")
+			} else {
+				writeError(w, 503, "inbox owner unavailable")
+			}
 			return
 		}
 		if owner != identity(r).user.ID {
@@ -160,7 +171,7 @@ func (s *Server) requireTransferRead(next http.Handler) http.Handler {
 			writeError(w, 400, "invalid transfer ID")
 			return
 		}
-		slots, err := s.queries.TransferSlotIDs(id)
+		slots, err := s.queries.TransferSlotIDsContext(r.Context(), id)
 		if err != nil {
 			writeError(w, 500, "database error")
 			return
@@ -213,7 +224,7 @@ func (s *Server) uploadStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "transfer not found")
 		return
 	}
-	slots, err := s.queries.TransferSlotIDs(id)
+	slots, err := s.queries.TransferSlotIDsContext(r.Context(), id)
 	if err != nil {
 		writeError(w, 500, "database error")
 		return

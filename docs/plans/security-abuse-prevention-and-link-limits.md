@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Work still includes remaining query bounds, cleanup reconciliation, public effective-capacity integration and deployment/client verification. Do not treat these intermediate checkpoints as a security-hardened public release.
+Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Work still includes remaining query bounds and cross-client pagination, independent protocol review, and deployment/client verification. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
 
 Protect self-hosted operators and recipients from confidentiality failures, resource exhaustion, unexpected traffic costs, compromised accounts and malicious submissions. Include optional per-link download/receive limits across web, Android and iOS, including sending through the iOS share extension. Preserve straightforward default workflows, public standalone download links, public receive submission, administrator-only management accounts, chunked encryption, configurable maximum file size and delivery acknowledgements. A public receive link grants submission access, not permission to read other submissions.
 
@@ -705,3 +705,59 @@ preparation. Native iOS/device verification remains separate from implementation
       hardware durability and the other remaining release gates. The tests do
       not certify an operator's actual backup or reconstruct rolled-back history;
       the full security plan remains open.
+
+### Bounded transfer metadata and exact inbox membership, 2026-10-04
+
+- [x] Bound transfer file metadata to the client protocol ceiling of 100 files
+      using an indexed 101-row probe. Derive response count and size from that
+      same bounded list, propagate query errors, and apply a request deadline.
+      Oversized historical/restored records return the fixed HTTP 409 code
+      `transfer_file_limit_exceeded` without partial metadata or payload deletion.
+      Cover empty, boundary, oversized and unrelated transfers and cancellation;
+      authorization still precedes private metadata disclosure.
+- [x] Replace unbounded parent enumeration in authorization, upload-capability,
+      stream-admission and traffic paths with an indexed two-row probe. Zero
+      parents means a standalone send; one means a receive submission. Multiple
+      parents fail closed with no partial result rather than choosing an inbox
+      for access or cost attribution. Verify indexed access, cancellation, many
+      historical memberships, and denied reads/writes/acknowledgements without
+      changing transfer state.
+- [x] Add an owner-only exact inbox/child membership endpoint with bounded
+      database reads and a four-field response. Recheck ownership in the joined
+      query; reject mismatches, ambiguous parents, expiry, pending expiry,
+      revocation and malformed stored receive policy. Do not enumerate siblings,
+      load manifests or count files. Keep the owner-lookup deadline separate from
+      the subsequent event-stream lifetime.
+- [x] Make the browser verify this exact membership and its locally stored
+      recipient key before requesting transfer metadata or the encrypted
+      manifest. Limit membership responses to 4 KiB and ten seconds, reject
+      redirects, cancel on navigation, and preserve private-key cleanup. Verify
+      invalid identities/protocol/keys and denied access never fetch a manifest.
+      A real receive-upload/decrypt/save browser exercise succeeds with the
+      full-inbox endpoint blocked and compares the saved bytes; standalone
+      symmetric-key download remains unchanged.
+- [x] Enforce the effective file-count ceiling in the SQLite allocation writer
+      transaction, using an indexed bounded probe before reserving cumulative
+      receive allowances. Positive operator values below 100 remain effective;
+      values above 100 and nonpositive values use 100. Public guest capacity and
+      allocation use the same normalization. Verify configured limits and
+      concurrent last-slot allocation through separate database connections;
+      rejection leaves lifetime allowance counters unchanged. Individual
+      file-size limits and chunked large-file support are unchanged.
+- [x] Run final `go test -race ./internal/api ./internal/database ./internal/tus -count=1 -timeout=300s`:
+      API 179.343 s and database 212.395 s pass; the tus package compiles and has
+      no separate test files (HTTP upload behavior is covered by API tests).
+      All 67 web Node tests, five focused browser regressions, Svelte checks
+      (zero errors/warnings), and the production build pass. The browser set
+      includes a real receive upload and owner save with byte comparison and
+      the inbox-list endpoint blocked. Go/Markdown/Svelte/TypeScript formatting
+      and diff checks pass. Disposable servers are stopped and dedicated caches
+      are removed; the live development deployment remains unchanged. This
+      checkpoint changes shared server enforcement and browser lookup behavior;
+      it does not claim new Android/iOS build or device validation.
+- [ ] Implement bounded owner-inbox pages and summaries across backend, browser,
+      Android and iOS. Preserve explicit page navigation and scope saving to
+      loaded submissions without falsely marking an entire inbox saved. Bound
+      account-history query work and native refreshes without treating unloaded
+      records as revoked. These remain required; the exact membership endpoint
+      and transfer metadata ceiling do not complete the broader list-query gate.

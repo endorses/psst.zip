@@ -37,6 +37,7 @@ type Server struct {
 
 // NewServer creates a Server with all dependencies wired up.
 func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Server {
+	cfg.MaxFilesPerTransfer = database.EffectiveTransferFileLimit(cfg.MaxFilesPerTransfer)
 	q.SetCapacityPaths(cfg.StoragePath, cfg.DBPath)
 	initializationError := q.InitializeTrafficConcurrency(finiteLimit(cfg.MaxActiveStreams, 64), finiteLimit(cfg.MaxStreamsPerAccount, 4), finiteLimit(cfg.MaxStreamsPerIP, 4), finiteLimit(cfg.MaxStreamsPerTransfer, 4), finiteLimit(cfg.MaxStreamsPerSlot, 4))
 	s := &Server{
@@ -53,7 +54,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 	if initializationError != nil {
 		s.trafficUnavailable.Store(true)
 	}
-	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
+	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize, maxFilesPerTransfer: cfg.MaxFilesPerTransfer}
 	s.tusH = tus.NewHandler(ts, fs, 0)
 	return s
 }
@@ -137,6 +138,7 @@ func (s *Server) Router() http.Handler {
 		// Slot endpoints (receive flow)
 		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/slots", s.createSlot)
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}", s.getSlot)
+		r.With(s.requireInboxOwner).Get("/slots/{slotID}/transfers/{transferID}/membership", s.inboxTransferMembership)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)
 

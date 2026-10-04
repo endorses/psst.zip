@@ -5,6 +5,7 @@ import { validateLinkLimit } from "./link-limits.ts";
 import { resourceLimitError } from "./resource-policy.ts";
 import { TransferStateError, transferStateError } from "./incident-state.ts";
 import { validateSlotAvailability, type SlotAvailability } from "./guest-capacity.ts";
+import { decodeReceivePublicKey } from "./receive-keys.ts";
 export type { SlotAvailability } from "./guest-capacity.ts";
 
 /**
@@ -186,6 +187,48 @@ export async function getSlotAvailability(
 
 export async function getSlotInfo(slotId: string): Promise<SlotInfo> {
   return request<SlotInfo>(`/slots/${slotId}`);
+}
+
+export interface SlotTransferMembership {
+  slot_id: string;
+  transfer_id: string;
+  receive_protocol: 2;
+  recipient_public_key: string;
+}
+
+/** Owner-only, exact lookup: opening a submission never enumerates the inbox. */
+export async function getSlotTransferMembership(
+  slotId: string,
+  transferId: string,
+  signal?: AbortSignal,
+): Promise<SlotTransferMembership> {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(slotId) || !uuid.test(transferId)) throw new Error("Invalid inbox membership");
+  const timeout = AbortSignal.timeout(10_000);
+  const response = await fetch(`${API_BASE}/slots/${slotId}/transfers/${transferId}/membership`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`API ${response.status}`);
+  }
+  const bytes = await readBounded(response, 4096);
+  const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid inbox membership");
+  const result = value as Record<string, unknown>;
+  if (
+    result.slot_id !== slotId ||
+    result.transfer_id !== transferId ||
+    result.receive_protocol !== 2 ||
+    typeof result.recipient_public_key !== "string"
+  )
+    throw new Error("Invalid inbox membership");
+  decodeReceivePublicKey(result.recipient_public_key);
+  return result as unknown as SlotTransferMembership;
 }
 
 /**

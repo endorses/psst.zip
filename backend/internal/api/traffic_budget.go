@@ -156,7 +156,7 @@ func (s *Server) transferTrafficStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		s.resourceTrafficStatus(w, owner, t.Status, false, r.URL.Query().Get("direction") == "upload")
 	})
-	slots, err := s.queries.TransferSlotIDs(id)
+	slots, err := s.queries.TransferSlotIDsContext(r.Context(), id)
 	if err != nil {
 		trafficFailure(w, err)
 		return

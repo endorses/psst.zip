@@ -20,7 +20,7 @@ import (
 
 const guestCapacitySlot = "d138f5fe-3125-41a8-990a-6e21d659e7ca"
 
-func guestCapacityAPI(t *testing.T) (http.Handler, *database.Queries, *sql.DB, string) {
+func guestCapacityAPI(t *testing.T, configuredFileLimits ...int) (http.Handler, *database.Queries, *sql.DB, string) {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
@@ -54,6 +54,9 @@ func guestCapacityAPI(t *testing.T) (http.Handler, *database.Queries, *sql.DB, s
 		t.Fatal(err)
 	}
 	cfg := config.Config{StoragePath: storage, DBPath: dbPath, MaxFilesPerTransfer: 7, MaxManifestSize: 1024, MaxFileSize: 100 << 20, RateLimitGlobal: 1000, RateLimitBurst: 1000, RateLimitCreation: 1000, RateLimitCreationBurst: 1000}
+	if len(configuredFileLimits) > 0 {
+		cfg.MaxFilesPerTransfer = configuredFileLimits[0]
+	}
 	return api.NewServer(cfg, q, fs).Router(), q, db, dbPath
 }
 func guestCapacityResponse(t *testing.T, h http.Handler) (*httptest.ResponseRecorder, map[string]any) {
