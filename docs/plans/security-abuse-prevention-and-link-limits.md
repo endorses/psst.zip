@@ -1297,8 +1297,47 @@ and iOS guest storage/queues still need bounded local reads and writes.
       code is unchanged; the existing implementation protections are verified.
       Markdown formatting/diff checks pass and the task-specific Go cache is
       removed.
-- [ ] Complete the separate isolated physical volume-pressure exercise; the
-      page-count test does not prove filesystem ENOSPC/WAL durability. Public ACME
-      and certificate-state restore, native iOS app/share-extension/device gates,
-      physical/older Android and the remaining full-plan requirements stay open.
-      The running development deployment is unchanged.
+- [x] Complete the separate isolated physical volume-pressure exercise recorded
+      in the checkpoint below; the page-count test alone does not prove physical
+      filesystem ENOSPC/WAL-write behavior.
+- [ ] Complete public ACME and certificate-state restore, native iOS
+      app/share-extension/device gates, physical/older Android and the remaining
+      full-plan requirements. The running development deployment is unchanged.
+
+### Physical filesystem-pressure checkpoint, 2026-10-05
+
+- [x] Add a narrowly scoped Linux/Docker gate for actual filesystem pressure,
+      using empty, separate 64 MiB tmpfs mounts, an unprivileged read-only
+      container, bounded memory/CPU/processes, no external network or published
+      ports and no live-instance data. Ordinary Go runs skip the opt-in test;
+      pressure tests refuse nonempty, non-tmpfs or unbounded mounts. Remove the
+      uniquely named container and task-specific Go cache after the run.
+- [x] Verify nearly full shared payload/database storage through the actual
+      router, disk store and filesystem capacity probe. Consume space during an
+      admitted PATCH; the production reserve check stops streaming at 1 MiB,
+      preserves matching physical/database offsets, rejects new creation and
+      retains administrator reads and verified deletion. Reclaiming external
+      filler restores creation without changing production defaults.
+- [x] Verify a separate payload volume really returns OS ENOSPC, not an injected
+      error. The actual PATCH returns 507/disk_capacity, preserves partial
+      progress and the entire reservation, and cannot publish a complete upload.
+      Administrator access and deletion still work with metadata on a separate
+      bounded volume; reclaiming space restores allocation.
+- [x] Verify real shared-volume SQLite WAL-write exhaustion without SQL triggers
+      or max_page_count. Checkpoint prior state, consume actual remaining blocks,
+      and exercise the production cleanup queue. Failed SQLite writes preserve
+      durable resource metadata, queued work and reservations. After reclaiming
+      space and reopening the database, pending/failed state remains; explicit
+      retry completes deletion and releases capacity.
+- [x] Run
+      `python3 tools/test_storage_pressure.py --runtime-image swift:6.0-noble`:
+      all three cases pass with the race detector in each of three repetitions
+      (4.29 s, 4.19 s and 4.20 s). Format Go/Python/Markdown and check diffs. The
+      runtime image was already available; the test compiles current source,
+      does not replace a production handler or database, and changes no running
+      deployment. Document the supported minimum fixture reserve and tmpfs
+      verification boundary in the resource-management guide.
+- [ ] Complete public ACME issuance/renewal, certificate-state restore and native
+      iOS/physical Android gates and the remaining full-plan requirements. These
+      tmpfs checks do not prove power-loss durability or every operator's
+      filesystem, quotas, storage drivers or provider configuration.

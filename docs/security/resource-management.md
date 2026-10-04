@@ -115,8 +115,31 @@ The SQLite-full regression caps only a disposable database with
 `PRAGMA max_page_count`, makes SQLite itself reject a metadata write during
 cleanup, and verifies conservative reservations, durable failure/retry state,
 restart and eventual reclamation. It does not fill the host volume or establish
-behavior on every filesystem under physical ENOSPC; isolated volume-pressure
-and power-loss checks remain separate verification.
+behavior on every filesystem under physical ENOSPC or power loss.
+
+The separate `tools/test_storage_pressure.py` gate compiles the current backend
+tests with Go's race detector and runs three repetitions in an unprivileged
+Docker container. It uses two disposable 64 MiB tmpfs mounts, no external
+network or published ports, and no development-instance data. Actual allocated
+pages consume the shared payload/database volume and a separate payload volume;
+the gate checks streaming reserve rejection, real payload ENOSPC, near-full
+cleanup, and a real SQLite WAL-write failure followed by capacity recovery,
+restart and queued deletion. The tiny fixture uses the supported 1 MiB/1 percent
+reserve; production defaults remain unchanged. Ordinary Go test runs skip this
+opt-in test, and it refuses nonempty, unbounded or non-tmpfs pressure mounts.
+
+Run on a Linux host with Go race support and Docker:
+
+```sh
+python3 tools/test_storage_pressure.py
+```
+
+Use `--runtime-image` to select another compatible glibc Linux image. The recorded
+run used the already available `swift:6.0-noble` image; this is only a container
+runtime for the Go test binary. The script removes its uniquely named container
+and temporary Go cache on completion or failure. These checks establish the
+tested Linux tmpfs behavior, not durability across power loss or every operator
+filesystem, disk quota, storage driver or provider configuration.
 
 These controls do not establish complete disk/database reconciliation after a
 crash, power loss, external filesystem changes or a restored backup. In

@@ -37,8 +37,11 @@ func setup(t *testing.T) *testEnv { return setupAuthFixture(t, true) }
 
 func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 	t.Helper()
+	return setupAuthFixtureIn(t, authorized, t.TempDir())
+}
 
-	dir := t.TempDir()
+func setupAuthFixtureIn(t *testing.T, authorized bool, dir string) *testEnv {
+	t.Helper()
 	dbPath := dir + "/test.db"
 	storagePath := dir + "/files"
 
