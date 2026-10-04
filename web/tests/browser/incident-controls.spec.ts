@@ -4,6 +4,9 @@ import { encryptManifest } from "../../src/lib/crypto";
 import { wireSize } from "../../src/lib/chunked-files";
 
 async function session(page: Page, role: "admin" | "user" = "admin") {
+  await page.route("**/api/v1/admin/abuse-contact", (route) =>
+    route.fulfill({ json: { email: "" } }),
+  );
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ json: { user: { id: `incident-${role}`, username: role, role } } }),
   );

@@ -18,6 +18,7 @@ struct ScanReceiveView: View {
     @Environment(ServerConfigManager.self) private var config
     @Environment(GuestDownloadStore.self) private var store
     @Environment(GuestTransferModel.self) private var model
+    @State private var reportContext: AbuseReportContext?
     @State private var pasted = ""
     @State private var error: String?
     @State private var uploadLink: ParsedUrl?
@@ -41,6 +42,9 @@ struct ScanReceiveView: View {
                     }
                     if let message = store.error {
                         Text(message).foregroundStyle(PsstTheme.error)
+                    }
+                    if let reportContext, model.currentID == nil || !store.records.contains(where: { $0.id == model.currentID }) {
+                        AbuseReportButton(context: reportContext).id(reportContext.id)
                     }
                     pairingPanel
                     uploadPanel
@@ -94,7 +98,7 @@ struct ScanReceiveView: View {
         } else {
             Button("Scan again") {
                 model.resetPresentation(); uploadLink = nil; pairingRaw = nil
-                error = nil; cameraEnabled = true
+                error = nil; reportContext = nil; cameraEnabled = true
             }.disabled(model.active || pairing)
         }
         Text("Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received.")
@@ -154,7 +158,9 @@ struct ScanReceiveView: View {
                 if model.cleanupPending {
                     Text("Partial server files will be removed when the connection is restored.").font(.footnote)
                 }
-                Button("Close receive link") { self.uploadLink = nil; selected = [] }.disabled(model.active)
+                Button("Close receive link") {
+                    self.uploadLink = nil; reportContext = nil; selected = []
+                }.disabled(model.active)
             }
         }
     }
@@ -179,10 +185,12 @@ struct ScanReceiveView: View {
         guard !model.active, !pairing else { return }
         model.resetPresentation()
         error = nil; pairingRaw = nil; uploadLink = nil; selected = []
+        reportContext = AbuseReportContext.fromLink(raw)
         guard let input = ScanInputClassifier.shared.classify(raw: raw) else { error = GuestError.input.localizedDescription; return }
         switch input.kind {
         case .download:
             guard let link = input.link else { return }
+            reportContext = AbuseReportContext(origin: link.origin, resourceType: "transfer", resourceID: link.id)
             let id = GuestDownload.identity(origin: link.origin, transferID: link.id)
             if let record = store.records.first(where: { $0.id == id }), store.requiresRedownloadConsent(record) {
                 // Validate the key without changing the stored working key before offering redownload.
@@ -193,6 +201,7 @@ struct ScanReceiveView: View {
             }
         case .upload:
             uploadLink = input.link
+            if let link = input.link { reportContext = AbuseReportContext(origin: link.origin, resourceType: "slot", resourceID: link.id) }
             uploadLimit = nil
             if let link = input.link {
                 Task {

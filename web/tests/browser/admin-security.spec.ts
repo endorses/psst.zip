@@ -18,6 +18,9 @@ const enrollment = () => ({
   expires_at: new Date(Date.now() + 300000).toISOString(),
 });
 async function config(page: Page) {
+  await page.route("**/api/v1/admin/abuse-contact", (route) =>
+    route.fulfill({ json: { email: "" } }),
+  );
   await page.route("**/api/v1/config", (route) =>
     route.fulfill({ json: { max_file_size: 25 * 1024 ** 2, max_file_size_ceiling: 1024 ** 4 } }),
   );

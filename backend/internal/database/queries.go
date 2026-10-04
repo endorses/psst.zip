@@ -433,8 +433,16 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 		return ResourceError(err)
 	}
 	if n == 0 {
+		var status string
 		var exhausted bool
-		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM slots WHERE id=? AND max_files>0 AND reserved_files>=max_files)`, slotID).Scan(&exhausted); err != nil {
+		// Deny-first revocation can win after the handler's live-slot check.
+		// Classify the failed reservation under the same writer transaction,
+		// before considering allowances that may also have been exhausted.
+		err := tx.QueryRow(`SELECT status,max_files>0 AND reserved_files>=max_files FROM slots WHERE id=?`, slotID).Scan(&status, &exhausted)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && status == "revoked" {
+			return ErrResourceRevoked
+		}
+		if err != nil {
 			return ResourceError(err)
 		}
 		if exhausted {

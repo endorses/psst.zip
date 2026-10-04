@@ -15,6 +15,9 @@ struct GuestDownloadDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(current.origin).font(.caption).textSelection(.enabled)
+            if let context = AbuseReportContext(origin: current.origin, resourceType: "transfer", resourceID: current.transferID) {
+                AbuseReportButton(context: context).id(context.id)
+            }
             Text("Downloaded files").font(.title2.bold())
             Text("Files → psst.zip → Received").font(.footnote)
             if let consent = model.pendingConsent, consent.record.id == current.id {

@@ -12,9 +12,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.PsstApplication
+import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.AppearancePicker
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
+import zip.psst.shared.model.AbuseReportReference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,6 +119,7 @@ fun SettingsScreen(
             }
             HorizontalDivider()
             Text("Connection", style = MaterialTheme.typography.titleSmall)
+            AbuseReportButton(AbuseReportReference.create(prefs.getServerUrl()))
             Text(
                 when {
                     prefs.getServerUrl().isBlank() -> "No server configured"

@@ -84,6 +84,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/health", s.health)
 		r.Get("/config", s.publicConfig)
 		r.With(s.requireAdmin).Patch("/admin/settings", s.updateSettings)
+		r.With(s.requireAdmin).Get("/admin/abuse-contact", s.getAbuseContact)
+		r.With(s.requireAdmin).Patch("/admin/abuse-contact", s.updateAbuseContact)
 		r.With(s.requireAdmin).Get("/admin/resource-policy", s.getResourcePolicy)
 		r.With(s.requireAdmin).Get("/admin/incident-state", s.getIncidentState)
 		r.With(s.requireAdmin).Patch("/admin/incident-state", s.updateIncidentState)

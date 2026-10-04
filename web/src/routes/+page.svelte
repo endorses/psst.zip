@@ -22,6 +22,7 @@
     type HistoryLabels,
   } from "$lib/history-labels";
   import ServerSettings from "$lib/components/ServerSettings.svelte";
+  import AbuseContactSettings from "$lib/components/AbuseContactSettings.svelte";
   import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
   import AccountUsage from "$lib/components/AccountUsage.svelte";
   import AccountTraffic from "$lib/components/AccountTraffic.svelte";
@@ -1158,6 +1159,7 @@
           <p><a href="/?view=resources">Inspect resources and cleanup</a></p>
           <PublicTransferControl />
           <ServerSettings />
+          <AbuseContactSettings />
           <ResourcePolicySettings />
         {:else if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>

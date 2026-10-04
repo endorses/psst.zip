@@ -110,6 +110,7 @@ var migrations = []string{
 	securityAuditMigration(),
 	adminResourcesMigration(),
 	cleanupStateMigration(),
+	abuseContactMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

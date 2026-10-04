@@ -29,6 +29,7 @@
   }
   const actions = new Map([
     ["settings.file_size_changed", "File size limit changed"],
+    ["settings.abuse_contact_changed", "Abuse contact changed"],
     ["settings.resource_policy_changed", "Resource limits changed"],
     ["settings.traffic_policy_changed", "Traffic policy changed"],
     ["settings.traffic_chart_changed", "Traffic monitor settings changed"],

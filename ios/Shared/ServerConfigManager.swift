@@ -10,6 +10,8 @@ final class ServerConfigManager {
     private(set) var passwordChanged = false
     private(set) var advertisedLimit: Int64?
     private(set) var limitOrigin: String?
+    private var advertisedAbuseContact: String?
+    var abuseContactEmail: String? { limitOrigin == serverURL ? advertisedAbuseContact : nil }
     var limitDescription: String {
         guard limitOrigin == serverURL, let advertisedLimit else { return "The server sets the maximum file size." }
         return "Up to " + ByteCountFormatter.string(fromByteCount: advertisedLimit, countStyle: .binary) + " per file."
@@ -17,6 +19,7 @@ final class ServerConfigManager {
 
     func refreshLimit() async {
         let origin = serverURL
+        limitOrigin = nil; advertisedLimit = nil; advertisedAbuseContact = nil
         guard !origin.isEmpty else { return }
         do {
             let client = try ApiClient.companion.anonymous(origin: origin)
@@ -24,9 +27,10 @@ final class ServerConfigManager {
             let limits = try await client.limits.get()
             guard serverURL == origin else { return }
             limitOrigin = origin; advertisedLimit = limits.maxFileSize
+            advertisedAbuseContact = AbuseContact.validated(limits.abuseContactEmail)
         } catch {
             if serverURL == origin {
-                limitOrigin = nil; advertisedLimit = nil
+                limitOrigin = nil; advertisedLimit = nil; advertisedAbuseContact = nil
             }
         }
     }

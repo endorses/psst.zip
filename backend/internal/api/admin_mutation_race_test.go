@@ -42,6 +42,7 @@ func TestAdminControlWritesRecheckSessionAfterBodyAdmission(t *testing.T) {
 		{"global traffic budget", "PATCH", "/admin/traffic-policy", `{"enforcement_enabled":true}`, `SELECT policy FROM traffic_policy`, 200},
 		{"account traffic budget", "PATCH", "/admin/users/fixture-user/traffic-policy", `{"account_budget_bytes":1048576}`, `SELECT COUNT(*) FROM traffic_account_policy`, 200},
 		{"resource policy", "PATCH", "/admin/resource-policy", `{"server_files":54321}`, `SELECT server_files FROM resource_policy`, 200},
+		{"abuse contact", "PATCH", "/admin/abuse-contact", `{"email":"abuse@example.com"}`, `SELECT email FROM abuse_contact WHERE id=1`, 200},
 		{"file size", "PATCH", "/admin/settings", `{"max_file_size":1048576}`, `SELECT COALESCE((SELECT max_file_size FROM server_settings WHERE id=1),0)`, 200},
 		{"traffic chart settings", "PATCH", "/admin/traffic/settings", `{"allowance_bytes":1048576,"cycle_start_day":2,"basis":"combined"}`, `SELECT cycle_start_day FROM traffic_state`, 200},
 		{"shutdown", "POST", "/admin/users/fixture-user/shutdown", `{}`, `SELECT disabled FROM users WHERE id='fixture-user'`, 200},

@@ -54,10 +54,17 @@ struct ServerConfigView: View {
                 }
                 Section("Password") { PasswordReplacementFields() }
             }
+            if let context = AbuseReportContext(origin: serverConfig.serverURL), let contact = serverConfig.abuseContactEmail {
+                Section("Help & contact") {
+                    Text(contact).textSelection(.enabled)
+                    AbuseReportButton(context: context, configuredContact: serverConfig.abuseContactEmail, fetchContact: false).id(context.id)
+                }
+            }
             if serverConfig.session != nil {
                 Section { LogoutButton() }
             }
         }
+        .task(id: serverConfig.serverURL) { await serverConfig.refreshLimit() }
         .modifier(PsstStyle()).modifier(PsstAppearance())
         .sheet(isPresented: $editing) { NavigationStack { AccountSetupView() } }
         .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)

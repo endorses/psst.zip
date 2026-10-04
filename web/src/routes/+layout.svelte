@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import "$lib/theme.css";
   import ThemePicker from "$lib/components/ThemePicker.svelte";
+  import AbuseContact from "$lib/components/AbuseContact.svelte";
   import { BRAND } from "$lib/brand";
   let { children }: { children: Snippet } = $props();
   let httpWarning = $state(false);
@@ -44,6 +45,10 @@
   <footer>
     Files are encrypted on your device. Use trusted HTTPS and client software: this website depends
     on the server that delivers it. Encryption does not verify the sender or make a file safe.
+    {#key $page.url.origin}<AbuseContact
+        origin={$page.url.origin}
+        pathname={$page.url.pathname}
+      />{/key}
   </footer>
 </div>
 

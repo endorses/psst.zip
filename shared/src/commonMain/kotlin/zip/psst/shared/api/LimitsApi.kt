@@ -13,6 +13,7 @@ class ServerLimits(
     @SerialName("max_file_size") val maxFileSize: Long,
     @SerialName("max_file_size_ceiling") val maxFileSizeCeiling: Long,
     @SerialName("traffic_policy") val trafficPolicy: TrafficPolicy? = null,
+    @SerialName("abuse_contact_email") val abuseContactEmail: String = "",
 )
 
 class LimitsApi(private val client: HttpClient, private val config: ServerConfig) {

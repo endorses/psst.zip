@@ -11,6 +11,64 @@ import (
 	"time"
 )
 
+func TestSlotReservationClassifiesRevocationBeforeQuota(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		fileLimit bool
+		batchFull bool
+		revoke    bool
+		remove    bool
+		want      error
+	}{
+		{name: "revoked", revoke: true, want: ErrResourceRevoked},
+		{name: "removed", remove: true, want: ErrResourceRevoked},
+		{name: "revoked with exhausted files", fileLimit: true, revoke: true, want: ErrResourceRevoked},
+		{name: "revoked with exhausted batches", batchFull: true, revoke: true, want: ErrResourceRevoked},
+		{name: "live file quota", fileLimit: true, want: ErrSlotFileQuota},
+		{name: "live batch quota", batchFull: true, want: ErrSlotQuota},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			q, _ := resourceFixture(t)
+			until := time.Now().Add(time.Hour)
+			if err := q.CreateReceiveSlot("slot", until, nil, "", 2, "key", 1); err != nil {
+				t.Fatal(err)
+			}
+			// Reproduce the handler's valid observation before the competing
+			// denial/cleanup commits, without relying on scheduler timing.
+			if slot, err := q.GetSlot("slot"); err != nil || slot.Status == "revoked" {
+				t.Fatalf("initial slot: %+v %v", slot, err)
+			}
+			if test.fileLimit {
+				if _, err := q.db.Exec(`UPDATE slots SET reserved_files=1 WHERE id='slot'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.batchFull {
+				if _, err := q.db.Exec(`UPDATE slots SET upload_count=20 WHERE id='slot'`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.revoke {
+				if err := q.RevokeSlotQueued("slot", SecurityEvent{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.remove {
+				if err := q.DeleteSlot("slot"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := q.CreateSlotTransfer("slot", "child", until, 0, nil); !errors.Is(err, test.want) {
+				t.Fatalf("reservation returned %v, want %v", err, test.want)
+			}
+			var children int
+			if err := q.db.QueryRow(`SELECT COUNT(*) FROM transfers`).Scan(&children); err != nil || children != 0 {
+				t.Fatalf("failed reservation left %d children: %v", children, err)
+			}
+		})
+	}
+}
+
 func TestReceiveFileAllowanceConcurrentCumulativeAndRestartSafe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "receive.db")
 	db, err := Open(path)

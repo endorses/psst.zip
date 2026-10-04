@@ -178,6 +178,10 @@ exact ID lookup, owner/type filters, current storage counters and related securi
 activity. Revocation denies access immediately; persistent cleanup status shows
 pending work and failures until server-file removal is confirmed.
 
+An optional [abuse contact](docs/security/abuse-contact.md) lets administrators
+publish a contact email. Web and mobile clients prepare a local report reference
+without encryption keys or file contents; the server does not send or store reports.
+
 For incidents, administrators can persistently pause payload transfers or shut
 down an account and revoke all its links. These are separate from disabling
 future sign-in. See [incident response and local recovery](docs/security/incident-response.md)

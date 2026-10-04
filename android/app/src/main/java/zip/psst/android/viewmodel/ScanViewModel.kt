@@ -33,6 +33,7 @@ import kotlinx.serialization.json.Json
 
 data class ScanState(
     val origin: String = "",
+    val reportReference: AbuseReportReference? = null,
     val kind: ScanInputKind? = null,
     val busy: Boolean = false,
     val stage: String = "",
@@ -87,6 +88,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun classify(raw: String): Boolean {
         if (job?.isActive == true) return false
+        val reportReference = AbuseReportReference.fromRawLink(raw)
         return try {
             val parsed = requireNotNull(ScanInputClassifier.classify(raw))
             input = parsed
@@ -94,6 +96,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             _state.value =
                 ScanState(
                     origin = parsed.link?.origin ?: parsed.pairing!!.serverUrl,
+                    reportReference = parsed.link?.let(AbuseReportReference::fromLink),
                     kind = parsed.kind,
                     history = _state.value.history,
                     pendingCleanup = _state.value.pendingCleanup,
@@ -102,6 +105,16 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             if (parsed.kind == ScanInputKind.UPLOAD) refreshUploadPolicy()
             true
         } catch (_: Exception) {
+            input = null
+            rawPairing = null
+            _state.value =
+                ScanState(
+                    reportReference = reportReference,
+                    origin = reportReference?.origin.orEmpty(),
+                    history = _state.value.history,
+                    pendingCleanup = _state.value.pendingCleanup,
+                    pendingReceipts = _state.value.pendingReceipts,
+                )
             error(
                 "This is not a supported psst.zip QR code or link. Scan again or paste a valid link."
             )
@@ -148,6 +161,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             _state.update {
                 it.copy(
                     origin = current.origin,
+                    reportReference =
+                        AbuseReportReference.create(
+                            current.origin,
+                            AbuseResourceKind.TRANSFER,
+                            current.transferId,
+                        ),
                     kind = ScanInputKind.DOWNLOAD,
                     record = current,
                     error = null,

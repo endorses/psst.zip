@@ -26,6 +26,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.data.SavedGuestFile
+import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.android.viewmodel.ServerConfigViewModel
@@ -176,6 +177,7 @@ fun ScanScreen(
             }
             state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error)
+            AbuseReportButton(state.reportReference)
             if (!state.busy && !accountState.isTesting && state.kind != null) {
                 if (!historical) TextButton(onClick = viewModel::clear) { Text("Scan again") }
                 TextButton(onClick = onHistory) { Text("View in History") }

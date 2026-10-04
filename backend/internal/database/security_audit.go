@@ -38,18 +38,27 @@ var securityEventKinds = []string{
 func securityAuditMigration() string {
 	return `CREATE TABLE security_audit_buckets(bucket TEXT PRIMARY KEY,retained INTEGER NOT NULL DEFAULT 0 CHECK(retained>=0),maximum INTEGER NOT NULL);
  INSERT INTO security_audit_buckets(bucket,maximum) VALUES('administration',8000),('lifecycle',1000),('authentication',1000);
- CREATE TABLE security_events(
+ ` + securityAuditEventsTable("security_events", securityEventKinds) + securityAuditIndexesAndTriggers(false)
+}
+
+// Historical migrations retain their original allowlist. Later schema versions
+// rebuild this bounded table using the explicit expanded set of event kinds.
+func securityAuditEventsTable(name string, kinds []string) string {
+	return ` CREATE TABLE ` + name + `(
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  occurred_at TEXT NOT NULL,
  bucket TEXT NOT NULL REFERENCES security_audit_buckets(bucket),
- kind TEXT NOT NULL CHECK(kind IN ('` + strings.Join(securityEventKinds, "','") + `')),
+ kind TEXT NOT NULL CHECK(kind IN ('` + strings.Join(kinds, "','") + `')),
  origin TEXT NOT NULL CHECK(origin IN ('administrator','account','capability','local','system')),
  actor_id TEXT NOT NULL CHECK(length(actor_id)<=64 AND actor_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
  target_type TEXT NOT NULL CHECK(target_type IN ('server','user','session','pairing','transfer','slot','authentication')),
  target_id TEXT NOT NULL CHECK(length(target_id)<=64 AND target_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
  outcome TEXT NOT NULL CHECK(outcome IN ('succeeded','rejected')),
  event_count INTEGER NOT NULL CHECK(typeof(event_count)='integer' AND event_count BETWEEN 1 AND 1000000000));
- CREATE INDEX security_events_bucket ON security_events(bucket,id);
+`
+}
+func securityAuditIndexesAndTriggers(targetIndex bool) string {
+	sql := ` CREATE INDEX security_events_bucket ON security_events(bucket,id);
  CREATE INDEX security_events_age ON security_events(occurred_at,id);
  CREATE TRIGGER security_events_insert AFTER INSERT ON security_events BEGIN
  UPDATE security_audit_buckets SET retained=retained+1 WHERE bucket=NEW.bucket;
@@ -58,6 +67,10 @@ func securityAuditMigration() string {
  CREATE TRIGGER security_events_delete AFTER DELETE ON security_events BEGIN
  UPDATE security_audit_buckets SET retained=retained-1 WHERE bucket=OLD.bucket;
  END;`
+	if targetIndex {
+		sql += `CREATE INDEX security_events_target ON security_events(target_type,target_id,id DESC);`
+	}
+	return sql
 }
 
 func validAuditID(s string) bool {

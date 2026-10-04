@@ -3,6 +3,9 @@ import { test, expect, type Page } from "@playwright/test";
 import { resourcePolicy, resourceUsage } from "../resource-policy-fixture";
 
 async function session(page: Page, role: "admin" | "user" = "user") {
+  await page.route("**/api/v1/admin/abuse-contact", (route) =>
+    route.fulfill({ json: { email: "" } }),
+  );
   await page.route("**/api/v1/admin/incident-state", (route) =>
     route.fulfill({ json: { public_transfers_paused: false, updated_at: "2026-10-04T00:00:00Z" } }),
   );

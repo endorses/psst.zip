@@ -172,3 +172,14 @@ do not trigger probes. See [traffic protection](../docs/security/traffic-limits.
 - [ ] Build app and share extension on macOS and run XCTest to verify new shared DTO/exception exports, the Kotlin throwable classifier and SwiftUI usage view. Portable Linux checks cannot establish these bridges.
 - [ ] Exercise exhausted manifest/file uploads and downloads, partial multi-file saves, administrator limit changes, accounting failure, explicit recovery and local Open/Share on iOS. Confirm a retry fetches only missing files and no automatic payload request burns another attempt.
 - [ ] Verify URLSession transport behavior, three-second probe resource deadlines, cancellation, failed/unsupported status endpoints, backgrounding, account changes, accessibility and appearance modes on a device.
+
+## Contact-only abuse reporting
+
+The scanner and downloaded-file details offer a local **Report abuse** sheet. Settings exposes the configured instance's contact under **Help & contact**. Public config is read anonymously from the exact instance using the bounded shared limits API; no saved account credentials are used. The contact is validated before display or composing mail. A blank, invalid or unavailable address hides reporting actions. Changing scan context clears the previous contact and cancels the old lookup.
+
+Reports contain only the instance origin, resource type and UUID. Report context is extracted independently of encryption-key validation, so an unreadable or unavailable link can still be identified without including its fragment, query, filename or key. **Write email** opens a draft for the user to review and send; it does not submit a report or revoke anything. The address and safe context can also be copied when no mail app is available.
+
+Run `python3 ios/scripts/test_abuse_report.py` on Linux with the existing `swift:6.0-noble` Docker image. This offline harness compiles the exact Foundation helper and its XCTest tests and removes its temporary workspace and caches. It does not validate SwiftUI, Kotlin framework bridging, or device mail handling.
+
+- [ ] On macOS, build the app and share extension using the Xcode workflow above; execute `AbuseReportTests` with the app test suite.
+- [ ] On an iPhone, verify valid and invalid-key scanned links, unavailable metadata, switching between two origins during contact lookup, configured-server Help, copy actions, and explicit mail composition with and without a mail app.
