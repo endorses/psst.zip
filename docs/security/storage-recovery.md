@@ -186,13 +186,18 @@ entries require operator inspection; the worker deliberately retains them.
 
 ## Recovery scope
 
+The [backup and restore runbook](backup-restore.md) explains complete stopped
+snapshots, pausing a restored working copy before startup, and reconciling security
+state before public access. Pause does not stop the recovery/cleanup workers.
+
 - [x] Discover and safely remove supported orphan payload entries without
       changing canonical reservations or cumulative allowances. Retain and expose
       unsupported entries and incomplete inventory coverage.
-- [ ] Validate database and physical-capacity consistency after a mismatched
-      restore. Derived database summaries are reconstructed as described above;
-      lost lifetime allowances require matching historical database state and
-      cannot be inferred from surviving payloads.
+- [x] Exercise database and physical-capacity consistency after matching and
+      mismatched stopped restores into fresh disposable directories. Verify
+      payload recovery, derived summaries, orphan grace, canonical reservations
+      and conservative cleanup together. Lost lifetime allowances still require
+      matching historical database state and cannot be inferred from files.
 - [x] Provide public receive capacity from canonical reservations and current
       filesystem headroom, independently of display-counter and payload-inventory
       coverage. Missing disk measurements produce unknown capacity; unrelated

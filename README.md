@@ -187,7 +187,10 @@ resources from administrators.
 Orphan file checks inventory the payload volume and remove unreferenced regular
 files after a one-hour observation period and fresh safety checks. Unexpected
 entries and incomplete scans remain visible. Run one server process per storage
-directory and stop it before restoring or moving that storage.
+directory and stop it before restoring or moving that storage. Follow the
+[cold backup and isolated restore runbook](docs/security/backup-restore.md) to
+preserve the complete database/payload snapshot and review rolled-back security
+state before reopening public access.
 
 An optional [abuse contact](docs/security/abuse-contact.md) lets administrators
 publish a contact email. Web and mobile clients prepare a local report reference

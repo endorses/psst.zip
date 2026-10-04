@@ -636,7 +636,7 @@ preparation. Native iOS/device verification remains separate from implementation
       wording-only adjustment passes all three guest cases again. Inspect the
       narrow guest page with no horizontal overflow; remove disposable servers.
 - [x] Run shared/Android `:app:testDebugUnitTest :app:assembleDebug
-    :shared:testDebugUnitTest --offline --no-daemon` with Android Studio's JDK:
+:shared:testDebugUnitTest --offline --no-daemon` with Android Studio's JDK:
       143 shared and 102 Android tests pass without failures/errors/skips and the
       APK builds. Review corrects plaintext per-file versus encrypted batch limit
       semantics, with exact-boundary, limit-plus-one and empty-file regressions.
@@ -653,3 +653,55 @@ preparation. Native iOS/device verification remains separate from implementation
       outstanding deployment/native security gates. This advisory preflight does
       not reserve an entire batch, guarantee later admission, prove disk health,
       reconstruct historical consumption or close the full security plan.
+
+### Cold backup and restored-state exercises, 2026-10-04
+
+- [x] Add a stopped-checkpoint matrix restoring matching data, older database with
+      newer payloads, and newer database with older/missing/truncated payloads
+      into fresh temporary directories. Exercise startup invalidation and the
+      payload, derived-counter and orphan workers together. Verify retained
+      owner/inbox associations, exact healthy bytes/manifests, pending offset
+      repair, unavailable published data, orphan grace and canonical capacity.
+      Historical upload/download/traffic allowances remain the values in the
+      selected database; workers neither invent missing history nor refund it.
+- [x] Verify restored cleanup remains conservative across active readers,
+      physical deletion followed by a failed acknowledgment, and a second
+      restart. Quota headroom is released only after confirmed cleanup; cumulative
+      link/download/traffic consumption remains unchanged. An unresolved traffic
+      lease becomes a conservative charge exactly once.
+- [x] Add a real SQLite WAL exercise: terminate only its disposable child writer,
+      wait for exit, then copy the complete stopped sidecar set. Committed pause
+      and file-size policy changes survive that restore. Copying only the main
+      database loses those changes even though its integrity check reports `ok`;
+      a structurally valid backup is not proof of the latest committed state.
+- [x] Add an actual-main server subprocess exercise on isolated loopback ports:
+      stop and cold-copy the source, persist pause through the real CLI before
+      restored startup, verify denied public payloads and usable administrative
+      status, invalidate historical scan coverage, preserve policy/attempt counts
+      and recover a traffic lease once. Resume deliberately, compare exact saved
+      ciphertext and authenticate/decrypt a chunked-v1 fixture and manifest using
+      a key held outside the backup. Consume the last allowed download, revoke a
+      resource, restart again and verify both denials persist. Revoke a source
+      session and link after the checkpoint and explicitly prove the older restore
+      brings them back, substantiating the required security-state review.
+- [x] Add `docs/security/backup-restore.md` with stopped whole-volume copying,
+      protected credentials/configuration/image identity, sidecar handling,
+      isolated working copies and pause-before-start commands. Explain that
+      paused recovery still mutates files and that old backups can resurrect
+      authorities and spent allowances. Separate scan evidence from current
+      security history, client-held keys and operator validation before cutover.
+      A bounded review identified missing fail-fast handling in standalone shell
+      examples; fail-fast subshells now reject existing destinations and failed
+      extraction. Disposable shell checks verify successful archive creation and
+      that collision/corrupt-archive failures do not overwrite or continue.
+- [x] Run the combined final `go test -race ./cmd/server ./internal/reconcile ./internal/database -run Restore -count=1 -timeout=90s`: server 2.635 s,
+      reconciliation 7.127 s and database 2.258 s, all passing. The whole
+      reconciliation package also passes under the race detector (51.052 s).
+      Go formatting, Markdown formatting and diff checks pass. Disposable
+      processes/files and the dedicated cache are cleaned; the live instance is
+      unchanged. No production recovery defect was found by this exercise.
+- [ ] Complete operator deployment/ACME and external-proxy restore checks,
+      administrator factor/client-key recovery on supported platforms, storage
+      hardware durability and the other remaining release gates. The tests do
+      not certify an operator's actual backup or reconstruct rolled-back history;
+      the full security plan remains open.

@@ -136,6 +136,9 @@ error by deleting the database.
 
 ## Backups and restores
 
+Use the [cold backup and isolated restore runbook](backup-restore.md) for exact
+copy/pause steps, rollback implications and the disposable repository exercises.
+
 Stop the stack before taking a consistent backup of the entire backend volume
 (SQLite database, any WAL/journal, and encrypted file tree together), both Caddy
 state volumes, and the protected deployment configuration. If using an online
