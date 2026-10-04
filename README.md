@@ -415,9 +415,20 @@ Admin API routes are `GET /api/v1/admin/overview`,
 `/api/v1/auth/resources?all=true` supplies operational revocation metadata;
 ordinary History endpoints do not grant admin transfer rights.
 
+The separate **Enforce transfer traffic budget** control adds durable global and
+account allowances, optional account overrides, upload/download bandwidth and
+concurrent-stream limits. Budget enforcement defaults off; bandwidth and finite
+concurrency still apply. Leases reserve at most 64 KiB before payload IO, and
+uncertain outstanding leases become conservative charges after a crash. See
+[traffic limits and recovery](docs/security/traffic-limits.md) for defaults,
+measurement boundaries, API routes, cycle rules and deployment limitations.
+The monitoring allowance described above remains observational.
+
 ## Configuration
 
-Operator settings use environment variables. The administrator can also persist the per-file upload limit and traffic-monitor preferences through the web UI.
+Operator settings use environment variables. The administrator can also persist
+the per-file upload limit, resource policy, traffic-monitor preferences and
+separate traffic enforcement policy through the web UI.
 
 | Variable                   | Default              | Description                                                               |
 | -------------------------- | -------------------- | ------------------------------------------------------------------------- |
@@ -437,11 +448,11 @@ Operator settings use environment variables. The administrator can also persist 
 | `MAX_SLOT_EXPIRY`          | `168h`               | Maximum receive-link lifetime                                             |
 | `MAX_MANIFEST_SIZE`        | `1048576` (1 MiB)    | Manifest upload ceiling; cannot exceed the clients' 1 MiB format bound    |
 | `TRUSTED_PROXIES`          | unset                | Comma-separated explicit proxy CIDRs; empty trusts no forwarded addresses |
-| `MAX_ACTIVE_STREAMS`       | `64`                 | Total concurrent payload and inbox-event streams                          |
-| `MAX_STREAMS_PER_ACCOUNT`  | `4`                  | Concurrent streams attributed to one resource owner                       |
-| `MAX_STREAMS_PER_IP`       | `4`                  | Concurrent streams per resolved client address                            |
-| `MAX_STREAMS_PER_TRANSFER` | `4`                  | Concurrent streams for one transfer                                       |
-| `MAX_STREAMS_PER_SLOT`     | `4`                  | Concurrent streams for one receive inbox                                  |
+| `MAX_ACTIVE_STREAMS`       | `64`                 | Initial persisted total payload/inbox-event concurrency                   |
+| `MAX_STREAMS_PER_ACCOUNT`  | `4`                  | Initial persisted concurrency per resource owner                          |
+| `MAX_STREAMS_PER_IP`       | `4`                  | Initial persisted concurrency per resolved client address                 |
+| `MAX_STREAMS_PER_TRANSFER` | `4`                  | Initial persisted concurrency per transfer                                |
+| `MAX_STREAMS_PER_SLOT`     | `4`                  | Initial persisted concurrency per receive inbox                           |
 | `MAX_ACTIVE_REQUESTS`      | `128`                | Concurrent ordinary requests, including long-lived streams                |
 | `MAX_RECOVERY_REQUESTS`    | `32`                 | Separate bounded lane for auth/admin, deletion and health requests        |
 
@@ -452,14 +463,21 @@ owner. Requests exceeding active limits receive a retry response. Administrative
 recovery has separate admission and per-address rate buckets so file traffic
 cannot consume that lane.
 
+The five stream settings seed the database once on first startup with the traffic
+policy schema, including upgrades. Later environment changes do not overwrite or
+cap the saved policy; use the administrator Traffic page to change stream limits.
+The request/recovery caps remain environment settings and can impose lower
+effective concurrency.
+
 Only configure proxy networks you control. The backend trusts a forwarded chain
 only from those peers and resolves it from the nearest trusted hop; forwarded
 headers from other clients do not change limiter identity. The bundled proxy
 was tested against spoofed forwarding headers; external proxy chains still need
 deployment-specific verification. Persistent server/account storage, object and
 retention policies now enforce admission and disk reserves; see the
-[default resource profile](docs/security/resource-limits.md). Billing-cycle traffic
-budgets are still pending and the traffic monitor remains observational.
+[default resource profile](docs/security/resource-limits.md). Separate
+[billing-cycle traffic budgets](docs/security/traffic-limits.md) are available;
+the traffic monitor's allowance remains observational.
 
 Docker Compose also accepts:
 

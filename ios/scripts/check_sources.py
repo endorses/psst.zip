@@ -97,8 +97,13 @@ for path in ROOT.rglob("*.swift"):
         r'(?:Text|Label|navigationTitle)\("(?:Psst|Psst|Secure Transfer)', text
     ), path
     # Balanced delimiters ignoring Swift string literals and comments; catches truncation, not types.
+    # Raw strings may contain ordinary quotes and URLs. Consume the matching
+    # hash-delimited string before considering quotes or // inside its body.
     cleaned = re.sub(
-        r'//[^\n]*|/\*.*?\*/|#?"(?:\\.|[^"\\])*"#?', "", text, flags=re.DOTALL
+        r'(?P<raw>#+)".*?"(?P=raw)|"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/',
+        "",
+        text,
+        flags=re.DOTALL,
     )
     stack = []
     for char in cleaned:

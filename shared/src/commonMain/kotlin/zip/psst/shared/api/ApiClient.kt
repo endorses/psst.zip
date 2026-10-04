@@ -44,6 +44,7 @@ class ApiClient(
     val tus: TusClient = TusClient(httpClient, config.normalizedBaseUrl, sessionToken)
     val auth: AuthApi = AuthApi(httpClient, config, sessionToken)
     val limits: LimitsApi = LimitsApi(httpClient, config)
+    val traffic: TrafficApi = TrafficApi(httpClient, config, sessionToken)
 
     @Throws(Exception::class)
     suspend fun createFileUpload(transferId: String, wireSize: Long): String =

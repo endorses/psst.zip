@@ -35,6 +35,18 @@ func TestStreamAdmissionAttributesGuestsAndDownloadsToOwner(t *testing.T) {
 	}
 	blocked := &blockingUploadStore{FileStore: fixtureStore(t, env), entered: make(chan struct{}), release: make(chan struct{})}
 	cfg := config.Config{AuthAllowInsecureHTTP: true, RateLimitGlobal: 1000, RateLimitBurst: 2000, MaxStreamsPerAccount: 1, MaxStreamsPerIP: 10, MaxStreamsPerTransfer: 10, MaxStreamsPerSlot: 10}
+	// Persisted stream policy is authoritative after the environment seed.
+	policy, err := env.queries.TrafficPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.MaxStreamsPerAccount = 1
+	policy.MaxStreamsPerIP = 10
+	policy.MaxStreamsPerTransfer = 10
+	policy.MaxStreamsPerSlot = 10
+	if err = env.queries.SetTrafficPolicy(policy); err != nil {
+		t.Fatal(err)
+	}
 	limited := httptest.NewServer(api.NewServer(cfg, env.queries, blocked).Router())
 	t.Cleanup(limited.Close)
 	var once sync.Once

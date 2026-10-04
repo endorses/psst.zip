@@ -1,8 +1,9 @@
+import { TrafficLimitError, trafficLimitError, detectTransferStop } from "./traffic-policy.ts";
 import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
 import { validateLinkLimit } from "./link-limits.ts";
 import { resourceLimitError } from "./resource-policy.ts";
-import { transferStateError } from "./incident-state.ts";
+import { TransferStateError, transferStateError } from "./incident-state.ts";
 
 /**
  * Thin wrapper around the backend REST API.
@@ -18,7 +19,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       .json()
       .catch(() => null);
     const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
-    const policyError = transferStateError(code) ?? resourceLimitError(code);
+    const policyError =
+      trafficLimitError(code, error?.retry_at ?? res.headers.get("X-Psst-Retry-At")) ??
+      transferStateError(code) ??
+      resourceLimitError(code);
     if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);
@@ -34,7 +38,10 @@ async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
       .json()
       .catch(() => null);
     const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
-    const policyError = transferStateError(code) ?? resourceLimitError(code);
+    const policyError =
+      trafficLimitError(code, error?.retry_at ?? res.headers.get("X-Psst-Retry-At")) ??
+      transferStateError(code) ??
+      resourceLimitError(code);
     if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);
@@ -105,8 +112,16 @@ export async function acknowledgeDownload(transferId: string): Promise<void> {
 }
 
 export async function downloadManifest(transferId: string): Promise<ArrayBuffer> {
-  const res = await requestRaw(`/transfers/${transferId}/manifest`);
-  return readBounded(res, 1024 * 1024);
+  try {
+    const res = await requestRaw(`/transfers/${transferId}/manifest`);
+    return await readBounded(res, 1024 * 1024);
+  } catch (cause) {
+    if (cause instanceof TrafficLimitError || cause instanceof TransferStateError) throw cause;
+    throw (
+      (await detectTransferStop(`/transfers/${transferId}`, undefined, undefined, "download")) ??
+      cause
+    );
+  }
 }
 
 export async function downloadFile(

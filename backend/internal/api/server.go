@@ -21,6 +21,9 @@ type Server struct {
 	applicationRequests chan struct{}
 	recoveryRequests    chan struct{}
 	trafficDegraded     atomic.Bool
+	trafficUnavailable  atomic.Bool
+	uploadPacer         trafficPacer
+	downloadPacer       trafficPacer
 	cfg                 config.Config
 	loginAccounts       *rateLimiter
 	passwordWork        chan struct{}
@@ -33,6 +36,7 @@ type Server struct {
 // NewServer creates a Server with all dependencies wired up.
 func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Server {
 	q.SetCapacityPaths(cfg.StoragePath, cfg.DBPath)
+	initializationError := q.InitializeTrafficConcurrency(finiteLimit(cfg.MaxActiveStreams, 64), finiteLimit(cfg.MaxStreamsPerAccount, 4), finiteLimit(cfg.MaxStreamsPerIP, 4), finiteLimit(cfg.MaxStreamsPerTransfer, 4), finiteLimit(cfg.MaxStreamsPerSlot, 4))
 	s := &Server{
 		cfg:                 cfg,
 		queries:             q,
@@ -43,6 +47,9 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 		admission:           newStreamAdmission(cfg),
 		applicationRequests: make(chan struct{}, finiteLimit(cfg.MaxActiveRequests, 128)),
 		recoveryRequests:    make(chan struct{}, finiteLimit(cfg.MaxRecoveryRequests, 32)),
+	}
+	if initializationError != nil {
+		s.trafficUnavailable.Store(true)
 	}
 	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
 	s.tusH = tus.NewHandler(ts, fs, 0)
@@ -82,6 +89,13 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireAdmin).Get("/admin/overview", s.getOverview)
 		r.With(s.requireAdmin).Get("/admin/traffic", s.getTraffic)
 		r.With(s.requireAdmin).Patch("/admin/traffic/settings", s.updateTrafficSettings)
+		r.With(s.requireAdmin).Get("/admin/traffic-policy", s.getTrafficPolicy)
+		r.With(s.requireAdmin).Patch("/admin/traffic-policy", s.updateTrafficPolicy)
+		r.With(s.requireAdmin).Get("/admin/users/{userID}/traffic-policy", s.getAccountTrafficPolicy)
+		r.With(s.requireAdmin).Patch("/admin/users/{userID}/traffic-policy", s.updateAccountTrafficPolicy)
+		r.With(s.requireRegularUser).Get("/auth/traffic-usage", s.accountTrafficUsage)
+		r.Get("/transfers/{transferID}/traffic-status", s.transferTrafficStatus)
+		r.Get("/slots/{slotID}/traffic-status", s.slotTrafficStatus)
 		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
@@ -129,7 +143,7 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, HEAD, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Tus-Resumable, Upload-Length, Upload-Offset, Upload-Metadata")
-		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension, X-Psst-Error-Code")
+		w.Header().Set("Access-Control-Expose-Headers", "Location, Tus-Resumable, Upload-Offset, Upload-Length, Tus-Version, Tus-Extension, X-Psst-Error-Code, X-Psst-Retry-At, Retry-After")
 
 		if origin != "*" {
 			w.Header().Set("Vary", "Origin")

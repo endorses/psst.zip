@@ -138,6 +138,12 @@
         job.resourcePolicy.pending_upload_seconds,
       )}. Remaining account/server capacity and disk reserves can further restrict uploads.
     </p>{/if}
+  {#if job.trafficPolicy?.enforcement_enabled}<p class="muted small">
+      Transfer traffic budgets are enforced by this server. {job.trafficPolicy.basis === "outbound"
+        ? "Downloads count toward the budget."
+        : "Uploads and downloads count toward the budget."} Available owner and server budgets can stop
+      transfers; retries also count. Ask the owner or server administrator if a budget is exhausted.
+    </p>{/if}
   {#if job.files.length}<p class="selection-summary">
       {job.files.length} file{job.files.length === 1 ? "" : "s"} · {formatSize(
         job.files.reduce((n, f) => n + f.size, 0),

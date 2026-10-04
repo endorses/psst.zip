@@ -111,11 +111,13 @@ enum AccountHTTP {
     }
 
     static func request(server: String, path: String, method: String = "GET", token: String? = nil,
-                        body: [String: String]? = nil) async throws -> Data
+                        body: [String: String]? = nil, maximumBytes: Int = 1_048_576,
+                        timeout: TimeInterval = 15) async throws -> Data
     {
+        guard (1 ... 1_048_576).contains(maximumBytes), (1 ... 15).contains(timeout) else { throw AccountError.request }
         let origin = try origin(server)
         guard let url = URL(string: origin + "/api/v1/" + path) else { throw AccountError.address }
-        var request = URLRequest(url: url, timeoutInterval: 15)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = method
         if let token {
             request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
@@ -127,11 +129,10 @@ enum AccountHTTP {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
-        configuration.timeoutIntervalForResource = 30
+        configuration.timeoutIntervalForResource = timeout * 2
         let session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let (bytes, response) = try await session.bytes(for: request)
-        let maximumBytes = 1_048_576
         guard response.expectedContentLength <= Int64(maximumBytes) else { throw AccountError.request }
         var data = Data()
         for try await byte in bytes {
@@ -144,7 +145,8 @@ enum AccountHTTP {
             return Data()
         }
         if let incident = TransferIncident.response(status: response.statusCode, body: data,
-                                                    codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"))
+                                                    codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"),
+                                                    retryHeader: response.value(forHTTPHeaderField: "X-Psst-Retry-At"))
         {
             throw incident
         }

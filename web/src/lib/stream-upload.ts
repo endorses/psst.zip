@@ -1,7 +1,8 @@
+import { TrafficLimitError, trafficLimitError, detectTransferStop } from "./traffic-policy.ts";
 import { encryptFile, wireSize } from "./chunked-files.ts";
 import type { EncryptionKey } from "./crypto.ts";
 import { ResourceLimitError, resourceLimitError } from "./resource-policy.ts";
-import { TransferStateError, transferStateError, detectPublicPause } from "./incident-state.ts";
+import { TransferStateError, transferStateError } from "./incident-state.ts";
 
 /** One authenticated frame in memory; reconcile a lost PATCH response with tus HEAD. */
 export async function uploadEncryptedFile(options: {
@@ -27,7 +28,10 @@ export async function uploadEncryptedFile(options: {
   if (!creation.ok) {
     const error = await creation.json().catch(() => null);
     const code = error?.code ?? creation.headers.get("X-Psst-Error-Code");
-    const policyError = transferStateError(code) ?? resourceLimitError(code);
+    const policyError =
+      trafficLimitError(code, error?.retry_at ?? creation.headers.get("X-Psst-Retry-At")) ??
+      transferStateError(code) ??
+      resourceLimitError(code);
     if (policyError) throw policyError;
     if (error?.code === "receive_file_limit")
       throw new Error(
@@ -78,8 +82,18 @@ export async function uploadEncryptedFile(options: {
         options.onProgress(offset);
       } catch (cause) {
         signal.throwIfAborted();
-        if (cause instanceof ResourceLimitError || cause instanceof TransferStateError) throw cause;
-        const paused = await detectPublicPause(signal);
+        if (
+          cause instanceof TrafficLimitError ||
+          cause instanceof ResourceLimitError ||
+          cause instanceof TransferStateError
+        )
+          throw cause;
+        const paused = await detectTransferStop(
+          endpoint.pathname.replace(/^\/api\/v1/, "").replace(/\/files$/, ""),
+          options.token,
+          signal,
+          "upload",
+        );
         signal.throwIfAborted();
         if (paused) throw paused;
         if (++failures > 3) throw cause;
@@ -91,7 +105,10 @@ export async function uploadEncryptedFile(options: {
           credentials: options.token ? "omit" : "same-origin",
         });
         const headCode = head.headers.get("X-Psst-Error-Code");
-        const stopped = transferStateError(headCode) ?? resourceLimitError(headCode);
+        const stopped =
+          trafficLimitError(headCode, head.headers.get("X-Psst-Retry-At")) ??
+          transferStateError(headCode) ??
+          resourceLimitError(headCode);
         if (stopped) throw stopped;
         const text = head.headers.get("Upload-Offset"),
           next = Number(text);
@@ -118,7 +135,10 @@ function patchFrame(
         if (!response.ok) {
           const error = await response.json().catch(() => null);
           const code = error?.code ?? response.headers.get("X-Psst-Error-Code");
-          const policyError = transferStateError(code) ?? resourceLimitError(code);
+          const policyError =
+            trafficLimitError(code, error?.retry_at ?? response.headers.get("X-Psst-Retry-At")) ??
+            transferStateError(code) ??
+            resourceLimitError(code);
           if (policyError) throw policyError;
         }
         const offset = response.headers.get("Upload-Offset");
@@ -144,7 +164,10 @@ function patchFrame(
           } catch {
             /* HEAD/proxy responses may carry only the stable header. */
           }
-          const policyError = transferStateError(code) ?? resourceLimitError(code);
+          const policyError =
+            trafficLimitError(code, xhr.getResponseHeader("X-Psst-Retry-At")) ??
+            transferStateError(code) ??
+            resourceLimitError(code);
           if (policyError) {
             reject(policyError);
             return;

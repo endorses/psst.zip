@@ -25,6 +25,26 @@ class TransferApi(
     private val sessionToken: String? = null,
 ) {
     /** Create a new transfer. Returns the created transfer with its server-assigned ID. */
+    /** Metadata-only classification after interrupted IO; never downloads file data. */
+    @Throws(Exception::class)
+    suspend fun trafficStatus(id: String): TransferTrafficStatus = trafficStatus(id, "download")
+
+    @Throws(Exception::class)
+    suspend fun trafficStatus(id: String, direction: String): TransferTrafficStatus {
+        require(direction in listOf("upload", "download")) { "Invalid traffic direction" }
+        require(id.matches(Regex("[0-9a-fA-F-]{36}"))) { "Invalid resource ID" }
+        val response =
+            httpClient.get(
+                "${config.apiBaseUrl}/transfers/$id/traffic-status?direction=$direction"
+            ) {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
+        return response.readControlJson<TransferTrafficStatus>(4096).also { it.policyException() }
+    }
+
     @Throws(Exception::class) suspend fun create(): Transfer = create(0)
 
     @Throws(Exception::class)
@@ -206,7 +226,7 @@ class TransferApi(
                     var filled = 0
                     while (filled < frame.size) {
                         val count = channel.readAvailable(frame, filled, frame.size - filled)
-                        require(count >= 0) { "The file download was interrupted" }
+                        if (count < 0) throw TransferDownloadInterruptedException()
                         filled += count
                     }
                     require(onChunk(frame)) { "File processing was stopped" }
@@ -259,9 +279,8 @@ class TransferApi(
                         onProgress?.invoke(total.toLong(), declaredSize)
                     }
                 }
-                require(declaredSize == null || total.toLong() == declaredSize) {
-                    "The download was interrupted"
-                }
+                if (declaredSize != null && total.toLong() != declaredSize)
+                    throw TransferDownloadInterruptedException()
                 if (total != reported) onProgress?.invoke(total.toLong(), declaredSize)
                 ByteArray(total).also { result ->
                     var offset = 0

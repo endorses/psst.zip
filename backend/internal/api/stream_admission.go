@@ -37,16 +37,25 @@ type streamScope struct {
 	limit int
 }
 
-func (a *streamAdmission) acquire(owner, ip, transfer, slot string) (func(), bool) {
-	scopes := []streamScope{{"owner:" + owner, a.account}, {"ip:" + ip, a.ip}}
+func (a *streamAdmission) acquire(owner, ip, transfer, slot string, policies ...database.TrafficPolicy) (func(), bool) {
+	total, account, ipLimit, transferLimit, slotLimit := a.total, a.account, a.ip, a.transfer, a.slot
+	if len(policies) > 0 {
+		p := policies[0]
+		total = p.MaxActiveStreams
+		account = p.MaxStreamsPerAccount
+		ipLimit = p.MaxStreamsPerIP
+		transferLimit = p.MaxStreamsPerTransfer
+		slotLimit = p.MaxStreamsPerSlot
+	}
+	scopes := []streamScope{{"owner:" + owner, account}, {"ip:" + ip, ipLimit}}
 	if transfer != "" {
-		scopes = append(scopes, streamScope{"transfer:" + transfer, a.transfer})
+		scopes = append(scopes, streamScope{"transfer:" + transfer, transferLimit})
 	}
 	if slot != "" {
-		scopes = append(scopes, streamScope{"slot:" + slot, a.slot})
+		scopes = append(scopes, streamScope{"slot:" + slot, slotLimit})
 	}
 	a.mu.Lock()
-	if a.active >= a.total {
+	if a.active >= total {
 		a.mu.Unlock()
 		return nil, false
 	}
@@ -189,7 +198,12 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 		if owner == "" {
 			owner = "legacy"
 		}
-		release, ok := s.admission.acquire(owner, s.clientIP(r), transfer, slot)
+		trafficPolicy, policyVersion, err := s.queries.TrafficPolicyVersion(owner)
+		if err != nil {
+			trafficFailure(w, err)
+			return
+		}
+		release, ok := s.admission.acquire(owner, s.clientIP(r), transfer, slot, trafficPolicy)
 		if !ok {
 			streamBusy(w)
 			return
@@ -201,7 +215,7 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 		if events {
 			operationID = "slot:" + slot
 		}
-		scopes := []string{s.ownerScope(owner)}
+		scopes := []string{s.ownerScope(owner), s.queries.StreamNamespace() + "\x00streams"}
 		if !events {
 			scopes = append(scopes, s.payloadScope())
 		}
@@ -211,9 +225,19 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 			return
 		}
 		defer unregister()
+		_, currentVersion, err := s.queries.TrafficPolicyVersion(owner)
+		if err != nil {
+			trafficFailure(w, err)
+			return
+		}
+		if currentVersion != policyVersion {
+			trafficFailure(w, database.ErrTrafficPolicyChanged)
+			return
+		}
 		if !events && !s.allowPublicTransfers(w) {
 			return
 		}
+		ctx = context.WithValue(ctx, trafficOwnerKey{}, owner)
 		r = r.WithContext(ctx)
 		callbackDone := make(chan struct{})
 		stop := context.AfterFunc(ctx, func() { defer close(callbackDone); cancelRequestIO(r) })

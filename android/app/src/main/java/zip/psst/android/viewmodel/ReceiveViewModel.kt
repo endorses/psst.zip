@@ -653,22 +653,28 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
+                    val trafficError =
+                        zip.psst.android.data.classifyTrafficFailure(e) {
+                            client.slots.trafficStatus(slotId, "download")
+                        }
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
                             requiresLogin = e is AuthenticationRequiredException,
                             error =
-                                if (
-                                    e is zip.psst.android.data.InsufficientDownloadSpaceException ||
-                                        e is zip.psst.shared.api.TransferPolicyException ||
-                                        e is AuthenticationRequiredException
-                                )
-                                    e.message
-                                else
-                                    app.getString(
-                                        zip.psst.android.R.string
-                                            .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
-                                    ),
+                                trafficError?.message
+                                    ?: if (
+                                        e is
+                                            zip.psst.android.data.InsufficientDownloadSpaceException ||
+                                            e is zip.psst.shared.api.TransferPolicyException ||
+                                            e is AuthenticationRequiredException
+                                    )
+                                        e.message
+                                    else
+                                        app.getString(
+                                            zip.psst.android.R.string
+                                                .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
+                                        ),
                         )
                     }
                 } finally {

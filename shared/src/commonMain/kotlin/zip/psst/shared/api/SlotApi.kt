@@ -37,6 +37,24 @@ class SlotApi(
     private val sessionToken: String? = null,
 ) {
     /** Create a new drop slot. Returns the slot with its server-assigned ID. */
+    /** Metadata-only classification after interrupted IO; never downloads file data. */
+    @Throws(Exception::class)
+    suspend fun trafficStatus(id: String): TransferTrafficStatus = trafficStatus(id, "upload")
+
+    @Throws(Exception::class)
+    suspend fun trafficStatus(id: String, direction: String): TransferTrafficStatus {
+        require(direction in listOf("upload", "download")) { "Invalid traffic direction" }
+        require(id.matches(Regex("[0-9a-fA-F-]{36}"))) { "Invalid resource ID" }
+        val response =
+            httpClient.get("${config.apiBaseUrl}/slots/$id/traffic-status?direction=$direction") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
+        if (response.status.value == 401 && sessionToken != null)
+            throw AuthenticationRequiredException()
+        return response.readControlJson<TransferTrafficStatus>(4096).also { it.policyException() }
+    }
+
     @Throws(Exception::class)
     suspend fun create(): DropSlot =
         throw IllegalArgumentException("A receive public key is required")

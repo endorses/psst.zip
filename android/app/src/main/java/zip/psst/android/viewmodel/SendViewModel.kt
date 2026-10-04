@@ -320,6 +320,12 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     app.database.transferHistoryDao().updateStatus(transfer.id, "complete")
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
+                    val trafficError =
+                        createdTransferId?.let { id ->
+                            zip.psst.android.data.classifyTrafficFailure(e) {
+                                client.transfers.trafficStatus(id, "upload")
+                            }
+                        }
                     if (
                         e is AuthenticationRequiredException ||
                             e is PasswordChangeRequiredException ||
@@ -342,14 +348,16 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                     e is PasswordChangeRequiredException ||
                                     e is AdminTransferForbiddenException,
                             error =
-                                if (
-                                    e is zip.psst.shared.api.TransferPolicyException ||
-                                        e is zip.psst.android.data.UnsupportedLinkPolicyException ||
-                                        e is PasswordChangeRequiredException ||
-                                        e is AdminTransferForbiddenException
-                                )
-                                    e.message
-                                else app.getString(zip.psst.android.R.string.upload_failed),
+                                trafficError?.message
+                                    ?: if (
+                                        e is zip.psst.shared.api.TransferPolicyException ||
+                                            e is
+                                                zip.psst.android.data.UnsupportedLinkPolicyException ||
+                                            e is PasswordChangeRequiredException ||
+                                            e is AdminTransferForbiddenException
+                                    )
+                                        e.message
+                                    else app.getString(zip.psst.android.R.string.upload_failed),
                         )
                     }
                 } finally {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TrafficLimitError, trafficLimitError, detectTransferStop } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
   import { beforeNavigate } from "$app/navigation";
   import { BRAND } from "$lib/brand";
@@ -13,7 +14,7 @@
     type TransferInfo,
   } from "$lib/api";
   import { accountRequest, type User } from "$lib/account";
-  import { TransferStateError, transferStateError, detectPublicPause } from "$lib/incident-state";
+  import { TransferStateError, transferStateError } from "$lib/incident-state";
   import { loadReceiveKey } from "$lib/receive-keys";
   import { decodeReceiveEnvelope, openSubmissionKey } from "$lib/receive-crypto";
   import { wireSize } from "$lib/chunked-files";
@@ -126,7 +127,7 @@
       status = "ready";
     } catch (err) {
       status = "error";
-      if (err instanceof TransferStateError) {
+      if (err instanceof TrafficLimitError || err instanceof TransferStateError) {
         errorMessage = err.message;
       } else if (
         err instanceof Error &&
@@ -194,16 +195,18 @@
 
   async function* downloadChunks(entry: FileManifestEntry, signal: AbortSignal) {
     const key = await importKey(keyStr);
-    const response = await fetch(`/api/v1/transfers/${transferId}/files/${entry.blob_id}`, {
-      signal,
-      credentials: "same-origin",
-    });
     try {
+      const response = await fetch(`/api/v1/transfers/${transferId}/files/${entry.blob_id}`, {
+        signal,
+        credentials: "same-origin",
+      });
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => null);
-        const stopped = transferStateError(
-          failure?.code ?? response.headers.get("X-Psst-Error-Code"),
-        );
+        const stopped =
+          trafficLimitError(
+            failure?.code ?? response.headers.get("X-Psst-Error-Code"),
+            failure?.retry_at ?? response.headers.get("X-Psst-Retry-At"),
+          ) ?? transferStateError(failure?.code ?? response.headers.get("X-Psst-Error-Code"));
         if (stopped) throw stopped;
         if (failure?.code === "download_limit")
           throw new Error(
@@ -213,8 +216,16 @@
       }
       yield* decryptFileStream(key, entry, response.body, signal);
     } catch (cause) {
-      if (cause instanceof TransferStateError || signal.aborted) throw cause;
-      throw (await detectPublicPause(signal)) ?? cause;
+      if (
+        cause instanceof TrafficLimitError ||
+        cause instanceof TransferStateError ||
+        signal.aborted
+      )
+        throw cause;
+      throw (
+        (await detectTransferStop(`/transfers/${transferId}`, undefined, signal, "download")) ??
+        cause
+      );
     } finally {
       transferInfo = await getTransferInfo(transferId).catch(() => transferInfo);
     }
@@ -253,7 +264,8 @@
       await sink?.abort().catch(() => {});
       errorMessage =
         err instanceof Error &&
-        (err instanceof TransferStateError ||
+        (err instanceof TrafficLimitError ||
+          err instanceof TransferStateError ||
           err.message === LARGE_SAVE_MESSAGE ||
           err.message.includes("download allowance is exhausted"))
           ? err.message
@@ -302,7 +314,8 @@
       status = "ready";
       errorMessage =
         err instanceof Error &&
-        (err instanceof TransferStateError ||
+        (err instanceof TrafficLimitError ||
+          err instanceof TransferStateError ||
           err.message.includes("download allowance is exhausted"))
           ? err.message
           : err instanceof DOMException && err.name === "AbortError"

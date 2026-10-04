@@ -140,3 +140,25 @@ See [incident response](../docs/security/incident-response.md) for server behavi
 - [ ] Build the app and extension on macOS to verify the generated Kotlin exception bridge; the Linux harness deliberately cannot import `Shared`.
 - [ ] On an iPhone/iPad, pause during upload, manifest retrieval and a multi-file receive; verify explicit retry after resume preserves previously saved files and does not silently restart payload work. Shut down the signed-in account and confirm polling stops, sign-in recovery appears, old links remain unavailable after reenable, and local Open/Share still works.
 - [ ] Verify URLSession's lower-level retry behavior for interrupted quota-consuming downloads. There is no application-level automatic payload retry, but disabling every transport retry has not been established on iOS.
+
+## Transfer traffic budgets
+
+Settings offers an account-scoped Transfer traffic view, loaded once with explicit
+refresh. It displays the account allowance, charged/remaining bytes, cycle end and
+enforcement state. Details distinguish observed bytes, active reservations and
+conservative charges. A failed refresh preserves previous figures with a warning;
+global exhaustion can block an account that still has its own allowance left.
+
+The app and share extension map exact budget exhaustion, accounting unavailable
+and policy-changed responses to local explanations. Retry dates are accepted only
+as bounded UTC timestamps. Saved files remain available and resume is explicit.
+For recognized transport interruptions, a bounded metadata-only status probe can
+explain a server-side stop without consuming another payload attempt. Guest
+downloads remain anonymous, guest uploads use only their own submission capability,
+and owner operations retain the matching account scope. Crypto/local-file errors
+do not trigger probes. See [traffic protection](../docs/security/traffic-limits.md).
+
+- [x] Sixteen portable Swift tests passed, including exact status/code pairs, malformed/oversized responses, hostile retry text, safe retry timestamps, and minimal traffic-status parsing. Swift syntax, source/configuration gates and formatting pass.
+- [ ] Build app and share extension on macOS and run XCTest to verify new shared DTO/exception exports, the Kotlin throwable classifier and SwiftUI usage view. Portable Linux checks cannot establish these bridges.
+- [ ] Exercise exhausted manifest/file uploads and downloads, partial multi-file saves, administrator limit changes, accounting failure, explicit recovery and local Open/Share on iOS. Confirm a retry fetches only missing files and no automatic payload request burns another attempt.
+- [ ] Verify URLSession transport behavior, three-second probe resource deadlines, cancellation, failed/unsupported status endpoints, backgrounding, account changes, accessibility and appearance modes on a device.

@@ -181,6 +181,12 @@ final class SendViewModel {
             if !Task.isCancelled, let origin, SecretStore.session == origin {
                 await serverConfig.refreshAccount()
             }
+            var incident = TransferIncident.from(error)
+            if incident == nil, let record, let origin, SecretStore.session == origin {
+                incident = await TransferTrafficRecovery.inspect(error, server: origin.serverURL,
+                                                                 resource: .transfer, id: record.id,
+                                                                 direction: .upload, token: origin.token)
+            }
             if var record {
                 record.state = .failed
                 try? historyStore.update(record)
@@ -206,7 +212,7 @@ final class SendViewModel {
                     return
                 }
             }
-            state = .failed(TransferIncident.from(error)?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
+            state = .failed(incident?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
         }
     }
 }

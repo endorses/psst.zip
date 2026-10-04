@@ -82,7 +82,28 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
   await expect(page.getByRole("status")).toContainText("Traffic allowance saved");
   await page.reload();
   await expect(page.getByLabel("Allowance (GiB, optional)")).toHaveValue("20");
-  await expect(page.getByLabel("Cycle starts on day (UTC)")).toHaveValue("31");
+  await expect(page.getByLabel("Cycle starts on day (UTC)", { exact: true })).toHaveValue("31");
+  const enforcement = page.getByRole("region", { name: "Transfer traffic enforcement" });
+  await expect(
+    enforcement.getByLabel("Enforce transfer traffic budget", { exact: true }),
+  ).not.toBeChecked();
+  await enforcement.getByLabel("Enforce transfer traffic budget", { exact: true }).check();
+  await enforcement
+    .getByRole("button", { name: "Save transfer traffic policy", exact: true })
+    .click();
+  await expect(enforcement.getByRole("status")).toContainText("Transfer traffic policy saved");
+  expect(
+    (await (await adminRequest.get("/api/v1/admin/traffic-policy")).json()).policy
+      .enforcement_enabled,
+  ).toBe(true);
+  await enforcement.getByLabel("Enforce transfer traffic budget", { exact: true }).uncheck();
+  const policySaved = page.waitForResponse(
+    (r) => r.url().endsWith("/admin/traffic-policy") && r.request().method() === "PATCH",
+  );
+  await enforcement
+    .getByRole("button", { name: "Save transfer traffic policy", exact: true })
+    .click();
+  expect((await policySaved).ok()).toBe(true);
   await page.getByText("Daily traffic data (exact bytes)", { exact: true }).click();
   await expect(page.getByRole("table")).toBeVisible();
   await page.evaluate(() => {

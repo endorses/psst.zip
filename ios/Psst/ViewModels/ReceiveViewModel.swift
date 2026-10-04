@@ -319,7 +319,13 @@ final class ReceiveViewModel {
             state = .complete
         } catch {
             state = .waiting
-            savingError = TransferIncident.from(error)?.localizedDescription ?? String(localized: "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.")
+            var incident = TransferIncident.from(error)
+            if incident == nil, let session = serverConfig.session, entry.belongs(to: session) {
+                incident = await TransferTrafficRecovery.inspect(error, server: session.serverURL,
+                                                                 resource: .slot, id: entry.id,
+                                                                 direction: .download, token: session.token)
+            }
+            savingError = incident?.localizedDescription ?? String(localized: "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.")
         }
     }
 

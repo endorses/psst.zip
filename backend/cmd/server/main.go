@@ -55,6 +55,9 @@ func main() {
 	}
 
 	queries := database.NewQueries(db)
+	if err := queries.RecoverTrafficLeases(); err != nil {
+		log.Fatalf("recover traffic accounting: %v", err)
+	}
 	srv := api.NewServer(cfg, queries, fs)
 	if err := srv.BootstrapAdmin(); err != nil {
 		log.Fatalf("initialize accounts: %v", err)

@@ -103,6 +103,7 @@ var migrations = []string{
 	`UPDATE slots SET reserved_files=(SELECT COUNT(*) FROM files f JOIN slot_transfers st ON st.transfer_id=f.transfer_id WHERE st.slot_id=slots.id)`,
 	resourceMigration(),
 	incidentMigration(),
+	trafficBudgetMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

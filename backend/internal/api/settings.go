@@ -14,6 +14,7 @@ const encryptedChunkSize int64 = 4 * 1024 * 1024
 const encryptedChunkOverhead int64 = 60
 
 type serverSettings struct {
+	TrafficPolicy         database.TrafficPolicy  `json:"traffic_policy"`
 	PublicTransfersPaused bool                    `json:"public_transfers_paused"`
 	ResourcePolicy        database.ResourcePolicy `json:"resource_policy"`
 	MaxFileSize           int64                   `json:"max_file_size"`
@@ -39,8 +40,12 @@ func (s *Server) settings() (serverSettings, error) {
 	if err != nil {
 		return serverSettings{}, err
 	}
+	traffic, err := s.queries.TrafficPolicy()
+	if err != nil {
+		return serverSettings{}, err
+	}
 	policy, err := s.queries.ResourcePolicy()
-	return serverSettings{PublicTransfersPaused: state.PublicTransfersPaused, MaxFileSize: value, MaxFileSizeCeiling: ceiling, ResourcePolicy: policy}, err
+	return serverSettings{TrafficPolicy: traffic, PublicTransfersPaused: state.PublicTransfersPaused, MaxFileSize: value, MaxFileSizeCeiling: ceiling, ResourcePolicy: policy}, err
 }
 
 func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {

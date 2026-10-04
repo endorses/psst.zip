@@ -49,6 +49,9 @@ struct ServerConfigView: View {
                 }
             }
             if serverConfig.isConfigured, !serverConfig.needsSignIn {
+                Section("Usage") {
+                    NavigationLink("Transfer traffic") { AccountTrafficView() }
+                }
                 Section("Password") { PasswordReplacementFields() }
             }
             if serverConfig.session != nil {

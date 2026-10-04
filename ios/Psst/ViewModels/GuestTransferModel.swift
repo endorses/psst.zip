@@ -190,11 +190,14 @@ final class GuestTransferModel {
             stage = "Saved"
             await store.flushReceipts()
         } catch {
+            let incident = await TransferTrafficRecovery.inspect(error, server: record.origin,
+                                                                 resource: .transfer, id: record.transferID,
+                                                                 direction: .download)
             if !Task.isCancelled {
                 await refreshAttempts(record)
             }
             stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
-            self.error = TransferIncident.from(error)?.localizedDescription ?? (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
+            self.error = incident?.localizedDescription ?? (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
         }
     }
 
@@ -276,7 +279,11 @@ final class GuestTransferModel {
             uploadComplete = true; stage = "Files sent"
         } catch {
             stage = "Upload stopped"
-            self.error = TransferIncident.from(error)?.localizedDescription ?? "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
+            let incident = await TransferTrafficRecovery.inspect(error, server: link.origin,
+                                                                 resource: allocation == nil ? .slot : .transfer,
+                                                                 id: allocation?.0 ?? link.id, direction: .upload,
+                                                                 token: allocation?.1)
+            self.error = incident?.localizedDescription ?? "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
             if finished {
                 uploadComplete = true; stage = "Files sent"; self.error = nil
                 return

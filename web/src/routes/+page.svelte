@@ -17,6 +17,7 @@
   import ServerSettings from "$lib/components/ServerSettings.svelte";
   import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
   import AccountUsage from "$lib/components/AccountUsage.svelte";
+  import AccountTraffic from "$lib/components/AccountTraffic.svelte";
   import PublicTransferControl from "$lib/components/PublicTransferControl.svelte";
   import IncidentConfirmDialog from "$lib/components/IncidentConfirmDialog.svelte";
   import { loadResourcePage, loadUsersPage } from "$lib/resource-history";
@@ -994,6 +995,7 @@
         {:else if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>
           <AccountUsage />
+          <AccountTraffic />
           <div class="settings-list">
             {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
               <a
@@ -1339,6 +1341,10 @@
                     }}>Incident shutdown</button
                   >{/if}
               </div>
+              {#if account.role === "user"}<AccountTraffic
+                  accountId={account.id}
+                  username={account.username}
+                />{/if}
             </article>{/each}
           {#if accountAction}<IncidentConfirmDialog
               title={accountAction.mode === "disable"

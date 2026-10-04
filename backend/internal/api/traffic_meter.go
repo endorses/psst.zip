@@ -126,14 +126,14 @@ func (s *Server) measureUpload(next http.Handler) http.Handler {
 		m := s.newTrafficMeter()
 		defer m.close()
 		r.Body = trafficBody{r.Body, m}
-		next.ServeHTTP(w, r)
+		s.budgeted(next, true).ServeHTTP(w, r)
 	})
 }
 func (s *Server) measureDownload(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		m := s.newTrafficMeter()
 		defer m.close()
-		next.ServeHTTP(&trafficWriter{ResponseWriter: w, meter: m}, r)
+		s.budgeted(next, false).ServeHTTP(&trafficWriter{ResponseWriter: w, meter: m}, r)
 	})
 }
 

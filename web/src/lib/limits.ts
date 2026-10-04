@@ -1,3 +1,4 @@
+import { validateTrafficPolicy, type TrafficPolicy } from "./traffic-policy.ts";
 // Whole-file AES-GCM remains bounded. The server controls uploads; a lower new
 // upload setting must not make already-created links unreadable.
 export const MAX_FILE_BYTES = 1024 ** 4;
@@ -16,6 +17,7 @@ export interface ServerLimits {
   max_file_size: number;
   max_file_size_ceiling: number;
   resource_policy?: ResourcePolicy;
+  traffic_policy?: TrafficPolicy;
 }
 export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimits> {
   const response = await fetch("/api/v1/config", {
@@ -39,6 +41,9 @@ export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimi
   )
     throw new Error("This server's file limit is not supported by this app.");
   return {
+    ...(config.traffic_policy === undefined
+      ? {}
+      : { traffic_policy: validateTrafficPolicy(config.traffic_policy) }),
     max_file_size: value,
     max_file_size_ceiling: ceiling as number,
     ...(config.resource_policy === undefined

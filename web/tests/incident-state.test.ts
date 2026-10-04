@@ -28,8 +28,8 @@ for (const termination of ["json", "header", "network"] as const) {
       globalThis.fetch = async (input, init) => {
         assert.equal(init?.credentials, "omit");
         methods.push(init?.method ?? "GET");
-        if (String(input) === "/api/v1/config")
-          return Response.json({ public_transfers_paused: true });
+        if (String(input).includes("/traffic-status?direction=upload"))
+          return Response.json({ state: "paused" });
         if (init?.method === "POST")
           return new Response(null, {
             status: 201,

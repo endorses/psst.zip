@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import TrafficBudgetSettings from "./TrafficBudgetSettings.svelte";
   import { accountRequest } from "$lib/account";
   import { formatSize } from "$lib/upload-job.svelte";
   import { utcTime, measurementExplanation, type TrafficReport } from "$lib/admin";
@@ -68,6 +69,7 @@
 
 <h1>Traffic</h1>
 <p class="muted">Application transfer traffic · UTC</p>
+<TrafficBudgetSettings />
 {#if error}<p class="error" role="alert">
     {error}
     {report ? "The previous measurements remain below and may be stale." : ""}
@@ -177,7 +179,7 @@
       </table>
     </div>
   </details>
-  <h2>Allowance settings</h2>
+  <h2>Monitoring allowance settings</h2>
   <form onsubmit={save}>
     <label
       >Allowance (GiB, optional)<input
@@ -208,7 +210,10 @@
     ><button class="primary" disabled={busy}>Save traffic settings</button>
   </form>
 {/if}
-<p class="muted small">{measurementExplanation} This is a monitor, not a transfer limit.</p>
+<p class="muted small">
+  {measurementExplanation} The monitoring allowance does not block transfers; enforced budgets are configured
+  separately above.
+</p>
 {#if !report}<button onclick={load} disabled={busy}
     >{busy ? "Loading traffic…" : "Retry traffic"}</button
   >{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TrafficLimitError } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
@@ -45,7 +46,7 @@
       }
       ready = true;
     } catch (e) {
-      if (e instanceof TransferStateError) {
+      if (e instanceof TrafficLimitError || e instanceof TransferStateError) {
         error = e.message;
         reconnect = false;
         return;

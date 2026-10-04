@@ -1,3 +1,4 @@
+import { trafficLimitError } from "./traffic-policy.ts";
 import { resourceLimitError } from "./resource-policy.ts";
 import { transferStateError } from "./incident-state.ts";
 
@@ -91,7 +92,8 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     }
     throw new AccountError(
       response.status,
-      transferStateError(code)?.message ||
+      trafficLimitError(code, response.headers.get("X-Psst-Retry-At"))?.message ||
+        transferStateError(code)?.message ||
         resourceLimitError(code)?.message ||
         detail ||
         `Request failed (${response.status})`,

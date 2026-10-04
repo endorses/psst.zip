@@ -1,3 +1,9 @@
+import {
+  TrafficLimitError,
+  trafficLimitError,
+  detectTransferStop,
+  type TrafficPolicy,
+} from "./traffic-policy";
 import { uploadEncryptedFile } from "./stream-upload";
 import { newEncryptionId, wireSize, FILE_CHUNK_SIZE } from "./chunked-files";
 import { generateKey, exportKey, encryptManifest, type FileManifestEntry } from "./crypto";
@@ -17,12 +23,14 @@ export function formatSize(bytes: number) {
 export class UploadJob {
   files = $state<File[]>([]);
   limit = $state<number | null>(null);
+  trafficPolicy = $state<TrafficPolicy | null>(null);
   resourcePolicy = $state<ResourcePolicy | null>(null);
   async refreshLimit() {
     try {
       const limits = await loadServerLimits();
       this.limit = limits.max_file_size;
       this.resourcePolicy = limits.resource_policy ?? null;
+      this.trafficPolicy = limits.traffic_policy ?? null;
     } catch (cause) {
       this.limit = null;
       this.error = cause instanceof Error ? cause.message : "Could not load the file limit.";
@@ -107,6 +115,16 @@ export class UploadJob {
         ...init,
         credentials: options.slotId ? "omit" : "same-origin",
         signal,
+      }).catch(async (cause) => {
+        if (!this.transferId || signal.aborted) throw cause;
+        throw (
+          (await detectTransferStop(
+            `/transfers/${this.transferId}`,
+            options.slotId ? this.token : undefined,
+            signal,
+            "upload",
+          )) ?? cause
+        );
       });
       check();
       if (!res.ok) {
@@ -115,7 +133,10 @@ export class UploadJob {
           .json()
           .catch(() => null);
         const code = body?.code ?? res.headers.get("X-Psst-Error-Code");
-        const policyError = transferStateError(code) ?? resourceLimitError(code);
+        const policyError =
+          trafficLimitError(code, body?.retry_at ?? res.headers.get("X-Psst-Retry-At")) ??
+          transferStateError(code) ??
+          resourceLimitError(code);
         if (policyError) throw policyError;
       }
       if (!res.ok && res.status === 403) {
@@ -310,7 +331,8 @@ export class UploadJob {
       ];
       this.error =
         error instanceof Error &&
-        (error instanceof TransferStateError ||
+        (error instanceof TrafficLimitError ||
+          error instanceof TransferStateError ||
           error instanceof ResourceLimitError ||
           safeErrors.includes(error.message) ||
           /^Files must be no larger than [0-9.]+ MiB\.$/.test(error.message) ||

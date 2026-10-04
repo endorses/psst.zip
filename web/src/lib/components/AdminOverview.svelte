@@ -187,7 +187,7 @@
       Measured since {utcTime(data.traffic.recording_started_at)}; the initial cycle may be partial.
       Application payload measurements may differ from provider billing.
     </p>
-    <a href="/?view=traffic">View traffic and allowance</a>
+    <a href="/?view=traffic">View traffic, budgets and allowance</a>
   </section>
 {:else}<p role="status">
     {busy ? "Loading overview…" : "Overview is unavailable. Retry with Refresh."}

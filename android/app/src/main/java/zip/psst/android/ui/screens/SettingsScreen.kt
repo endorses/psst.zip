@@ -23,12 +23,17 @@ fun SettingsScreen(
     onAccount: () -> Unit,
     onSignedOut: () -> Unit,
     viewModel: ServerConfigViewModel = viewModel(),
+    trafficViewModel: zip.psst.android.viewmodel.TrafficUsageViewModel = viewModel(),
 ) {
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
     val appearance by prefs.appearance.collectAsState()
     val access by prefs.historyAccess.collectAsState()
     val state by viewModel.uiState.collectAsState()
-    LaunchedEffect(access) { viewModel.refreshSavedSession() }
+    val traffic by trafficViewModel.state.collectAsState()
+    LaunchedEffect(access) {
+        viewModel.refreshSavedSession()
+        trafficViewModel.refresh()
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -63,6 +68,52 @@ fun SettingsScreen(
                     if (access.accountId != null) "Change server or account"
                     else "Sign in to a server"
                 )
+            }
+            if (access.accountId != null) {
+                HorizontalDivider()
+                Text("Transfer traffic", style = MaterialTheme.typography.titleSmall)
+                if (traffic.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                traffic.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                traffic.snapshot?.let { snapshot ->
+                    Text(
+                        if (snapshot.policy.enforcementEnabled) "Traffic budget enforced"
+                        else "Traffic budget enforcement off"
+                    )
+                    Text(
+                        if (snapshot.policy.basis == "outbound") "Counts downloads"
+                        else "Counts uploads and downloads"
+                    )
+                    Text(
+                        "Effective account budget: ${android.text.format.Formatter.formatFileSize(LocalContext.current, snapshot.usage.budgetBytes)}"
+                    )
+                    Text(
+                        "Charged or reserved: ${android.text.format.Formatter.formatFileSize(LocalContext.current, snapshot.usage.chargedBytes)}"
+                    )
+                    if (snapshot.state == "unavailable")
+                        Text(
+                            "Traffic accounting is unavailable. Retry later or contact the administrator."
+                        )
+                    else {
+                        Text(
+                            "Remaining: ${android.text.format.Formatter.formatFileSize(LocalContext.current, snapshot.usage.remainingBytes)}"
+                        )
+                        if (snapshot.state == "exhausted")
+                            Text(
+                                "Traffic budget reached. Retry after the cycle resets or contact the administrator."
+                            )
+                    }
+                    Text(
+                        "Cycle resets ${snapshot.cycle.end} (UTC)",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "Application payload only, not a provider bill. Other traffic and concurrent transfers can change availability.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(onClick = trafficViewModel::refresh, enabled = !traffic.loading) {
+                    Text("Refresh traffic status")
+                }
             }
             HorizontalDivider()
             Text("Connection", style = MaterialTheme.typography.titleSmall)
