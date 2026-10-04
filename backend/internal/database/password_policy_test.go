@@ -54,7 +54,9 @@ func TestPasswordPolicyMigrationPreservesExistingAccountsAndCredentials(t *testi
 		}
 	}
 	q := NewQueries(legacy)
-	passwordPolicySession(t, q, User{ID: "user", PasswordHash: []byte("user-password")}, "existing-session")
+	if _, err := legacy.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, "existing-session", "user", []byte("existing-session-secret"), "Browser", time.Now().UTC(), time.Now().Add(time.Hour).UTC()); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := legacy.Exec(`INSERT INTO pairings(id,code_hash,user_id,session_id,expires_at) VALUES(?,?,?,?,?)`, "existing-grant", []byte("grant-secret"), "user", "existing-session", time.Now().Add(time.Minute).UTC()); err != nil {
 		t.Fatal(err)
 	}

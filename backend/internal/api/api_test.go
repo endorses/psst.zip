@@ -21,6 +21,7 @@ import (
 	"github.com/endorses/psst.zip/backend/internal/config"
 	"github.com/endorses/psst.zip/backend/internal/database"
 	"github.com/endorses/psst.zip/backend/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type testEnv struct {
@@ -78,13 +79,12 @@ func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 	if err := queries.CreateSession(database.Session{ID: "fixture-session", UserID: u.ID, DeviceName: "Tests", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, hash[:], u.PasswordHash); err != nil {
 		t.Fatal(err)
 	}
-	admin := database.User{ID: "fixture-admin", Username: "administrator", Role: "admin", PasswordHash: []byte("fixture-admin-hash")}
-	if err := queries.CreateUser(admin, false); err != nil {
+	adminPassword, err := bcrypt.GenerateFromPassword([]byte("administrator test password"), bcrypt.MinCost)
+	if err != nil {
 		t.Fatal(err)
 	}
-	adminToken := "fixture-admin-token"
-	adminHash := sha256.Sum256([]byte(adminToken))
-	if err := queries.CreateSession(database.Session{ID: "admin-session", UserID: admin.ID, DeviceName: "Admin tests", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, adminHash[:], admin.PasswordHash); err != nil {
+	admin := database.User{ID: "fixture-admin", Username: "administrator", Role: "admin", PasswordHash: adminPassword}
+	if err := queries.CreateUser(admin, false); err != nil {
 		t.Fatal(err)
 	}
 	srv := api.NewServer(cfg, queries, fs)
@@ -99,7 +99,9 @@ func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 		db.Close()
 	})
 
-	return &testEnv{server: ts, db: db, queries: queries, dataDir: dir, authToken: adminToken, userToken: token}
+	env := &testEnv{server: ts, db: db, queries: queries, dataDir: dir, userToken: token}
+	env.authToken = adminWebLoginToken(t, env, "administrator", "administrator test password")
+	return env
 }
 
 func (e *testEnv) url(path string) string {

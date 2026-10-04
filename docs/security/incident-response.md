@@ -84,11 +84,17 @@ separate unfinished plan requirement.
 Administrator endpoints are `GET/PATCH /api/v1/admin/incident-state` and
 `POST /api/v1/admin/users/{userID}/shutdown`. PATCH takes the required boolean
 `public_transfers_paused`; shutdown accepts an empty JSON object. Existing admin
-authorization, same-origin mutation checks and bounded request handling apply.
+authorization, same-origin mutation checks, recent administrator authentication
+and bounded request handling apply. If proof expires, confirm your identity and
+explicitly resubmit the action; it is not automatically replayed. Local commands
+remain available under the OS/database authorization boundary. See
+[administrator authentication](administrator-authentication.md) for factor setup
+and recovery.
 
 These controls are part of the ongoing security plan. Administrator second
-factors, recent-authentication requirements, bounded security auditing and
-enforceable traffic/bandwidth budgets are not yet implemented. A manual pause is
+factors, recent-authentication checks and separate
+[traffic/bandwidth budgets](traffic-limits.md) are implemented. Bounded security
+auditing and cleanup visibility remain pending. A manual pause is
 not an automatic spending cap. It also does not prevent charges for rejected
 network requests, proxy/static traffic or network-level attacks.
 

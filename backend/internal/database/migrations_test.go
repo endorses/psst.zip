@@ -122,7 +122,7 @@ func TestPairingTrackingMigrationPreservesOutstandingGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := Session{ID: "browser", UserID: user.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
-	if err := q.CreateSession(session, []byte("browser-hash"), user.PasswordHash); err != nil {
+	if _, err := legacy.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, session.ID, user.ID, []byte("browser-hash"), session.DeviceName, session.CreatedAt.UTC(), session.ExpiresAt.UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := legacy.Exec(`INSERT INTO pairings(code_hash,user_id,session_id,expires_at) VALUES(?,?,?,?)`, []byte("grant-hash"), user.ID, session.ID, time.Now().Add(time.Minute).UTC()); err != nil {

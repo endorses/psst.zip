@@ -77,7 +77,10 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "file limit must be at least 1 MiB and no greater than the operator ceiling")
 		return
 	}
-	if err := s.queries.SetMaxFileSize(request.MaxFileSize); err != nil {
+	if err := s.queries.SetMaxFileSize(request.MaxFileSize, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		writeError(w, 500, "could not save server settings")
 		return
 	}

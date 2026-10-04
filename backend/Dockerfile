@@ -16,6 +16,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
 WORKDIR /app
 
 COPY --from=builder /server /app/server
+COPY licenses /app/licenses
 
 RUN mkdir -p /app/data/files && chown -R appuser:appuser /app
 

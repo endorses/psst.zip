@@ -65,6 +65,10 @@ func addAccount(t *testing.T, env *testEnv, name, role string) (database.User, s
 	if err := env.queries.CreateUser(u, false); err != nil {
 		t.Fatal(err)
 	}
+	if role == "admin" {
+		return u, adminWebLoginToken(t, env, name, "correct horse battery")
+	}
+
 	token := name + "-session"
 	h := sha256.Sum256([]byte(token))
 	if err := env.queries.CreateSession(database.Session{ID: name + "-session-id", UserID: u.ID, DeviceName: "Phone", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, h[:], hash); err != nil {
@@ -296,4 +300,28 @@ func TestAuthAdminAllResourcesExplicit(t *testing.T) {
 		t.Fatal("admin listing scope incorrect")
 	}
 	authRequest(t, env, "GET", "/auth/resources?all=true", user, nil, 403)
+}
+
+func adminWebLoginToken(t *testing.T, env *testEnv, username, password string) string {
+	t.Helper()
+	data, _ := json.Marshal(map[string]string{"username": username, "password": password, "session_type": "web"})
+	req, _ := http.NewRequest("POST", env.url("/api/v1/auth/login"), bytes.NewReader(data))
+	req.Header.Set("Origin", env.server.URL)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := env.server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("web admin login: %d %s", res.StatusCode, body)
+	}
+	for _, cookie := range res.Cookies() {
+		if cookie.Name == "psst_session" && cookie.Value != "" {
+			return cookie.Value
+		}
+	}
+	t.Fatal("web login missing cookie")
+	return ""
 }

@@ -1,3 +1,8 @@
+import {
+  administratorSecurityMessage,
+  securityIdentityGeneration,
+  recentAuthenticationRequired,
+} from "./admin-security.ts";
 import { trafficLimitError } from "./traffic-policy.ts";
 import { resourceLimitError } from "./resource-policy.ts";
 import { transferStateError } from "./incident-state.ts";
@@ -60,13 +65,21 @@ export class AccountError extends Error {
     this.code = code;
   }
 }
-export async function accountRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+export async function accountRequest<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  const generation = securityIdentityGeneration();
   const response = await fetch(`/api/v1${path}`, {
     method,
     credentials: "same-origin",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+      : AbortSignal.timeout(15000),
   });
   if (!response.ok) {
     let code = response.headers.get("X-Psst-Error-Code") ?? undefined;
@@ -90,9 +103,11 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     } catch {
       /* Plain text errors remain useful. */
     }
+    if (code === "recent_authentication_required") recentAuthenticationRequired(generation);
     throw new AccountError(
       response.status,
-      trafficLimitError(code, response.headers.get("X-Psst-Retry-At"))?.message ||
+      administratorSecurityMessage(code) ||
+        trafficLimitError(code, response.headers.get("X-Psst-Retry-At"))?.message ||
         transferStateError(code)?.message ||
         resourceLimitError(code)?.message ||
         detail ||

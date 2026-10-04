@@ -69,7 +69,10 @@ func (s *Server) updateIncidentState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "public_transfers_paused is required")
 		return
 	}
-	if err := s.queries.SetTransfersPaused(*request.Paused); err != nil {
+	if err := s.queries.SetTransfersPaused(*request.Paused, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		writeError(w, 503, "could not persist transfer controls")
 		return
 	}
@@ -84,8 +87,11 @@ func (s *Server) shutdownAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "userID")
-	result, err := s.queries.ShutdownAccount(id)
+	result, err := s.queries.ShutdownAccount(id, adminActor(r))
 	if err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		if errors.Is(err, database.ErrLastAdmin) {
 			writeError(w, 409, err.Error())
 		} else if errors.Is(err, sql.ErrNoRows) {

@@ -168,7 +168,10 @@ func (s *Server) updateTrafficSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "use day 1–31, outbound or combined basis, and a positive safe integer byte allowance or null")
 		return
 	}
-	if err := s.queries.SetTrafficSettings(settings); err != nil {
+	if err := s.queries.SetTrafficSettings(settings, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		writeError(w, 503, "traffic settings could not be saved")
 		return
 	}

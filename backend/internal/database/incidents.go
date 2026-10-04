@@ -35,8 +35,13 @@ func (q *Queries) IncidentState() (IncidentState, error) {
 	err := q.db.QueryRow(`SELECT public_transfers_paused,updated_at FROM incident_state WHERE id=1`).Scan(&state.PublicTransfersPaused, &state.UpdatedAt)
 	return state, err
 }
-func (q *Queries) SetTransfersPaused(paused bool) error {
-	result, err := q.db.Exec(`UPDATE incident_state SET public_transfers_paused=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1`, paused)
+func (q *Queries) SetTransfersPaused(paused bool, actors ...*AdminActor) error {
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE incident_state SET public_transfers_paused=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1`, paused)
 	if err != nil {
 		return err
 	}
@@ -47,7 +52,7 @@ func (q *Queries) SetTransfersPaused(paused bool) error {
 	if affected != 1 {
 		return sql.ErrNoRows
 	}
-	return nil
+	return tx.Commit()
 }
 
 type AccountShutdown struct {
@@ -61,9 +66,9 @@ type AccountShutdown struct {
 
 // ShutdownAccount persists denial before any asynchronous IO cancellation or
 // disk cleanup. Re-enabling a login never reverses the resource revocations.
-func (q *Queries) ShutdownAccount(id string) (AccountShutdown, error) {
+func (q *Queries) ShutdownAccount(id string, actors ...*AdminActor) (AccountShutdown, error) {
 	result := AccountShutdown{CleanupPending: true}
-	tx, err := q.db.Begin()
+	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return result, err
 	}

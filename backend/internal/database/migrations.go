@@ -104,6 +104,7 @@ var migrations = []string{
 	resourceMigration(),
 	incidentMigration(),
 	trafficBudgetMigration(),
+	adminSecurityMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

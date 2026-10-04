@@ -503,15 +503,23 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	return tx.Commit()
 }
 
-func (q *Queries) RevokeTransfer(id string) error {
-	_, err := q.db.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ?`, id)
-	return err
+func (q *Queries) RevokeTransfer(id string, actors ...*AdminActor) error {
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RevokeSlot closes the slot and every linked transfer atomically before disk
 // cleanup. Retaining these rows on cleanup failure keeps revocation retryable.
-func (q *Queries) RevokeSlot(id string) ([]string, error) {
-	tx, err := q.db.Begin()
+func (q *Queries) RevokeSlot(id string, actors ...*AdminActor) ([]string, error) {
+	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return nil, err
 	}

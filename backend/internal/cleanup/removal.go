@@ -16,17 +16,17 @@ const removalTimeout = 5 * time.Second
 func RemoveTransfer(q *database.Queries, files store.FileStore, id string) error {
 	return RemoveTransferContext(context.Background(), q, files, id)
 }
-func RemoveTransferContext(ctx context.Context, q *database.Queries, files store.FileStore, id string) error {
+func RemoveTransferContext(ctx context.Context, q *database.Queries, files store.FileStore, id string, actors ...*database.AdminActor) error {
 	ctx, cancel := context.WithTimeout(ctx, removalTimeout)
 	defer cancel()
-	return removeTransfer(ctx, q, files, id, false)
+	return removeTransfer(ctx, q, files, id, false, actors...)
 }
 func TryRemoveTransfer(q *database.Queries, files store.FileStore, id string) error {
 	return removeTransfer(context.Background(), q, files, id, true)
 }
-func removeTransfer(ctx context.Context, q *database.Queries, files store.FileStore, id string, try bool) error {
+func removeTransfer(ctx context.Context, q *database.Queries, files store.FileStore, id string, try bool, actors ...*database.AdminActor) error {
 	// Persist revocation even if an active upload prevents immediate removal.
-	if err := q.RevokeTransfer(id); err != nil {
+	if err := q.RevokeTransfer(id, actors...); err != nil {
 		return err
 	}
 	store.CancelStreams(id)
@@ -55,15 +55,15 @@ func removeTransfer(ctx context.Context, q *database.Queries, files store.FileSt
 func RemoveSlot(q *database.Queries, files store.FileStore, id string) error {
 	return RemoveSlotContext(context.Background(), q, files, id)
 }
-func RemoveSlotContext(ctx context.Context, q *database.Queries, files store.FileStore, id string) error {
+func RemoveSlotContext(ctx context.Context, q *database.Queries, files store.FileStore, id string, actors ...*database.AdminActor) error {
 	ctx, cancel := context.WithTimeout(ctx, removalTimeout)
 	defer cancel()
-	return removeSlot(ctx, q, files, id, false)
+	return removeSlot(ctx, q, files, id, false, actors...)
 }
 func TryRemoveSlot(q *database.Queries, files store.FileStore, id string) error {
 	return removeSlot(context.Background(), q, files, id, true)
 }
-func removeSlot(ctx context.Context, q *database.Queries, files store.FileStore, id string, try bool) error {
+func removeSlot(ctx context.Context, q *database.Queries, files store.FileStore, id string, try bool, actors ...*database.AdminActor) error {
 	var unlock func()
 	var err error
 	if try {
@@ -75,7 +75,7 @@ func removeSlot(ctx context.Context, q *database.Queries, files store.FileStore,
 		return err
 	}
 	defer unlock()
-	children, err := q.RevokeSlot(id)
+	children, err := q.RevokeSlot(id, actors...)
 	if err != nil {
 		return err
 	}

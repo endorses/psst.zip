@@ -86,7 +86,7 @@ func (q *Queries) TrafficPolicy() (TrafficPolicy, error) {
 	p, _, err := readTrafficPolicy(q.db)
 	return p, err
 }
-func (q *Queries) SetTrafficPolicy(p TrafficPolicy) error {
+func (q *Queries) SetTrafficPolicy(p TrafficPolicy, actors ...*AdminActor) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -94,7 +94,12 @@ func (q *Queries) SetTrafficPolicy(p TrafficPolicy) error {
 	if err != nil {
 		return err
 	}
-	result, err := q.db.Exec(`UPDATE traffic_policy SET policy=?,revision=revision+1,concurrency_initialized=1 WHERE id=1`, string(b))
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`UPDATE traffic_policy SET policy=?,revision=revision+1,concurrency_initialized=1 WHERE id=1`, string(b))
 	if err != nil {
 		return err
 	}
@@ -105,10 +110,10 @@ func (q *Queries) SetTrafficPolicy(p TrafficPolicy) error {
 	if n != 1 {
 		return ErrTrafficAccounting
 	}
-	return nil
+	return tx.Commit()
 }
-func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64) error {
-	tx, err := q.db.Begin()
+func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64, actors ...*AdminActor) error {
+	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return err
 	}

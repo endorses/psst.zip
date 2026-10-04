@@ -1,12 +1,24 @@
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 const directory = mkdtempSync(join(tmpdir(), "psst-browser-"));
+// Opt-in local integration tests may age only this disposable database.
+const stateFile = process.env.PSST_TEST_STATE_FILE;
+let stateFileWritten = false;
 try {
   execFileSync("go", ["build", "-o", join(directory, "server"), "./cmd/server"], {
     cwd: resolve("../backend"),
   });
+  if (stateFile) {
+    if (!resolve(stateFile).startsWith(resolve(tmpdir()) + sep))
+      throw new Error("Browser test state must be under the temporary directory");
+    writeFileSync(stateFile, JSON.stringify({ directory, db: join(directory, "psst.db") }), {
+      flag: "wx",
+      mode: 0o600,
+    });
+    stateFileWritten = true;
+  }
 } catch (error) {
   rmSync(directory, { recursive: true, force: true });
   throw error;
@@ -26,6 +38,7 @@ const server = spawn(join(directory, "server"), [], {
 });
 for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => server.kill(signal));
 server.on("exit", (code) => {
+  if (stateFileWritten) rmSync(stateFile, { force: true });
   rmSync(directory, { recursive: true, force: true });
   process.exit(code ?? 0);
 });

@@ -72,6 +72,7 @@ func (s *Server) Router() http.Handler {
 	recoveryRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
 	r.Use(s.limitRequestRates(globalRL, recoveryRL))
 	r.Use(s.authenticate)
+	r.Use(s.requireRecentAdminMutation)
 
 	// Stricter rate limiter for creation endpoints.
 	creationRL := newRateLimiter(s.cfg.RateLimitCreation, s.cfg.RateLimitCreationBurst)

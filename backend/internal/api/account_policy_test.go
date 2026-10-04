@@ -107,6 +107,9 @@ func TestAccountPolicyExistingSessionCannotContinueUpload(t *testing.T) {
 				if restriction.name == "administrator" {
 					policyRequest(t, env, mode, token, "GET", "/auth/resources?all=true", "", nil, 200)
 					policyRequest(t, env, mode, token, "GET", "/auth/sessions", "", nil, 200)
+					data, _ := policyRequest(t, env, mode, token, "DELETE", "/transfers/"+transfer, "", nil, 403)
+					policyCode(t, data, "recent_authentication_required")
+					authRequest(t, env, "POST", "/admin/security/reauth", token, map[string]string{"password": "correct horse battery"}, 200)
 					policyRequest(t, env, mode, token, "DELETE", "/transfers/"+transfer, "", nil, 204)
 					policyRequest(t, env, mode, token, "DELETE", "/slots/"+slot, "", nil, 204)
 				} else {

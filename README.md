@@ -154,12 +154,22 @@ sign in again after changing the password. Restricted accounts can only inspect
 their sign-in state, change the password and sign out until replacement succeeds.
 The last enabled administrator cannot be disabled.
 
+Administrators can enroll an authenticator in **Account**. Password plus a fresh
+authenticator code or one-use recovery code is then required for web sign-in.
+Sensitive administrative changes require authentication within five minutes;
+an expired proof prompts verification and an explicit resubmission. Existing
+administrators without a factor see a setup warning without being locked out
+during upgrade. Factor changes revoke existing sessions. See
+[administrator authentication and local recovery](docs/security/administrator-authentication.md)
+for enrollment, recovery codes, database protection and the explicit
+`server admin-factor-reset --username NAME --confirm` operator command.
+
 For incidents, administrators can persistently pause payload transfers or shut
 down an account and revoke all its links. These are separate from disabling
 future sign-in. See [incident response and local recovery](docs/security/incident-response.md)
 for scope, cleanup behavior and the `server pause`, `resume` and `incident-status`
-commands. Recent-authentication and second-factor protection remain pending in
-the security plan.
+commands. Web mutations require recent administrator authentication; local
+commands use OS/database access as their recovery authorization boundary.
 
 The API enforces these rules for existing cookie and app sessions, including
 upload continuation. Older clients may need an update to display the dedicated

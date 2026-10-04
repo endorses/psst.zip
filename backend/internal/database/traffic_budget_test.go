@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -209,7 +210,10 @@ func TestTrafficMigrationSeedsGlobalWithoutInventingOwners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, sqlText := range migrations[:len(migrations)-1] {
+	for i, sqlText := range migrations {
+		if strings.Contains(sqlText, "CREATE TABLE traffic_policy") {
+			break
+		}
 		if _, err = db.Exec(sqlText); err != nil {
 			t.Fatal(i, err)
 		}

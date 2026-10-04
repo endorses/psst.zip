@@ -49,7 +49,10 @@ func (s *Server) updateResourcePolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
-	if err := s.queries.SetResourcePolicy(p); err != nil {
+	if err := s.queries.SetResourcePolicy(p, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		writeError(w, 500, "could not save resource policy")
 		return
 	}

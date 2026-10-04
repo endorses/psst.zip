@@ -104,6 +104,72 @@ class AuthApiTest {
     }
 
     @Test
+    fun administratorDeviceLoginWithoutSessionReturnsSafeRestrictionAndAllowsRegularLogin() =
+        runTest {
+            var requests = 0
+            val client =
+                HttpClient(
+                    MockEngine { request ->
+                        requests++
+                        assertEquals("/api/v1/auth/login", request.url.encodedPath)
+                        assertNull(request.headers[HttpHeaders.Authorization])
+                        val body =
+                            Json.decodeFromString<Map<String, String>>(
+                                request.body.toByteArray().decodeToString()
+                            )
+                        assertEquals("device", body["session_type"])
+                        if (requests == 1) {
+                            assertEquals("admin", body["username"])
+                            respond(
+                                """{"code":"admin_transfer_forbidden","error":"private administrator diagnostic"}""",
+                                HttpStatusCode.Forbidden,
+                                headersOf(
+                                    HttpHeaders.ContentType,
+                                    ContentType.Application.Json.toString(),
+                                ),
+                            )
+                        } else {
+                            assertEquals("alice", body["username"])
+                            respond(
+                                """{"token":"restricted-device-token","user":{"id":"u1","username":"alice","role":"user","must_change_password":true},"session_id":"s1","expires_at":"2026-11-01T00:00:00Z"}""",
+                                HttpStatusCode.OK,
+                                headersOf(
+                                    HttpHeaders.ContentType,
+                                    ContentType.Application.Json.toString(),
+                                ),
+                            )
+                        }
+                    }
+                ) {
+                    install(ContentNegotiation) { json() }
+                }
+            try {
+                // Login must remain anonymous even when this client holds an existing account
+                // session.
+                val api =
+                    AuthApi(client, ServerConfig("https://files.example.com"), "existing-session")
+                val error =
+                    assertFailsWith<AdminTransferForbiddenException> {
+                        withContext(Dispatchers.Default) { api.login("admin", "secret", "Android") }
+                    }
+                assertEquals(1, requests)
+                assertTrue(error.message.orEmpty().contains("regular account"))
+                assertFalse(error.message.orEmpty().contains("private administrator diagnostic"))
+
+                val session =
+                    withContext(Dispatchers.Default) {
+                        api.login("alice", "temporary secret", "Android")
+                    }
+                assertEquals(2, requests)
+                assertEquals("restricted-device-token", session.token)
+                assertEquals("user", session.user.role)
+                assertTrue(session.user.mustChangePassword)
+            } finally {
+                client.close()
+            }
+        }
+
+    @Test
     fun pairingExchangesForIndependentDeviceSession() = runTest {
         val client =
             HttpClient(

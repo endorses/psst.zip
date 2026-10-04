@@ -64,7 +64,10 @@ func (s *Server) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 	if !s.owns(r, "transfer", id) && !s.authorizeDeletion(w, r, transfer.DeleteTokenHash) {
 		return
 	}
-	if err := cleanup.RemoveTransferContext(r.Context(), s.queries, s.fileStore, id); err != nil {
+	if err := cleanup.RemoveTransferContext(r.Context(), s.queries, s.fileStore, id, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		writeError(w, http.StatusServiceUnavailable, "deletion could not finish; retry to confirm cleanup")
 		return
 	}
@@ -89,7 +92,10 @@ func (s *Server) deleteSlot(w http.ResponseWriter, r *http.Request) {
 	if !s.owns(r, "slot", id) && !s.authorizeDeletion(w, r, slot.DeleteTokenHash) {
 		return
 	}
-	err = cleanup.RemoveSlotContext(r.Context(), s.queries, s.fileStore, id)
+	err = cleanup.RemoveSlotContext(r.Context(), s.queries, s.fileStore, id, adminActor(r))
+	if rejectAdminMutation(w, err) {
+		return
+	}
 	// A failed disk cleanup still leaves the slot revoked. The stream also checks
 	// the database periodically, covering other server instances and slow uploads.
 	s.sseHub.Send(id, slotDeletedEvent)

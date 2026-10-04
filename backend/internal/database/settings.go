@@ -12,7 +12,15 @@ func (q *Queries) MaxFileSize() (int64, error) {
 	return value, err
 }
 
-func (q *Queries) SetMaxFileSize(value int64) error {
-	_, err := q.db.Exec("INSERT INTO server_settings(id,max_file_size) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET max_file_size=excluded.max_file_size", value)
-	return err
+func (q *Queries) SetMaxFileSize(value int64, actors ...*AdminActor) error {
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec("INSERT INTO server_settings(id,max_file_size) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET max_file_size=excluded.max_file_size", value)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }

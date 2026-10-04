@@ -284,6 +284,7 @@ func (s *Server) authRoutes(r chi.Router) {
 			next.ServeHTTP(w, r)
 		})
 	}
+	s.adminSecurityRoutes(r, limited)
 	r.Get("/auth/status", s.authStatus)
 	r.With(limited, s.limitPasswordWork).Post("/auth/login", s.login)
 	r.With(limited).Post("/auth/pairings/redeem", s.redeemPairing)
@@ -320,12 +321,18 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Username    string `json:"username"`
-		Password    string `json:"password"`
-		DeviceName  string `json:"device_name"`
-		SessionType string `json:"session_type"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		DeviceName   string `json:"device_name"`
+		SessionType  string `json:"session_type"`
+		Code         string `json:"code"`
+		RecoveryCode string `json:"recovery_code"`
 	}
-	if !authJSON(w, r, &req) {
+	if !decodeCreation(w, r, &req) {
+		return
+	}
+	if req.Code != "" && req.RecoveryCode != "" {
+		writeError(w, 400, "provide one authenticator or recovery code")
 		return
 	}
 	if req.SessionType == "" {
@@ -348,6 +355,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := s.queries.UserByName(strings.TrimSpace(req.Username))
+	var administrator database.AdminSecurityState
+	if err == nil && user.Role == "admin" {
+		administrator, err = s.queries.AdminSecurity(user.ID)
+		if err != nil {
+			adminSecurityFailure(w, err)
+			return
+		}
+	}
 	// Always perform an expensive comparison, including for unknown usernames.
 	hash := []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
 	if err == nil {
@@ -355,7 +370,16 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	passwordErr := bcrypt.CompareHashAndPassword(hash, []byte(req.Password))
 	if err != nil || passwordErr != nil || user.Disabled {
+		if err == nil && user.Role == "admin" && !user.Disabled {
+			// Persist account failures without revealing account type or lock state to
+			// callers who have not proved the password.
+			_ = s.queries.RecordAdminAuthenticationFailure(user.ID, user.PasswordHash, administrator.Revision, time.Now())
+		}
 		writeError(w, 401, "invalid username or password")
+		return
+	}
+	if user.Role == "admin" && req.SessionType == "device" {
+		accountRestriction(w, "admin_transfer_forbidden")
 		return
 	}
 	token, hash, err := newDeleteToken()
@@ -364,7 +388,16 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	session := newSession(user.ID, req.DeviceName)
-	if err := s.queries.CreateSession(session, hash, user.PasswordHash); err != nil {
+	if user.Role == "admin" {
+		err = s.queries.CreateAdminSession(session, hash, user.PasswordHash, administrator.Revision, req.Code, req.RecoveryCode, time.Now())
+	} else {
+		err = s.queries.CreateSession(session, hash, user.PasswordHash)
+	}
+	if err != nil {
+		if user.Role == "admin" {
+			adminSecurityFailure(w, err)
+			return
+		}
 		writeError(w, 401, "account changed; sign in again")
 		return
 	}
@@ -423,7 +456,11 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	a := identity(r)
 	id := chi.URLParam(r, "sessionID")
-	if err := s.queries.DeleteSession(id, a.user.ID); err != nil {
+	if err := s.queries.DeleteSession(id, a.user.ID, adminActor(r)); err != nil {
+		if adminActor(r) != nil && (errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired)) {
+			adminSecurityFailure(w, err)
+			return
+		}
 		writeError(w, 500, "could not revoke session")
 		return
 	}
@@ -553,7 +590,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := database.User{ID: uuid.NewString(), Username: req.Username, Role: req.Role, PasswordHash: hash, MustChangePassword: req.Role == "user"}
-	if err := s.queries.CreateUser(u, false); err != nil {
+	if err := s.queries.CreateUser(u, false, adminActor(r)); err != nil {
+		if errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired) {
+			adminSecurityFailure(w, err)
+			return
+		}
 		writeError(w, 409, "username already exists or account could not be created")
 		return
 	}
@@ -581,7 +622,11 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	id := chi.URLParam(r, "userID")
-	if err = s.queries.UpdateUser(id, req.Disabled, hash); err != nil {
+	if err = s.queries.UpdateUser(id, req.Disabled, hash, adminActor(r)); err != nil {
+		if errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired) {
+			adminSecurityFailure(w, err)
+			return
+		}
 		if errors.Is(err, database.ErrLastAdmin) {
 			writeError(w, 409, err.Error())
 		} else if errors.Is(err, sql.ErrNoRows) {
@@ -620,7 +665,16 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
-	if err := s.queries.ChangePassword(a.user.ID, a.user.PasswordHash, hash); err != nil {
+	if a.user.Role == "admin" {
+		err = s.queries.ChangeAdminPassword(a.user.ID, a.session.ID, a.user.PasswordHash, hash)
+	} else {
+		err = s.queries.ChangePassword(a.user.ID, a.user.PasswordHash, hash)
+	}
+	if err != nil {
+		if a.user.Role == "admin" && (errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired)) {
+			adminSecurityFailure(w, err)
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, 401, "account changed; sign in again")
 			return

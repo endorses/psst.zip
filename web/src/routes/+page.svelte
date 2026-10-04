@@ -2,7 +2,12 @@
   import { onMount, untrack } from "svelte";
   import { brandedQr } from "$lib/branded-qr";
   import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
+  import { beforeNavigate, goto } from "$app/navigation";
+  import AdministratorSecurity from "$lib/components/AdministratorSecurity.svelte";
+  import AdministratorSecurityWarning from "$lib/components/AdministratorSecurityWarning.svelte";
+  import RecentAuthentication from "$lib/components/RecentAuthentication.svelte";
+  import RecoveryCodes from "$lib/components/RecoveryCodes.svelte";
+  import { securityIdentityChanged } from "$lib/admin-security";
   import PasswordChange from "$lib/components/PasswordChange.svelte";
   import AdminOverview from "$lib/components/AdminOverview.svelte";
   import TrafficPanel from "$lib/components/TrafficPanel.svelte";
@@ -140,6 +145,19 @@
     password = $state(""),
     error = $state(""),
     notice = $state("");
+  let factorRequired = $state(false),
+    loginRecovery = $state(false),
+    loginCode = $state("");
+  let recoveryCodes = $state<string[]>([]);
+  let securityMutationActive = $state(false),
+    securityEpoch = 0;
+  function securityMutation(active: boolean) {
+    securityEpoch++;
+    securityMutationActive = active;
+  }
+  beforeNavigate((navigation) => {
+    if (securityMutationActive) navigation.cancel();
+  });
   let users = $state<User[]>([]),
     sessions = $state<Session[]>([]),
     transfers = $state<Resource[]>([]),
@@ -174,12 +192,14 @@
     let stopped = false;
     async function poll() {
       if (stopped) return;
-      if (user && !document.hidden && !polling) {
+      if (user && !document.hidden && !polling && !securityMutationActive) {
         polling = true;
-        const owner = epoch;
+        const owner = epoch,
+          securityVersion = securityEpoch;
         try {
           const identity = await request<{ user: User }>("/auth/me");
-          if (owner !== epoch) throw new Error("Account changed");
+          if (owner !== epoch || securityMutationActive || securityVersion !== securityEpoch)
+            throw new Error("Account changed");
           if (identity.user.id !== user?.id) {
             clearAccount();
             error = "Your account changed in another tab. Sign in again.";
@@ -224,7 +244,7 @@
             liveMessage = "";
           }
         } catch (err) {
-          if (owner === epoch) {
+          if (owner === epoch && !securityMutationActive && securityVersion === securityEpoch) {
             failures++;
             liveMessage = `Offline — last updated ${lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "not yet"}. Reconnecting…`;
             if (err instanceof AccountError && err.status === 401) {
@@ -246,7 +266,7 @@
       }
     }
     function changed(event: StorageEvent) {
-      if (event.key === "psst.auth-change" && user) {
+      if (event.key === "psst.auth-change" && (user || recoveryCodes.length || factorRequired)) {
         clearAccount();
         error = "Your sign-in changed in another tab. Sign in again.";
       }
@@ -262,6 +282,10 @@
       clearTimeout(timerPoll);
       void cancelPair();
       epoch++;
+      securityIdentityChanged();
+      password = "";
+      loginCode = "";
+      recoveryCodes = [];
     };
   });
   async function initialize() {
@@ -381,6 +405,12 @@
     return err instanceof Error ? err.message : "Something went wrong. Please try again.";
   }
   function clearAccount(preserveSelection = false) {
+    securityIdentityChanged();
+    securityMutation(false);
+    factorRequired = false;
+    loginRecovery = false;
+    loginCode = "";
+    recoveryCodes = [];
     if (preserveSelection && user?.role === "user") {
       // A restricted login has no SendPanel. Its same-account selection remains in
       // the pending queue until the required password flow has fully completed.
@@ -453,16 +483,60 @@
       busy = false;
     }
   }
+  function cancelFactorLogin() {
+    password = "";
+    loginCode = "";
+    factorRequired = false;
+    loginRecovery = false;
+    error = "";
+  }
+  function securityChanged(codes?: string[]) {
+    clearAccount();
+    recoveryCodes = codes ?? [];
+    try {
+      localStorage.setItem("psst.auth-change", String(Date.now()));
+    } catch {}
+    notice = codes ? "" : "Authenticator disabled. All sessions ended. Sign in again.";
+  }
   async function login() {
     await act(async () => {
-      user = (
-        await request<{ user: User }>("/auth/login", "POST", {
+      const owner = epoch;
+      let result: { user: User };
+      try {
+        result = await request<{ user: User }>("/auth/login", "POST", {
           username,
           password,
           device_name: "Web browser",
           session_type: "web",
-        })
-      ).user;
+          ...(factorRequired
+            ? loginRecovery
+              ? { recovery_code: loginCode.trim() }
+              : { code: loginCode.trim() }
+            : {}),
+        });
+      } catch (cause) {
+        if (owner !== epoch) return;
+        if (
+          cause instanceof AccountError &&
+          (cause.code === "administrator_factor_required" ||
+            cause.code === "administrator_factor_invalid")
+        ) {
+          factorRequired = true;
+          error = cause.message;
+          return;
+        }
+        if (
+          !(cause instanceof AccountError && cause.code === "administrator_authentication_locked")
+        )
+          cancelFactorLogin();
+        throw cause;
+      }
+      if (owner !== epoch) return;
+      securityIdentityChanged();
+      user = result.user;
+      factorRequired = false;
+      loginRecovery = false;
+      loginCode = "";
       try {
         localStorage.setItem("psst.auth-change", String(Date.now()));
       } catch {}
@@ -480,7 +554,8 @@
       loadAccount();
     });
     if (user) await select(routeTab(), false);
-    password = "";
+    if (!factorRequired) password = "";
+    loginCode = "";
   }
   function remember(id: string, url: string, title?: string, size?: number) {
     if (title && user) {
@@ -521,7 +596,7 @@
     }
   }
   async function select(next: Tab, navigate = true) {
-    if (!user) return;
+    if (!user || securityMutationActive) return;
     if (user.must_change_password) {
       tab = "Account";
       return;
@@ -814,6 +889,14 @@
 
 <svelte:head><title>{user ? tab : "Sign in"} · {BRAND}</title></svelte:head>
 {#if loading}<p role="status">Loading your account…</p>
+{:else if recoveryCodes.length}<RecoveryCodes
+    codes={recoveryCodes}
+    onacknowledge={() => {
+      recoveryCodes = [];
+      notice =
+        "Recovery codes acknowledged. Sign in again using the next authenticator code or a recovery code.";
+    }}
+  />
 {:else if !user}
   <section class="panel login">
     <h1>Sign in to {BRAND}</h1>
@@ -822,6 +905,43 @@
         This server needs its first administrator. The server operator must configure ADMIN_USERNAME
         and ADMIN_PASSWORD, then restart the server.
       </p>
+    {:else if factorRequired}<form
+        onsubmit={(event) => {
+          event.preventDefault();
+          void login();
+        }}
+      >
+        <h2>Administrator verification</h2>
+        <p>Finish signing in as {username}. No session is created until your code is accepted.</p>
+        <label
+          >{loginRecovery ? "Recovery code" : "Authenticator code"}<input
+            type="text"
+            inputmode={loginRecovery ? "text" : "numeric"}
+            autocomplete="one-time-code"
+            pattern={loginRecovery ? undefined : "[0-9]{6}"}
+            maxlength={loginRecovery ? 128 : 6}
+            required
+            spellcheck={false}
+            autocapitalize="none"
+            disabled={busy}
+            bind:value={loginCode}
+          /></label
+        >
+        <button
+          type="button"
+          disabled={busy}
+          onclick={() => {
+            loginRecovery = !loginRecovery;
+            loginCode = "";
+            error = "";
+          }}>{loginRecovery ? "Use authenticator code" : "Use a recovery code"}</button
+        >
+        <button class="primary" disabled={busy}>{busy ? "Verifying…" : "Verify and sign in"}</button
+        >
+        <button type="button" disabled={busy} onclick={cancelFactorLogin}
+          >Back to password sign-in</button
+        >
+      </form>
     {:else}<form
         onsubmit={(e) => {
           e.preventDefault();
@@ -944,7 +1064,7 @@
             </div>{/if}
           <button
             class="sign-out"
-            disabled={busy}
+            disabled={busy || securityMutationActive}
             onclick={() =>
               act(async () => {
                 await cancelPair();
@@ -959,6 +1079,15 @@
       </section>
     </aside>
     <div class="workspace-content">
+      {#if user.role === "admin"}{#key user.id}<AdministratorSecurityWarning /><RecentAuthentication
+            onconfirmed={() => {
+              notice = "Identity confirmed. Review your pending action and submit it again.";
+            }}
+            onsessionended={() => {
+              clearAccount();
+              error = "Your session ended. Sign in again.";
+            }}
+          />{/key}{/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
           class="notice"
           role="status"
@@ -1278,7 +1407,11 @@
             href={user.role === "admin" ? "/?view=overview" : "/?view=settings"}
             >← {user.role === "admin" ? "Overview" : "Back to Settings"}</a
           >
-          <PasswordChange {busy} onchange={changePassword} />
+          <PasswordChange busy={busy || securityMutationActive} onchange={changePassword} />
+          {#if user.role === "admin"}{#key user.id}<AdministratorSecurity
+                onchanged={securityChanged}
+                onmutation={securityMutation}
+              />{/key}{/if}
         {:else if tab === "Users"}
           <h1>Manage users</h1>
           <p class="muted">

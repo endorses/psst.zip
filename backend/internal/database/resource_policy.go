@@ -73,12 +73,20 @@ func (p ResourcePolicy) Validate() error {
 	}
 	return nil
 }
-func (q *Queries) SetResourcePolicy(p ResourcePolicy) error {
+func (q *Queries) SetResourcePolicy(p ResourcePolicy, actors ...*AdminActor) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
-	_, err := q.db.Exec(`UPDATE resource_policy SET server_storage_bytes=?,account_storage_bytes=?,server_files=?,account_files=?,server_transfers=?,account_transfers=?,server_slots=?,account_slots=?,max_retention_seconds=?,pending_upload_seconds=?,reserve_disk_bytes=?,reserve_disk_percent=? WHERE id=1`, p.ServerStorageBytes, p.AccountStorageBytes, p.ServerFiles, p.AccountFiles, p.ServerTransfers, p.AccountTransfers, p.ServerSlots, p.AccountSlots, p.MaxRetentionSeconds, p.PendingUploadSeconds, p.ReserveDiskBytes, p.ReserveDiskPercent)
-	return err
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE resource_policy SET server_storage_bytes=?,account_storage_bytes=?,server_files=?,account_files=?,server_transfers=?,account_transfers=?,server_slots=?,account_slots=?,max_retention_seconds=?,pending_upload_seconds=?,reserve_disk_bytes=?,reserve_disk_percent=? WHERE id=1`, p.ServerStorageBytes, p.AccountStorageBytes, p.ServerFiles, p.AccountFiles, p.ServerTransfers, p.AccountTransfers, p.ServerSlots, p.AccountSlots, p.MaxRetentionSeconds, p.PendingUploadSeconds, p.ReserveDiskBytes, p.ReserveDiskPercent)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func readUsage(q rowQuery, owner string) (ResourceUsage, error) {
 	where := ""

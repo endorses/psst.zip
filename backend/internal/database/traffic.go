@@ -98,12 +98,20 @@ func (q *Queries) TrafficState() (TrafficState, error) {
 	}
 	return s, err
 }
-func (q *Queries) SetTrafficSettings(s TrafficSettings) error {
+func (q *Queries) SetTrafficSettings(s TrafficSettings, actors ...*AdminActor) error {
 	if s.CycleStartDay < 1 || s.CycleStartDay > 31 || (s.Basis != "outbound" && s.Basis != "combined") || (s.AllowanceBytes != nil && (*s.AllowanceBytes <= 0 || *s.AllowanceBytes > 9007199254740991)) {
 		return errors.New("invalid traffic settings")
 	}
-	_, err := q.db.Exec(`UPDATE traffic_state SET allowance_bytes=?,cycle_start_day=?,basis=? WHERE id=1`, s.AllowanceBytes, s.CycleStartDay, s.Basis)
-	return err
+	tx, err := q.beginAdminMutation(actors)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE traffic_state SET allowance_bytes=?,cycle_start_day=?,basis=? WHERE id=1`, s.AllowanceBytes, s.CycleStartDay, s.Basis)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (q *Queries) TrafficDays() ([]TrafficDay, error) {
 	rows, err := q.db.Query(`SELECT date,uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded FROM traffic_days ORDER BY date`)

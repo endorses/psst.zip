@@ -75,7 +75,10 @@ func (s *Server) updateTrafficPolicy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
-	if err = s.queries.SetTrafficPolicy(p); err != nil {
+	if err = s.queries.SetTrafficPolicy(p, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		trafficFailure(w, err)
 		return
 	}
@@ -120,7 +123,10 @@ func (s *Server) updateAccountTrafficPolicy(w http.ResponseWriter, r *http.Reque
 		writeError(w, 400, "account budget must be positive and no greater than server budget")
 		return
 	}
-	if err = s.queries.SetAccountTrafficBudget(owner, budget); err != nil {
+	if err = s.queries.SetAccountTrafficBudget(owner, budget, adminActor(r)); err != nil {
+		if rejectAdminMutation(w, err) {
+			return
+		}
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, 404, "account not found")
 		} else {

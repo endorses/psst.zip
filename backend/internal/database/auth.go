@@ -37,13 +37,24 @@ func (q *Queries) UserCount() (int, error) {
 	err := q.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
 }
-func (q *Queries) CreateUser(u User, bootstrap bool) error {
+func (q *Queries) CreateUser(u User, bootstrap bool, actors ...*AdminActor) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
+		return err
+	}
 	query := `INSERT INTO users (id,username,role,password_hash,must_change_password) VALUES (?,?,?,?,?)`
 	if bootstrap {
 		query = `INSERT INTO users (id,username,role,password_hash,must_change_password) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM users)`
 	}
-	_, err := q.db.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash, u.MustChangePassword && u.Role != "admin")
-	return err
+	_, err = tx.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash, u.MustChangePassword && u.Role != "admin")
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u := &User{}
@@ -72,17 +83,21 @@ func (q *Queries) Users() ([]User, error) {
 	}
 	return out, rows.Err()
 }
-func (q *Queries) UpdateUser(id string, disabled *bool, password []byte) error {
-	return q.updateUser(id, disabled, password, nil)
+func (q *Queries) UpdateUser(id string, disabled *bool, password []byte, actors ...*AdminActor) error {
+	return q.updateUser(id, disabled, password, nil, "", optionalAdminActor(actors))
 }
 
 // ChangePassword compares the authenticated hash under the same writer lock as
 // replacement, so a concurrent administrator reset cannot be overwritten.
 func (q *Queries) ChangePassword(id string, expectedHash, password []byte) error {
-	return q.updateUser(id, nil, password, expectedHash)
+	return q.updateUser(id, nil, password, expectedHash, "", nil)
 }
 
-func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash []byte) error {
+func (q *Queries) ChangeAdminPassword(id, session string, expectedHash, password []byte) error {
+	return q.updateUser(id, nil, password, expectedHash, session, nil)
+}
+
+func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash []byte, adminSession string, actor *AdminActor) error {
 	tx, err := q.db.Begin()
 	if err != nil {
 		return err
@@ -99,6 +114,14 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if err := ValidateAdminActor(tx, actor); err != nil {
+		return err
+	}
+	if adminSession != "" {
+		if err := requireRecentAdmin(tx, id, adminSession, time.Now()); err != nil {
+			return err
+		}
 	}
 	if expectedHash != nil {
 		var current []byte
@@ -133,6 +156,9 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 		}
 	}
 	if len(password) > 0 || (disabled != nil && *disabled) {
+		if _, err := tx.Exec(`UPDATE admin_security SET revision=revision+1 WHERE user_id=?`, id); err != nil {
+			return err
+		}
 		for _, table := range []string{"sessions", "pairings"} {
 			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE user_id=?`, id); err != nil {
 				return err
@@ -142,7 +168,7 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 	return tx.Commit()
 }
 func (q *Queries) CreateSession(s Session, hash []byte, passwordHash []byte) error {
-	res, err := q.db.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) SELECT ?,id,?,?,?,? FROM users WHERE id=? AND disabled=0 AND password_hash=?`, s.ID, hash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC(), s.UserID, passwordHash)
+	res, err := q.db.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) SELECT ?,id,?,?,?,? FROM users WHERE id=? AND disabled=0 AND password_hash=? AND NOT EXISTS(SELECT 1 FROM admin_security a WHERE a.user_id=users.id AND a.secret!='')`, s.ID, hash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC(), s.UserID, passwordHash)
 	if err != nil {
 		return err
 	}
@@ -181,9 +207,19 @@ func (q *Queries) Sessions(user string) ([]Session, error) {
 	}
 	return out, rows.Err()
 }
-func (q *Queries) DeleteSession(id, user string) error {
-	_, err := q.db.Exec(`DELETE FROM sessions WHERE id=? AND user_id=?`, id, user)
-	return err
+func (q *Queries) DeleteSession(id, user string, actors ...*AdminActor) error {
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM sessions WHERE id=? AND user_id=?`, id, user); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // PairingStatus never includes a login secret or a device session credential.
@@ -351,6 +387,9 @@ func (q *Queries) OwnedIDs(kind, user string) ([]string, error) {
 // PruneAuthentication removes expired session and pairing credentials. Session
 // foreign keys also invalidate outstanding pairing grants from those sessions.
 func (q *Queries) PruneAuthentication() error {
+	if _, err := q.db.Exec(`DELETE FROM admin_pending_factors WHERE expires_at<=?`, time.Now().Unix()); err != nil {
+		return err
+	}
 	if _, err := q.db.Exec(`DELETE FROM sessions WHERE julianday(substr(expires_at,1,19))<=julianday('now')`); err != nil {
 		return err
 	}

@@ -76,15 +76,16 @@ before(async () => {
       await realFetch(`${origin}/api/v1/transfers/missing`, { signal: AbortSignal.timeout(1000) });
       const login = await realFetch(`${origin}/api/v1/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Origin: origin },
         body: JSON.stringify({
           username: "admin",
           password: "Test-admin-password-2026",
-          session_type: "device",
+          session_type: "web",
         }),
       });
       assert.equal(login.status, 200);
-      const adminToken = (await login.json()).token;
+      const adminToken = login.headers.get("set-cookie")?.match(/psst_session=([^;]+)/)?.[1];
+      assert(adminToken);
       const temporary = "Temporary-member-password-2026",
         replacement = "Final-member-password-2026";
       const created = await realFetch(`${origin}/api/v1/admin/users`, {

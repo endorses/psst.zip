@@ -80,6 +80,16 @@ Scanning an upload-link QR shows its origin and a separate guest file picker; se
 
 Administrator accounts are for managing the service on the website. The app and share extension reject administrator logins with an explanation, best-effort revoke newly issued administrator sessions, and block already-stored administrator sessions from authenticated transfer work. Foreground/account refresh checks current server role and password state; the backend remains authoritative during network failures. Native guest scanning, public-capability uploads and local downloaded files remain available independently of the account.
 
+Administrator authenticator enrollment and recent-authentication prompts are web
+administration features. The server rejects administrator device login before
+issuing a token, with or without an enrolled factor; native clients already map
+`admin_transfer_forbidden` before decoding/saving credentials. Main app and share
+extension use the same account forms and preserve ordinary-account temporary
+password replacement. See [administrator security](../docs/security/administrator-authentication.md).
+
+- [x] Read-only source review confirmed both native clients handle administrator rejection before saving a session. The direct shared login regression verifies no bearer forwarding/retry, safe error text and a subsequent regular temporary-password login; twelve focused `AuthApiTest` cases passed.
+- [ ] On iOS, attempt administrator device login against an enrolled and an unenrolled account, in both app and share extension. Verify the existing session remains intact, no factor/token is requested or saved, and ordinary-account login/replacement still works. There is no existing mock transport seam for the native HTTP client; these runtime checks remain pending.
+
 A newly created or administrator-reset regular account must replace its temporary password. The shared account form shows Current password, New password and Confirm password with password-manager support, explicit mismatch feedback and a visibility control. The new password must differ and meet the server's 12–72 UTF-8-byte policy. Successful replacement revokes sessions and requests another sign-in; it does not automatically replay a transfer. Account identity remains stable through same-account replacement/re-login so selected files can be retried deliberately. Signing in as a different account clears private selections. The Settings password form uses the same confirmed replacement flow. Password fields and error responses are never logged.
 
 History labels each row Sent, Receive link or Downloaded and shows creation date/time, file count, available size and status. Known filenames include an additional-file count and truncate in the middle, preserving extensions. Receive creation accepts an optional name; owned Sent/Receive link entries offer Rename through a leading swipe or context menu. Names are local to this device, scoped by server/account/resource type/ID, and preserved through polling, saving checkpoints, coordinated App Group persistence and relaunch. Clearing a custom name restores the automatic filename/date title. Existing automatic titles migrate unchanged; no title is sent to the server. Technical identifiers stay in expanded details.

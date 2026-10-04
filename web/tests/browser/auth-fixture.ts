@@ -22,15 +22,19 @@ export const test = base.extend<
       });
       const response = await retryAuth(() =>
         context.post("/api/v1/auth/login", {
+          headers: { Origin: process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173" },
           data: {
             ...adminCredentials,
-            session_type: "device",
+            session_type: "web",
             device_name: "Browser admin fixture",
           },
         }),
       );
       expect(response.ok(), await response.text()).toBe(true);
-      const { token } = await response.json();
+      const token = (await context.storageState()).cookies.find(
+        (cookie) => cookie.name === "psst_session",
+      )?.value;
+      if (!token) throw new Error("Administrator web session cookie missing");
       await use(token);
       await context.dispose();
     },

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/endorses/psst.zip/backend/internal/adminsecuritycli"
 	"github.com/endorses/psst.zip/backend/internal/api"
 	"github.com/endorses/psst.zip/backend/internal/cleanup"
 	"github.com/endorses/psst.zip/backend/internal/config"
@@ -22,8 +23,17 @@ import (
 func main() {
 	cfg := config.Load()
 	if len(os.Args) > 1 {
+		if os.Args[1] == "admin-factor-reset" {
+			if err := adminsecuritycli.Run(cfg.DBPath, os.Args[2:], os.Stdout); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprint(os.Stderr, adminsecuritycli.Usage)
+				os.Exit(1)
+			}
+			return
+		}
 		if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 			fmt.Fprint(os.Stdout, incidentcli.Usage)
+			fmt.Fprint(os.Stdout, adminsecuritycli.Usage)
 			return
 		}
 		if len(os.Args) != 2 {
@@ -39,7 +49,7 @@ func main() {
 	}
 
 	// Ensure data directories exist.
-	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o700); err != nil {
 		log.Fatalf("create db directory: %v", err)
 	}
 
