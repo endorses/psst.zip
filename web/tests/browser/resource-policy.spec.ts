@@ -1,4 +1,4 @@
-import { adminResource, cleanupOverview } from "../admin-resource-fixture";
+import { adminResource, cleanupOverview, storageChecks } from "../admin-resource-fixture";
 import { test, expect, type Page } from "@playwright/test";
 import { resourcePolicy, resourceUsage } from "../resource-policy-fixture";
 
@@ -249,6 +249,9 @@ for (const role of ["user", "admin"] as const) {
       }),
     );
     if (role === "admin") {
+      await page.route("**/api/v1/admin/storage-checks", (route) =>
+        route.fulfill({ json: storageChecks }),
+      );
       await page.route("**/api/v1/admin/overview", (route) =>
         route.fulfill({ status: 503, json: { error: "Metrics unavailable in fixture" } }),
       );

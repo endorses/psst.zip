@@ -94,6 +94,7 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireRegularUser).Get("/auth/usage", s.accountUsage)
 		r.With(s.requireAdmin).Get("/admin/security-events", s.getSecurityEvents)
 		r.With(s.requireAdmin).Get("/admin/cleanup", s.getCleanupOverview)
+		r.With(s.requireAdmin).Get("/admin/storage-checks", s.getStorageChecks)
 		r.With(s.requireAdmin).Get("/admin/resources", s.getAdminResources)
 		r.With(s.requireAdmin).Get("/admin/resources/{resourceType}/{resourceID}", s.getAdminResource)
 		r.With(s.requireAdmin).Get("/admin/resources/{resourceType}/{resourceID}/events", s.getAdminResourceEvents)

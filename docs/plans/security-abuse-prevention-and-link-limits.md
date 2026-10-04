@@ -398,3 +398,74 @@ Full-plan checklist items remain pending when these intermediate changes cover o
 - [x] The broader backend run exposed an existing deny-first revocation race: child allocation could classify a concurrently revoked or removed inbox as a quota rejection. The database now distinguishes lifecycle denial under the same writer transaction, preserving real file/batch quota errors and preventing child creation. A deterministic regression covers revoked/removed resources, real allowance exhaustion and revocation precedence; it and the unchanged concurrent HTTP create/delete test passed 20 repetitions under the race detector. The HTTP race still requires successful creation or correct unavailable-link responses and verifies no orphan children.
 - [x] Final full backend `go test -race ./...` passes (API 129.009 s, database 111.286 s, cleanup 7.313 s; unchanged packages cached). The contact setting, audit upgrade and lifecycle correction are included. Final formatting and diff checks pass; disposable browser backends stopped and the task-specific Go cache was removed. Operator setup, safe report contents, contact-only storage/mail boundaries and response procedures are documented in `docs/security/abuse-contact.md` and linked from README.
 - [ ] Continue full crash reconciliation, public effective-capacity integration, remaining query bounds and deployment/recipient/native release verification. Contact-only reporting deliberately leaves email-service filtering/retention with the operator and treats reports as unverified allegations. The live instance is unchanged and the complete security plan remains open.
+
+### Database-referenced payload recovery checkpoint, 2026-10-04
+
+- [x] Added safe regular-file inspection that distinguishes missing and empty
+      payloads. Reads, writes, inspection and truncation use descriptor-relative
+      no-follow opens, including storage-root ancestors. Writes sync payload and
+      directory entries and propagate close failures. `SaveAt` reports zero
+      acknowledged bytes on durability failure; durable partial input remains
+      resumable. Fault-injection and path/symlink/special-file race tests pass.
+- [x] Added guarded pending-file reconciliation: truncate uncommitted tails or
+      rewind missing/short data without promoting physical bytes into committed
+      progress. Published length/completion mismatches remain immutable and block
+      download before spending an attempt. Reservations and lifetime allowances
+      are retained. HEAD, PATCH, finalization and download perform the checks;
+      responses bound download bytes to declared length.
+- [x] Added persistent issue metadata, maintained counters and an indexed
+      64-file scan cursor. Startup resets prior coverage. Busy files are skipped
+      and retried; partial deadline progress prevents a slow prefix starving later
+      files. A fixed global error marker exposes scan failures even when individual
+      issue persistence fails. Database/worker race tests cover reopen, failure
+      recovery, bounded pages, concurrent publication, stale repair guards,
+      canceled workers and issue cleanup.
+- [x] Added administrator-only stored-file status to Resources with independent
+      refresh, strict response validation, preserved stale snapshots, per-file
+      issue categories and global scan-failure visibility. Eleven initial focused
+      browser cases passed, followed by three storage-check cases after adding the
+      global-failure indicator. Svelte check reports zero errors/warnings; all 59
+      web unit/integration tests pass.
+- [x] A bounded independent integration review found a payload-cleanup task could
+      bypass inspection of a damaged sibling. Only full-resource cleanup now
+      skips inspection. Database and HTTP regressions verify that a retained
+      payload-only task cannot consume a damaged sibling's allowance. HTTP tests
+      also cover failed offset commits, stale-offset repair/resume, blocked
+      publication, fixed errors, quota preservation and append-after-inspection
+      download bounds.
+- [x] Assessed client compatibility: web, Android and iOS fail safely on an offset
+      rewind and create a fresh transfer on explicit retry. No automatic
+      ciphertext regeneration/resume was added; a fresh nonce prevents safe
+      regeneration of an arbitrary old ciphertext suffix. This checkpoint changes
+      administrator UI and server recovery, with no new native UI or protocol.
+- [x] Final combined `go test -race ./...` passes: API 139.858 s, database
+      121.558 s, reconciliation 13.166 s and cleanup 7.941 s; unchanged storage
+      tests remain cached from their passing run. The concurrency regression
+      verifies a completed scan cannot erase a newer unpersisted failure.
+      Production web build passes, sources are formatted and diff checks pass.
+      This is not closure of the full plan.
+- [ ] Continue orphan filesystem discovery, full database/disk/counter
+      reconstruction, reconciliation-aware effective capacity and public guest
+      responses, remaining query bounds and deployment/native release gates.
+      A completed database-file pass is not complete disk health or a consistent
+      backup. Operator behavior and remaining scope are documented in
+      `docs/security/storage-recovery.md`. The live instance is unchanged.
+
+Recovery implementation decisions for the next work: quota admission's
+`resource_usage` is a live database view; do not add a second competing quota
+counter or rebuild lifetime inbox/download/traffic consumption from surviving
+files. Persisted administrator totals and cleanup/reconciliation summaries do
+need consistency verification. Filesystem free-space readings already include
+orphan and open-but-unlinked bytes, so do not subtract those estimates twice.
+
+Orphan discovery requires bounded descriptor-relative enumeration with an
+explicit restart/continuation contract. Reopening a directory at its beginning
+does not provide fair pagination, and sorting the entire directory is not
+bounded. Treat changed directory identities or unusable continuation cookies as
+incomplete coverage; keep previously discovered work. Use a capped durable
+candidate queue, an observation grace period, resource/reader locks, and an exact
+database membership recheck under the writer lock before unlinking. Never delete
+live siblings or follow unexpected symlinks/trees. Harden the existing bounded
+cleanup walk's pathname-open race before sharing deletion machinery with orphan
+recovery. Queue saturation, unsupported continuation and failed checks must
+remain visible rather than produce a successful scan state.

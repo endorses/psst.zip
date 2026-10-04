@@ -211,7 +211,7 @@ func (h *Handler) ServePatch(w http.ResponseWriter, r *http.Request, fileID stri
 		if errors.Is(err, database.ErrDiskCapacity) || errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInsufficientStorage)
-			json.NewEncoder(w).Encode(map[string]string{"code": "disk_capacity", "error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"code": "disk_capacity", "error": "Server storage capacity is unavailable."})
 			return
 		}
 		var limitError *http.MaxBytesError

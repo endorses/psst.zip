@@ -178,6 +178,10 @@ exact ID lookup, owner/type filters, current storage counters and related securi
 activity. Revocation denies access immediately; persistent cleanup status shows
 pending work and failures until server-file removal is confirmed.
 
+[Stored-file recovery](docs/security/storage-recovery.md) repairs unpublished
+upload offsets and blocks inconsistent published payloads. The resource manager
+shows the progress and failures of bounded database-file checks.
+
 An optional [abuse contact](docs/security/abuse-contact.md) lets administrators
 publish a contact email. Web and mobile clients prepare a local report reference
 without encryption keys or file contents; the server does not send or store reports.

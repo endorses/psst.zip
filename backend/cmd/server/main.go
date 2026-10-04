@@ -17,6 +17,7 @@ import (
 	"github.com/endorses/psst.zip/backend/internal/config"
 	"github.com/endorses/psst.zip/backend/internal/database"
 	"github.com/endorses/psst.zip/backend/internal/incidentcli"
+	"github.com/endorses/psst.zip/backend/internal/reconcile"
 	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
@@ -68,6 +69,12 @@ func main() {
 	if err := queries.RecoverTrafficLeases(); err != nil {
 		log.Fatalf("recover traffic accounting: %v", err)
 	}
+	resetCtx, resetCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err = queries.ResetReconciliationScan(resetCtx)
+	resetCancel()
+	if err != nil {
+		log.Fatal("could not initialize stored-file checks")
+	}
 	srv := api.NewServer(cfg, queries, fs)
 	if err := srv.BootstrapAdmin(); err != nil {
 		log.Fatalf("initialize accounts: %v", err)
@@ -86,6 +93,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	reconcileDone := make(chan struct{})
+	go func() { defer close(reconcileDone); reconcile.Run(ctx, queries, fs, time.Second) }()
 	go srv.RunIncidentMonitor(ctx)
 	auditDone := make(chan struct{})
 	go func() { defer close(auditDone); srv.RunSecurityAudit(ctx) }()
@@ -111,6 +120,11 @@ func main() {
 			_ = httpSrv.Close()
 		}
 		srv.WaitForRequests()
+		select {
+		case <-reconcileDone:
+		case <-time.After(5 * time.Second):
+			log.Print("stored-file checker shutdown timed out; checks remain pending")
+		}
 		// Stop the periodic writer before the final bounded flush. Authentication
 		// counters never delay shutdown indefinitely or gate recovery requests.
 		select {

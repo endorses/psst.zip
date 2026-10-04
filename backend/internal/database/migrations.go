@@ -111,6 +111,7 @@ var migrations = []string{
 	adminResourcesMigration(),
 	cleanupStateMigration(),
 	abuseContactMigration(),
+	reconciliationMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

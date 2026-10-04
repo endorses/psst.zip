@@ -30,6 +30,7 @@ type File struct {
 	Size           int64
 	UploadOffset   int64
 	UploadComplete bool
+	PayloadDeleted bool `json:"-"`
 	DownloadCount  int
 	CreatedAt      time.Time
 }
@@ -56,6 +57,7 @@ type Queries struct {
 	capacity          capacityConfig
 	incidentNamespace string
 	auditDegraded     atomic.Bool
+	reconciliation    reconciliationTracker
 }
 
 // NewQueries returns a new Queries instance.
@@ -167,10 +169,10 @@ func (q *Queries) CreateFile(id, transferID string, size int64) error {
 
 func (q *Queries) GetFile(id string) (*File, error) {
 	row := q.db.QueryRow(
-		`SELECT id, transfer_id, size, upload_offset, upload_complete, download_count, created_at FROM files WHERE id = ?`, id,
+		`SELECT id, transfer_id, size, upload_offset, upload_complete, payload_deleted, download_count, created_at FROM files WHERE id = ?`, id,
 	)
 	f := &File{}
-	if err := row.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.DownloadCount, &f.CreatedAt); err != nil {
+	if err := row.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.PayloadDeleted, &f.DownloadCount, &f.CreatedAt); err != nil {
 		return nil, err
 	}
 	return f, nil
@@ -190,7 +192,7 @@ func (q *Queries) UpdateFileOffset(id string, offset int64, complete bool) error
 
 func (q *Queries) ListFiles(transferID string) ([]File, error) {
 	rows, err := q.db.Query(
-		`SELECT id, transfer_id, size, upload_offset, upload_complete, download_count, created_at FROM files WHERE transfer_id = ?`, transferID,
+		`SELECT id, transfer_id, size, upload_offset, upload_complete, payload_deleted, download_count, created_at FROM files WHERE transfer_id = ?`, transferID,
 	)
 	if err != nil {
 		return nil, err
@@ -200,7 +202,7 @@ func (q *Queries) ListFiles(transferID string) ([]File, error) {
 	var files []File
 	for rows.Next() {
 		var f File
-		if err := rows.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.DownloadCount, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.TransferID, &f.Size, &f.UploadOffset, &f.UploadComplete, &f.PayloadDeleted, &f.DownloadCount, &f.CreatedAt); err != nil {
 			return nil, err
 		}
 		files = append(files, f)

@@ -1,7 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
-import { adminResource, cleanupOverview, resourceID, receiveID } from "../admin-resource-fixture";
+import {
+  adminResource,
+  cleanupOverview,
+  resourceID,
+  receiveID,
+  storageChecks,
+} from "../admin-resource-fixture";
 
 async function session(page: Page, role = "admin") {
+  await page.route("**/api/v1/admin/storage-checks", (route) =>
+    route.fulfill({ json: storageChecks }),
+  );
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ json: { user: { id: role, role, username: role } } }),
   );

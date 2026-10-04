@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -122,6 +123,9 @@ func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.activeTransfer(w, id, true) == nil {
+		return
+	}
+	if !s.checkTransferPayloads(w, r, id) {
 		return
 	}
 	protocol, err := s.queries.TransferReceiveProtocol(id)
@@ -277,6 +281,9 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		policyError(w, http.StatusGone, "download_limit", "download limit reached")
 		return
 	}
+	if !s.checkPayload(w, r, fileID) {
+		return
+	}
 
 	storageKey := fmt.Sprintf("%s/%s", transferID, fileID)
 	rc, err := s.fileStore.Load(storageKey)
@@ -318,8 +325,11 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 
 	unlock()
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, rc)
+	// Never serve uncommitted trailing bytes if an external filesystem change
+	// races inspection. A short response remains incomplete to the HTTP client.
+	io.CopyN(w, rc, f.Size)
 }
 
 // --- tus wrappers ---
@@ -358,7 +368,15 @@ func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tusHead(w http.ResponseWriter, r *http.Request) {
 	transferID, fileID := chi.URLParam(r, "transferID"), chi.URLParam(r, "fileID")
+	unlock, ok := acquireResource(w, r, transferID, false)
+	if !ok {
+		return
+	}
+	defer unlock()
 	if !s.validUpload(w, transferID, fileID, false) {
+		return
+	}
+	if !s.checkPayload(w, r, fileID) {
 		return
 	}
 	s.tusH.ServeOffset(w, r, fileID)
@@ -379,6 +397,9 @@ func (s *Server) tusPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer unlock()
 	if !s.validUpload(w, transferID, fileID, true) {
+		return
+	}
+	if !s.checkPayload(w, r, fileID) {
 		return
 	}
 	s.tusH.ServePatch(w, r, fileID, fmt.Sprintf("%s/%s", transferID, fileID))

@@ -21,6 +21,7 @@
     type CleanupOverview,
   } from "$lib/admin-resources";
   import SecurityEvents from "./SecurityEvents.svelte";
+  import StorageChecks from "./StorageChecks.svelte";
   import AdminResourceRevoke from "./AdminResourceRevoke.svelte";
   let result = $state<AdminResourcePage | null>(null),
     overview = $state<CleanupOverview | null>(null);
@@ -288,6 +289,7 @@
     </p>
   {:else if !cleanupError}<p role="status">Loading cleanup status…</p>{/if}
 </section>
+<StorageChecks />
 <form
   class="filters"
   onsubmit={(event) => {

@@ -216,7 +216,13 @@ func TestFailedDownloadStreamsNeverAcknowledge(t *testing.T) {
 	if err := fs.DeleteAll(other); err != nil {
 		t.Fatal(err)
 	}
-	request(t, env, http.MethodGet, missing, nil, http.StatusInternalServerError)
+	missingResponse := request(t, env, http.MethodGet, missing, nil, http.StatusServiceUnavailable)
+	var missingError struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(missingResponse.Body).Decode(&missingError); err != nil || missingError.Code != "payload_unavailable" {
+		t.Fatalf("missing payload response: %+v %v", missingError, err)
+	}
 	request(t, env, http.MethodPost, env.url("/api/v1/transfers/"+other+"/downloaded"), nil, http.StatusConflict)
 	if current := downloadStatus(t, env, other); current.DownloadCount != 0 || current.DownloadedAt != nil {
 		t.Fatalf("missing blob changed receipt: %+v", current)
