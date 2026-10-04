@@ -56,6 +56,7 @@ type FileInfo struct {
 
 // SlotResponse is returned when querying a slot.
 type SlotResponse struct {
+	FileCount          *int64             `json:"file_count,omitempty"`
 	ReceiveProtocol    int                `json:"receive_protocol"`
 	RecipientPublicKey string             `json:"recipient_public_key"`
 	MaxFiles           int                `json:"max_files"`

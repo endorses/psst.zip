@@ -112,3 +112,18 @@ Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile
 - [ ] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
 - [ ] Verify owner-only receive retrieval and acknowledgements, private-key survival after relaunch, a second paired device without keys, lost finalization responses, receive-file exhaustion and one-attempt multi-file sends on physical iOS.
 - [ ] Verify large-inbox confirmation, changed manifests while confirming, exhausted-file subsets, retries retaining local files and limits, new-link/account-switch draft reset, and share-extension limit entry with VoiceOver and Dynamic Type.
+
+## Bounded account history
+
+History collects at most 100 pages of 100 compact summaries, with a 1 MiB body
+bound and 30-second aggregate deadline. A later-page failure, repeated cursor,
+oversized response or page ceiling preserves the previous local history. Only a
+complete snapshot can reconcile missing server records. Compact inbox counts use
+current completed files and never interpret an empty child list as zero or infer
+that every current child is saved. Local saved paths remain available; detailed
+inbox refresh determines exact saved status. Updates commit in one coordinated
+batch, preserving local names and records from other contexts.
+
+- [x] The portable Swift harness passes eleven crypto/safety/history tests, including four pagination cases. Swift syntax, formatting and source gates pass.
+- [ ] Run `NavigationHistoryTests.testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames` and the complete XCTest suite on macOS/iOS. The added coordinated-persistence test has not run in Linux.
+- [ ] Verify multi-page History against the real server, interrupted second-page loading, account switching, restored local files and very large history on a device. Portable collector tests do not validate native URLSession/UI/file-coordination behavior.

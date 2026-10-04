@@ -50,6 +50,21 @@ fun ReceiveScreen(
             viewModel.setVisible(false)
         }
     }
+    state.downloadConsent?.let { consent ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelDownload,
+            title = { Text("Download these files?") },
+            text = {
+                Text(
+                    "${consent.fileCount} files · ${android.text.format.Formatter.formatFileSize(context, consent.remainingBytes)}. This download is larger than 100 MiB. Keep the app open while saving."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmDownload) { Text("Download and save") }
+            },
+            dismissButton = { TextButton(onClick = viewModel::cancelDownload) { Text("Cancel") } },
+        )
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -164,6 +179,7 @@ fun ReceiveScreen(
                     progress = { state.downloadProgress },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                TextButton(onClick = viewModel::cancelDownload) { Text("Cancel") }
             } else if (state.slotStatus == "has_uploads") {
                 Button(onClick = viewModel::downloadReceivedFiles) {
                     Text(stringResource(R.string.save_files))

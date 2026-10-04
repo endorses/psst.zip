@@ -7,9 +7,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -510,13 +510,21 @@ func (s *Server) redeemPairing(w http.ResponseWriter, r *http.Request) {
 	s.loginResponse(w, r, u, session, token, true)
 }
 func (s *Server) users(w http.ResponseWriter, r *http.Request) {
-	users, err := s.queries.Users()
+	limit, ok := pageLimit(w, r)
+	if !ok {
+		return
+	}
+	users, next, err := s.queries.UsersPage(limit, r.URL.Query().Get("after"))
+	if errors.Is(err, database.ErrInvalidPage) {
+		writeError(w, 400, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"users": users})
+	writeJSON(w, 200, map[string]any{"users": users, "next_cursor": next})
 }
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -635,7 +643,21 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 		}
 		owner = ""
 	}
-	ids, err := s.queries.OwnedIDs("transfer", owner)
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 100 {
+			writeError(w, 400, "page limit must be between 1 and 100")
+			return
+		}
+		limit = value
+	}
+	page, err := s.queries.ResourceIDsPage(owner, limit, r.URL.Query().Get("after"))
+	ids := page.Transfers
+	if errors.Is(err, database.ErrInvalidPage) {
+		writeError(w, 400, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
@@ -643,22 +665,20 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 	for _, id := range ids {
 		t, err := s.queries.GetTransfer(id)
 		if err != nil {
-			continue
+			writeError(w, 500, "could not read resource")
+			return
 		}
 		count, size, err := s.queries.FileCountAndSize(id)
-		if err != nil {
-			continue
-		}
-		manifest, err := s.queries.HasManifest(id)
-		if err != nil {
-			continue
-		}
-		item := TransferResponse{ID: t.ID, Status: t.Status, FileCount: count, TotalSize: size, HasManifest: manifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt}
-		item.Files, err = s.filePolicy(t)
 		if err != nil {
 			writeError(w, 500, "could not read file counters")
 			return
 		}
+		manifest, err := s.queries.HasManifest(id)
+		if err != nil {
+			writeError(w, 500, "could not read manifest status")
+			return
+		}
+		item := TransferResponse{ID: t.ID, Status: t.Status, FileCount: count, TotalSize: size, HasManifest: manifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt, Files: []FileInfo{}}
 		if t.CompletedAt.Valid {
 			item.CompletedAt = &t.CompletedAt.Time
 		}
@@ -666,49 +686,53 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			item.DownloadedAt = &t.DownloadedAt.Time
 		}
 		if owner == "" {
-			item.OwnerID, _ = s.queries.Owner("transfer", id)
+			item.OwnerID, err = s.queries.Owner("transfer", id)
+			if err != nil {
+				writeError(w, 500, "could not read resource owner")
+				return
+			}
 		}
 		transfers = append(transfers, item)
 	}
-	ids, err = s.queries.OwnedIDs("slot", owner)
-	if err != nil {
-		writeError(w, 500, "database error")
-		return
-	}
-	for _, id := range ids {
+	for _, id := range page.Slots {
 		slot, err := s.queries.GetSlot(id)
 		if err != nil {
-			continue
+			writeError(w, 500, "could not read inbox")
+			return
 		}
-		children, err := s.queries.ListSlotTransfers(id)
+		count, completed, total, err := s.queries.SlotResourceCounts(id)
 		if err != nil {
-			continue
+			writeError(w, 500, "could not read inbox counters")
+			return
 		}
-		infos := []SlotTransferInfo{}
-		var total int64
-		for _, child := range children {
-			count, size, err := s.queries.FileCountAndSize(child.ID)
-			if err != nil {
-				continue
-			}
-			if size < 0 || total > math.MaxInt64-size {
-				writeError(w, 500, "resource size overflow")
-				return
-			}
-			total += size
-			infos = append(infos, SlotTransferInfo{TransferID: child.ID, Status: child.Status, FileCount: count})
-		}
-		item := SlotResponse{ID: id, Status: slot.Status, Transfers: infos, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt}
-		if err := s.slotPolicy(&item, slot); err != nil {
+		item := SlotResponse{ID: id, Status: slot.Status, Transfers: []SlotTransferInfo{}, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt, FileCount: &count, TotalSize: &total}
+		if err := s.slotPolicy(&item, slot, completed); err != nil {
 			writeError(w, 500, "could not read inbox counters")
 			return
 		}
 		if owner == "" {
-			item.OwnerID, _ = s.queries.Owner("slot", id)
-			item.TotalSize = &total
+			item.OwnerID, err = s.queries.Owner("slot", id)
+			if err != nil {
+				writeError(w, 500, "could not read inbox owner")
+				return
+			}
 		}
 		slots = append(slots, item)
 	}
+
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"transfers": transfers, "slots": slots})
+	writeJSON(w, 200, map[string]any{"transfers": transfers, "slots": slots, "next_cursor": page.NextCursor})
+}
+
+func pageLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
+	limit := 100
+	if value := r.URL.Query().Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 || parsed > 100 {
+			writeError(w, 400, "page limit must be between 1 and 100")
+			return 0, false
+		}
+		limit = parsed
+	}
+	return limit, true
 }

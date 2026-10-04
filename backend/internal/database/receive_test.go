@@ -134,16 +134,16 @@ func TestReceivePolicyMigrationPreservesLegacyRows(t *testing.T) {
 	}
 	q := NewQueries(db)
 	until := time.Now().Add(time.Hour)
-	if err := q.CreateSlot("legacy", until, []byte("private-token-hash")); err != nil {
+	if _, err := db.Exec(`INSERT INTO slots(id,expires_at,delete_token_hash) VALUES(?,?,?)`, "legacy", until, []byte("private-token-hash")); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CreateTransfer("existing", until, 0, nil); err != nil {
+	if _, err := db.Exec(`INSERT INTO transfers(id,expires_at) VALUES(?,?)`, "existing", until); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.LinkSlotTransfer("legacy", "existing"); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CreateFile("known-file", "existing", 42); err != nil {
+	if _, err := db.Exec(`INSERT INTO files(id,transfer_id,size) VALUES(?,?,?)`, "known-file", "existing", 42); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

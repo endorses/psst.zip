@@ -143,6 +143,10 @@ func TestExhaustedCleanupRetainsPayloadUntilFinalReaderCloses(t *testing.T) {
 	if !store.HasReaders(id) {
 		t.Fatal("reader lease missing")
 	}
+	before, err := env.queries.ResourceUsage("")
+	if err != nil || before.ReservedBytes != int64(4+len("encrypted manifest")) {
+		t.Fatalf("active reader reservation lost: %+v %v", before, err)
+	}
 	files, err := env.queries.ListFiles(id)
 	if err != nil || len(files) != 1 {
 		t.Fatal(err)
@@ -162,6 +166,10 @@ func TestExhaustedCleanupRetainsPayloadUntilFinalReaderCloses(t *testing.T) {
 	sweep(t, env)
 	if size, err := fixtureStore(t, env).Size(id + "/" + files[0].ID); err != nil || size != 0 {
 		t.Fatalf("cleanup did not release closed payload: %d %v", size, err)
+	}
+	after, err := env.queries.ResourceUsage("")
+	if err != nil || after.ReservedBytes != int64(len("encrypted manifest")) || after.OccupiedBytes != after.ReservedBytes {
+		t.Fatalf("closed reader reservation not released: %+v %v", after, err)
 	}
 }
 

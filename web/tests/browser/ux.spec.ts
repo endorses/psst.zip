@@ -95,10 +95,10 @@ test("live history keeps known data when offline and recovers automatically", as
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await expect(page.locator("article").first()).toBeVisible();
-  await page.route("**/api/v1/auth/resources", (route) => route.abort());
+  await page.route("**/api/v1/auth/resources?*", (route) => route.abort());
   await expect(page.getByText(/Offline — last updated/)).toBeVisible({ timeout: 10000 });
   await expect(page.locator("article").first()).toBeVisible();
-  await page.unroute("**/api/v1/auth/resources");
+  await page.unroute("**/api/v1/auth/resources?*");
   await expect(page.getByText(/Offline — last updated/)).toHaveCount(0, { timeout: 15000 });
 });
 

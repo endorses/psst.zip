@@ -65,6 +65,7 @@ data class ReceiveUiState(
     val connectionError: Boolean = false,
     val savedFileCount: Int = 0,
     val keyUnavailable: Boolean = false,
+    val downloadConsent: zip.psst.android.data.InboxDownloadConsent? = null,
 )
 
 class ReceiveViewModel(application: Application) : AndroidViewModel(application) {
@@ -168,6 +169,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         if (!value) {
             sseJob?.cancel()
             pollJob?.cancel()
+            cancelDownload()
         } else {
             val id = _uiState.value.slotId
             val client = slotClient
@@ -440,12 +442,31 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun downloadReceivedFiles() {
+    fun downloadReceivedFiles() = downloadReceivedFiles(null)
+
+    fun confirmDownload() {
+        val approved = _uiState.value.downloadConsent ?: return
+        downloadReceivedFiles(approved)
+    }
+
+    fun cancelDownload() {
+        downloadJob?.cancel()
+        _uiState.update { it.copy(downloadConsent = null) }
+    }
+
+    private fun downloadReceivedFiles(approved: zip.psst.android.data.InboxDownloadConsent?) {
         val slotId = _uiState.value.slotId ?: return
-        val key = encryptionKeyBytes ?: return
+        if (encryptionKeyBytes == null || _uiState.value.keyUnavailable) return
         if (_uiState.value.isDownloading) return
 
-        _uiState.update { it.copy(isDownloading = true, error = null, downloadComplete = false) }
+        _uiState.update {
+            it.copy(
+                isDownloading = true,
+                error = null,
+                downloadComplete = false,
+                downloadConsent = null,
+            )
+        }
 
         downloadJob =
             viewModelScope.launch(Dispatchers.IO) {
@@ -480,6 +501,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     require(transfers.isNotEmpty()) { "No new completed uploads to save" }
                     val received = mutableListOf<Pair<String, FileMetadata>>()
                     val childKeys = mutableMapOf<String, ByteArray>()
+                    val fingerprints = mutableMapOf<String, String>()
                     val privateKey = inboxKeys.read(row)
                     for (transfer in transfers) {
                         val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
@@ -499,6 +521,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         require(manifest.files.size == transfer.fileCount) {
                             "Manifest file count mismatch"
                         }
+                        fingerprints[transfer.transferId] =
+                            java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(manifestBytes)
+                                .joinToString("") { "%02x".format(it) }
                         childKeys[transfer.transferId] = decoded.key
                         received += manifest.files.map { transfer.transferId to it }
                     }
@@ -511,6 +537,31 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     require(totalFiles == transfers.sumOf { it.fileCount }) {
                         "Manifest file count mismatch"
                     }
+                    val savedIds =
+                        Json.decodeFromString<Set<String>>(
+                            dao.getById(slotId)?.savedFileIdsJson ?: "[]"
+                        )
+                    val preflight =
+                        zip.psst.android.data.InboxDownloadPreflight.inspect(
+                            row.serverUrl,
+                            requireNotNull(row.accountId),
+                            slotId,
+                            received,
+                            savedIds,
+                            fingerprints,
+                        )
+                    val saver = zip.psst.android.data.GuestFileSaver(context)
+                    saver.requireSpace(preflight.remainingBytes)
+                    if (
+                        zip.psst.android.data.InboxDownloadPreflight.needsConsent(
+                            preflight,
+                            approved,
+                        )
+                    ) {
+                        _uiState.update { it.copy(downloadConsent = preflight) }
+                        return@launch
+                    }
+                    var remainingBytes = preflight.remainingBytes
                     var savedFiles = 0
                     for (transfer in transfers) {
                         check(app.prefs.historyAccess.value == access) { "Your account changed" }
@@ -526,10 +577,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 check(app.prefs.historyAccess.value == access) {
                                     "Your account changed"
                                 }
-                                zip.psst.android.data.GuestFileSaver(context).save(
-                                    fileMeta,
-                                    plaintext,
-                                ) {}
+                                saver.requireSpace(remainingBytes)
+                                saver.save(fileMeta, plaintext) {}
                             },
                             recordSaved = { child ->
                                 historyMutex.withLock {
@@ -549,6 +598,14 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     .toSet(),
                             recordFileSaved = { blobId ->
                                 dao.recordSavedFile(slotId, "${transfer.transferId}/$blobId")
+                                remainingBytes -=
+                                    received
+                                        .first {
+                                            it.first == transfer.transferId &&
+                                                it.second.blobId == blobId
+                                        }
+                                        .second
+                                        .size
                                 val savedCount =
                                     Json.decodeFromString<Set<String>>(
                                             dao.getById(slotId)?.savedFileIdsJson ?: "[]"
@@ -588,14 +645,20 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             isDownloading = false,
                             error =
-                                app.getString(
-                                    zip.psst.android.R.string
-                                        .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
-                                ),
+                                if (e is zip.psst.android.data.InsufficientDownloadSpaceException)
+                                    e.message
+                                else
+                                    app.getString(
+                                        zip.psst.android.R.string
+                                            .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
+                                    ),
                         )
                     }
                 } finally {
                     client.close()
+                    _uiState.update {
+                        if (it.slotId == slotId) it.copy(isDownloading = false) else it
+                    }
                 }
             }
     }

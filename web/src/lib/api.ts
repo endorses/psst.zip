@@ -1,6 +1,7 @@
 import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
 import { validateLinkLimit } from "./link-limits.ts";
+import { resourceLimitError } from "./resource-policy.ts";
 
 /**
  * Thin wrapper around the backend REST API.
@@ -11,6 +12,12 @@ const API_BASE = "/api/v1";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
+    const error = await res
+      .clone()
+      .json()
+      .catch(() => null);
+    const policyError = resourceLimitError(error?.code);
+    if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);
   }
@@ -20,6 +27,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) {
+    const error = await res
+      .clone()
+      .json()
+      .catch(() => null);
+    const policyError = resourceLimitError(error?.code);
+    if (policyError) throw policyError;
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${res.status}: ${text}`);
   }

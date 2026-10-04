@@ -447,10 +447,12 @@ cannot consume that lane.
 
 Only configure proxy networks you control. The backend trusts a forwarded chain
 only from those peers and resolves it from the nearest trusted hop; forwarded
-headers from other clients do not change limiter identity. Deployment-specific
-proxy wiring still needs verification. This development checkpoint does not yet
-enforce the planned global disk or billing-cycle traffic budgets; the traffic
-monitor remains observational.
+headers from other clients do not change limiter identity. The bundled proxy
+was tested against spoofed forwarding headers; external proxy chains still need
+deployment-specific verification. Persistent server/account storage, object and
+retention policies now enforce admission and disk reserves; see the
+[default resource profile](docs/security/resource-limits.md). Billing-cycle traffic
+budgets are still pending and the traffic monitor remains observational.
 
 Docker Compose also accepts:
 

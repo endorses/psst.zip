@@ -29,13 +29,31 @@ export interface Resource {
   owner_id?: string;
   transfers?: { transfer_id: string; status: string; file_count: number }[];
 }
+/** List endpoints provide aggregate counts; their empty child arrays are not an empty inbox. */
+export function resourceFileCount(resource: Resource): number | null {
+  if (Number.isSafeInteger(resource.file_count) && resource.file_count! >= 0)
+    return resource.file_count!;
+  // Compatibility with older detailed responses only when children are present.
+  if (resource.transfers?.length)
+    return resource.transfers.reduce((sum, child) => sum + child.file_count, 0);
+  return null;
+}
+export function receivedFileCount(resource: Resource): number | null {
+  if (Number.isSafeInteger(resource.completed_files) && resource.completed_files! >= 0)
+    return resource.completed_files!;
+  if (resource.transfers?.length)
+    return resource.transfers
+      .filter((child) => child.status === "complete")
+      .reduce((sum, child) => sum + child.file_count, 0);
+  return null;
+}
 export class AccountError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public code?: string,
-  ) {
+  status: number;
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
+    this.status = status;
+    this.code = code;
   }
 }
 export async function accountRequest<T>(path: string, method = "GET", body?: unknown): Promise<T> {
@@ -68,7 +86,11 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     } catch {
       /* Plain text errors remain useful. */
     }
-    throw new AccountError(response.status, detail || `Request failed (${response.status})`, code);
+    throw new AccountError(
+      response.status,
+      resourceLimitError(code)?.message || detail || `Request failed (${response.status})`,
+      code,
+    );
   }
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }
@@ -87,3 +109,4 @@ export function saveLinks(id: string, links: Record<string, string>) {
     /* Sharing remains available without persistent storage. */
   }
 }
+import { resourceLimitError } from "./resource-policy.ts";

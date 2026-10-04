@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 data class AuthResources(
     val transfers: List<AuthResourceTransfer> = emptyList(),
     val slots: List<AuthResourceSlot> = emptyList(),
+    @SerialName("next_cursor") val nextCursor: String? = null,
 )
 
 @Serializable
@@ -29,6 +30,9 @@ data class AuthResourceSlot(
     val transfers: List<AuthResourceChild> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,
+    @SerialName("file_count") val fileCount: Int = 0,
+    @SerialName("completed_files") val completedFiles: Long = 0,
+    @SerialName("total_size") val totalSize: Long = 0,
 )
 
 @Serializable

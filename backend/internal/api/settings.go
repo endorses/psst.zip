@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/endorses/psst.zip/backend/internal/database"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,8 +14,9 @@ const encryptedChunkSize int64 = 4 * 1024 * 1024
 const encryptedChunkOverhead int64 = 60
 
 type serverSettings struct {
-	MaxFileSize        int64 `json:"max_file_size"`
-	MaxFileSizeCeiling int64 `json:"max_file_size_ceiling"`
+	ResourcePolicy     database.ResourcePolicy `json:"resource_policy"`
+	MaxFileSize        int64                   `json:"max_file_size"`
+	MaxFileSizeCeiling int64                   `json:"max_file_size_ceiling"`
 }
 
 func (s *Server) settings() (serverSettings, error) {
@@ -32,7 +34,8 @@ func (s *Server) settings() (serverSettings, error) {
 	if value > ceiling {
 		value = ceiling
 	}
-	return serverSettings{value, ceiling}, nil
+	policy, err := s.queries.ResourcePolicy()
+	return serverSettings{MaxFileSize: value, MaxFileSizeCeiling: ceiling, ResourcePolicy: policy}, err
 }
 
 func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {

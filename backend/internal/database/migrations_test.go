@@ -28,13 +28,13 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 	if _, err := legacy.Exec(`INSERT INTO transfers (id, expires_at, max_downloads) VALUES (?, ?, ?)`, "existing-transfer", time.Now().Add(time.Hour).UTC(), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CreateFile("existing-file", "existing-transfer", 4); err != nil {
+	if _, err := legacy.Exec(`INSERT INTO files(id,transfer_id,size) VALUES(?,?,?)`, "existing-file", "existing-transfer", 4); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.UpdateFileOffset("existing-file", 4, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.SaveManifest("existing-transfer", []byte("opaque manifest")); err != nil {
+	if _, err := legacy.Exec(`INSERT INTO manifests(transfer_id,data) VALUES(?,?)`, "existing-transfer", []byte("opaque manifest")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := legacy.Exec(`UPDATE transfers SET status='complete', completed_at=CURRENT_TIMESTAMP WHERE id='existing-transfer'`); err != nil {

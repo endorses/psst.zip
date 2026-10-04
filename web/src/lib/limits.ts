@@ -15,6 +15,7 @@ export function assertFileSize(size: number, limit = MAX_FILE_BYTES): void {
 export interface ServerLimits {
   max_file_size: number;
   max_file_size_ceiling: number;
+  resource_policy?: ResourcePolicy;
 }
 export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimits> {
   const response = await fetch("/api/v1/config", {
@@ -37,9 +38,16 @@ export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimi
     ceiling > MAX_FILE_BYTES
   )
     throw new Error("This server's file limit is not supported by this app.");
-  return { max_file_size: value, max_file_size_ceiling: ceiling as number };
+  return {
+    max_file_size: value,
+    max_file_size_ceiling: ceiling as number,
+    ...(config.resource_policy === undefined
+      ? {}
+      : { resource_policy: validateResourcePolicy(config.resource_policy) }),
+  };
 }
 
 export async function loadUploadLimit(signal?: AbortSignal): Promise<number> {
   return (await loadServerLimits(signal)).max_file_size;
 }
+import { validateResourcePolicy, type ResourcePolicy } from "./resource-policy.ts";

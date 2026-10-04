@@ -1,53 +1,24 @@
 import Foundation
 
-struct ResourceList: Decodable {
-    struct Transfer: Decodable {
-        let id: String
-        let status: String
-        let file_count: Int
-        let total_size: Int64
-        let expires_at: String?
-        let created_at: String?
-        let downloaded_at: String?
-        let download_count: Int?
-        let max_downloads: Int?
-    }
-
-    struct Slot: Decodable {
-        struct Child: Decodable { let transfer_id: String
-            let status: String
-            let file_count: Int
-        }
-
-        let id: String
-        let status: String
-        let expires_at: String?
-        let created_at: String?
-        let transfers: [Child]
-        let receive_protocol: Int?
-        let max_files: Int?
-        let reserved_files: Int64?
-    }
-
-    let transfers: [Transfer]
-    let slots: [Slot]
-}
-
 @MainActor
 extension TransferHistoryStore {
     func refresh(session: DeviceSession) async throws {
-        let data = try await AccountHTTP.request(server: session.serverURL, path: "auth/resources", token: session.token)
+        let list = try await HistorySnapshot.load { path in
+            try await AccountHTTP.request(server: session.serverURL, path: path, token: session.token)
+        }
         guard SecretStore.session == session else { throw AccountError.changed }
-        let list = try JSONDecoder().decode(ResourceList.self, from: data)
         reload()
         let old = visible(for: session)
+        let previous = Dictionary(old.map { ($0.localID, $0) }, uniquingKeysWith: { first, _ in first })
+        var refreshed: [TransferRecord] = []
         func date(_ raw: String?) -> Date? {
             ServerTimestamp.parse(raw)
         }
         for transfer in list.transfers where UUID(uuidString: transfer.id) != nil {
-            var record = old.first { $0.id == transfer.id && $0.isSlot != true } ?? TransferRecord(id: transfer.id, direction: .sent, state: .inProgress,
-                                                                                                   createdAt: date(transfer.created_at) ?? Date(), expiresAt: date(transfer.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
-                                                                                                   serverURL: session.serverURL, ownerID: session.userID, isSlot: false)
+            let localID = "resource|" + session.serverURL + "|" + session.userID + "|" + transfer.id + "|transfer"
+            var record = previous[localID] ?? TransferRecord(id: transfer.id, direction: .sent, state: .inProgress,
+                                                             createdAt: date(transfer.created_at) ?? Date(), expiresAt: date(transfer.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
+                                                             serverURL: session.serverURL, ownerID: session.userID, isSlot: false)
             if transfer.status == "expired" {
                 record.state = .expired
             } else if transfer.status == "revoked" {
@@ -63,25 +34,28 @@ extension TransferHistoryStore {
             record.fileCount = max(record.fileCount, transfer.file_count)
             record.totalSize = max(record.totalSize, transfer.total_size)
             record.maxDownloads = transfer.max_downloads
-            try update(record)
+            refreshed.append(record)
         }
         for slot in list.slots where UUID(uuidString: slot.id) != nil {
-            var record = old.first { $0.id == slot.id && $0.isSlot == true } ?? TransferRecord(id: slot.id, direction: .received, state: .inProgress,
-                                                                                               createdAt: date(slot.created_at) ?? Date(), expiresAt: date(slot.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
-                                                                                               serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
+            let localID = "resource|" + session.serverURL + "|" + session.userID + "|" + slot.id + "|slot"
+            var record = previous[localID] ?? TransferRecord(id: slot.id, direction: .received, state: .inProgress,
+                                                             createdAt: date(slot.created_at) ?? Date(), expiresAt: date(slot.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
+                                                             serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
             record.receiveProtocol = slot.receive_protocol
             record.maxFiles = slot.max_files
             record.reservedFiles = slot.reserved_files
-            let complete = slot.transfers.filter { $0.status == "complete" }
-            record.fileCount = complete.reduce(0) { $0 + $1.file_count }
-            record.state = slot.status == "expired" ? .expired : slot.status == "revoked" ? .revoked : complete.isEmpty ? .inProgress :
-                complete.allSatisfy { (record.savedTransfers ?? []).contains($0.transfer_id) } ? .saved : .complete
-            try update(record)
+            record.fileCount = slot.completed_files
+            record.totalSize = slot.total_size
+            // Compact summaries do not identify each saved child. Keep local paths,
+            // but only detailed inbox refresh can confirm all current arrivals saved.
+            record.state = slot.status == "expired" ? .expired : slot.status == "revoked" ? .revoked : slot.completed_files == 0 ? .inProgress : .complete
+            refreshed.append(record)
         }
         let ids = Set(list.transfers.map { $0.id + "|transfer" } + list.slots.map { $0.id + "|slot" })
         for var record in old where record.ownerID != nil && !ids.contains(record.id + (record.isSlot == true ? "|slot" : "|transfer")) {
             record.state = record.isExpired ? .expired : .revoked
-            try update(record)
+            refreshed.append(record)
         }
+        try applySnapshot(refreshed)
     }
 }

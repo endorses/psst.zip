@@ -114,6 +114,29 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertTrue(relaunched.visible(for: another).isEmpty)
     }
 
+    func testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "history-batch-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let file = directory.appendingPathComponent("history.json")
+        let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+        var named = owned("refreshed")
+        named.customTitle = "Keep this local name"
+        try store.add(named)
+        try store.add(owned("another"))
+        var incoming = owned("refreshed")
+        incoming.fileCount = 250
+        try store.applySnapshot([incoming])
+        let restored = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertEqual(restored.records.count, 2)
+        XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.fileCount, 250)
+        XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
+        XCTAssertNotNil(restored.records.first(where: { $0.id == "another" }))
+    }
+
     func testAdminAndRestrictedSessionsExposeOnlyDeviceDownloads() {
         for state in ["admin", "restricted"] {
             var blocked = session

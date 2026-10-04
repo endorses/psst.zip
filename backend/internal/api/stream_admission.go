@@ -151,6 +151,9 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 				return
 			}
 			expires = resource.ExpiresAt
+			if resource.Status == "pending" && resource.PendingExpiresAt.Valid && resource.PendingExpiresAt.Time.Before(expires) {
+				expires = resource.PendingExpiresAt.Time
+			}
 			owner, err = s.queries.Owner("transfer", transfer)
 			if err != nil {
 				writeError(w, 500, "database error")

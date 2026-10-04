@@ -97,6 +97,9 @@ func (w *Worker) sweepExhaustedPayloads() {
 			continue
 		}
 		err = w.files.DeleteAll(id)
+		if err == nil {
+			err = w.queries.ReleasePayloads(id)
+		}
 		unlock()
 		if err != nil {
 			log.Printf("cleanup: delete exhausted payloads for transfer %s: %v", id, err)

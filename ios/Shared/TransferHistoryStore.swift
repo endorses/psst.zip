@@ -87,6 +87,17 @@ final class TransferHistoryStore {
         }
     }
 
+    /// A paginated refresh commits once. Rewriting the complete history for each
+    /// row would make a large, valid snapshot quadratic in disk IO.
+    func applySnapshot(_ records: [TransferRecord]) throws {
+        try mutate { values in
+            let existing = Dictionary(values.map { ($0.localID, $0) }, uniquingKeysWith: { first, _ in first })
+            let incoming = Dictionary(records.map { ($0.localID, $0) }, uniquingKeysWith: { _, last in last })
+            values.removeAll { incoming[$0.localID] != nil }
+            values.append(contentsOf: incoming.values.map { $0.preservingLocalName(from: existing[$0.localID]) })
+        }
+    }
+
     func rename(_ record: TransferRecord, name: String, session: DeviceSession) throws {
         guard record.belongs(to: session), session.canTransfer, SecretStore.session?.accountID == session.accountID else { throw AccountError.changed }
         let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)

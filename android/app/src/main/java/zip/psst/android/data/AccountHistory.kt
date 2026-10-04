@@ -1,5 +1,6 @@
 package zip.psst.android.data
 
+import zip.psst.shared.api.AuthResourceSlot
 import zip.psst.shared.api.AuthResources
 import kotlinx.coroutines.CancellationException
 
@@ -41,30 +42,30 @@ internal suspend fun syncAccountHistory(
     }
     for (slot in resources.slots) {
         if (currentAccess() != access) throw CancellationException("Account changed")
-        val children = slot.transfers.filter { it.status == "complete" }
-        val snapshot =
-            ReceivedSnapshot(
-                children.associate { it.transferId to ReceivedChild(it.fileCount) },
-                parseHistoryExpiry(slot.expiresAt),
-            )
-        dao.mergeAccountResource(
-            TransferHistoryEntity(
-                id = slot.id,
-                type = "received",
-                fileCount = children.sumOf { it.fileCount },
-                totalSize = 0,
-                serverUrl = access.serverUrl,
-                encryptionKey = "",
-                status =
-                    if (slot.status in listOf("revoked", "expired")) "unavailable" else slot.status,
-                accountId = access.accountId,
-                createdAt = parseHistoryExpiry(slot.createdAt) ?: System.currentTimeMillis(),
-                expiresAt = parseHistoryExpiry(slot.expiresAt),
-            ),
-            access,
-            snapshot,
-        )
+        dao.mergeAccountResource(slotHistoryResource(slot, access), access)
     }
+}
+
+/** Compact resource summaries contain authoritative counts, never an authoritative child list. */
+internal fun slotHistoryResource(
+    slot: AuthResourceSlot,
+    access: HistoryAccess,
+): TransferHistoryEntity {
+    require(slot.fileCount >= 0 && slot.completedFiles in 0..slot.fileCount.toLong()) {
+        "Invalid inbox summary counts"
+    }
+    return TransferHistoryEntity(
+        id = slot.id,
+        type = "received",
+        fileCount = slot.completedFiles.toInt(),
+        totalSize = 0, // Encrypted server bytes cannot be presented as plaintext file sizes.
+        serverUrl = access.serverUrl,
+        encryptionKey = "",
+        status = if (slot.status in listOf("revoked", "expired")) "unavailable" else slot.status,
+        accountId = access.accountId,
+        createdAt = parseHistoryExpiry(slot.createdAt) ?: System.currentTimeMillis(),
+        expiresAt = parseHistoryExpiry(slot.expiresAt),
+    )
 }
 
 internal fun mergeAccountResource(

@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/endorses/psst.zip/backend/internal/database"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/endorses/psst.zip/backend/internal/store"
 )
@@ -73,6 +75,16 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 
 	id, err := h.store.CreateUpload(transferID, length)
 	if err != nil {
+		if errors.Is(err, database.ErrResourceLimit) || errors.Is(err, database.ErrDiskCapacity) {
+			code, status := "resource_limit", http.StatusForbidden
+			if errors.Is(err, database.ErrDiskCapacity) {
+				code, status = "disk_capacity", http.StatusInsufficientStorage
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
+			return
+		}
 		if errors.Is(err, ErrUploadFileLimit) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
@@ -169,7 +181,25 @@ func (h *Handler) ServePatch(w http.ResponseWriter, r *http.Request, fileID stri
 	r.Body = http.MaxBytesReader(w, r.Body, remaining)
 	// Write data to file store at the current offset.
 	n, err := h.fileStore.SaveAt(storageKey, r.Body, offset)
+	var bodyLimit *http.MaxBytesError
+	if errors.As(err, &bodyLimit) {
+		if truncateErr := h.fileStore.Truncate(storageKey, offset); truncateErr != nil {
+			http.Error(w, "could not discard rejected upload bytes", 500)
+			return
+		}
+	} else if err != nil && n > 0 { // Preserve resumable progress and occupied-byte accounting.
+		if updateErr := h.store.UpdateOffset(fileID, offset+n, false); updateErr != nil {
+			http.Error(w, "could not persist partial upload offset", 500)
+			return
+		}
+	}
 	if err != nil {
+		if errors.Is(err, database.ErrDiskCapacity) || errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInsufficientStorage)
+			json.NewEncoder(w).Encode(map[string]string{"code": "disk_capacity", "error": err.Error()})
+			return
+		}
 		var limitError *http.MaxBytesError
 		if errors.As(err, &limitError) {
 			http.Error(w, "chunk exceeds upload length", http.StatusRequestEntityTooLarge)

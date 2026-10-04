@@ -11,6 +11,9 @@ type FileStore interface {
 	// SaveAt writes data from r starting at the given byte offset.
 	SaveAt(key string, r io.Reader, offset int64) (int64, error)
 
+	// Truncate discards bytes written by a rejected upload request.
+	Truncate(key string, size int64) error
+
 	// Load returns a ReadCloser for the file identified by key.
 	Load(key string) (io.ReadCloser, error)
 

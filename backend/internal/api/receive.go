@@ -47,17 +47,21 @@ func remainingFiles(slot *database.Slot) *int64 {
 	n := max(int64(0), int64(slot.MaxFiles)-slot.ReservedFiles)
 	return &n
 }
-func (s *Server) slotPolicy(response *SlotResponse, slot *database.Slot) error {
+func (s *Server) slotPolicy(response *SlotResponse, slot *database.Slot, counts ...int64) error {
 	response.ReceiveProtocol = slot.ReceiveProtocol
 	response.RecipientPublicKey = slot.RecipientPublicKey
 	response.MaxFiles = slot.MaxFiles
 	response.ReservedFiles = slot.ReservedFiles
 	response.RemainingFiles = remainingFiles(slot)
-	completed, err := s.queries.CompletedSlotFiles(slot.ID)
-	if err != nil {
-		return err
+	if len(counts) > 0 {
+		response.CompletedFiles = counts[0]
+	} else {
+		completed, err := s.queries.CompletedSlotFiles(slot.ID)
+		if err != nil {
+			return err
+		}
+		response.CompletedFiles = completed
 	}
-	response.CompletedFiles = completed
 	return nil
 }
 func (s *Server) filePolicy(t *database.Transfer) ([]FileInfo, error) {

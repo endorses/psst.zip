@@ -11,7 +11,7 @@ async function session(page: import("@playwright/test").Page, signedIn = true) {
         : { error: "unauthorized" },
     }),
   );
-  await page.route("**/api/v1/auth/resources", (route) =>
+  await page.route("**/api/v1/auth/resources?*", (route) =>
     route.fulfill({ json: { transfers: [], slots: [] } }),
   );
   await page.route("**/api/v1/auth/status", (route) =>

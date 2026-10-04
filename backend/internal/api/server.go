@@ -32,6 +32,7 @@ type Server struct {
 
 // NewServer creates a Server with all dependencies wired up.
 func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Server {
+	q.SetCapacityPaths(cfg.StoragePath, cfg.DBPath)
 	s := &Server{
 		cfg:                 cfg,
 		queries:             q,
@@ -73,6 +74,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/health", s.health)
 		r.Get("/config", s.publicConfig)
 		r.With(s.requireAdmin).Patch("/admin/settings", s.updateSettings)
+		r.With(s.requireAdmin).Get("/admin/resource-policy", s.getResourcePolicy)
+		r.With(s.requireAdmin).Patch("/admin/resource-policy", s.updateResourcePolicy)
+		r.With(s.requireRegularUser).Get("/auth/usage", s.accountUsage)
 		r.With(s.requireAdmin).Get("/admin/overview", s.getOverview)
 		r.With(s.requireAdmin).Get("/admin/traffic", s.getTraffic)
 		r.With(s.requireAdmin).Patch("/admin/traffic/settings", s.updateTrafficSettings)

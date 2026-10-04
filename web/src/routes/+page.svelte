@@ -15,6 +15,10 @@
     type HistoryLabels,
   } from "$lib/history-labels";
   import ServerSettings from "$lib/components/ServerSettings.svelte";
+  import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
+  import AccountUsage from "$lib/components/AccountUsage.svelte";
+  import { loadResourcePage, loadUsersPage } from "$lib/resource-history";
+  import { resourceFileCount, receivedFileCount } from "$lib/account";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import LinkCard from "$lib/components/LinkCard.svelte";
@@ -138,6 +142,13 @@
     transfers = $state<Resource[]>([]),
     slots = $state<Resource[]>([]);
   let links = $state<Record<string, string>>({});
+  let usersCursor = $state(""),
+    usersNext = $state<string | null>(null),
+    usersPrevious = $state<string[]>([]);
+  let historyCursor = $state(""),
+    historyNext = $state<string | null>(null),
+    historyPrevious = $state<string[]>([]),
+    historyLoading = $state(false);
   let receiveUrl = $state(""),
     receiveId = $state("");
   let pairingQr = $state(""),
@@ -271,10 +282,53 @@
     labels = loadLabels(user.id);
   }
   async function refreshHistory(owner = epoch) {
-    const result = await request<{ transfers: Resource[]; slots: Resource[] }>("/auth/resources");
-    if (owner !== epoch) return;
+    const cursor = historyCursor;
+    const result = await loadResourcePage(cursor);
+    if (owner !== epoch || cursor !== historyCursor) return;
     transfers = result.transfers ?? [];
     slots = result.slots ?? [];
+    historyNext = result.next_cursor;
+  }
+  async function turnHistory(direction: "next" | "previous" | "first") {
+    if (historyLoading) return;
+    const owner = epoch;
+    const cursor =
+      direction === "next" ? historyNext : direction === "previous" ? historyPrevious.at(-1) : "";
+    if (cursor == null) return;
+    historyLoading = true;
+    error = "";
+    try {
+      const result = await loadResourcePage(cursor);
+      if (owner !== epoch) return;
+      historyPrevious =
+        direction === "next"
+          ? [...historyPrevious, historyCursor]
+          : direction === "previous"
+            ? historyPrevious.slice(0, -1)
+            : [];
+      historyCursor = cursor;
+      historyNext = result.next_cursor;
+      transfers = result.transfers;
+      slots = result.slots;
+    } catch (cause) {
+      if (owner === epoch) error = message(cause);
+    } finally {
+      if (owner === epoch) historyLoading = false;
+    }
+  }
+  async function turnUsers(direction: "next" | "previous") {
+    const owner = epoch;
+    const cursor = direction === "next" ? usersNext : usersPrevious.at(-1);
+    if (cursor == null) return;
+    await act(async () => {
+      const result = await loadUsersPage(cursor);
+      if (owner !== epoch) return;
+      usersPrevious =
+        direction === "next" ? [...usersPrevious, usersCursor] : usersPrevious.slice(0, -1);
+      usersCursor = cursor;
+      usersNext = result.next_cursor;
+      users = result.users;
+    });
   }
   async function refreshReceived(id: string, owner = epoch) {
     let slot;
@@ -360,8 +414,15 @@
     received = [];
     transfers = [];
     slots = [];
+    historyCursor = "";
+    historyNext = null;
+    historyPrevious = [];
+    historyLoading = false;
     sessions = [];
     users = [];
+    usersCursor = "";
+    usersNext = null;
+    usersPrevious = [];
   }
   async function act(action: () => Promise<void>) {
     if (busy) return;
@@ -493,8 +554,11 @@
         if (owner === epoch) sessions = result.sessions;
       }
       if (next === "Users") {
-        const result = await request<{ users: User[] }>("/admin/users");
-        if (owner === epoch) users = result.users;
+        const result = await loadUsersPage(usersCursor);
+        if (owner === epoch) {
+          users = result.users;
+          usersNext = result.next_cursor;
+        }
       }
     });
   }
@@ -892,8 +956,10 @@
         {:else if tab === "Traffic"}<TrafficPanel />
         {:else if tab === "Server"}<h1>Server settings</h1>
           <ServerSettings />
+          <ResourcePolicySettings />
         {:else if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>
+          <AccountUsage />
           <div class="settings-list">
             {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
               <a
@@ -968,10 +1034,11 @@
           >
         {:else if tab === "History"}<div class="heading">
             <h1>Your transfers</h1>
-            <button disabled={busy} onclick={() => select("History")}
+            <button disabled={busy || historyLoading} onclick={() => select("History")}
               ><Icon name="Refresh" size={17} />Refresh</button
             >
           </div>
+          <AccountUsage />
           <label
             >Show<select bind:value={historyFilter}
               ><option value="all">All transfers</option><option value="transfers">Sent</option
@@ -982,7 +1049,9 @@
             Encryption keys stay on the device that created the link. This browser can reopen its
             own links; transfers from other devices can still be revoked.
           </p>
-          {#if !transfers.length && !slots.length}<p class="empty">No transfers yet.</p>{/if}
+          {#if !transfers.length && !slots.length}<p class="empty">
+              {historyCursor ? "No transfers on this page." : "No transfers yet."}
+            </p>{/if}
           {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )]
             .filter((item) => historyFilter === "all" || item.kind === historyFilter)
             .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}<article
@@ -1007,9 +1076,12 @@
                     Created {new Date(item.created_at).toLocaleString()}
                   </p>{/if}
                 <p>
-                  {item.kind === "slots"
-                    ? `${item.transfers?.reduce((n, t) => n + t.file_count, 0) ?? item.file_count ?? 0} files received`
-                    : `${item.file_count ?? 0} files · ${status(item)}`}
+                  {(item.kind === "slots" ? receivedFileCount(item) : resourceFileCount(item)) ===
+                  null
+                    ? "File count unavailable"
+                    : item.kind === "slots"
+                      ? `${receivedFileCount(item)} files received`
+                      : `${resourceFileCount(item)} files · ${status(item)}`}
                 </p>
                 {#if item.kind === "slots" && item.receive_protocol === 2}<p class="muted small">
                     {item.reserved_files ?? 0} file allocations used{item.remaining_files == null
@@ -1081,8 +1153,26 @@
           {#if ![...transfers.map( (t) => ({ ...t, kind: "transfers" }), ), ...slots.map( (t) => ({ ...t, kind: "slots" }), )].some((item) => historyFilter === "all" || item.kind === historyFilter) && (transfers.length || slots.length)}<p
               class="empty"
             >
-              No transfers in this filter.
+              No transfers in this filter on this page.
             </p>{/if}
+          {#if historyPrevious.length || historyNext}<nav
+              class="history-pages"
+              aria-label="History pages"
+            >
+              <button
+                disabled={busy || historyLoading || !historyPrevious.length}
+                onclick={() => turnHistory("previous")}>Newer transfers</button
+              >
+              <span class="muted small">Page {historyPrevious.length + 1}</span>
+              <button
+                disabled={busy || historyLoading || !historyNext}
+                onclick={() => turnHistory("next")}>Older transfers</button
+              >
+              {#if historyPrevious.length}<button
+                  disabled={busy || historyLoading}
+                  onclick={() => turnHistory("first")}>Newest page</button
+                >{/if}
+            </nav>{/if}
           {#if pendingDelete}
             <RevokeDialog
               {busy}
@@ -1158,6 +1248,15 @@
           <p class="muted">
             Only administrators can create accounts. Disabling an account signs out its devices.
           </p>
+          {#if usersPrevious.length || usersNext}<nav aria-label="Account pages">
+              <button disabled={busy || !usersPrevious.length} onclick={() => turnUsers("previous")}
+                >Previous accounts</button
+              >
+              <span class="muted small">Page {usersPrevious.length + 1}</span>
+              <button disabled={busy || !usersNext} onclick={() => turnUsers("next")}
+                >More accounts</button
+              >
+            </nav>{/if}
           {#each users as account}<article class="resource">
               <div>
                 <strong>{account.username}</strong>
@@ -1246,7 +1345,7 @@
                   password: newPassword,
                   role: newRole,
                 });
-                users = [...users, result.user];
+                users = [...users, result.user].slice(-50);
                 newUsername = "";
                 newPassword = "";
                 newConfirmation = "";

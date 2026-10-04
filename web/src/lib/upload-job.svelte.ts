@@ -1,7 +1,8 @@
 import { uploadEncryptedFile } from "./stream-upload";
 import { newEncryptionId, wireSize, FILE_CHUNK_SIZE } from "./chunked-files";
 import { generateKey, exportKey, encryptManifest, type FileManifestEntry } from "./crypto";
-import { assertFileSize, loadUploadLimit } from "./limits";
+import { assertFileSize, loadUploadLimit, loadServerLimits } from "./limits";
+import { ResourceLimitError, resourceLimitError, type ResourcePolicy } from "./resource-policy";
 import { getSlotAvailability } from "./api";
 import { parseReceiveFragment } from "./receive-keys";
 import { sealSubmissionKey, encodeReceiveEnvelope } from "./receive-crypto";
@@ -15,9 +16,12 @@ export function formatSize(bytes: number) {
 export class UploadJob {
   files = $state<File[]>([]);
   limit = $state<number | null>(null);
+  resourcePolicy = $state<ResourcePolicy | null>(null);
   async refreshLimit() {
     try {
-      this.limit = await loadUploadLimit();
+      const limits = await loadServerLimits();
+      this.limit = limits.max_file_size;
+      this.resourcePolicy = limits.resource_policy ?? null;
     } catch (cause) {
       this.limit = null;
       this.error = cause instanceof Error ? cause.message : "Could not load the file limit.";
@@ -104,6 +108,14 @@ export class UploadJob {
         signal,
       });
       check();
+      if (!res.ok) {
+        const body = await res
+          .clone()
+          .json()
+          .catch(() => null);
+        const policyError = resourceLimitError(body?.code);
+        if (policyError) throw policyError;
+      }
       if (!res.ok && res.status === 403) {
         const body = await res
           .clone()
@@ -296,7 +308,8 @@ export class UploadJob {
       ];
       this.error =
         error instanceof Error &&
-        (safeErrors.includes(error.message) ||
+        (error instanceof ResourceLimitError ||
+          safeErrors.includes(error.message) ||
           /^Files must be no larger than [0-9.]+ MiB\.$/.test(error.message) ||
           error.message ===
             "Could not load this server's file limit. Check your connection and retry.")

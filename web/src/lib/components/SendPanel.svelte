@@ -6,6 +6,7 @@
   import LinkCard from "./LinkCard.svelte";
   import { fileLimitLabel } from "$lib/limits";
   import OptionalLimit from "./OptionalLimit.svelte";
+  import { capacityLabel, durationLabel } from "$lib/resource-policy";
   let {
     accountId,
     slotId,
@@ -129,6 +130,14 @@
       }}
     /></label
   >
+  {#if job.resourcePolicy}<p class="muted small">
+      Server policy: {capacityLabel(job.resourcePolicy.account_storage_bytes)} reserved storage per account,
+      {job.resourcePolicy.account_files} file allocations, links up to {durationLabel(
+        job.resourcePolicy.max_retention_seconds,
+      )}. Unfinished uploads expire after {durationLabel(
+        job.resourcePolicy.pending_upload_seconds,
+      )}. Remaining account/server capacity and disk reserves can further restrict uploads.
+    </p>{/if}
   {#if job.files.length}<p class="selection-summary">
       {job.files.length} file{job.files.length === 1 ? "" : "s"} · {formatSize(
         job.files.reduce((n, f) => n + f.size, 0),

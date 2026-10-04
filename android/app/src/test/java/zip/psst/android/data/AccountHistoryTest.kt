@@ -1,5 +1,8 @@
 package zip.psst.android.data
 
+import zip.psst.shared.api.AuthResourceSlot
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -17,6 +20,38 @@ class AccountHistoryTest {
             "has_uploads",
             accountId = "alice",
         )
+
+    @Test
+    fun compactInboxSummaryCountsHundredsOfChildrenWithoutEmptyArraysResettingHistory() {
+        val slot =
+            AuthResourceSlot("large-inbox", "has_uploads", fileCount = 350, completedFiles = 250)
+        assertTrue(slot.transfers.isEmpty())
+        val summary = slotHistoryResource(slot, access)
+        assertEquals(250, summary.fileCount)
+        val first = mergeAccountResource(null, summary, access)!!
+        assertEquals(250, first.fileCount)
+        assertEquals("has_uploads", first.status)
+        val local =
+            first.copy(
+                encryptionKey = "private-local-marker",
+                savedFileIdsJson =
+                    Json.encodeToString((0 until 250).map { "child-$it/blob" }.toSet()),
+                status = "complete",
+            )
+        val unchanged = mergeAccountResource(local, summary, access)!!
+        assertEquals("has_uploads", unchanged.status)
+        assertEquals(local.savedFileIdsJson, unchanged.savedFileIdsJson)
+        assertEquals(local.encryptionKey, unchanged.encryptionKey)
+        val newUpload =
+            mergeAccountResource(
+                local,
+                slotHistoryResource(slot.copy(completedFiles = 251), access),
+                access,
+            )!!
+        assertEquals("has_uploads", newUpload.status)
+        assertEquals(251, newUpload.fileCount)
+        assertEquals(local.savedFileIdsJson, newUpload.savedFileIdsJson)
+    }
 
     @Test
     fun absenceVerificationSharesTheManifestBudgetAndDoesNotMutateStatus() {

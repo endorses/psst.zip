@@ -1,5 +1,6 @@
 import { encryptFile, wireSize } from "./chunked-files.ts";
 import type { EncryptionKey } from "./crypto.ts";
+import { ResourceLimitError, resourceLimitError } from "./resource-policy.ts";
 
 /** One authenticated frame in memory; reconcile a lost PATCH response with tus HEAD. */
 export async function uploadEncryptedFile(options: {
@@ -24,6 +25,8 @@ export async function uploadEncryptedFile(options: {
   });
   if (!creation.ok) {
     const error = await creation.json().catch(() => null);
+    const policyError = resourceLimitError(error?.code);
+    if (policyError) throw policyError;
     if (error?.code === "receive_file_limit")
       throw new Error(
         "This receive link has no file allocations left. Ask its owner for a new link.",
@@ -73,6 +76,7 @@ export async function uploadEncryptedFile(options: {
         options.onProgress(offset);
       } catch (cause) {
         signal.throwIfAborted();
+        if (cause instanceof ResourceLimitError) throw cause;
         if (++failures > 3) throw cause;
         const head = await fetch(url, {
           method: "HEAD",
@@ -102,7 +106,12 @@ function patchFrame(
 ): Promise<number> {
   if (headers.Authorization)
     return fetch(url, { method: "PATCH", headers, body, signal, credentials: "omit" }).then(
-      (response) => {
+      async (response) => {
+        if (!response.ok) {
+          const error = await response.json().catch(() => null);
+          const policyError = resourceLimitError(error?.code);
+          if (policyError) throw policyError;
+        }
         const offset = response.headers.get("Upload-Offset");
         if (!response.ok || offset === null) throw new Error("Upload interrupted");
         progress(body.byteLength);
@@ -118,6 +127,17 @@ function patchFrame(
     xhr.upload.onprogress = (event) => progress(Math.min(body.byteLength, event.loaded));
     xhr.onload = () => {
       finish();
+      if (xhr.status < 200 || xhr.status >= 300) {
+        try {
+          const policyError = resourceLimitError(JSON.parse(xhr.responseText).code);
+          if (policyError) {
+            reject(policyError);
+            return;
+          }
+        } catch {
+          /* Generic status handling below. */
+        }
+      }
       const offset = xhr.getResponseHeader("Upload-Offset");
       if (xhr.status < 200 || xhr.status >= 300 || offset === null)
         reject(new Error("Upload interrupted"));

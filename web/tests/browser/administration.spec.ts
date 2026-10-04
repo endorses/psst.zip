@@ -178,13 +178,13 @@ test("admin metrics and resources distinguish unavailable, degraded and stale da
   );
   await expect(page.getByText("Measured lifetime", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Overview", exact: true }).click();
-  await page.route("**/api/v1/auth/resources?all=true", (route) =>
+  await page.route("**/api/v1/auth/resources?*all=true*", (route) =>
     route.fulfill({ status: 503, json: { error: "Resource service unavailable" } }),
   );
   await page.getByRole("button", { name: "View resources", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Resources could not be loaded");
   await expect(page.getByText("No resources found.", { exact: true })).toHaveCount(0);
-  await page.unroute("**/api/v1/auth/resources?all=true");
+  await page.unroute("**/api/v1/auth/resources?*all=true*");
   await page.getByRole("button", { name: "Refresh resources", exact: true }).click();
   await expect(page.getByText("Resources could not be loaded", { exact: false })).toHaveCount(0);
 });

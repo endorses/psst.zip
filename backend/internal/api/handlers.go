@@ -26,9 +26,9 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	if !validTransferPolicy(w, req) {
 		return
 	}
-	expiry := s.cfg.DefaultExpiry
-	if req.ExpiresInSeconds > 0 {
-		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
+	expiry, ok := s.effectiveRetention(w, req.ExpiresInSeconds, s.cfg.DefaultExpiry)
+	if !ok {
+		return
 	}
 
 	token, hash, err := newDeleteToken()
@@ -41,6 +41,9 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(expiry)
 
 	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash, identity(r).user.ID); err != nil {
+		if resourceFailure(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create transfer")
 		return
 	}
@@ -69,7 +72,7 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
+	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
 		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return
 	}
@@ -195,6 +198,9 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.queries.SaveManifest(id, data); err != nil {
+		if resourceFailure(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to save manifest")
 		return
 	}
@@ -352,6 +358,13 @@ func (s *Server) tusHead(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) tusPatch(w http.ResponseWriter, r *http.Request) {
+	r.Body = &capacityBody{ReadCloser: r.Body, queries: s.queries}
+	if err := s.queries.CheckWriteCapacity(); err != nil {
+		if !resourceFailure(w, err) {
+			writeError(w, 500, "could not check storage capacity")
+		}
+		return
+	}
 	transferID, fileID := chi.URLParam(r, "transferID"), chi.URLParam(r, "fileID")
 	unlock, ok := acquireResource(w, r, transferID, false)
 	if !ok {
@@ -386,7 +399,7 @@ func (s *Server) activeTransfer(w http.ResponseWriter, id string, mutable bool) 
 		writeError(w, http.StatusNotFound, "transfer not found")
 		return nil
 	}
-	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
+	if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
 		writeError(w, http.StatusGone, "transfer expired or revoked")
 		return nil
 	}
@@ -417,9 +430,9 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	if !validSlotPolicy(w, &req) {
 		return
 	}
-	expiry := s.cfg.DefaultExpiry
-	if req.ExpiresInSeconds > 0 {
-		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
+	expiry, ok := s.effectiveRetention(w, req.ExpiresInSeconds, s.cfg.DefaultExpiry)
+	if !ok {
+		return
 	}
 
 	maxExpiry := s.cfg.MaxSlotExpiry
@@ -444,6 +457,9 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	expiresAt := time.Now().Add(expiry)
 
 	if err := s.queries.CreateReceiveSlot(id, expiresAt, hash, identity(r).user.ID, req.ReceiveProtocol, req.RecipientPublicKey, req.MaxFiles); err != nil {
+		if resourceFailure(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create slot")
 		return
 	}
@@ -480,7 +496,7 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 
 	infos := make([]SlotTransferInfo, 0, len(transfers))
 	for _, t := range transfers {
-		if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) {
+		if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
 			continue
 		}
 		fc, _, _ := s.queries.FileCountAndSize(t.ID)
@@ -549,9 +565,9 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	if !s.slotOwnerActive(w, slotID) {
 		return
 	}
-	expiry := s.cfg.DefaultExpiry
-	if req.ExpiresInSeconds > 0 {
-		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
+	expiry, ok := s.effectiveRetention(w, req.ExpiresInSeconds, s.cfg.DefaultExpiry)
+	if !ok {
+		return
 	}
 
 	token, hash, err := newDeleteToken()
@@ -567,6 +583,9 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		expiresAt = slot.ExpiresAt
 	}
 	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash, s.cfg.MaxSlotTransfers); err != nil {
+		if resourceFailure(w, err) {
+			return
+		}
 		if err == database.ErrSlotFileQuota {
 			policyError(w, 403, "receive_file_limit", err.Error())
 			return

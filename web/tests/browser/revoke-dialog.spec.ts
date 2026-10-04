@@ -15,7 +15,7 @@ for (const viewport of [
       expires_at: new Date(Date.now() + 86400000).toISOString(),
       transfers: [],
     }));
-    await page.route("**/api/v1/auth/resources", (route) =>
+    await page.route("**/api/v1/auth/resources?*", (route) =>
       route.fulfill({ json: { transfers: [], slots } }),
     );
     let deletes = 0;

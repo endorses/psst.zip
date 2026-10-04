@@ -7,6 +7,7 @@ import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -107,17 +108,58 @@ class AuthApi(
             }
         }
 
-    /** Lists only the authenticated user's resources; never requests administrator-wide history. */
+    /** A complete bounded account snapshot; partial pages are never returned as a full listing. */
     @Throws(Exception::class)
     suspend fun resources(): AuthResources =
+        withTimeout(30_000L) {
+            val transfers = mutableMapOf<String, AuthResourceTransfer>()
+            val slots = mutableMapOf<String, AuthResourceSlot>()
+            val cursors = mutableSetOf<String>()
+            var after: String? = null
+            var pages = 0
+            do {
+                require(pages++ < 100) {
+                    "History is too large to refresh safely. Existing local history was kept."
+                }
+                val page = resourcesPage(after, 100)
+                page.transfers.forEach { transfers[it.id] = it }
+                page.slots.forEach { slots[it.id] = it }
+                after = page.nextCursor
+                require(after == null || cursors.add(after)) {
+                    "The server repeated a history page"
+                }
+            } while (after != null)
+            AuthResources(transfers.values.toList(), slots.values.toList())
+        }
+
+    /** Bounded page API for native callers that expose explicit incremental history loading. */
+    @Throws(Exception::class)
+    suspend fun resourcesPage(after: String?, limit: Int): AuthResources =
         withTimeout(10_000L) {
+            require(limit in 1..100)
+            require(
+                after == null || (after.length in 1..2048 && after.matches(Regex("[A-Za-z0-9_-]+")))
+            )
             val response =
                 client.get("${config.apiBaseUrl}/auth/resources") {
                     expectSuccess = false
                     token?.let { bearerAuth(it) }
+                    parameter("limit", limit)
+                    after?.let { parameter("after", it) }
                 }
             response.checkAuthenticatedWrite()
-            response.body()
+            val page = response.readControlJson<AuthResources>(1024 * 1024)
+            require(page.transfers.size + page.slots.size <= limit) {
+                "The server returned too many history records"
+            }
+            require(
+                page.nextCursor == null ||
+                    (page.nextCursor.length in 1..2048 &&
+                        page.nextCursor.matches(Regex("[A-Za-z0-9_-]+")))
+            ) {
+                "Invalid history cursor"
+            }
+            page
         }
 
     @Throws(Exception::class)

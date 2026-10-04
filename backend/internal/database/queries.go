@@ -9,15 +9,16 @@ import (
 
 // Transfer represents a row in the transfers table.
 type Transfer struct {
-	ID              string
-	Status          string
-	ExpiresAt       time.Time
-	MaxDownloads    int
-	DownloadCount   int
-	CreatedAt       time.Time
-	CompletedAt     sql.NullTime
-	DownloadedAt    sql.NullTime
-	DeleteTokenHash []byte
+	ID               string
+	PendingExpiresAt sql.NullTime
+	Status           string
+	ExpiresAt        time.Time
+	MaxDownloads     int
+	DownloadCount    int
+	CreatedAt        time.Time
+	CompletedAt      sql.NullTime
+	DownloadedAt     sql.NullTime
+	DeleteTokenHash  []byte
 }
 
 // File represents a row in the files table.
@@ -49,7 +50,8 @@ type Slot struct {
 
 // Queries wraps a *sql.DB and provides typed query methods.
 type Queries struct {
-	db *sql.DB
+	db       *sql.DB
+	capacity capacityConfig
 }
 
 // NewQueries returns a new Queries instance.
@@ -60,19 +62,15 @@ func NewQueries(db *sql.DB) *Queries {
 // --- Transfers ---
 
 func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int, deleteTokenHash []byte, owner ...string) error {
-	_, err := q.db.Exec(
-		`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash, owner_id) VALUES (?, 'pending', ?, ?, ?, ?)`,
-		id, expiresAt.UTC(), maxDownloads, deleteTokenHash, optionalOwner(owner),
-	)
-	return err
+	return q.allocationExec(0, false, &expiresAt, `INSERT INTO transfers (id,status,expires_at,max_downloads,delete_token_hash,owner_id) VALUES (?,'pending',?,?,?,?)`, id, expiresAt.UTC(), maxDownloads, deleteTokenHash, optionalOwner(owner))
 }
 
 func (q *Queries) GetTransfer(id string) (*Transfer, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash FROM transfers WHERE id = ?`, id,
+		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash,pending_expires_at FROM transfers WHERE id = ?`, id,
 	)
 	t := &Transfer{}
-	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash); err != nil {
+	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash, &t.PendingExpiresAt); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -150,11 +148,7 @@ func (q *Queries) ReserveFileDownload(transferID, fileID string) (bool, error) {
 // --- Files ---
 
 func (q *Queries) CreateFile(id, transferID string, size int64) error {
-	_, err := q.db.Exec(
-		`INSERT INTO files (id, transfer_id, size) VALUES (?, ?, ?)`,
-		id, transferID, size,
-	)
-	return err
+	return q.allocationExec(size, false, nil, `INSERT INTO files(id,transfer_id,size) VALUES(?,?,?)`, id, transferID, size)
 }
 
 func (q *Queries) GetFile(id string) (*File, error) {
@@ -230,11 +224,7 @@ const MaxManifestBytes = 1024 * 1024
 var ErrManifestTooLarge = errors.New("stored manifest exceeds supported 1 MiB size")
 
 func (q *Queries) SaveManifest(transferID string, data []byte) error {
-	_, err := q.db.Exec(
-		`INSERT OR REPLACE INTO manifests (transfer_id, data) VALUES (?, ?)`,
-		transferID, data,
-	)
-	return err
+	return q.allocationExec(int64(len(data)), true, nil, `INSERT INTO manifests(transfer_id,data) VALUES(?,?) ON CONFLICT(transfer_id) DO UPDATE SET data=excluded.data`, transferID, data)
 }
 
 func (q *Queries) GetManifest(transferID string) ([]byte, error) {
@@ -264,11 +254,7 @@ func (q *Queries) HasManifest(transferID string) (bool, error) {
 // --- Slots ---
 
 func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []byte, owner ...string) error {
-	_, err := q.db.Exec(
-		`INSERT INTO slots (id, status, expires_at, delete_token_hash, owner_id) VALUES (?, 'waiting', ?, ?, ?)`,
-		id, expiresAt.UTC(), deleteTokenHash, optionalOwner(owner),
-	)
-	return err
+	return q.allocationExec(0, false, &expiresAt, `INSERT INTO slots(id,status,expires_at,delete_token_hash,owner_id) VALUES(?,'waiting',?,?,?)`, id, expiresAt.UTC(), deleteTokenHash, optionalOwner(owner))
 }
 
 func (q *Queries) GetSlot(id string) (*Slot, error) {
@@ -320,7 +306,7 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 	// Compare parsed times, since historical rows use Go timestamp strings with
 	// different timezone offsets, which SQLite cannot order chronologically.
-	rows, err := q.db.Query(`SELECT id, expires_at, status FROM transfers`)
+	rows, err := q.db.Query(`SELECT id, expires_at, status,pending_expires_at FROM transfers`)
 	if err != nil {
 		return nil, err
 	}
@@ -331,10 +317,11 @@ func (q *Queries) ExpiredTransferIDs() ([]string, error) {
 		var id string
 		var expiresAt time.Time
 		var status string
-		if err := rows.Scan(&id, &expiresAt, &status); err != nil {
+		var pending sql.NullTime
+		if err := rows.Scan(&id, &expiresAt, &status, &pending); err != nil {
 			return nil, err
 		}
-		if status == "revoked" || !now.Before(expiresAt) {
+		if status == "revoked" || !now.Before(expiresAt) || (status == "pending" && pending.Valid && !now.Before(pending.Time)) {
 			ids = append(ids, id)
 		}
 	}
@@ -459,9 +446,9 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	if maxDownloads != 0 {
 		return errors.New("receive submissions cannot limit owner downloads")
 	}
-	tx, err := q.db.Begin()
+	tx, err := q.beginAllocation(0, false, &expiresAt)
 	if err != nil {
-		return err
+		return ResourceError(err)
 	}
 	defer tx.Rollback()
 	limit := 20
@@ -470,16 +457,16 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	}
 	reservation, err := tx.Exec(`UPDATE slots SET upload_count=upload_count+1 WHERE id=? AND status!='revoked' AND upload_count<? AND receive_protocol=2 AND (max_files=0 OR reserved_files<max_files)`, slotID, limit)
 	if err != nil {
-		return err
+		return ResourceError(err)
 	}
 	n, err := reservation.RowsAffected()
 	if err != nil {
-		return err
+		return ResourceError(err)
 	}
 	if n == 0 {
 		var exhausted bool
 		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM slots WHERE id=? AND max_files>0 AND reserved_files>=max_files)`, slotID).Scan(&exhausted); err != nil {
-			return err
+			return ResourceError(err)
 		}
 		if exhausted {
 			return ErrSlotFileQuota
@@ -489,17 +476,17 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash,owner_id)
  SELECT ?, 'pending', ?, ?, ?,owner_id FROM slots WHERE id = ? AND status != 'revoked'`, id, expiresAt.UTC(), maxDownloads, hash, slotID)
 	if err != nil {
-		return err
+		return ResourceError(err)
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return ResourceError(err)
 	}
 	if count == 0 {
 		return sql.ErrNoRows
 	}
 	if _, err := tx.Exec(`INSERT INTO slot_transfers (slot_id, transfer_id) VALUES (?, ?)`, slotID, id); err != nil {
-		return err
+		return ResourceError(err)
 	}
 	return tx.Commit()
 }

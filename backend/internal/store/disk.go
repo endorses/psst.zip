@@ -116,3 +116,5 @@ func (d *DiskStore) DeleteAll(prefix string) error {
 	}
 	return nil
 }
+
+func (d *DiskStore) Truncate(key string, size int64) error { return os.Truncate(d.path(key), size) }
