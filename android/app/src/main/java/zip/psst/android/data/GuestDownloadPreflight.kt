@@ -11,6 +11,7 @@ data class GuestDownloadConsent(
     val totalBytes: Long,
     val remainingBytes: Long,
     val redownloadMissing: Boolean,
+    val skippedBlobIds: Set<String> = emptySet(),
 )
 
 internal class InsufficientDownloadSpaceException :
@@ -29,12 +30,19 @@ internal object GuestDownloadPreflight {
         files: List<FileMetadata>,
         savedIds: Set<String>,
         redownloadMissing: Boolean,
+        exhaustedBlobIds: Set<String> = emptySet(),
     ): GuestDownloadConsent {
         val total = ManifestValidator.validate(Manifest(files = files))
         require(total <= MAX_TOTAL_BYTES) {
             "This transfer exceeds the supported total size of 1 TiB"
         }
-        val remaining = files.filterNot { it.blobId in savedIds }.sumOf { it.size }
+        val skipped =
+            files
+                .filter { it.blobId.lowercase() in exhaustedBlobIds && it.blobId !in savedIds }
+                .map { it.blobId }
+                .toSet()
+        val remaining =
+            files.filterNot { it.blobId in savedIds || it.blobId in skipped }.sumOf { it.size }
         return GuestDownloadConsent(
             origin,
             transferId,
@@ -42,11 +50,13 @@ internal object GuestDownloadPreflight {
             total,
             remaining,
             redownloadMissing,
+            skipped,
         )
     }
 
     fun needsConsent(current: GuestDownloadConsent, approved: GuestDownloadConsent?): Boolean =
-        current.totalBytes > AUTO_DOWNLOAD_BYTES && current != approved
+        (current.totalBytes > AUTO_DOWNLOAD_BYTES || current.skippedBlobIds.isNotEmpty()) &&
+            current != approved
 
     /**
      * Existing saved files/unfinished external writes already consume the measured free bytes.

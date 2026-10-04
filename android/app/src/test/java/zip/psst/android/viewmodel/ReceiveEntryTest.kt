@@ -34,7 +34,8 @@ class ReceiveEntryTest {
         val restored = restoreReceiveEntry(saved, access)
         assertEquals("original-slot", restored.slotId)
         assertEquals(key, restored.encryptionKey)
-        assertEquals("https://self-hosted.example/u/original-slot#$key", restored.uploadUrl)
+        assertNull(restored.uploadUrl)
+        assertTrue(restored.legacyReadOnly)
         assertEquals(2, restored.savedFileCount)
         assertTrue(restored.downloadComplete)
     }
@@ -54,6 +55,19 @@ class ReceiveEntryTest {
             ReceiveRetry.CREATE,
             ReceiveUiState(error = "Creation failed").retryAction(null),
         )
+    }
+
+    @Test
+    fun missingPrivateKeyKeepsOwnerSlotIdentityForPolicyPollingWithoutExposingSaveLink() {
+        val modern =
+            row().copy(id = "11111111-1111-4111-8111-111111111111", encryptionKey = "v2.$key")
+        val missing = restoreReceiveEntry(modern, access, privateKeyAvailable = false)
+        assertEquals(modern.id, missing.slotId)
+        assertTrue(missing.keyUnavailable)
+        assertNull(missing.uploadUrl)
+        val synced = restoreReceiveEntry(modern.copy(encryptionKey = ""), access)
+        assertEquals(modern.id, synced.slotId)
+        assertTrue(synced.keyUnavailable)
     }
 
     @Test

@@ -65,7 +65,7 @@ func TestAccountPolicyExistingSessionCannotContinueUpload(t *testing.T) {
 				env := setupAuthFixture(t, false)
 				user, token := addAccount(t, env, "owner", "user")
 				transfer := authRequest(t, env, "POST", "/transfers", token, nil, 201)["id"].(string)
-				slot := authRequest(t, env, "POST", "/slots", token, nil, 201)["id"].(string)
+				slot := authRequest(t, env, "POST", "/slots", token, fixtureSlotPolicy(), 201)["id"].(string)
 				_, headers := policyRequest(t, env, mode, token, "POST", "/transfers/"+transfer+"/files", "", map[string]string{"Tus-Resumable": "1.0.0", "Upload-Length": "4"}, 201)
 				upload := strings.TrimPrefix(headers.Get("Location"), "/api/v1")
 				if _, err := env.db.Exec(restriction.sql, user.ID); err != nil {
@@ -127,7 +127,7 @@ func TestAccountPolicyPublicCapabilityIgnoresAmbientAccountRestriction(t *testin
 		t.Run(role, func(t *testing.T) {
 			env := setupAuthFixture(t, false)
 			user, token := addAccount(t, env, "visitor", "user")
-			slot := authRequest(t, env, "POST", "/slots", env.userToken, nil, 201)["id"].(string)
+			slot := authRequest(t, env, "POST", "/slots", env.userToken, fixtureSlotPolicy(), 201)["id"].(string)
 			if role == "admin" {
 				if _, err := env.db.Exec(`UPDATE users SET role='admin' WHERE id=?`, user.ID); err != nil {
 					t.Fatal(err)
@@ -151,12 +151,14 @@ func TestAccountPolicyPublicCapabilityIgnoresAmbientAccountRestriction(t *testin
 			capability["Upload-Offset"] = "0"
 			capability["Content-Type"] = "application/offset+octet-stream"
 			policyRequest(t, env, "cookie", token, "PATCH", upload, "data", capability, 204)
-			policyRequest(t, env, "cookie", token, "POST", base+"/manifest", "opaque", capability, 204)
+			policyRequest(t, env, "cookie", token, "POST", base+"/manifest", string(fixtureReceiveEnvelope()), capability, 204)
 			policyRequest(t, env, "cookie", token, "POST", base+"/complete", "", capability, 204)
 			for _, path := range []string{base, base + "/manifest", upload} {
-				policyRequest(t, env, "cookie", token, "GET", path, "", nil, 200)
+				policyRequest(t, env, "cookie", token, "GET", path, "", nil, 403)
+				policyRequest(t, env, "bearer", env.userToken, "GET", path, "", nil, 200)
 			}
-			policyRequest(t, env, "cookie", token, "POST", base+"/downloaded", "", nil, 204)
+			policyRequest(t, env, "cookie", token, "POST", base+"/downloaded", "", nil, 403)
+			policyRequest(t, env, "bearer", env.userToken, "POST", base+"/downloaded", "", nil, 204)
 		})
 	}
 }
@@ -293,6 +295,6 @@ func TestAccountPolicyAdministratorResetRequiresFreshPassword(t *testing.T) {
 	authRequest(t, env, "GET", "/auth/me", token, nil, 401)
 	login = authRequest(t, env, "POST", "/auth/login", "", map[string]string{"username": user.Username, "password": "personal replacement", "session_type": "device"}, 200)
 	token = login["token"].(string)
-	authRequest(t, env, "POST", "/slots", token, nil, 201)
+	authRequest(t, env, "POST", "/slots", token, fixtureSlotPolicy(), 201)
 	authRequest(t, env, "POST", "/auth/pairings", token, nil, 201)
 }

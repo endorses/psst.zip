@@ -29,6 +29,7 @@ func removeTransfer(ctx context.Context, q *database.Queries, files store.FileSt
 	if err := q.RevokeTransfer(id); err != nil {
 		return err
 	}
+	store.CancelStreams(id)
 	var unlock func()
 	var err error
 	if try {
@@ -40,6 +41,12 @@ func removeTransfer(ctx context.Context, q *database.Queries, files store.FileSt
 		return err
 	}
 	defer unlock()
+	if try && store.HasReaders(id) {
+		return store.ErrResourceBusy
+	}
+	if err := store.WaitForReaders(ctx, id); err != nil {
+		return err
+	}
 	if err := files.DeleteAll(id); err != nil {
 		return err
 	}
@@ -72,6 +79,7 @@ func removeSlot(ctx context.Context, q *database.Queries, files store.FileStore,
 	if err != nil {
 		return err
 	}
+	store.CancelStreams("slot:" + id)
 	var cleanupError error
 	for _, child := range children {
 		cleanupError = errors.Join(cleanupError, removeTransfer(ctx, q, files, child, try))

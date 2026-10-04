@@ -60,7 +60,7 @@ internal suspend fun cleanupGuestUpload(
     token: String,
 ): Boolean {
     try {
-        val transfer = client.transfers.get(transferId)
+        val transfer = client.transfers.uploadStatus(transferId)
         require(transfer.id == transferId)
         if (transfer.status == zip.psst.shared.model.TransferStatus.COMPLETE) return true
         client.transfers.delete(transferId, token)

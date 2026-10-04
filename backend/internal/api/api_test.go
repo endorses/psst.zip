@@ -52,6 +52,7 @@ func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 	}
 
 	cfg := config.Config{
+		MaxStreamsPerAccount: 64, MaxStreamsPerIP: 64, MaxStreamsPerTransfer: 64, MaxStreamsPerSlot: 64,
 		ListenAddr:             ":0",
 		AuthAllowInsecureHTTP:  true,
 		StoragePath:            storagePath,
@@ -521,7 +522,7 @@ func TestSlotTransferFlow(t *testing.T) {
 	env := setup(t)
 
 	// Create slot.
-	resp, _ := http.Post(env.url("/api/v1/slots"), "application/json", nil)
+	resp, _ := http.Post(env.url("/api/v1/slots"), "application/json", strings.NewReader(fixtureSlotJSON))
 	var slot api.CreateSlotResponse
 	json.NewDecoder(resp.Body).Decode(&slot)
 	resp.Body.Close()
@@ -628,7 +629,7 @@ func TestTusOptions(t *testing.T) {
 // owner. Auth security tests use setupAuthFixture(false), the unwrapped router.
 func authenticatedFixture(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "" && (r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodHead) {
+		if r.Header.Get("Authorization") == "" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodHead) {
 			r.Header.Set("Authorization", "Bearer "+token)
 		}
 		next.ServeHTTP(w, r)

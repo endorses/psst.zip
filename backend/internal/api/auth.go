@@ -179,6 +179,11 @@ func (s *Server) requireUpload(next http.Handler) http.Handler {
 			return
 		}
 		for _, slot := range slots {
+			policy, err := s.queries.GetSlot(slot)
+			if err != nil || policy.ReceiveProtocol != 2 {
+				policyError(w, 403, "legacy_receive_disabled", "legacy receive links cannot accept submissions; create a new receive link")
+				return
+			}
 			if !s.slotOwnerActive(w, slot) {
 				return
 			}
@@ -649,6 +654,11 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		item := TransferResponse{ID: t.ID, Status: t.Status, FileCount: count, TotalSize: size, HasManifest: manifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt}
+		item.Files, err = s.filePolicy(t)
+		if err != nil {
+			writeError(w, 500, "could not read file counters")
+			return
+		}
 		if t.CompletedAt.Valid {
 			item.CompletedAt = &t.CompletedAt.Time
 		}
@@ -689,6 +699,10 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			infos = append(infos, SlotTransferInfo{TransferID: child.ID, Status: child.Status, FileCount: count})
 		}
 		item := SlotResponse{ID: id, Status: slot.Status, Transfers: infos, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt}
+		if err := s.slotPolicy(&item, slot); err != nil {
+			writeError(w, 500, "could not read inbox counters")
+			return
+		}
 		if owner == "" {
 			item.OwnerID, _ = s.queries.Owner("slot", id)
 			item.TotalSize = &total

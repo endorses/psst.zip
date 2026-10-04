@@ -50,17 +50,18 @@ export function classifyScanInput(raw: string): ScanInput | null {
     }
   }
   const match =
-    /^(https?:\/\/[^/?#]+)\/([du])\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})#([A-Za-z0-9_-]{43})=?$/i.exec(
+    /^(https?:\/\/[^/?#]+)\/([du])\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})#(v2\.)?([A-Za-z0-9_-]{43})=?$/i.exec(
       input,
     );
   if (!match || !["d", "u"].includes(match[2])) return null;
+  if ((match[2] === "u") !== (match[4] === "v2.")) return null;
   const origin = normalizeScanOrigin(match[1]);
   // A canonical 32-byte base64url key has two zero padding bits.
-  if (!origin || !"AEIMQUYcgkosw048".includes(match[4].at(-1)!)) return null;
+  if (!origin || !"AEIMQUYcgkosw048".includes(match[5].at(-1)!)) return null;
   return {
     kind: match[2] === "d" ? "download" : "upload",
     origin,
-    url: `${origin}/${match[2]}/${match[3].toLowerCase()}#${match[4]}`,
+    url: `${origin}/${match[2]}/${match[3].toLowerCase()}#${match[4] ?? ""}${match[5]}`,
   };
 }
 

@@ -116,12 +116,15 @@ test("revoking a slot blocks uploads from an already loaded page and a fresh upl
   context,
   request,
 }) => {
-  const created = await request.post("/api/v1/slots");
+  const publicKey = randomBytes(32).toString("base64url");
+  const created = await request.post("/api/v1/slots", {
+    data: { receive_protocol: 2, recipient_public_key: publicKey },
+  });
   expect(created.status()).toBe(201);
   const slot = (await created.json()) as { id: string; delete_token: string };
   expect(slot.delete_token).toEqual(expect.any(String));
   expect(slot.delete_token.length).toBeGreaterThan(0);
-  const link = `/u/${slot.id}#${randomBytes(32).toString("base64url")}`;
+  const link = `/u/${slot.id}#v2.${publicKey}`;
   await page.goto(link);
   const picker = page.locator('input[type="file"]');
   await expect(picker).toBeEnabled();
@@ -138,14 +141,12 @@ test("revoking a slot blocks uploads from an already loaded page and a fresh upl
 
   const createResponse = page.waitForResponse(
     (response) =>
-      new URL(response.url()).pathname === `/api/v1/slots/${slot.id}/transfers` &&
-      response.request().method() === "POST",
+      new URL(response.url()).pathname === `/api/v1/slots/${slot.id}/availability` &&
+      response.request().method() === "GET",
   );
   await page.getByRole("button", { name: "Send files", exact: true }).click();
   expect((await createResponse).status()).toBe(404);
-  await expect(
-    page.getByText("This link is no longer available. Ask for a new link."),
-  ).toBeVisible();
+  await expect(page.getByRole("alert")).toBeVisible();
 
   const freshPage = await context.newPage();
   await freshPage.goto(link);

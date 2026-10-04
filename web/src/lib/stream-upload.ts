@@ -20,8 +20,16 @@ export async function uploadEncryptedFile(options: {
     method: "POST",
     headers: { ...headers, "Upload-Length": String(wireSize(options.file.size)) },
     signal,
+    credentials: options.token ? "omit" : "same-origin",
   });
-  if (!creation.ok) throw new Error("Could not create file upload");
+  if (!creation.ok) {
+    const error = await creation.json().catch(() => null);
+    if (error?.code === "receive_file_limit")
+      throw new Error(
+        "This receive link has no file allocations left. Ask its owner for a new link.",
+      );
+    throw new Error("Could not create file upload");
+  }
   const location = creation.headers.get("Location");
   if (!location) throw new Error("Missing file upload location");
   const url = new URL(location, window.location.origin);
@@ -66,7 +74,13 @@ export async function uploadEncryptedFile(options: {
       } catch (cause) {
         signal.throwIfAborted();
         if (++failures > 3) throw cause;
-        const head = await fetch(url, { method: "HEAD", headers, signal, cache: "no-store" });
+        const head = await fetch(url, {
+          method: "HEAD",
+          headers,
+          signal,
+          cache: "no-store",
+          credentials: options.token ? "omit" : "same-origin",
+        });
         const text = head.headers.get("Upload-Offset"),
           next = Number(text);
         if (!head.ok || text === null || !Number.isSafeInteger(next) || next < offset || next > end)
@@ -86,6 +100,15 @@ function patchFrame(
   signal: AbortSignal,
   progress: (bytes: number) => void,
 ): Promise<number> {
+  if (headers.Authorization)
+    return fetch(url, { method: "PATCH", headers, body, signal, credentials: "omit" }).then(
+      (response) => {
+        const offset = response.headers.get("Upload-Offset");
+        if (!response.ok || offset === null) throw new Error("Upload interrupted");
+        progress(body.byteLength);
+        return Number(offset);
+      },
+    );
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const abort = () => xhr.abort();

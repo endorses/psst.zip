@@ -148,6 +148,21 @@ fun SendScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AccountIndicator()
+            if (!state.isUploading)
+                androidx.compose.material3.OutlinedTextField(
+                    value = state.maxDownloadsInput,
+                    onValueChange = viewModel::setMaxDownloads,
+                    label = { Text("Downloads per file (optional)") },
+                    supportingText = {
+                        Text("Empty means unlimited. Interrupted downloads and retries count too.")
+                    },
+                    keyboardOptions =
+                        androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             Text(
                 state.maxFileBytes?.let {
                     "Up to ${formatFileSize(it)} per file. Files are encrypted automatically."

@@ -60,17 +60,19 @@ final class SendViewModel {
     private var uploadPolicy: UploadSizePolicy
     private let serverConfig: ServerConfigManager
     private let historyStore: TransferHistoryStore
+    let maxDownloads: Int32
     private var client: ApiClient?
     private var origin: DeviceSession?
     private var runID = UUID()
     private var starting = false
 
     init(fileURLs: [URL], serverConfig: ServerConfigManager, historyStore: TransferHistoryStore,
-         limit: Int = BufferedUpload.maxFileBytes)
+         limit: Int = BufferedUpload.maxFileBytes, maxDownloads: Int32 = 0)
     {
         self.fileURLs = fileURLs
         self.serverConfig = serverConfig
         self.historyStore = historyStore
+        self.maxDownloads = maxDownloads
         uploadPolicy = UploadSizePolicy(processingCeiling: limit)
     }
 
@@ -129,16 +131,24 @@ final class SendViewModel {
                 self.client = nil
             }
             let key = try CryptoProvider.shared.generateKey()
-            let transfer = try await client.transfers.create()
+            let transfer = try await client.transfers.create(maxDownloads: maxDownloads)
             guard UUID(uuidString: transfer.id) != nil else { throw AccountError.request }
             let url = UrlHelper.shared.buildDownloadUrl(baseUrl: session.serverURL, transferId: transfer.id, key: key)
             var entry = TransferRecord(id: transfer.id, direction: .sent, state: .inProgress,
                                        createdAt: Date(), expiresAt: ServerTimestamp.parse(transfer.expiresAt),
                                        fileCount: fileURLs.count, totalSize: sizes.reduce(0, +), shareURL: nil,
-                                       serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, isSlot: false)
+                                       serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, isSlot: false, maxDownloads: Int(maxDownloads))
             try historyStore.add(entry)
             record = entry
             try entry.saveSecrets(link: url, deletionToken: transfer.deleteToken)
+            if maxDownloads > 0 {
+                let confirmed = try await client.transfers.get(transferId: transfer.id)
+                guard confirmed.maxDownloads == maxDownloads else {
+                    try await historyStore.revoke(entry, session: session)
+                    record = nil
+                    throw LinkLimitError.unsupportedServer
+                }
+            }
             // The allocation was persisted before checking cancellation, so it remains revocable.
             try serverConfig.check(session)
             let metadata = try await BufferedUpload.send(fileURLs: fileURLs, client: client, transferId: transfer.id,
@@ -196,7 +206,7 @@ final class SendViewModel {
                     return
                 }
             }
-            state = .failed(serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
+            state = .failed((error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
         }
     }
 }

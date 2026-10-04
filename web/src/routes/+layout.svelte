@@ -1,10 +1,15 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import type { Snippet } from "svelte";
+  import { onMount } from "svelte";
   import "$lib/theme.css";
   import ThemePicker from "$lib/components/ThemePicker.svelte";
   import { BRAND } from "$lib/brand";
   let { children }: { children: Snippet } = $props();
+  let httpWarning = $state(false);
+  onMount(() => {
+    httpWarning = location.protocol === "http:";
+  });
 </script>
 
 <div class="app" class:workspace-shell={$page.url.pathname === "/"}>
@@ -27,9 +32,19 @@
     </div>
   </header>
   <main id="main">
+    {#if httpWarning}<details class="notice http-notice" role="note">
+        <summary>This connection uses HTTP. Use trusted HTTPS.</summary>
+        <p>
+          Other people on the network can change this page and access files or account credentials.
+          Use trusted HTTPS for sensitive files.
+        </p>
+      </details>{/if}
     {#key $page.url.pathname}{@render children()}{/key}
   </main>
-  <footer>End-to-end encrypted. Files are never readable by the server.</footer>
+  <footer>
+    Files are encrypted on your device. Use trusted HTTPS and client software: this website depends
+    on the server that delivers it. Encryption does not verify the sender or make a file safe.
+  </footer>
 </div>
 
 <style>
@@ -37,6 +52,13 @@
     display: flex;
     flex-direction: column;
     min-height: 100dvh;
+  }
+  .http-notice {
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+  }
+  .http-notice summary {
+    cursor: pointer;
   }
   header {
     padding: 1.15rem max(1.25rem, calc((100vw - 1180px) / 2));

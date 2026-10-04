@@ -27,7 +27,9 @@
   "dependencies": {
     "@lucide/svelte": "^1.51.0",
     "@noble/ciphers": "2.4.0",
+    "@panva/hpke-noble": "1.1.7",
     "fflate": "^0.8.2",
+    "hpke": "1.1.7",
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",
     "tus-js-client": "^4.2.3"

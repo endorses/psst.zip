@@ -20,6 +20,16 @@ data class Transfer(
     // Counts requested file sets, not confirmed saves on the recipient's device.
     @SerialName("download_count") val downloadCount: Int = 0,
     @SerialName("downloaded_at") val downloadedAt: String? = null,
+    @SerialName("max_downloads") val maxDownloads: Int = 0,
+    val files: List<TransferFile> = emptyList(),
+)
+
+@Serializable
+data class TransferFile(
+    val id: String,
+    val size: Long = 0,
+    @SerialName("download_count") val downloadCount: Long? = null,
+    @SerialName("remaining_downloads") val remainingDownloads: Long? = null,
 )
 
 @Serializable

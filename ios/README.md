@@ -93,3 +93,22 @@ History labels each row Sent, Receive link or Downloaded and shows creation date
 - [ ] Verify newly entered and previously stored administrator sessions cannot send/create receive links or reveal personal account History; guest scanning and existing device downloads must remain usable.
 - [ ] Exercise mixed/large histories, rename/edit/cancel/clear, same IDs across resource types, names on a second server/account, relaunch and offline/local file access with Dynamic Type and VoiceOver in both appearances.
 - [ ] On real devices, test automatic rear selection, front-only/unavailable-camera behavior, permission recovery, interruption/retry, repeated entry/exit, rotation and background/foreground, torch accuracy, QR-image/paste alternatives and optical decoding for public and pairing links in both targets.
+
+## Private receive inboxes and link limits
+
+New receive links use `/u/{id}#v2.{public-key}`. Only the public key is shared; the private key is stored in the existing account/server/resource-scoped Keychain entry, separately from History metadata. Each guest submission generates a fresh symmetric file key and wraps it with RFC 9180 HPKE. Inbox listing, events, child metadata, files and receipts require the owning regular account. A paired or second device without the private key can manage/revoke a link but cannot save its contents. Pairing does not copy inbox private keys. Existing receive links are read-only: their owner can save old submissions, but guests must obtain a new receive link to send more files. Deploy the compatible backend and clients together; do not describe older clients as private inboxes.
+
+Send and Receive offer a collapsed **Link limits** section. Send limits apply separately to each file's started download responses; interruptions use an attempt. Receive limits count cumulative file allocations, including unfinished uploads, and deletion does not restore them. Zero/unset leaves only the optional creator limit disabled; server policy still applies. The share extension offers the same send limit before upload. A new main-app link starts with limits unset, while retry keeps the original job's selection.
+
+Scanned-download details display known remaining attempts without interpreting a missing counter as zero. An exhausted file cannot be fetched again, but its saved local copy stays openable and shareable. If only some files remain available, the app requests explicit permission to save that subset and does not acknowledge the whole transfer. Metadata is refreshed after attempts/errors. Counts are advisory; another recipient can consume an allowance before a request reaches the server.
+
+Both scanned downloads and owner inbox saves preflight manifests and free space. Receives above 100 MiB require confirmation of the file list and total size; an altered manifest invalidates that consent. The 256 MiB free-space reserve and 1 TiB aggregate ceiling apply independently of server upload settings.
+
+### Receive encryption validation
+
+Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy and limit parser against pinned Apple `swift-crypto` 3.12.3. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve and integer limits. This verifies the portable crypto implementation; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
+
+- [x] Seven portable Swift tests passed through the Docker harness, including all three provider fixtures and low-order inputs. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate.
+- [ ] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
+- [ ] Verify owner-only receive retrieval and acknowledgements, private-key survival after relaunch, a second paired device without keys, lost finalization responses, receive-file exhaustion and one-attempt multi-file sends on physical iOS.
+- [ ] Verify large-inbox confirmation, changed manifests while confirming, exhausted-file subsets, retries retaining local files and limits, new-link/account-switch draft reset, and share-extension limit entry with VoiceOver and Dynamic Type.

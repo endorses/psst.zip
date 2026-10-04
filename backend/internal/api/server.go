@@ -16,26 +16,32 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	requests        sync.WaitGroup
-	trafficDegraded atomic.Bool
-	cfg             config.Config
-	loginAccounts   *rateLimiter
-	passwordWork    chan struct{}
-	queries         *database.Queries
-	fileStore       store.FileStore
-	tusH            *tus.Handler
-	sseHub          *SSEHub
+	requests            sync.WaitGroup
+	admission           *streamAdmission
+	applicationRequests chan struct{}
+	recoveryRequests    chan struct{}
+	trafficDegraded     atomic.Bool
+	cfg                 config.Config
+	loginAccounts       *rateLimiter
+	passwordWork        chan struct{}
+	queries             *database.Queries
+	fileStore           store.FileStore
+	tusH                *tus.Handler
+	sseHub              *SSEHub
 }
 
 // NewServer creates a Server with all dependencies wired up.
 func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Server {
 	s := &Server{
-		cfg:           cfg,
-		queries:       q,
-		fileStore:     fs,
-		sseHub:        NewSSEHub(),
-		loginAccounts: newRateLimiter(1.0/30, 10),
-		passwordWork:  make(chan struct{}, 4),
+		cfg:                 cfg,
+		queries:             q,
+		fileStore:           fs,
+		sseHub:              NewSSEHub(),
+		loginAccounts:       newRateLimiter(1.0/30, 10),
+		passwordWork:        make(chan struct{}, 4),
+		admission:           newStreamAdmission(cfg),
+		applicationRequests: make(chan struct{}, finiteLimit(cfg.MaxActiveRequests, 128)),
+		recoveryRequests:    make(chan struct{}, finiteLimit(cfg.MaxRecoveryRequests, 32)),
 	}
 	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
 	s.tusH = tus.NewHandler(ts, fs, 0)
@@ -52,11 +58,13 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(securityHeadersMiddleware)
 	r.Use(s.corsMiddleware)
-	r.Use(s.authenticate)
+	r.Use(s.admitRequest)
 
 	// Global rate limiter (looser).
 	globalRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
-	r.Use(rateLimitMiddleware(globalRL, s.clientIP))
+	recoveryRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
+	r.Use(s.limitRequestRates(globalRL, recoveryRL))
+	r.Use(s.authenticate)
 
 	// Stricter rate limiter for creation endpoints.
 	creationRL := newRateLimiter(s.cfg.RateLimitCreation, s.cfg.RateLimitCreationBurst)
@@ -72,27 +80,31 @@ func (s *Server) Router() http.Handler {
 
 		// Transfer endpoints (send flow)
 		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/transfers", s.createTransfer)
-		r.Get("/transfers/{transferID}", s.getTransfer)
+		r.With(s.requireTransferRead).Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
 		r.With(s.requireUpload).Post("/transfers/{transferID}/complete", s.completeTransfer)
-		r.Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
-		r.With(s.requireUpload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
-		r.With(s.measureDownload).Get("/transfers/{transferID}/manifest", s.downloadManifest)
+		r.With(s.requireTransferRead).Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
+		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
+		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/manifest", s.downloadManifest)
+
+		r.Get("/transfers/{transferID}/upload-status", s.uploadStatus)
 
 		// Tus file upload endpoints
 		r.Options("/transfers/{transferID}/files", tus.ServeOptions)
 		r.With(s.requireUpload).Post("/transfers/{transferID}/files", s.tusCreate)
 		r.With(s.requireUpload).Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
-		r.With(s.requireUpload, s.measureUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
+		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
 
 		// File download
-		r.With(s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
+		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
 		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/slots", s.createSlot)
-		r.Get("/slots/{slotID}", s.getSlot)
+		r.With(s.requireInboxOwner).Get("/slots/{slotID}", s.getSlot)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
-		r.Get("/slots/{slotID}/events", s.slotEvents)
+		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)
+
+		r.Get("/slots/{slotID}/availability", s.slotAvailability)
 
 		// Slot-scoped transfer creation
 		r.With(rateLimitMiddleware(creationRL, s.clientIP)).Post("/slots/{slotID}/transfers", s.createSlotTransfer)

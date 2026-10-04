@@ -19,6 +19,21 @@ final class GuestDownloadTests: XCTestCase {
         ])
     }
 
+    func testDownloadCountersKeepUnknownDistinctFromExhaustedAndSavedCopyOpenable() throws {
+        let root = try directory()
+        let store = GuestDownloadStore(root: root)
+        var entry = record()
+        entry.remainingDownloads = ["one": 0]
+        try store.save(Data("abc".utf8), index: 0, record: &entry)
+        let reopened = GuestDownloadStore(root: root)
+        let restored = try XCTUnwrap(reopened.records.first)
+        XCTAssertEqual(restored.remainingDownloads?["one"], 0)
+        XCTAssertNil(restored.remainingDownloads?["two"])
+        XCTAssertNotNil(reopened.url(restored.files[0]))
+        XCTAssertFalse(restored.complete)
+        XCTAssertFalse(restored.receiptPending)
+    }
+
     func testOriginIsPartOfLocalIdentity() {
         XCTAssertNotEqual(GuestDownload.identity(origin: "http://one.example", transferID: "same"), GuestDownload.identity(origin: "http://two.example", transferID: "same"))
         XCTAssertEqual(GuestDownload.identity(origin: "http://one.example", transferID: "same"), GuestDownload.identity(origin: "http://one.example", transferID: "same"))

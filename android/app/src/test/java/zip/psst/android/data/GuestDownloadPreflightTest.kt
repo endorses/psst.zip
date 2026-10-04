@@ -8,6 +8,26 @@ import org.junit.Test
 class GuestDownloadPreflightTest {
     private val mib = 1024L * 1024
 
+    @Test
+    fun partialAvailableOnlyDownloadsNeedExplicitConsentEvenForSmallFiles() {
+        val available = file(10)
+        val exhausted = file(20, 'b')
+        val partial =
+            GuestDownloadPreflight.inspect(
+                "https://remote.test",
+                "transfer",
+                listOf(available, exhausted),
+                emptySet(),
+                false,
+                setOf(exhausted.blobId),
+            )
+        assertEquals(30, partial.totalBytes)
+        assertEquals(10, partial.remainingBytes)
+        assertEquals(setOf(exhausted.blobId), partial.skippedBlobIds)
+        assertTrue(GuestDownloadPreflight.needsConsent(partial, null))
+        assertFalse(GuestDownloadPreflight.needsConsent(partial, partial.copy()))
+    }
+
     private fun file(size: Long, digit: Char = 'a') =
         FileMetadata(
             "file-$digit.bin",

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/endorses/psst.zip/backend/internal/database"
+	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
 // --- Transfer handlers ---
@@ -22,6 +23,9 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validTransferPolicy(w, req) {
+		return
+	}
 	expiry := s.cfg.DefaultExpiry
 	if req.ExpiresInSeconds > 0 {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
@@ -83,6 +87,11 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		DownloadCount: t.DownloadCount,
 		CreatedAt:     t.CreatedAt,
 	}
+	resp.Files, err = s.filePolicy(t)
+	if err != nil {
+		writeError(w, 500, "database error")
+		return
+	}
 	if t.CompletedAt.Valid {
 		resp.CompletedAt = &t.CompletedAt.Time
 	}
@@ -108,6 +117,25 @@ func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 	if s.activeTransfer(w, id, true) == nil {
 		return
 	}
+	protocol, err := s.queries.TransferReceiveProtocol(id)
+	if err != nil {
+		writeError(w, 500, "database error")
+		return
+	}
+	if protocol == 2 {
+		manifest, err := s.queries.GetManifest(id)
+		if errors.Is(err, database.ErrManifestTooLarge) {
+			policyError(w, http.StatusRequestEntityTooLarge, "unsupported_manifest", err.Error())
+			return
+		}
+		if err != nil {
+			writeError(w, 400, "receive manifest required")
+			return
+		}
+		if !s.validateReceiveManifest(w, id, manifest) {
+			return
+		}
+	}
 	if err := s.queries.CompleteTransfer(id); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -132,10 +160,10 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Limit request body size for manifest uploads.
+	// Operators may lower the client-compatible ceiling, but cannot raise it.
 	maxSize := s.cfg.MaxManifestSize
-	if maxSize <= 0 {
-		maxSize = 10 * 1024 * 1024 // 10 MB fallback
+	if maxSize <= 0 || maxSize > database.MaxManifestBytes {
+		maxSize = database.MaxManifestBytes
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxSize)
 
@@ -163,6 +191,9 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.validateReceiveManifest(w, id, data) {
+		return
+	}
 	if err := s.queries.SaveManifest(id, data); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save manifest")
 		return
@@ -182,6 +213,10 @@ func (s *Server) downloadManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data, err := s.queries.GetManifest(id)
+	if errors.Is(err, database.ErrManifestTooLarge) {
+		policyError(w, http.StatusRequestEntityTooLarge, "unsupported_manifest", err.Error())
+		return
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "manifest not found")
@@ -204,6 +239,11 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	unlock, ok := acquireResource(w, r, transferID, false)
+	if !ok {
+		return
+	}
+	defer unlock()
 	t := s.downloadableTransfer(w, transferID)
 	if t == nil {
 		return
@@ -221,7 +261,7 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if t.MaxDownloads > 0 && f.DownloadCount >= t.MaxDownloads {
-		writeError(w, http.StatusGone, "download limit reached")
+		policyError(w, http.StatusGone, "download_limit", "download limit reached")
 		return
 	}
 
@@ -233,7 +273,7 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		if t.MaxDownloads > 0 {
 			latest, lookupErr := s.queries.GetFile(fileID)
 			if lookupErr == nil && latest.DownloadCount >= t.MaxDownloads {
-				writeError(w, http.StatusGone, "download limit reached")
+				policyError(w, http.StatusGone, "download_limit", "download limit reached")
 				return
 			}
 		}
@@ -241,7 +281,17 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load file")
 		return
 	}
+	readerDone, err := store.AcquireReader(transferID)
+	if err != nil {
+		rc.Close()
+		writeError(w, 503, "resource is busy; retry later")
+		return
+	}
+	defer readerDone()
 	defer rc.Close()
+	if r.Context().Err() != nil {
+		return
+	}
 
 	allowed, err := s.queries.ReserveFileDownload(transferID, fileID)
 	if err != nil {
@@ -249,10 +299,11 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowed {
-		writeError(w, http.StatusGone, "download limit reached")
+		policyError(w, http.StatusGone, "download_limit", "download limit reached")
 		return
 	}
 
+	unlock()
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, rc)
@@ -363,6 +414,9 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validSlotPolicy(w, &req) {
+		return
+	}
 	expiry := s.cfg.DefaultExpiry
 	if req.ExpiresInSeconds > 0 {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second
@@ -389,7 +443,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateSlot(id, expiresAt, hash, identity(r).user.ID); err != nil {
+	if err := s.queries.CreateReceiveSlot(id, expiresAt, hash, identity(r).user.ID, req.ReceiveProtocol, req.RecipientPublicKey, req.MaxFiles); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create slot")
 		return
 	}
@@ -437,13 +491,18 @@ func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, SlotResponse{
+	response := SlotResponse{
 		ID:        slot.ID,
 		Status:    slot.Status,
 		Transfers: infos,
 		ExpiresAt: slot.ExpiresAt,
 		CreatedAt: slot.CreatedAt,
-	})
+	}
+	if err := s.slotPolicy(&response, slot); err != nil {
+		writeError(w, 500, "could not read inbox counters")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
@@ -455,6 +514,13 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateTransferRequest
 	if !decodeCreation(w, r, &req) {
+		return
+	}
+	if !validTransferPolicy(w, req) {
+		return
+	}
+	if req.MaxDownloads != 0 {
+		policyError(w, 400, "invalid_link_policy", "receive submissions cannot limit owner downloads")
 		return
 	}
 	unlock, ok := acquireResource(w, r, slotID, true)
@@ -470,6 +536,14 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 
 	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
+		return
+	}
+	if slot.ReceiveProtocol != 2 {
+		policyError(w, 403, "legacy_receive_disabled", "legacy receive links cannot accept submissions; create a new receive link")
+		return
+	}
+	if slot.MaxFiles > 0 && slot.ReservedFiles >= int64(slot.MaxFiles) {
+		policyError(w, 403, "receive_file_limit", "receive file allowance exhausted")
 		return
 	}
 	if !s.slotOwnerActive(w, slotID) {
@@ -493,8 +567,12 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		expiresAt = slot.ExpiresAt
 	}
 	if err := s.queries.CreateSlotTransfer(slotID, id, expiresAt, req.MaxDownloads, hash, s.cfg.MaxSlotTransfers); err != nil {
+		if err == database.ErrSlotFileQuota {
+			policyError(w, 403, "receive_file_limit", err.Error())
+			return
+		}
 		if err == database.ErrSlotQuota {
-			writeError(w, http.StatusForbidden, err.Error())
+			policyError(w, http.StatusForbidden, "receive_batch_limit", err.Error())
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create transfer in slot")

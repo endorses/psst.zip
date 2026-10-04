@@ -38,10 +38,7 @@ fun ReceiveScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(existingId) {
-        if (existingId != null) viewModel.openExisting(existingId)
-        else if (state.slotId == null && !state.isCreatingSlot) viewModel.createSlot()
-    }
+    LaunchedEffect(existingId) { if (existingId != null) viewModel.openExisting(existingId) }
     DisposableEffect(lifecycle, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) viewModel.setVisible(true)
@@ -74,20 +71,49 @@ fun ReceiveScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AccountIndicator()
-            Text(
-                stringResource(
-                    when {
-                        state.slotStatus == "unavailable" -> R.string.link_unavailable
-                        state.isCreatingSlot -> R.string.creating_link
-                        state.isDownloading -> R.string.saving_files
-                        state.downloadComplete -> R.string.saved_downloads
-                        state.slotStatus == "has_uploads" -> R.string.files_received
-                        else -> R.string.waiting_files
-                    }
-                ),
-                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                style = MaterialTheme.typography.titleMedium,
-            )
+            if (state.slotId == null && existingId == null && !state.isCreatingSlot) {
+                Text("Create a private inbox link for others to send files to you.")
+                OutlinedTextField(
+                    value = state.maxFilesInput,
+                    onValueChange = viewModel::setMaxFiles,
+                    label = { Text("Maximum files (optional)") },
+                    supportingText = {
+                        Text(
+                            "Empty means unlimited. Unfinished uploads use an allowance too; deleting files does not restore it."
+                        )
+                    },
+                    keyboardOptions =
+                        androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(onClick = viewModel::createSlot) { Text("Create receive link") }
+            }
+            if (state.legacyReadOnly)
+                Text(
+                    "This older inbox is read-only. Save its existing files and create a new receive link for further uploads."
+                )
+            if (state.slotId != null && state.maxFiles > 0)
+                Text(
+                    "${state.remainingFiles ?: "…"} of ${state.maxFiles} file allocations remaining · ${state.reservedFiles} used"
+                )
+            if (state.slotId != null || state.isCreatingSlot)
+                Text(
+                    stringResource(
+                        when {
+                            state.slotStatus == "unavailable" -> R.string.link_unavailable
+                            state.isCreatingSlot -> R.string.creating_link
+                            state.isDownloading -> R.string.saving_files
+                            state.downloadComplete -> R.string.saved_downloads
+                            state.slotStatus == "has_uploads" -> R.string.files_received
+                            else -> R.string.waiting_files
+                        }
+                    ),
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    style = MaterialTheme.typography.titleMedium,
+                )
             if (state.isCreatingSlot) CircularProgressIndicator()
             state.uploadUrl?.let { LinkPanel(it) }
             if (state.slotId != null && existingId == null)

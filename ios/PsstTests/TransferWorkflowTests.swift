@@ -8,6 +8,35 @@ final class TransferWorkflowTests: XCTestCase {
                        fileCount: 2, totalSize: 0, shareURL: nil, serverURL: "https://one.example", ownerID: "alice", isSlot: true)
     }
 
+    func testPrivateInboxSecretIsScopedAndNotSerializedIntoHistory() throws {
+        var entry = record()
+        entry.receiveProtocol = 2
+        let keys = ReceiveCrypto.generateKeyPair()
+        let link = "https://one.example/u/" + entry.id + "#v2.public"
+        defer { SecretStore.remove(entry.vaultID) }
+        try entry.saveSecrets(link: link, deletionToken: "delete", receivePrivateKey: keys.privateKey)
+        XCTAssertTrue(entry.canDecryptInbox)
+        XCTAssertEqual(entry.capabilities?.receivePrivateKey, keys.privateKey)
+        // Updating the public link/deletion capability must not discard the private key.
+        try entry.saveSecrets(link: link, deletionToken: "new-delete")
+        XCTAssertEqual(entry.capabilities?.receivePrivateKey, keys.privateKey)
+        let history = try JSONEncoder().encode(entry)
+        XCTAssertFalse(String(decoding: history, as: UTF8.self).contains(keys.privateKey.base64EncodedString()))
+        var secondAccount = entry
+        secondAccount.ownerID = "bob"
+        XCTAssertFalse(secondAccount.canDecryptInbox)
+        var secondServer = entry
+        secondServer.serverURL = "https://two.example"
+        XCTAssertFalse(secondServer.canDecryptInbox)
+    }
+
+    func testExistingResourceSecretDecodesWithoutPrivateInboxAuthority() throws {
+        let bytes = try JSONSerialization.data(withJSONObject: ["link": "https://one.example/u/id#old", "deletionToken": "delete"])
+        let value = try JSONDecoder().decode(ResourceSecrets.self, from: bytes)
+        XCTAssertNil(value.receivePrivateKey)
+        XCTAssertEqual(value.deletionToken, "delete")
+    }
+
     func testPartialSaveRetryKeepsOriginalSlotAndSkipsSuccessfulFile() throws {
         var checkpoint = ReceiveCheckpoint(record: record(), fileExists: { $0 == "saved-first" })
         checkpoint.saved(transferID: "child", blobID: "first", path: "saved-first", size: 10, title: "notes.txt")

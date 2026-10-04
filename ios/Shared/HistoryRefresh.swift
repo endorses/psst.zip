@@ -10,6 +10,7 @@ struct ResourceList: Decodable {
         let created_at: String?
         let downloaded_at: String?
         let download_count: Int?
+        let max_downloads: Int?
     }
 
     struct Slot: Decodable {
@@ -23,6 +24,9 @@ struct ResourceList: Decodable {
         let expires_at: String?
         let created_at: String?
         let transfers: [Child]
+        let receive_protocol: Int?
+        let max_files: Int?
+        let reserved_files: Int64?
     }
 
     let transfers: [Transfer]
@@ -58,12 +62,16 @@ extension TransferHistoryStore {
             // An incomplete upload remains actionable after cancellation.
             record.fileCount = max(record.fileCount, transfer.file_count)
             record.totalSize = max(record.totalSize, transfer.total_size)
+            record.maxDownloads = transfer.max_downloads
             try update(record)
         }
         for slot in list.slots where UUID(uuidString: slot.id) != nil {
             var record = old.first { $0.id == slot.id && $0.isSlot == true } ?? TransferRecord(id: slot.id, direction: .received, state: .inProgress,
                                                                                                createdAt: date(slot.created_at) ?? Date(), expiresAt: date(slot.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
                                                                                                serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
+            record.receiveProtocol = slot.receive_protocol
+            record.maxFiles = slot.max_files
+            record.reservedFiles = slot.reserved_files
             let complete = slot.transfers.filter { $0.status == "complete" }
             record.fileCount = complete.reduce(0) { $0 + $1.file_count }
             record.state = slot.status == "expired" ? .expired : slot.status == "revoked" ? .revoked : complete.isEmpty ? .inProgress :

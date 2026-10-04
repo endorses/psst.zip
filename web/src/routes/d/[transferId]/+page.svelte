@@ -4,8 +4,18 @@
   import { BRAND } from "$lib/brand";
   import { page } from "$app/stores";
   import { onMount, onDestroy } from "svelte";
-  import { importKey, decryptManifest } from "$lib/crypto";
-  import { getTransferInfo, downloadManifest, acknowledgeDownload } from "$lib/api";
+  import { importKey, exportKey, decryptManifest } from "$lib/crypto";
+  import {
+    getTransferInfo,
+    getSlotInfo,
+    downloadManifest,
+    acknowledgeDownload,
+    type TransferInfo,
+  } from "$lib/api";
+  import { accountRequest, type User } from "$lib/account";
+  import { loadReceiveKey } from "$lib/receive-keys";
+  import { decodeReceiveEnvelope, openSubmissionKey } from "$lib/receive-crypto";
+  import { wireSize } from "$lib/chunked-files";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
   import { zipSync } from "fflate";
 
@@ -30,6 +40,8 @@
   let manifest = $state<Manifest | null>(null);
   let transferId = $state("");
   let keyStr = $state("");
+  let inboxId = $state("");
+  let transferInfo = $state<TransferInfo | null>(null);
   let downloadProgress = $state<Record<string, number>>({});
   let downloadedFileIds = $state<string[]>([]);
   let confirmation = $state<"idle" | "sending" | "confirmed" | "failed">("idle");
@@ -58,8 +70,9 @@
   async function load() {
     transferId = $page.params.transferId ?? "";
     keyStr = window.location.hash.slice(1);
+    inboxId = $page.url.searchParams.get("inbox") ?? "";
 
-    if (!keyStr) {
+    if (!keyStr && !inboxId) {
       status = "error";
       errorMessage =
         "This link is incomplete. Ask the sender for the full link, including the part after #.";
@@ -67,15 +80,62 @@
     }
 
     try {
-      await getTransferInfo(transferId);
-
-      const key = await importKey(keyStr);
+      transferInfo = await getTransferInfo(transferId);
       const encryptedManifestData = await downloadManifest(transferId);
-      manifest = await decryptManifest(key, encryptedManifestData);
+      if (inboxId) {
+        if (!/^[0-9a-f-]{36}$/i.test(inboxId)) throw new Error("Invalid inbox");
+        const { user } = await accountRequest<{ user: User }>("/auth/me");
+        const pair = loadReceiveKey(user.id, inboxId);
+        if (!pair)
+          throw new Error(
+            "This browser has no private key for this inbox. Use the device that created it.",
+          );
+        try {
+          const slot = await getSlotInfo(inboxId);
+          if (
+            slot.receive_protocol !== 2 ||
+            slot.recipient_public_key !== (await exportKey(pair.publicKey)) ||
+            !slot.transfers.some((item) => item.transfer_id === transferId)
+          )
+            throw new Error("This file does not match the expected inbox.");
+          const envelope = decodeReceiveEnvelope(new Uint8Array(encryptedManifestData));
+          const key = await openSubmissionKey(
+            pair.privateKey,
+            pair.publicKey,
+            inboxId,
+            transferId,
+            envelope.wrappedKey,
+          );
+          try {
+            keyStr = await exportKey(key);
+            manifest = await decryptManifest(key, envelope.encryptedManifest.buffer);
+          } finally {
+            key.fill(0);
+          }
+        } finally {
+          pair.privateKey.fill(0);
+        }
+      } else manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
+      if (
+        transferInfo.file_count !== manifest.files.length ||
+        transferInfo.total_size !==
+          manifest.files.reduce((sum, file) => sum + wireSize(file.size), 0)
+      )
+        throw new Error("Manifest size mismatch");
       status = "ready";
     } catch (err) {
       status = "error";
-      if (err instanceof Error && (err.message.includes("404") || err.message.includes("410"))) {
+      if (err instanceof Error && (err.message.includes("401") || err.message.includes("403"))) {
+        errorMessage = "Sign in as the inbox owner to save these files.";
+      } else if (
+        err instanceof Error &&
+        err.message.startsWith("This browser has no private key")
+      ) {
+        errorMessage = err.message;
+      } else if (
+        err instanceof Error &&
+        (err.message.includes("404") || err.message.includes("410"))
+      ) {
         errorMessage = "This transfer has expired or was revoked. Ask the sender for a new link.";
       } else {
         errorMessage =
@@ -130,10 +190,21 @@
     const key = await importKey(keyStr);
     const response = await fetch(`/api/v1/transfers/${transferId}/files/${entry.blob_id}`, {
       signal,
-      credentials: "omit",
+      credentials: "same-origin",
     });
-    if (!response.ok || !response.body) throw new Error("Could not download file");
-    yield* decryptFileStream(key, entry, response.body, signal);
+    try {
+      if (!response.ok || !response.body) {
+        const failure = await response.json().catch(() => null);
+        if (failure?.code === "download_limit")
+          throw new Error(
+            "This file's download allowance is exhausted. Ask the sender for a new link.",
+          );
+        throw new Error("Could not download file");
+      }
+      yield* decryptFileStream(key, entry, response.body, signal);
+    } finally {
+      transferInfo = await getTransferInfo(transferId).catch(() => transferInfo);
+    }
   }
 
   async function downloadSingleFile(entry: FileManifestEntry) {
@@ -168,8 +239,10 @@
     } catch (err) {
       await sink?.abort().catch(() => {});
       errorMessage =
-        err instanceof Error && err.message === LARGE_SAVE_MESSAGE
-          ? LARGE_SAVE_MESSAGE
+        err instanceof Error &&
+        (err.message === LARGE_SAVE_MESSAGE ||
+          err.message.includes("download allowance is exhausted"))
+          ? err.message
           : err instanceof DOMException && err.name === "AbortError"
             ? "Saving stopped. You can retry the same files."
             : "Could not save files. Check your connection and try Save files again.";
@@ -214,9 +287,11 @@
     } catch (err) {
       status = "ready";
       errorMessage =
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Saving stopped. You can retry the same files."
-          : "Could not save files. Check your connection and try Save files again.";
+        err instanceof Error && err.message.includes("download allowance is exhausted")
+          ? err.message
+          : err instanceof DOMException && err.name === "AbortError"
+            ? "Saving stopped. You can retry the same files."
+            : "Could not save files. Check your connection and try Save files again.";
     }
   }
 </script>
@@ -255,6 +330,10 @@
       {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
       {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
     </p>
+    {#if transferInfo?.max_downloads}<p class="muted small">
+        Each file permits {transferInfo.max_downloads} download attempts. Interrupted downloads and retries
+        count.
+      </p>{/if}
 
     {#if manifest.files.some((entry) => entry.size > MAX_BUFFERED_BYTES)}<p class="muted small">
         Large files save directly to disk where your browser supports it. HTTPS may be required; the
@@ -266,11 +345,19 @@
           <div class="file-info">
             <span class="file-name">{entry.name}</span>
             <span class="file-size">{formatSize(entry.size)}</span>
+            {#if transferInfo?.files?.find((file) => file.id === entry.blob_id)?.remaining_downloads != null}<span
+                class="muted small"
+              >
+                · {transferInfo.files.find((file) => file.id === entry.blob_id)
+                  ?.remaining_downloads} attempts remaining</span
+              >{/if}
           </div>
           <button
             class="btn"
             onclick={() => downloadSingleFile(entry)}
-            disabled={Object.keys(downloadProgress).length > 0}
+            disabled={Object.keys(downloadProgress).length > 0 ||
+              transferInfo?.files?.find((file) => file.id === entry.blob_id)
+                ?.remaining_downloads === 0}
           >
             <Icon name="Download" size={18} />
             {#if entry.blob_id in downloadProgress}
@@ -290,6 +377,7 @@
       <button
         class="primary"
         disabled={Object.keys(downloadProgress).length > 0 ||
+          transferInfo?.files?.some((file) => file.remaining_downloads === 0) ||
           manifest.files.reduce((n, f) => n + f.size, 0) > MAX_ZIP_BYTES}
         onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
       >

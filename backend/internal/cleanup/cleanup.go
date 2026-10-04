@@ -77,9 +77,9 @@ func (w *Worker) sweepSlots() {
 	}
 }
 
-// File readers open a handle before their GET allowance is reserved. Removing
-// exhausted disk payloads therefore leaves already-open downloads readable;
-// metadata and the encrypted manifest remain available until the normal TTL.
+// Exhausted payloads wait until all authorized readers close, retaining their
+// physical storage reservation while the final permitted response finishes.
+// Metadata and the encrypted manifest remain available until the normal TTL.
 func (w *Worker) sweepExhaustedPayloads() {
 	ids, err := w.queries.ExhaustedTransferIDs()
 	if err != nil {
@@ -90,6 +90,10 @@ func (w *Worker) sweepExhaustedPayloads() {
 		unlock, err := store.TryLockTransfer(id)
 		if err != nil {
 			log.Printf("cleanup: busy exhausted transfer %s; retry next sweep", id)
+			continue
+		}
+		if store.HasReaders(id) {
+			unlock()
 			continue
 		}
 		err = w.files.DeleteAll(id)

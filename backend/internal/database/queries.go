@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -32,6 +33,13 @@ type File struct {
 
 // Slot represents a row in the slots table.
 type Slot struct {
+	ReceiveProtocol    int
+	RecipientPublicKey string
+	MaxFiles           int
+	ReservedFiles      int64
+	ReservedBytes      int64
+	UploadCount        int
+
 	ID              string
 	Status          string
 	ExpiresAt       time.Time
@@ -216,6 +224,11 @@ func (q *Queries) FileCountAndSize(transferID string) (int, int64, error) {
 
 // --- Manifests ---
 
+// MaxManifestBytes matches the bounded encrypted-manifest readers on every client.
+const MaxManifestBytes = 1024 * 1024
+
+var ErrManifestTooLarge = errors.New("stored manifest exceeds supported 1 MiB size")
+
 func (q *Queries) SaveManifest(transferID string, data []byte) error {
 	_, err := q.db.Exec(
 		`INSERT OR REPLACE INTO manifests (transfer_id, data) VALUES (?, ?)`,
@@ -225,10 +238,16 @@ func (q *Queries) SaveManifest(transferID string, data []byte) error {
 }
 
 func (q *Queries) GetManifest(transferID string) ([]byte, error) {
-	row := q.db.QueryRow(`SELECT data FROM manifests WHERE transfer_id = ?`, transferID)
+	// Check the length in SQLite so historical oversized blobs never enter Go memory.
+	row := q.db.QueryRow(`SELECT length(data), CASE WHEN length(data) <= ? THEN data END
+		FROM manifests WHERE transfer_id = ?`, MaxManifestBytes, transferID)
+	var size int64
 	var data []byte
-	if err := row.Scan(&data); err != nil {
+	if err := row.Scan(&size, &data); err != nil {
 		return nil, err
+	}
+	if size > MaxManifestBytes {
+		return nil, ErrManifestTooLarge
 	}
 	return data, nil
 }
@@ -254,10 +273,10 @@ func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []b
 
 func (q *Queries) GetSlot(id string) (*Slot, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, created_at, delete_token_hash FROM slots WHERE id = ?`, id,
+		`SELECT id, status, expires_at, created_at, delete_token_hash,receive_protocol,recipient_public_key,max_files,reserved_files,reserved_bytes,upload_count FROM slots WHERE id = ?`, id,
 	)
 	s := &Slot{}
-	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.DeleteTokenHash); err != nil {
+	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.DeleteTokenHash, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -437,6 +456,9 @@ func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
 // CreateSlotTransfer is called while holding the slot mutation lock. The
 // transaction prevents an unlinked transfer from surviving a failed create.
 func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, maxDownloads int, hash []byte, limits ...int) error {
+	if maxDownloads != 0 {
+		return errors.New("receive submissions cannot limit owner downloads")
+	}
 	tx, err := q.db.Begin()
 	if err != nil {
 		return err
@@ -446,7 +468,7 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	if len(limits) > 0 && limits[0] > 0 {
 		limit = limits[0]
 	}
-	reservation, err := tx.Exec(`UPDATE slots SET upload_count=upload_count+1 WHERE id=? AND status!='revoked' AND upload_count<?`, slotID, limit)
+	reservation, err := tx.Exec(`UPDATE slots SET upload_count=upload_count+1 WHERE id=? AND status!='revoked' AND upload_count<? AND receive_protocol=2 AND (max_files=0 OR reserved_files<max_files)`, slotID, limit)
 	if err != nil {
 		return err
 	}
@@ -455,6 +477,13 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 		return err
 	}
 	if n == 0 {
+		var exhausted bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM slots WHERE id=? AND max_files>0 AND reserved_files>=max_files)`, slotID).Scan(&exhausted); err != nil {
+			return err
+		}
+		if exhausted {
+			return ErrSlotFileQuota
+		}
 		return ErrSlotQuota
 	}
 	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash,owner_id)

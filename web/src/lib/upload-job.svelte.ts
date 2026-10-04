@@ -1,13 +1,11 @@
 import { uploadEncryptedFile } from "./stream-upload";
 import { newEncryptionId, wireSize, FILE_CHUNK_SIZE } from "./chunked-files";
-import {
-  generateKey,
-  exportKey,
-  importKey,
-  encryptManifest,
-  type FileManifestEntry,
-} from "./crypto";
+import { generateKey, exportKey, encryptManifest, type FileManifestEntry } from "./crypto";
 import { assertFileSize, loadUploadLimit } from "./limits";
+import { getSlotAvailability } from "./api";
+import { parseReceiveFragment } from "./receive-keys";
+import { sealSubmissionKey, encodeReceiveEnvelope } from "./receive-crypto";
+import { validateLinkLimit } from "./link-limits";
 export function formatSize(bytes: number) {
   if (!bytes) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB"];
@@ -83,6 +81,7 @@ export class UploadJob {
     accountId?: string;
     slotId?: string;
     key?: string;
+    maxDownloads?: number;
     oncreated?: (id: string, url: string, title: string, size: number) => void;
   }) {
     if (this.active || !this.files.length) return;
@@ -99,7 +98,11 @@ export class UploadJob {
     };
     const request = async (path: string, init: RequestInit = {}) => {
       check();
-      const res = await fetch(`/api/v1${path}`, { ...init, signal });
+      const res = await fetch(`/api/v1${path}`, {
+        ...init,
+        credentials: options.slotId ? "omit" : "same-origin",
+        signal,
+      });
       check();
       if (!res.ok && res.status === 403) {
         const body = await res
@@ -110,6 +113,14 @@ export class UploadJob {
           throw new Error("Change your temporary password before sending files.");
         if (body?.code === "admin_transfer_forbidden")
           throw new Error("Administrator accounts cannot transfer files. Use a regular account.");
+        if (body?.code === "receive_file_limit")
+          throw new Error(
+            "This receive link has no file allocations left. Ask its owner for a new link.",
+          );
+        if (body?.code === "receive_batch_limit")
+          throw new Error(
+            "This receive link has reached its upload limit. Ask its owner for a new link.",
+          );
       }
       if (!res.ok)
         throw new Error(
@@ -142,28 +153,58 @@ export class UploadJob {
         if (me.user.id !== options.accountId)
           throw Error("Your account changed. Sign in again before sending files.");
       }
-      const key = options.key ? await importKey(options.key) : await generateKey();
+      const maxDownloads = validateLinkLimit(options.maxDownloads ?? 0);
+      const receiver = options.slotId ? parseReceiveFragment(options.key ?? "") : null;
+      if (options.slotId && receiver) {
+        const available = await getSlotAvailability(options.slotId);
+        check();
+        if (available.receive_protocol !== 2 || available.recipient_public_key !== receiver.encoded)
+          throw new Error(
+            "The receive link's encryption key does not match this inbox. Ask its owner for a new link.",
+          );
+        if (
+          !available.available ||
+          (available.remaining_files !== null && files.length > available.remaining_files) ||
+          this.total > available.remaining_bytes
+        )
+          throw new Error(
+            "This receive link cannot accept these files. Ask its owner for a new link.",
+          );
+      }
+      const key = await generateKey();
       check();
       const keyString = await exportKey(key);
       check();
       const created = await (
         await request(options.slotId ? `/slots/${options.slotId}/transfers` : "/transfers", {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options.slotId ? {} : { max_downloads: maxDownloads }),
         })
       ).json();
       check();
       this.transferId = created.id;
       this.token = created.delete_token ?? "";
+      if (!options.slotId && maxDownloads > 0) {
+        const accepted = await (await request(`/transfers/${created.id}`)).json();
+        if (accepted.max_downloads !== maxDownloads) {
+          await this.cleanup();
+          throw new Error(
+            "This server did not accept the download limit. Ask its operator to update it. No files were uploaded.",
+          );
+        }
+      }
       const url = `${location.origin}/d/${created.id}#${keyString}`;
-      options.oncreated?.(
-        created.id,
-        url,
-        files[0].name +
-          (files.length > 1
-            ? ` + ${files.length - 1} ${files.length === 2 ? "file" : "files"}`
-            : ""),
-        files.reduce((n, f) => n + f.size, 0),
-      );
+      if (!options.slotId)
+        options.oncreated?.(
+          created.id,
+          url,
+          files[0].name +
+            (files.length > 1
+              ? ` + ${files.length - 1} ${files.length === 2 ? "file" : "files"}`
+              : ""),
+          files.reduce((n, f) => n + f.size, 0),
+        );
       const entries: FileManifestEntry[] = [];
       let completed = 0;
       for (const file of files) {
@@ -196,7 +237,14 @@ export class UploadJob {
           encryption_id: encryptionId,
         });
       }
-      const manifest = await encryptManifest(key, { files: entries });
+      const encryptedManifest = await encryptManifest(key, { files: entries });
+      const manifest =
+        receiver && options.slotId
+          ? encodeReceiveEnvelope(
+              await sealSubmissionKey(receiver.publicKey, options.slotId, created.id, key),
+              new Uint8Array(encryptedManifest),
+            ).buffer
+          : encryptedManifest;
       check();
       const headers: Record<string, string> = options.slotId
         ? { Authorization: `Bearer ${this.token}` }
@@ -213,6 +261,22 @@ export class UploadJob {
       this.transferId = "";
     } catch (error) {
       if (run !== this.run) return;
+      if (options.slotId && this.transferId && this.token && !signal.aborted) {
+        try {
+          const response = await fetch(`/api/v1/transfers/${this.transferId}/upload-status`, {
+            credentials: "omit",
+            headers: { Authorization: `Bearer ${this.token}` },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (response.ok && (await response.json()).status === "complete") {
+            this.state = "done";
+            this.transferId = "";
+            return;
+          }
+        } catch {
+          /* Keep failed upload and cleanup action visible. */
+        }
+      }
       this.state = "error";
       const safeErrors = [
         "Change your temporary password before sending files.",
@@ -223,6 +287,12 @@ export class UploadJob {
         "This link is no longer available. Ask for a new link.",
         "The server could not finish the upload. Check your connection and retry.",
         "Your account changed. Sign in again before sending files.",
+        "This receive link has no file allocations left. Ask its owner for a new link.",
+        "This receive link has reached its upload limit. Ask its owner for a new link.",
+        "This receive link cannot accept these files. Ask its owner for a new link.",
+        "The receive link's encryption key does not match this inbox. Ask its owner for a new link.",
+        "Choose a whole-number limit between 1 and 2147483647, or turn the limit off.",
+        "This server did not accept the download limit. Ask its operator to update it. No files were uploaded.",
       ];
       this.error =
         error instanceof Error &&

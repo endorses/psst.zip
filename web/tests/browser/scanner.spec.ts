@@ -56,7 +56,7 @@ test("local PNG decoding uses worker fallback and pairing never redeems", async 
   await page.goto("/?view=scan");
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
-  const payload = `https://other.example/u/${id}#${key}`;
+  const payload = `https://other.example/u/${id}#v2.${key}`;
   await page.getByLabel("Choose QR image", { exact: true }).setInputFiles({
     name: "qr.png",
     mimeType: "image/png",
@@ -140,7 +140,7 @@ test("branded download, upload and long pairing codes decode through the browser
   await page.goto("/");
   const inputs = [
     `https://files.example/d/${id}#${key}`,
-    `https://files.example/u/${id}#${key}`,
+    `https://files.example/u/${id}#v2.${key}`,
     JSON.stringify({
       type: "psst-pairing",
       version: 1,

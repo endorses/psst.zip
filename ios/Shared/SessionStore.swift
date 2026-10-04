@@ -127,9 +127,17 @@ enum AccountHTTP {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
+        configuration.timeoutIntervalForResource = 30
         let session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        let (data, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
+        let maximumBytes = 1_048_576
+        guard response.expectedContentLength <= Int64(maximumBytes) else { throw AccountError.request }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < maximumBytes else { throw AccountError.request }
+            data.append(byte)
+        }
         try Task.checkCancellation()
         guard let response = response as? HTTPURLResponse else { throw AccountError.request }
         if method == "DELETE", response.statusCode == 404 {

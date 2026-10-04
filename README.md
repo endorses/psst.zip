@@ -1,19 +1,29 @@
 # psst.zip
 
-Self-hosted, end-to-end encrypted file transfer. Share files between devices without trusting the server.
+Self-hosted file transfer with client-side, end-to-end encryption. Files and filenames are encrypted before upload; security depends on trustworthy clients and delivery of the web application.
 
 ## How it works
 
 1. The sender picks files and the client generates a random AES-256-GCM key.
 2. Files are encrypted client-side and uploaded to the server via resumable tus uploads.
-3. The server stores only encrypted blobs -- it never sees plaintext data.
+3. The server stores encrypted blobs and operational metadata such as byte counts, expiry and ownership.
 4. The sender gets a link like `https://your-server/d/{id}#key` where the encryption key lives in the URL fragment (never sent to the server).
 5. The recipient opens the link, and the web app (or mobile app) decrypts everything in the browser/on-device.
 
 Receive links work in reverse: choose **Receive**, create a link, and share its QR
 or use **Copy link** / **Share**. Anyone with that link can send files without an
 account, including people elsewhere who can reach your server. Return to the
-original link in History to see arrivals and choose **Save files**.
+original link in History to see arrivals and choose **Save files**. New receive
+invitations contain only a public key: `/u/{id}#v2.{public-key}`. The private key
+stays on the creating device. Each sender encrypts its own fresh file key to that
+public key using HPKE; knowing the invitation cannot decrypt other submissions.
+Inbox listing, events, child downloads and delivery receipts require the owning
+regular account. Pairing another device does not copy its private keys.
+
+Older receive links no longer accept new submissions. Their authorized owner can
+save existing uploads and create a replacement invitation. Update the backend,
+web assets and apps together; an old app is not a compatible private-inbox client.
+See [the receive protocol and validation record](docs/security/receive-crypto-design.md).
 
 Creating transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
@@ -286,7 +296,19 @@ include each file's encoding, chunk size and unique encryption context.
 Transfer and slot creation return `id`. Uploaders create a child transfer with
 `POST /api/v1/slots/{id}/transfers`, upload its files and manifest through the
 transfer endpoints, then complete it. Receivers download completed child
-transfers; `transfer_complete` SSE notifications include `transfer_id`.
+transfers through authenticated owner-only endpoints; owner-only
+`transfer_complete` SSE notifications include `transfer_id`. Public
+`GET /api/v1/slots/{id}/availability` returns only submission policy. An uploader
+can query its own minimal `GET /api/v1/transfers/{id}/upload-status` with its
+resource capability to resolve a lost completion response without reading inbox contents.
+
+Send creation offers an optional **Maximum downloads per file**. Receive creation
+offers an optional **Maximum files received**. Zero/unset disables only that
+creator-selected cap; server restrictions still apply. Limits are checked against
+the created server resource before a shareable link is shown. Receive
+`max_files` counts allocated files cumulatively, including abandoned uploads.
+Deletion never replenishes the allowance. Already allocated uploads can finish
+when it reaches zero. Owner History distinguishes completed files from used allowances.
 
 `max_downloads` limits GET attempts for each file independently, so every file in
 a multi-file transfer remains retrievable. Interrupted downloads consume an
@@ -299,8 +321,9 @@ Expired resources are rejected immediately and their stored data is removed peri
 Choosing **Revoke and delete** in mobile history revokes the transfer on its original server before
 removing the local record. Deleting a receive entry revokes its upload slot and
 all child transfers. A failed request keeps the entry so deletion can be retried.
-Files already saved by a recipient are unaffected, and an already-open download
-may finish; subsequent requests through the shared link are rejected.
+Files already saved by a recipient are unaffected. Explicit revocation cancels
+active server streams and rejects subsequent requests. Routine exhausted-payload
+cleanup waits for the final permitted download to finish before removing its bytes.
 
 New transfer, slot, and slot-upload creation responses include a private
 `delete_token`. Store it separately from the encryption key and never include it
@@ -389,22 +412,45 @@ ordinary History endpoints do not grant admin transfer rights.
 
 Operator settings use environment variables. The administrator can also persist the per-file upload limit and traffic-monitor preferences through the web UI.
 
-| Variable                   | Default              | Description                                                      |
-| -------------------------- | -------------------- | ---------------------------------------------------------------- |
-| `LISTEN_ADDR`              | `:8080`              | Address the backend listens on                                   |
-| `STORAGE_PATH`             | `./data/files`       | Directory for encrypted file blobs                               |
-| `DB_PATH`                  | `./data/psst.db`     | Path to the SQLite database                                      |
-| `MAX_FILE_SIZE`            | `5368709120` (5 GiB) | Operator ceiling for the admin per-file plaintext-byte limit     |
-| `DEFAULT_EXPIRY`           | `24h`                | Transfer expiry duration (Go duration syntax)                    |
-| `CLEANUP_INTERVAL`         | `5m`                 | How often the cleanup worker runs                                |
-| `ALLOW_LEGACY_DELETION`    | `false`              | Allow deletion by ID for older resources without deletion tokens |
-| `ADMIN_USERNAME`           | unset                | First administrator username, required when no accounts exist    |
-| `ADMIN_PASSWORD`           | unset                | First administrator password; used only during initialization    |
-| `PUBLIC_URL`               | unset                | Canonical public origin, such as `https://transfer.example.com`  |
-| `AUTH_ALLOW_INSECURE_HTTP` | `false`              | Explicit development-only permission to authenticate over HTTP   |
-| `MAX_SLOT_TRANSFERS`       | `20`                 | Maximum child transfers created through one public receive link  |
-| `MAX_SLOT_SIZE`            | `5368709120` (5 GiB) | Maximum total reserved file bytes in one receive slot            |
-| `MAX_SLOT_EXPIRY`          | `168h`               | Maximum receive-link lifetime                                    |
+| Variable                   | Default              | Description                                                               |
+| -------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| `LISTEN_ADDR`              | `:8080`              | Address the backend listens on                                            |
+| `STORAGE_PATH`             | `./data/files`       | Directory for encrypted file blobs                                        |
+| `DB_PATH`                  | `./data/psst.db`     | Path to the SQLite database                                               |
+| `MAX_FILE_SIZE`            | `5368709120` (5 GiB) | Operator ceiling for the admin per-file plaintext-byte limit              |
+| `DEFAULT_EXPIRY`           | `24h`                | Transfer expiry duration (Go duration syntax)                             |
+| `CLEANUP_INTERVAL`         | `5m`                 | How often the cleanup worker runs                                         |
+| `ALLOW_LEGACY_DELETION`    | `false`              | Allow deletion by ID for older resources without deletion tokens          |
+| `ADMIN_USERNAME`           | unset                | First administrator username, required when no accounts exist             |
+| `ADMIN_PASSWORD`           | unset                | First administrator password; used only during initialization             |
+| `PUBLIC_URL`               | unset                | Canonical public origin, such as `https://transfer.example.com`           |
+| `AUTH_ALLOW_INSECURE_HTTP` | `false`              | Explicit development-only permission to authenticate over HTTP            |
+| `MAX_SLOT_TRANSFERS`       | `20`                 | Maximum child transfers created through one public receive link           |
+| `MAX_SLOT_SIZE`            | `5368709120` (5 GiB) | Maximum total reserved file bytes in one receive slot                     |
+| `MAX_SLOT_EXPIRY`          | `168h`               | Maximum receive-link lifetime                                             |
+| `MAX_MANIFEST_SIZE`        | `1048576` (1 MiB)    | Manifest upload ceiling; cannot exceed the clients' 1 MiB format bound    |
+| `TRUSTED_PROXIES`          | unset                | Comma-separated explicit proxy CIDRs; empty trusts no forwarded addresses |
+| `MAX_ACTIVE_STREAMS`       | `64`                 | Total concurrent payload and inbox-event streams                          |
+| `MAX_STREAMS_PER_ACCOUNT`  | `4`                  | Concurrent streams attributed to one resource owner                       |
+| `MAX_STREAMS_PER_IP`       | `4`                  | Concurrent streams per resolved client address                            |
+| `MAX_STREAMS_PER_TRANSFER` | `4`                  | Concurrent streams for one transfer                                       |
+| `MAX_STREAMS_PER_SLOT`     | `4`                  | Concurrent streams for one receive inbox                                  |
+| `MAX_ACTIVE_REQUESTS`      | `128`                | Concurrent ordinary requests, including long-lived streams                |
+| `MAX_RECOVERY_REQUESTS`    | `32`                 | Separate bounded lane for auth/admin, deletion and health requests        |
+
+Stream/request caps are process-local, not distributed limits or storage/traffic
+quotas. Invalid/nonpositive values use finite defaults; values above 4096 are
+clamped. Public downloads and guest submissions are attributed to their resource
+owner. Requests exceeding active limits receive a retry response. Administrative
+recovery has separate admission and per-address rate buckets so file traffic
+cannot consume that lane.
+
+Only configure proxy networks you control. The backend trusts a forwarded chain
+only from those peers and resolves it from the nearest trusted hop; forwarded
+headers from other clients do not change limiter identity. Deployment-specific
+proxy wiring still needs verification. This development checkpoint does not yet
+enforce the planned global disk or billing-cycle traffic budgets; the traffic
+monitor remains observational.
 
 Docker Compose also accepts:
 
@@ -437,8 +483,10 @@ for the security controls informing this design.
 Keep the backend on the private Docker network and expose Caddy's public origin.
 `PUBLIC_URL` identifies that trusted HTTPS entry point; it does not add TLS to a
 separately exposed backend port. Sessions expire after 30 days and pairing codes
-after five minutes. Login and pairing redemption are rate limited; deployments
-behind one reverse proxy currently share a conservative attempt bucket.
+after five minutes. Login and pairing redemption are rate limited. Login also
+has normalized-account throttling and bounded password work. Behind a proxy,
+configure explicit `TRUSTED_PROXIES` to resolve the actual client address; otherwise
+clients intentionally share the proxy's bucket.
 
 HTTP LAN mode encrypts file contents but does not authenticate delivery of the
 web app itself. An active network attacker could replace its JavaScript and steal
@@ -446,9 +494,9 @@ keys or plaintext. Use HTTP only on a trusted network; use trusted HTTPS for
 untrusted networks or Internet-facing deployments. Encryption also assumes the
 client application itself is trustworthy.
 
-- **End-to-end encryption**: AES-256-GCM. Keys are generated client-side and shared with recipients in link fragments.
+- **File encryption**: AES-256-GCM. Send links share the symmetric decryption key. Receive invitations share only a public X25519 key; RFC 9180 HPKE wraps a separate symmetric key for each submission.
 - **Key in URL fragment**: The `#key` portion of URLs is not sent to the server by browsers (per RFC 3986). The server only sees the transfer ID.
-- **Zero-knowledge server**: The backend stores and serves encrypted blobs. It cannot decrypt file contents or metadata.
+- **Encrypted storage**: The backend stores encrypted file contents and filenames, plus visible operational metadata. A compromised server delivering altered browser JavaScript can compromise browser-side secrecy; trusted HTTPS protects transport, not a malicious web application.
 - **Resumable uploads**: The tus protocol supports retrying interrupted uploads within the client size limits. All data is encrypted before upload.
 - **Automatic expiry**: Transfers expire after a configurable duration; exhausted download quotas remove encrypted payloads while retaining status metadata until expiry.
 

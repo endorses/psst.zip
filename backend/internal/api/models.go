@@ -12,13 +12,17 @@ type CreateTransferRequest struct {
 
 // CreateSlotRequest is the body for POST /api/v1/slots.
 type CreateSlotRequest struct {
-	ExpiresInSeconds int `json:"expires_in_seconds,omitempty"`
+	ReceiveProtocol    int    `json:"receive_protocol,omitempty"`
+	RecipientPublicKey string `json:"recipient_public_key,omitempty"`
+	MaxFiles           int    `json:"max_files,omitempty"`
+	ExpiresInSeconds   int    `json:"expires_in_seconds,omitempty"`
 }
 
 // --- Response types ---
 
 // TransferResponse is returned when querying a transfer.
 type TransferResponse struct {
+	Files         []FileInfo `json:"files"`
 	OwnerID       string     `json:"owner_id,omitempty"`
 	ID            string     `json:"id"`
 	Status        string     `json:"status"`
@@ -42,21 +46,29 @@ type CreateTransferResponse struct {
 
 // FileInfo describes a file (blob) belonging to a transfer.
 type FileInfo struct {
-	ID             string `json:"id"`
-	Size           int64  `json:"size"`
-	UploadOffset   int64  `json:"upload_offset"`
-	UploadComplete bool   `json:"upload_complete"`
+	DownloadCount      int    `json:"download_count"`
+	RemainingDownloads *int   `json:"remaining_downloads"`
+	ID                 string `json:"id"`
+	Size               int64  `json:"size"`
+	UploadOffset       int64  `json:"upload_offset"`
+	UploadComplete     bool   `json:"upload_complete"`
 }
 
 // SlotResponse is returned when querying a slot.
 type SlotResponse struct {
-	TotalSize *int64             `json:"total_size,omitempty"`
-	OwnerID   string             `json:"owner_id,omitempty"`
-	ID        string             `json:"id"`
-	Status    string             `json:"status"`
-	Transfers []SlotTransferInfo `json:"transfers"`
-	ExpiresAt time.Time          `json:"expires_at"`
-	CreatedAt time.Time          `json:"created_at"`
+	ReceiveProtocol    int                `json:"receive_protocol"`
+	RecipientPublicKey string             `json:"recipient_public_key"`
+	MaxFiles           int                `json:"max_files"`
+	ReservedFiles      int64              `json:"reserved_files"`
+	CompletedFiles     int64              `json:"completed_files"`
+	RemainingFiles     *int64             `json:"remaining_files"`
+	TotalSize          *int64             `json:"total_size,omitempty"`
+	OwnerID            string             `json:"owner_id,omitempty"`
+	ID                 string             `json:"id"`
+	Status             string             `json:"status"`
+	Transfers          []SlotTransferInfo `json:"transfers"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	CreatedAt          time.Time          `json:"created_at"`
 }
 
 // SlotTransferInfo is a summary of a transfer linked to a slot.
@@ -76,4 +88,18 @@ type CreateSlotResponse struct {
 // ErrorResponse is a generic error body.
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// SlotAvailability exposes submission policy, never private inbox history.
+type SlotAvailability struct {
+	ID                 string    `json:"id"`
+	Status             string    `json:"status"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	ReceiveProtocol    int       `json:"receive_protocol"`
+	RecipientPublicKey string    `json:"recipient_public_key"`
+	MaxFiles           int       `json:"max_files"`
+	RemainingFiles     *int64    `json:"remaining_files"`
+	RemainingBytes     int64     `json:"remaining_bytes"`
+	RemainingTransfers int       `json:"remaining_transfers"`
+	Available          bool      `json:"available"`
 }

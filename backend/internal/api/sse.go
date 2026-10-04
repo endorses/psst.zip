@@ -28,6 +28,13 @@ func (h *SSEHub) Subscribe(key string) chan string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	total := 0
+	for _, clients := range h.clients {
+		total += len(clients)
+	}
+	if total >= 256 || len(h.clients[key]) >= 16 {
+		return nil
+	}
 	ch := make(chan string, 16)
 	if h.clients[key] == nil {
 		h.clients[key] = make(map[chan string]struct{})
@@ -72,6 +79,11 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ch := s.sseHub.Subscribe(slotID)
+	if ch == nil {
+		w.Header().Set("Retry-After", "5")
+		writeError(w, 429, "event stream limit reached")
+		return
+	}
 	defer s.sseHub.Unsubscribe(slotID, ch)
 
 	slot, err := s.queries.GetSlot(slotID)
@@ -84,7 +96,7 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "slot expired or revoked")
 		return
 	}
-	expires := time.NewTimer(time.Until(slot.ExpiresAt))
+	expires := time.NewTimer(min(time.Until(slot.ExpiresAt), 10*time.Minute))
 	defer expires.Stop()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -107,6 +119,9 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-check.C:
+			if valid, err := s.queries.InboxSessionActive(identity(r).session.ID, identity(r).user.ID); err != nil || !valid {
+				return
+			}
 			current, err := s.queries.GetSlot(slotID)
 			if err == nil && current.Status != "revoked" && time.Now().Before(current.ExpiresAt) {
 				continue
@@ -119,6 +134,9 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case msg, ok := <-ch:
+			if valid, err := s.queries.InboxSessionActive(identity(r).session.ID, identity(r).user.ID); err != nil || !valid {
+				return
+			}
 			if !ok {
 				return
 			}

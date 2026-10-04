@@ -1,6 +1,7 @@
 package tus
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -72,8 +73,16 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 
 	id, err := h.store.CreateUpload(transferID, length)
 	if err != nil {
+		if errors.Is(err, ErrUploadFileLimit) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"code": "receive_file_limit", "error": err.Error()})
+			return
+		}
 		if errors.Is(err, ErrUploadLimit) {
-			http.Error(w, err.Error(), http.StatusForbidden)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"code": "receive_byte_limit", "error": err.Error()})
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -192,3 +201,5 @@ func ServeOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 var ErrUploadLimit = errors.New("receive link upload limit reached")
+
+var ErrUploadFileLimit = errors.New("receive file allowance exhausted")

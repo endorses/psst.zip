@@ -104,7 +104,13 @@ func patch(t *testing.T, env *testEnv, target, data string, offset, status int, 
 
 func finish(t *testing.T, env *testEnv, id string) {
 	t.Helper()
-	request(t, env, "POST", env.url("/api/v1/transfers/"+id+"/manifest"), bytes.NewBufferString("encrypted manifest"), http.StatusNoContent)
+	manifest := []byte("encrypted manifest")
+	if protocol, err := env.queries.TransferReceiveProtocol(id); err != nil {
+		t.Fatal(err)
+	} else if protocol == 2 {
+		manifest = fixtureReceiveEnvelope()
+	}
+	request(t, env, "POST", env.url("/api/v1/transfers/"+id+"/manifest"), bytes.NewReader(manifest), http.StatusNoContent)
 	request(t, env, "POST", env.url("/api/v1/transfers/"+id+"/complete"), nil, http.StatusNoContent)
 }
 
@@ -258,7 +264,7 @@ func TestConcurrentDownloadQuota(t *testing.T) {
 
 func TestSlotCompletionEventsAndLifetime(t *testing.T) {
 	env := setup(t)
-	response := request(t, env, "POST", env.url("/api/v1/slots"), strings.NewReader(`{"expires_in_seconds":60}`), http.StatusCreated)
+	response := request(t, env, "POST", env.url("/api/v1/slots"), strings.NewReader(`{"expires_in_seconds":60,"receive_protocol":2,"recipient_public_key":"`+fixtureRecipientKey+`"}`), http.StatusCreated)
 	var slot api.CreateSlotResponse
 	if err := json.NewDecoder(response.Body).Decode(&slot); err != nil {
 		t.Fatal(err)

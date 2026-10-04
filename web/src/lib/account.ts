@@ -16,6 +16,12 @@ export interface Resource {
   status?: string;
   file_count?: number;
   download_count?: number;
+  max_downloads?: number;
+  max_files?: number;
+  reserved_files?: number;
+  completed_files?: number;
+  remaining_files?: number | null;
+  receive_protocol?: number;
   total_size?: number;
   downloaded_at?: string | null;
   expires_at: string;

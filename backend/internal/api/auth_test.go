@@ -21,7 +21,9 @@ import (
 func authRequest(t *testing.T, env *testEnv, method, path, token string, body any, status int) map[string]any {
 	t.Helper()
 	var reader io.Reader
-	if body != nil {
+	if raw, ok := body.([]byte); ok {
+		reader = bytes.NewReader(raw)
+	} else if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			t.Fatal(err)
@@ -98,12 +100,12 @@ func TestAuthCreationOwnershipAndPublicDownloads(t *testing.T) {
 func TestAuthPublicSlotCapabilityScopedAndDisabledOwner(t *testing.T) {
 	env := setupAuthFixture(t, false)
 	u, owner := addAccount(t, env, "alice", "user")
-	slot := authRequest(t, env, "POST", "/slots", owner, nil, 201)["id"].(string)
+	slot := authRequest(t, env, "POST", "/slots", owner, fixtureSlotPolicy(), 201)["id"].(string)
 	child := authRequest(t, env, "POST", "/slots/"+slot+"/transfers", "", nil, 201)
 	id := child["id"].(string)
 	token := child["delete_token"].(string)
 	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", "", "encrypted", 403)
-	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", token, "encrypted", 204)
+	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", token, fixtureReceiveEnvelope(), 204)
 	authRequest(t, env, "POST", "/transfers", token, nil, 401)
 	child2 := authRequest(t, env, "POST", "/slots/"+slot+"/transfers", "", nil, 201)["id"].(string)
 	authRequest(t, env, "POST", "/transfers/"+child2+"/manifest", token, "encrypted", 403)
@@ -111,7 +113,7 @@ func TestAuthPublicSlotCapabilityScopedAndDisabledOwner(t *testing.T) {
 	authRequest(t, env, "POST", "/slots", owner, nil, 401)
 	authRequest(t, env, "POST", "/slots/"+slot+"/transfers", "", nil, 403)
 	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", token, "encrypted", 403)
-	authRequest(t, env, "GET", "/slots/"+slot, "", nil, 200)
+	authRequest(t, env, "GET", "/slots/"+slot, "", nil, 401)
 }
 func TestAuthLoginAndCookieOrigin(t *testing.T) {
 	env := setupAuthFixture(t, false)
@@ -243,7 +245,7 @@ func TestAuthSlotLimits(t *testing.T) {
 	env := setupAuthFixture(t, false)
 	_, owner := addAccount(t, env, "alice", "user")
 	authRequest(t, env, "POST", "/slots", owner, map[string]int{"expires_in_seconds": 604801}, 400)
-	slot := authRequest(t, env, "POST", "/slots", owner, nil, 201)["id"].(string)
+	slot := authRequest(t, env, "POST", "/slots", owner, fixtureSlotPolicy(), 201)["id"].(string)
 	for range 20 {
 		authRequest(t, env, "POST", "/slots/"+slot+"/transfers", "", nil, 201)
 	}

@@ -211,6 +211,9 @@ private struct HistoryDetail: View {
                             Text("This device does not have the encryption key. You can manage this item, but open its full link on the device that created it.")
                         }
                         Text(current.summary)
+                        if let limit = current.maxDownloads, limit > 0 {
+                            Text("Up to \(limit) download attempts per file").font(.footnote)
+                        }
                         DisclosureGroup("Technical details") { Text(current.id).font(.caption).textSelection(.enabled) }
                         if stale {
                             Text("Offline — showing last known status").foregroundStyle(PsstTheme.warning)
@@ -220,7 +223,7 @@ private struct HistoryDetail: View {
             }
         }
         .onAppear {
-            if current.isSlot == true, current.fullLink != nil, receive == nil {
+            if current.isSlot == true, receive == nil {
                 receive = ReceiveViewModel(serverConfig: config, historyStore: history, record: current)
             }
         }

@@ -8,6 +8,13 @@ import (
 
 // Config holds application configuration loaded from environment variables.
 type Config struct {
+	MaxActiveStreams      int
+	MaxStreamsPerAccount  int
+	MaxStreamsPerIP       int
+	MaxStreamsPerTransfer int
+	MaxStreamsPerSlot     int
+	MaxActiveRequests     int
+	MaxRecoveryRequests   int
 	AdminUsername         string
 	AdminPassword         string
 	PublicURL             string
@@ -31,13 +38,20 @@ type Config struct {
 	RateLimitCreation      float64 // Creation endpoint requests per second per IP (default 2)
 	RateLimitBurst         int     // Global burst size (default 40)
 	RateLimitCreationBurst int     // Creation burst size (default 5)
-	MaxManifestSize        int64   // Max manifest upload size in bytes (default 10 MB)
+	MaxManifestSize        int64   // Max manifest upload size in bytes (default and maximum 1 MiB)
 	MaxFilesPerTransfer    int     // Max number of files per transfer (default 100)
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() Config {
 	return Config{
+		MaxActiveStreams:      int(envOrDefaultInt64("MAX_ACTIVE_STREAMS", 64)),
+		MaxStreamsPerAccount:  int(envOrDefaultInt64("MAX_STREAMS_PER_ACCOUNT", 4)),
+		MaxStreamsPerIP:       int(envOrDefaultInt64("MAX_STREAMS_PER_IP", 4)),
+		MaxStreamsPerTransfer: int(envOrDefaultInt64("MAX_STREAMS_PER_TRANSFER", 4)),
+		MaxStreamsPerSlot:     int(envOrDefaultInt64("MAX_STREAMS_PER_SLOT", 4)),
+		MaxActiveRequests:     int(envOrDefaultInt64("MAX_ACTIVE_REQUESTS", 128)),
+		MaxRecoveryRequests:   int(envOrDefaultInt64("MAX_RECOVERY_REQUESTS", 32)),
 		AdminUsername:         os.Getenv("ADMIN_USERNAME"),
 		AdminPassword:         os.Getenv("ADMIN_PASSWORD"),
 		PublicURL:             os.Getenv("PUBLIC_URL"),
@@ -59,7 +73,7 @@ func Load() Config {
 		RateLimitCreation:      envOrDefaultFloat64("RATE_LIMIT_CREATION", 2),
 		RateLimitBurst:         int(envOrDefaultInt64("RATE_LIMIT_BURST", 40)),
 		RateLimitCreationBurst: int(envOrDefaultInt64("RATE_LIMIT_CREATION_BURST", 5)),
-		MaxManifestSize:        envOrDefaultInt64("MAX_MANIFEST_SIZE", 10*1024*1024), // 10 MB
+		MaxManifestSize:        envOrDefaultInt64("MAX_MANIFEST_SIZE", 1024*1024), // 1 MiB; uploads also enforce this ceiling
 		MaxFilesPerTransfer:    int(envOrDefaultInt64("MAX_FILES_PER_TRANSFER", 100)),
 	}
 }

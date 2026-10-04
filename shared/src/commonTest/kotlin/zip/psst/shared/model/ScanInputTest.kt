@@ -14,6 +14,26 @@ class ScanInputTest {
         UrlHelper.buildDownloadUrl("https://example.com", id, key).substringAfter('#')
 
     @Test
+    fun versionedReceiveInvitationsCarryPublicKeysAndLegacyInvitationsCannotSubmit() {
+        val parsed =
+            assertNotNull(
+                    ScanInputClassifier.classify(
+                        UrlHelper.buildReceiveUrl("https://example.com", id, key)
+                    )
+                )
+                .link!!
+        assertEquals(2, parsed.receiveVersion)
+        assertEquals(UrlType.UPLOAD, parsed.type)
+        assertTrue(parsed.key.contentEquals(key))
+        assertNull(
+            ScanInputClassifier.classify(UrlHelper.buildUploadUrl("https://example.com", id, key))
+        )
+        assertNull(ScanInputClassifier.classify("https://example.com/u/$id#v3.$fragment"))
+        assertNull(ScanInputClassifier.classify("https://example.com/d/$id#v2.$fragment"))
+        assertNull(ScanInputClassifier.classify("https://example.com/u/$id#v2.$fragment.extra"))
+    }
+
+    @Test
     fun generatedLinksAndOriginsRoundTrip() {
         val origins =
             mapOf(
@@ -28,7 +48,7 @@ class ScanInputTest {
         for ((input, expected) in origins) for (type in listOf(UrlType.DOWNLOAD, UrlType.UPLOAD)) {
             val url =
                 if (type == UrlType.DOWNLOAD) UrlHelper.buildDownloadUrl(input, id.uppercase(), key)
-                else UrlHelper.buildUploadUrl(input, id.uppercase(), key)
+                else UrlHelper.buildReceiveUrl(input, id.uppercase(), key)
             val parsed = assertNotNull(ScanInputClassifier.classify(" \n$url\t")).link!!
             assertEquals(expected, parsed.origin)
             assertEquals(id, parsed.id)

@@ -9,6 +9,7 @@ final class DownloadAcknowledgements {
     private struct Pending: Codable, Equatable {
         let serverURL: String
         let transferID: String
+        var ownerID: String? = nil
     }
 
     private let storageKey = "pendingDownloadAcknowledgements"
@@ -20,8 +21,8 @@ final class DownloadAcknowledgements {
         pending = (try? JSONDecoder().decode([Pending].self, from: data)) ?? []
     }
 
-    func enqueue(serverURL: String, transferID: String) {
-        let receipt = Pending(serverURL: serverURL, transferID: transferID)
+    func enqueue(serverURL: String, transferID: String, ownerID: String? = nil) {
+        let receipt = Pending(serverURL: serverURL, transferID: transferID, ownerID: ownerID)
         guard !pending.contains(receipt) else { return }
         pending.append(receipt)
         persist()
@@ -38,9 +39,15 @@ final class DownloadAcknowledgements {
             guard !Task.isCancelled,
                   let receipt = pending.first(where: { !attempted.contains($0) }) else { return }
             attempted.append(receipt)
+            var token: String?
+            if let ownerID = receipt.ownerID {
+                guard let session = SecretStore.session, session.canTransfer,
+                      session.userID == ownerID, session.serverURL == receipt.serverURL else { continue }
+                token = session.token
+            }
             let client = ApiClient(
                 config: ServerConfig(baseUrl: receipt.serverURL),
-                httpClient: HttpClientFactoryKt.createPlatformHttpClient()
+                httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token
             )
             do {
                 try await client.transfers.acknowledgeDownload(transferId: receipt.transferID)

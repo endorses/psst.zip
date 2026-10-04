@@ -131,7 +131,19 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     for (row in batch) {
                         if (app.prefs.historyAccess.value != access) return@launch
                         try {
-                            refreshHistoryEntry(dao, row.id, reportFailure = true)
+                            refreshHistoryEntry(
+                                dao,
+                                row.id,
+                                reportFailure = true,
+                                createClient = { config ->
+                                    ApiClient(
+                                        config,
+                                        sessionToken =
+                                            app.prefs.getSessionToken(config.normalizedBaseUrl),
+                                    )
+                                },
+                                privateReceiveKey = zip.psst.android.data.InboxKeyStore(app)::read,
+                            )
                         } catch (e: CancellationException) {
                             throw e
                         } catch (_: Exception) {
@@ -161,12 +173,14 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 try {
                     withContext(Dispatchers.IO) {
+                        val removed = dao.getById(id)
                         revokeHistoryEntry(dao, id, { app.prefs.historyAccess.value }) { config ->
                             ApiClient(
                                 config,
                                 sessionToken = app.prefs.getSessionToken(config.normalizedBaseUrl),
                             )
                         }
+                        removed?.let { zip.psst.android.data.InboxKeyStore(app).delete(it) }
                     }
                 } catch (error: CancellationException) {
                     throw error

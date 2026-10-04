@@ -10,6 +10,13 @@ import * as api from "../src/lib/api.ts";
 import { encryptFileFrame, decryptFileStream, newEncryptionId } from "../src/lib/chunked-files.ts";
 import * as crypto from "../src/lib/crypto.ts";
 import { assertFileSize, MAX_BUFFERED_BYTES } from "../src/lib/limits.ts";
+import {
+  generateReceiveKeyPair,
+  sealSubmissionKey,
+  openSubmissionKey,
+  encodeReceiveEnvelope,
+  decodeReceiveEnvelope,
+} from "../src/lib/receive-crypto.ts";
 
 let server: ChildProcess;
 let directory: string;
@@ -45,6 +52,8 @@ before(async () => {
       // Tiny tus chunks intentionally create a burst of requests in this fixture.
       RATE_LIMIT_GLOBAL: "1000",
       RATE_LIMIT_BURST: "1000",
+      RATE_LIMIT_CREATION: "1000",
+      RATE_LIMIT_CREATION_BURST: "1000",
     },
     stdio: "ignore",
   });
@@ -136,7 +145,10 @@ function upload(id: string, encrypted: ArrayBuffer): Promise<string> {
   });
 }
 
-async function roundTrip(id: string) {
+async function roundTrip(
+  id: string,
+  receiver?: { slot: string; publicKey: Uint8Array; privateKey: Uint8Array },
+) {
   assert.match(id, /^[0-9a-f-]{36}$/);
   const key = await crypto.generateKey();
   const restoredKey = await crypto.importKey(await crypto.exportKey(key));
@@ -158,9 +170,33 @@ async function roundTrip(id: string) {
       chunk_size: 4194304 as const,
     });
   }
-  await api.uploadManifest(id, await crypto.encryptManifest(key, { files }));
+  const encryptedManifest = await crypto.encryptManifest(key, { files });
+  await api.uploadManifest(
+    id,
+    receiver
+      ? encodeReceiveEnvelope(
+          await sealSubmissionKey(receiver.publicKey, receiver.slot, id, key),
+          new Uint8Array(encryptedManifest),
+        ).buffer
+      : encryptedManifest,
+  );
   await api.completeTransfer(id);
-  const manifest = await crypto.decryptManifest(restoredKey, await api.downloadManifest(id));
+  const downloaded = await api.downloadManifest(id);
+  const envelope = receiver ? decodeReceiveEnvelope(new Uint8Array(downloaded)) : null;
+  const downloadKey =
+    receiver && envelope
+      ? await openSubmissionKey(
+          receiver.privateKey,
+          receiver.publicKey,
+          receiver.slot,
+          id,
+          envelope.wrappedKey,
+        )
+      : restoredKey;
+  const manifest = await crypto.decryptManifest(
+    downloadKey,
+    envelope ? envelope.encryptedManifest.buffer : downloaded,
+  );
   assert.deepEqual(manifest.files, files);
   for (const [index, file] of manifest.files.entries()) {
     const chunks: Uint8Array[] = [];
@@ -189,13 +225,32 @@ test("only explicit download acknowledgment records downloaded_at and repeated a
   await api.acknowledgeDownload(id);
   assert.equal((await api.getTransferInfo(id)).downloaded_at, downloadedAt);
 });
-test("drop slot uploads create a completed child transfer", async () => {
-  const slot = await api.createSlot();
+test("private v2 inbox encrypts for its owner, hides children and enforces cumulative file count", async () => {
+  const pair = await generateReceiveKeyPair();
+  const slot = await api.createSlot(await crypto.exportKey(pair.publicKey), 2);
+  const publicAvailability = await realFetch(`${origin}/api/v1/slots/${slot.id}/availability`);
+  assert.equal(publicAvailability.status, 200);
+  assert.equal((await publicAvailability.json()).transfers, undefined);
   const { id } = await api.createSlotTransfer(slot.id);
-  await roundTrip(id);
+  await roundTrip(id, { slot: slot.id, ...pair });
   const result = await api.getSlotInfo(slot.id);
   assert.equal(result.transfers[0].transfer_id, id);
   assert.equal(result.transfers[0].status, "complete");
+  assert.equal(result.reserved_files, 2);
+  assert.equal(result.remaining_files, 0);
+  await assert.rejects(api.createSlotTransfer(slot.id), /receive_file_limit/);
+  for (const path of [`slots/${slot.id}`, `transfers/${id}`, `transfers/${id}/manifest`])
+    assert.ok([401, 404].includes((await realFetch(`${origin}/api/v1/${path}`)).status));
+});
+test("download count is independently enforced per file", async () => {
+  const { id } = await api.createTransfer(2);
+  await roundTrip(id);
+  const info = await api.getTransferInfo(id);
+  assert.ok(info.files?.length === 2);
+  assert.ok(info.files.every((file) => file.remaining_downloads === 1));
+  await api.downloadFile(id, info.files[0].id);
+  await assert.rejects(api.downloadFile(id, info.files[0].id), /download_limit/);
+  assert.equal((await api.getTransferInfo(id)).files?.[1].remaining_downloads, 1);
 });
 test("AES-GCM rejects a wrong key and modified ciphertext", async () => {
   const key = await crypto.generateKey();

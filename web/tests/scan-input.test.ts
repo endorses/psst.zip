@@ -10,12 +10,12 @@ const id = "01234567-89ab-cdef-0123-456789abcdef",
 test("shared contract: download/upload, canonical origin and 32-byte fragment", () => {
   for (const path of ["d", "u"]) {
     const result = classifyScanInput(
-      ` HTTPS://EXAMPLE.COM.:443/${path}/${id.toUpperCase()}#${key}= `,
+      ` HTTPS://EXAMPLE.COM.:443/${path}/${id.toUpperCase()}#${path === "u" ? "v2." : ""}${key}= `,
     );
     assert.deepEqual(result, {
       kind: path === "d" ? "download" : "upload",
       origin: "https://example.com",
-      url: `https://example.com/${path}/${id}#${key}`,
+      url: `https://example.com/${path}/${id}#${path === "u" ? "v2." : ""}${key}`,
     });
   }
   assert.equal(normalizeScanOrigin("http://[::1]:8080"), "http://[::1]:8080");

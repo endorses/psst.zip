@@ -253,7 +253,13 @@ test("receive history reopens the original link and failed saving retries only t
   context,
   request,
 }) => {
+  // Exercise the complete provider fallback in a real browser. This simulates
+  // absent SubtleCrypto; the separate LAN deployment check covers insecure origins.
+  await context.addInitScript(() =>
+    Object.defineProperty(globalThis.crypto, "subtle", { value: undefined }),
+  );
   await signIn(page);
+  expect(await page.evaluate(() => typeof globalThis.crypto.subtle)).toBe("undefined");
   let slotCreations = 0;
   page.on("request", (r) => {
     if (r.url().endsWith("/api/v1/slots") && r.method() === "POST") slotCreations++;
@@ -302,4 +308,43 @@ test("receive history reopens the original link and failed saving retries only t
   await expect(page.getByText("Sender notified.", { exact: true })).toBeVisible();
   expect(requests).toBe(3);
   expect(slotCreations).toBe(1);
+});
+
+test("receive cap rejects oversized batches and a device without its private key can inspect the inbox", async ({
+  page,
+  context,
+  request,
+}) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Receive", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Limit files accepted" }).check();
+  await page.getByRole("spinbutton", { name: "Limit files accepted" }).fill("1");
+  await page.getByRole("button", { name: "Create receive link", exact: true }).click();
+  const link = await page.getByLabel("Full link").inputValue();
+  expect(link).toMatch(/#v2\.[A-Za-z0-9_-]{43}$/);
+  const slot = new URL(link).pathname.split("/").pop()!;
+  const sender = await context.newPage();
+  await sender.goto(link);
+  await sender.getByLabel("Choose files").setInputFiles([file, { ...file, name: "extra.txt" }]);
+  await sender.getByRole("button", { name: "Send files", exact: true }).click();
+  await expect(sender.getByRole("alert")).toContainText("file");
+  expect((await (await request.get(`/api/v1/slots/${slot}`)).json()).transfers).toHaveLength(0);
+  await sender.getByRole("button", { name: "Remove extra.txt" }).click();
+  await sender.getByRole("button", { name: "Retry upload", exact: true }).click();
+  await expect(sender.getByRole("heading", { name: "Files sent" })).toBeVisible();
+  await sender.close();
+  const info = await (await request.get(`/api/v1/slots/${slot}`)).json();
+  expect(info.remaining_files).toBe(0);
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage))
+      if (key.startsWith("psst.receive-key.v2.")) localStorage.removeItem(key);
+  });
+  await page.reload();
+  await expect(
+    page.getByText("This browser has no private key for this inbox.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText(/0 allocations remaining/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Save files/ })).toHaveCount(0);
+  await page.goto(`/d/${info.transfers[0].transfer_id}?inbox=${slot}`);
+  await expect(page.getByRole("alert")).toContainText("This browser has no private key");
 });

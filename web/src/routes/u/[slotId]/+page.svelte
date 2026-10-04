@@ -2,11 +2,12 @@
   import Icon from "$lib/components/Icon.svelte";
   import { page } from "$app/stores";
   import { onMount } from "svelte";
-  import { importKey } from "$lib/crypto";
-  import { getSlotInfo } from "$lib/api";
+  import { parseReceiveFragment } from "$lib/receive-keys";
+  import { getSlotAvailability, type SlotAvailability } from "$lib/api";
   import SendPanel from "$lib/components/SendPanel.svelte";
   import { BRAND } from "$lib/brand";
   let reconnect = $state(false);
+  let availability = $state<SlotAvailability | null>(null);
   let ready = $state(false),
     error = $state(""),
     key = $state("");
@@ -21,14 +22,26 @@
       return;
     }
     try {
-      await importKey(key);
+      parseReceiveFragment(key);
     } catch {
       error =
-        "This link has an invalid encryption key. Ask the sender to copy the full link again.";
+        "This receive link is invalid or uses an older version. Ask its owner for a new link.";
       return;
     }
     try {
-      await getSlotInfo($page.params.slotId ?? "");
+      availability = await getSlotAvailability($page.params.slotId ?? "");
+      if (
+        availability.receive_protocol !== 2 ||
+        availability.recipient_public_key !== parseReceiveFragment(key).encoded
+      ) {
+        error =
+          "The receive link's encryption key does not match this inbox. Ask its owner for a new link.";
+        return;
+      }
+      if (!availability.available) {
+        error = "This receive link cannot accept more files. Ask its owner for a new link.";
+        return;
+      }
       ready = true;
     } catch (e) {
       reconnect = !(e instanceof Error && (e.message.includes("404") || e.message.includes("410")));
@@ -48,9 +61,11 @@
   {#if error}<h1>Cannot open receive link</h1>
     <p role="alert" class="error">{error}</p>
     {#if reconnect}<button onclick={load}><Icon name="Refresh" size={18} />Reconnect</button
-      >{/if}{:else if ready}<SendPanel slotId={$page.params.slotId} keyString={key} />{:else}<p
-      role="status"
-    >
+      >{/if}{:else if ready}{#if availability?.remaining_files !== null && availability?.remaining_files !== undefined}<p
+        class="notice"
+      >
+        {availability.remaining_files} file allocations remaining. Unfinished uploads also count.
+      </p>{/if}<SendPanel slotId={$page.params.slotId} keyString={key} />{:else}<p role="status">
       Opening receive link…
     </p>{/if}
 </section>

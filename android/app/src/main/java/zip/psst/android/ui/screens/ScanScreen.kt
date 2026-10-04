@@ -215,6 +215,13 @@ fun ScanScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                             Text("Downloads/psst.zip")
+                            if (state.fileAttempts.isNotEmpty())
+                                record?.files?.forEach { file ->
+                                    Text(
+                                        "${file.name}: ${state.fileAttempts[file.blobId.lowercase()]?.toString() ?: "unknown"} download attempts remaining",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
                             record?.saved?.forEach { file ->
                                 Card(
                                     Modifier.fillMaxWidth(),
@@ -260,6 +267,10 @@ fun ScanScreen(
                                     "Choose files deliberately to send to the server above. Its file limit is checked before uploading."
                                 )
                                 Text("${state.uploadFiles.size} files selected")
+                                if (state.maxUploadFiles > 0)
+                                    Text(
+                                        "${state.remainingUploadFiles ?: "…"} file allocations remaining. Unfinished uploads also count; deletion does not restore the allowance."
+                                    )
                                 state.uploadFiles.forEach { Text(viewModel.uploadName(it)) }
                                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) {
                                     Text("Choose files")
@@ -329,7 +340,13 @@ fun ScanScreen(
                         "${consent.files.size} ${if (consent.files.size == 1) "file" else "files"} from ${consent.origin}\n\n" +
                             "Total: ${android.text.format.Formatter.formatFileSize(context, consent.totalBytes)}\n" +
                             "Still to save: ${android.text.format.Formatter.formatFileSize(context, consent.remainingBytes)}\n\n" +
-                            "This transfer exceeds 100 MiB and may use mobile data. Downloads keep at least 256 MiB of storage free."
+                            (if (consent.totalBytes > 100L * 1024 * 1024)
+                                "This transfer exceeds 100 MiB and may use mobile data. "
+                            else "") +
+                            (if (consent.skippedBlobIds.isNotEmpty())
+                                "${consent.skippedBlobIds.size} files have no download attempts left and will be skipped. "
+                            else "") +
+                            "Downloads keep at least 256 MiB of storage free."
                     )
                 },
                 confirmButton = {

@@ -25,6 +25,9 @@ struct TransferDetailView: View {
                     DisclosureGroup("Files") {
                         ForEach(Array(vm.fileNames.enumerated()), id: \.offset) { _, name in Text(verbatim: name).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4) }
                     }
+                    if vm.maxDownloads > 0 {
+                        Text("Up to \(vm.maxDownloads) download attempts per file").font(.footnote)
+                    }
                     if let expiry = vm.expiresAt {
                         expiryLabel(expiry)
                     }
@@ -33,13 +36,30 @@ struct TransferDetailView: View {
                     receiveStatus(vm)
                     if let record = vm.record {
                         Text(record.displayTitle).font(.headline)
+                        if !record.canDecryptInbox {
+                            Text("This device has no private receive key. Save the files on the device that created this link. You can still revoke the link from History.").font(.footnote)
+                        }
+                        if record.receiveProtocol != 2 {
+                            Text("This older receive link no longer accepts uploads. You can save existing files or create a new receive link.").font(.footnote)
+                        }
+                        if let limit = record.maxFiles, limit > 0 {
+                            Text("\(record.reservedFiles ?? 0) of \(limit) file slots used").font(.footnote)
+                            Text("Unfinished uploads also use a slot. Deleting files does not restore slots.").font(.caption)
+                        }
                         Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                         DisclosureGroup("Technical details") { Text(record.id).font(.caption).textSelection(.enabled) }
                     }
                     if let url = vm.uploadURL {
                         LinkCard(url: url)
                     }
-                    if vm.canSave, !vm.isSaving {
+                    if let consent = vm.pendingConsent {
+                        Text("Save \(consent.fileCount) files (" + ByteCountFormatter.string(fromByteCount: consent.total, countStyle: .binary) + ")?").font(.headline)
+                        Text(vm.record?.serverURL ?? "").font(.caption)
+                        Text("This uses device storage and network data. Only continue if you trust the senders.").font(.footnote)
+                        Button("Save these files") { vm.confirmSaving() }.buttonStyle(PrimaryAction())
+                        Button("Cancel") { vm.cancelSaving() }
+                    }
+                    if vm.canSave, !vm.isSaving, vm.pendingConsent == nil {
                         Button(LocalizedStringKey(vm.savingError == nil ? "Save files" : "Retry saving")) { vm.save() }.buttonStyle(PrimaryAction())
                     }
                     if let message = vm.savingError {

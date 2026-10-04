@@ -27,3 +27,10 @@ func TestAuthenticationIsSecureByDefault(t *testing.T) {
 		t.Fatalf("unexpected receive limits: %+v", cfg)
 	}
 }
+
+func TestManifestDefaultMatchesClientCeiling(t *testing.T) {
+	t.Setenv("MAX_MANIFEST_SIZE", "")
+	if got := Load().MaxManifestSize; got != 1024*1024 {
+		t.Fatalf("default manifest size = %d", got)
+	}
+}

@@ -35,6 +35,7 @@ object ScanInputClassifier {
             return ScanInput(ScanInputKind.PAIRING, pairing = pairing)
         }
         val link = UrlHelper.parse(input) ?: return null
+        if (link.type == UrlType.UPLOAD && link.receiveVersion != 2) return null
         return ScanInput(
             if (link.type == UrlType.DOWNLOAD) ScanInputKind.DOWNLOAD else ScanInputKind.UPLOAD,
             link = link,

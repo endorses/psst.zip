@@ -54,6 +54,8 @@ targets:
     platform: iOS
     sources:
       - path: PsstTests
+      - path: ../docs/security/fixtures/hpke-receive-v2.json
+        buildPhase: resources
     dependencies:
       - target: Psst
     settings:

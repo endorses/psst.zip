@@ -171,7 +171,8 @@ class HistoryTest {
         val key = ByteArray(32) { it.toByte() }
         val nonce = ByteArray(12) { it.toByte() }
         val manifest =
-            """{"files":[{"name":"test.txt","size":7,"blob_id":"blob"}]}""".encodeToByteArray()
+            """{"files":[{"name":"test.txt","size":7,"blob_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","encoding":"chunked-v1","chunk_size":4194304,"encryption_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"""
+                .encodeToByteArray()
         val encrypted = nonce + CryptoProvider.encrypt(key, nonce, manifest)
         val dao =
             MemoryDao(

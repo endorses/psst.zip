@@ -5,6 +5,7 @@
   import Icon from "./Icon.svelte";
   import LinkCard from "./LinkCard.svelte";
   import { fileLimitLabel } from "$lib/limits";
+  import OptionalLimit from "./OptionalLimit.svelte";
   let {
     accountId,
     slotId,
@@ -23,6 +24,7 @@
     onselection?: (files: File[]) => void;
   } = $props();
   const job = new UploadJob();
+  let maxDownloads = $state(0);
   onMount(() => {
     void job.refreshLimit();
   });
@@ -49,7 +51,7 @@
     void job.cancel();
   });
   function start() {
-    void job.start({ accountId, slotId, key: keyString, oncreated });
+    void job.start({ accountId, slotId, key: keyString, maxDownloads, oncreated });
   }
 </script>
 
@@ -57,13 +59,17 @@
 {#if job.state === "done"}
   <h1>{slotId ? "Files sent" : "Ready to share"}</h1>
   {#if slotId}<p class="success" role="status">
-      Your files were sent securely. You can close this page.
+      Your encrypted files were sent to the inbox owner. You can close this page.
     </p>{:else}<LinkCard url={job.url} label="Anyone with this link can save your files." />{/if}
+  {#if !slotId && maxDownloads}<p class="muted small">
+      {maxDownloads} download attempts per file, including interrupted downloads.
+    </p>{/if}
   <button
     onclick={() => {
       job.files = [];
       job.state = "idle";
       job.url = "";
+      maxDownloads = 0;
     }}>Send more files</button
   >
 {:else if job.active}
@@ -139,13 +145,19 @@
           >
         </li>{/each}
     </ul>
+    {#if !slotId}<OptionalLimit
+        bind:value={maxDownloads}
+        label="Limit downloads per file"
+        description="Each file allows this many download attempts. Interrupted downloads and retries count. This limit is fixed when you send."
+      />{/if}
     <button class="primary" onclick={start}
       ><Icon name={job.state === "error" ? "Refresh" : "Send"} size={18} />{job.state === "error"
         ? "Retry upload"
         : "Send files"}</button
     >{:else}<p class="encryption-note">
-      <Icon name="Lock" size={16} />Encrypted on your device. Only people with the link can open
-      your files.
+      <Icon name="Lock" size={16} />{slotId
+        ? "Encrypted for the inbox owner. Other uploaders cannot read your files."
+        : "Encrypted on your device. Only people with the link can open your files."}
     </p>{/if}
 {/if}
 {#if job.error}<p class="error" role="alert">{job.error}</p>

@@ -31,6 +31,9 @@ func (s *tusStore) GetUpload(id string) (*tus.UploadInfo, error) {
 func (s *tusStore) CreateUpload(transferID string, size int64) (string, error) {
 	id := uuid.New().String()
 	if err := s.queries.CreateFileWithQuota(id, transferID, size, s.maxSlotSize); err != nil {
+		if err == database.ErrSlotFileQuota {
+			return "", tus.ErrUploadFileLimit
+		}
 		if err == database.ErrSlotQuota {
 			return "", tus.ErrUploadLimit
 		}

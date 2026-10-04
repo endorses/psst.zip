@@ -42,6 +42,7 @@ struct GuestDownload: Codable, Identifiable, Equatable {
     var complete = false
     var receiptPending = false
     var receiptDelivered = false
+    var remainingDownloads: [String: Int64]? = nil
     var keyReference: String {
         "guest-download-" + id
     }
@@ -234,7 +235,7 @@ enum GuestFiles {
 }
 
 enum GuestError: LocalizedError {
-    case input, conflictingKey, invalidManifest, missingKey, notReady, redownloadConsent
+    case input, conflictingKey, invalidManifest, missingKey, notReady, redownloadConsent, downloadLimit
     var errorDescription: String? {
         switch self {
         case .input: "This is not a supported psst.zip link or server login code. Scan again or paste a complete link."
@@ -242,6 +243,7 @@ enum GuestError: LocalizedError {
         case .invalidManifest: "The encrypted file list is invalid or exceeds this app’s limits."
         case .missingKey: "This transfer’s key is unavailable. Scan or paste the original link again."
         case .redownloadConsent: "A previously saved file is missing. Choose Download missing files to receive it again."
+        case .downloadLimit: "Download limit reached. Already saved files remain available. Ask the sender for a new link for missing files."
         case .notReady: "This transfer is not ready or has expired. Ask the sender for an available download link."
         }
     }

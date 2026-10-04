@@ -134,7 +134,7 @@ class AuthApiTest {
     }
 
     @Test
-    fun ownerWritesSendSessionButPublicReadsDoNot() = runTest {
+    fun ownerClientReadsAndWritesUseItsScopedSession() = runTest {
         val client =
             HttpClient(
                 MockEngine { request ->
@@ -154,7 +154,10 @@ class AuthApiTest {
                             )
                         }
                         "/api/v1/transfers/id" -> {
-                            assertNull(request.headers[HttpHeaders.Authorization])
+                            assertEquals(
+                                "Bearer session-secret",
+                                request.headers[HttpHeaders.Authorization],
+                            )
                             respond(
                                 """{"id":"id","status":"pending"}""",
                                 HttpStatusCode.OK,

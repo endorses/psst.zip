@@ -9,6 +9,7 @@ data class ParsedUrl(
     val key: ByteArray,
     val type: UrlType,
     val origin: String = "",
+    val receiveVersion: Int = 1,
 ) {
     override fun toString(): String =
         "ParsedUrl(id=$id, type=$type, origin=$origin, key=[redacted])"
@@ -19,14 +20,16 @@ data class ParsedUrl(
         return id == other.id &&
             key.contentEquals(other.key) &&
             type == other.type &&
-            origin == other.origin
+            origin == other.origin &&
+            receiveVersion == other.receiveVersion
     }
 
     override fun hashCode(): Int {
         var result = id.hashCode()
         result = 31 * result + key.contentHashCode()
         result = 31 * result + type.hashCode()
-        return 31 * result + origin.hashCode()
+        result = 31 * result + origin.hashCode()
+        return 31 * result + receiveVersion
     }
 }
 
@@ -59,6 +62,12 @@ object UrlHelper {
         return "${baseUrl.trimEnd('/')}/u/$slotId#$encodedKey"
     }
 
+    @OptIn(ExperimentalEncodingApi::class)
+    fun buildReceiveUrl(baseUrl: String, slotId: String, publicKey: ByteArray): String {
+        require(isResourceId(slotId) && publicKey.size == 32)
+        return "${baseUrl.trimEnd('/')}/u/${slotId.lowercase()}#v2.${base64Url.encode(publicKey)}"
+    }
+
     /**
      * Parse a download or upload URL, extracting the ID and encryption key.
      *
@@ -70,14 +79,16 @@ object UrlHelper {
         val input = url.trim()
         val match =
             Regex(
-                    "^(https?://[^/?#]+)/([du])/([0-9a-fA-F-]+)#([A-Za-z0-9_-]{43}=?$)",
+                    "^(https?://[^/?#]+)/([du])/([0-9a-fA-F-]+)#((?:v2\\.)?[A-Za-z0-9_-]{43}=?$)",
                     RegexOption.IGNORE_CASE,
                 )
                 .matchEntire(input) ?: return null
         val origin = ServerOrigin.normalize(match.groupValues[1]) ?: return null
         val id = match.groupValues[3]
         if (!isResourceId(id)) return null
-        val fragment = match.groupValues[4].removeSuffix("=")
+        val version = if (match.groupValues[4].startsWith("v2.")) 2 else 1
+        if (version == 2 && match.groupValues[2] != "u") return null
+        val fragment = match.groupValues[4].removePrefix("v2.").removeSuffix("=")
         val key =
             try {
                 base64Url.decode(fragment)
@@ -91,7 +102,7 @@ object UrlHelper {
                 "u" -> UrlType.UPLOAD
                 else -> return null
             }
-        return ParsedUrl(id.lowercase(), key, type, origin)
+        return ParsedUrl(id.lowercase(), key, type, origin, version)
     }
 
     fun isResourceId(value: String): Boolean =

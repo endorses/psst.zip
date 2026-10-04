@@ -20,6 +20,35 @@ class ManifestValidatorTest {
         )
 
     @Test
+    fun perFilePoliciesMustMatchTheAuthenticatedManifest() {
+        val manifest = Manifest(listOf(entry()))
+        val file = TransferFile(id, 72, 1, 1)
+        val transfer =
+            Transfer(id, 1, 72, TransferStatus.COMPLETE, maxDownloads = 2, files = listOf(file))
+        assertEquals(12L, ManifestValidator.validateForTransfer(manifest, transfer))
+        for (invalid in
+            listOf(
+                transfer.copy(files = emptyList()),
+                transfer.copy(files = listOf(file, file)),
+                transfer.copy(
+                    files = listOf(file.copy(id = "11234567-89ab-cdef-0123-456789abcdef"))
+                ),
+                transfer.copy(files = listOf(file.copy(size = 71))),
+                transfer.copy(files = listOf(file.copy(downloadCount = -1))),
+                transfer.copy(files = listOf(file.copy(remainingDownloads = -1))),
+                transfer.copy(files = listOf(file.copy(remainingDownloads = 3))),
+            )) assertFailsWith<IllegalArgumentException> {
+            ManifestValidator.validateForTransfer(manifest, invalid)
+        }
+        val unknown = file.copy(downloadCount = null, remainingDownloads = null)
+        assertEquals(
+            12L,
+            ManifestValidator.validateForTransfer(manifest, transfer.copy(files = listOf(unknown))),
+        )
+        kotlin.test.assertNull(unknown.remainingDownloads)
+    }
+
+    @Test
     fun validatesEncryptedSizeAndAllowsDuplicateFilenames() {
         val manifest =
             Manifest(listOf(entry(), entry(blobId = "11234567-89ab-cdef-0123-456789abcdef")))

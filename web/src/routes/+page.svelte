@@ -31,8 +31,11 @@
     type Session,
     type Resource,
   } from "$lib/account";
-  import { createSlot, getSlotInfo } from "$lib/api";
-  import { generateKey, exportKey } from "$lib/crypto";
+  import { createSlot, getSlotInfo, type SlotInfo } from "$lib/api";
+  import { exportKey } from "$lib/crypto";
+  import { generateReceiveKeyPair } from "$lib/receive-crypto";
+  import { storeReceiveKey, loadReceiveKey, removeReceiveKey } from "$lib/receive-keys";
+  import OptionalLimit from "$lib/components/OptionalLimit.svelte";
   type Tab =
     | "Overview"
     | "Traffic"
@@ -46,6 +49,9 @@
     | "Users"
     | "Settings";
   let receiveUnavailable = $state(false);
+  let receiveInfo = $state<SlotInfo | null>(null),
+    maxFiles = $state(0);
+  let receiveNeedsKey = $state(false);
   let pendingFiles: File[] = [],
     pendingOwner = "";
   let selectedFiles: File[] = [];
@@ -283,13 +289,19 @@
       throw err;
     }
     if (owner !== epoch || id !== receiveId) return;
+    receiveInfo = slot;
+    const privateKey = user ? loadReceiveKey(user.id, id) : null;
+    receiveNeedsKey = slot.receive_protocol === 2 ? !privateKey : !links[id];
     const key = links[id] ? new URL(links[id]).hash : "";
     received = slot.transfers
       .filter((t) => t.status === "complete")
       .map((t) => ({
         id: t.transfer_id,
         count: t.file_count,
-        url: `${location.origin}/d/${t.transfer_id}${key}`,
+        url:
+          slot.receive_protocol === 2
+            ? `${location.origin}/d/${t.transfer_id}?inbox=${encodeURIComponent(id)}`
+            : `${location.origin}/d/${t.transfer_id}${key}`,
       }));
   }
   async function cancelPair() {
@@ -332,6 +344,9 @@
     receiveName = "";
     sendActive = false;
     receiveId = "";
+    receiveInfo = null;
+    receiveNeedsKey = false;
+    maxFiles = 0;
     pendingDelete = null;
     liveMessage = "";
     password = "";
@@ -457,9 +472,9 @@
     tab = next;
     if (next === "Receive") {
       const id = $page.url.searchParams.get("slot");
-      if (id && links[id]) {
+      if (id) {
         receiveId = id;
-        receiveUrl = links[id];
+        receiveUrl = links[id] || "";
         receiveUnavailable = false;
       }
     }
@@ -472,6 +487,7 @@
     await act(async () => {
       const owner = epoch;
       if (next === "History") await refreshHistory(owner);
+      if (next === "Receive" && receiveId) await refreshReceived(receiveId, owner);
       if (next === "Devices") {
         const result = await request<{ sessions: Session[] }>("/auth/sessions");
         if (owner === epoch) sessions = result.sessions;
@@ -485,19 +501,73 @@
   async function createReceive() {
     await act(async () => {
       const owner = epoch;
-      const key = await exportKey(await generateKey());
-      const slot = await createSlot();
-      if (owner !== epoch) return;
+      const account = user!.id;
+      const selectedMaxFiles = maxFiles;
+      const pair = await generateReceiveKeyPair();
+      const publicKey = await exportKey(pair.publicKey);
+      const slot = await createSlot(publicKey, selectedMaxFiles);
+      try {
+        if (owner !== epoch || user?.id !== account)
+          throw new Error("Your account changed. Create the receive link again.");
+        storeReceiveKey(account, slot.id, pair);
+      } catch (cause) {
+        if (slot.delete_token)
+          await fetch(`/api/v1/slots/${slot.id}`, {
+            method: "DELETE",
+            credentials: "omit",
+            headers: { Authorization: `Bearer ${slot.delete_token}` },
+          }).catch(() => {});
+        throw cause;
+      } finally {
+        pair.privateKey.fill(0);
+      }
       receiveUnavailable = false;
       receiveId = slot.id;
       received = [];
-      receiveUrl = `${location.origin}/u/${slot.id}#${key}`;
+      receiveUrl = "";
+      // Preserve the owner record and local private key on transport failure so
+      // History can manage the allocation; never publish an unverified invitation.
+      let accepted: SlotInfo;
+      try {
+        accepted = await getSlotInfo(slot.id);
+      } catch {
+        throw new Error(
+          "Could not verify the new inbox. It remains in History for inspection or revocation. No receive link was shared.",
+        );
+      }
+      if (
+        accepted.receive_protocol !== 2 ||
+        accepted.recipient_public_key !== publicKey ||
+        accepted.max_files !== selectedMaxFiles
+      ) {
+        let removed = false;
+        if (slot.delete_token) {
+          const response = await fetch(`/api/v1/slots/${slot.id}`, {
+            method: "DELETE",
+            credentials: "omit",
+            headers: { Authorization: `Bearer ${slot.delete_token}` },
+          }).catch(() => null);
+          removed = !!response && (response.ok || response.status === 404);
+        }
+        if (removed) {
+          removeReceiveKey(account, slot.id);
+          receiveId = "";
+        }
+        throw new Error(
+          `This server did not accept the private inbox protocol or file limit. Ask its operator to update it.${removed ? " The unused inbox was removed." : " Revoke the unused inbox from History."}`,
+        );
+      }
+      if (owner !== epoch || user?.id !== account) return;
+      receiveUrl = `${location.origin}/u/${slot.id}#v2.${publicKey}`;
       remember(slot.id, receiveUrl);
       if (user && receiveName.trim()) {
         labels = { ...labels, [labelKey("slots", slot.id)]: { custom: receiveName.trim() } };
         saveLabels(user.id, labels);
       }
       receiveName = "";
+      maxFiles = 0;
+      receiveNeedsKey = false;
+      await refreshReceived(slot.id, owner);
       await goto(`/?view=receive&slot=${encodeURIComponent(slot.id)}`, {
         keepFocus: true,
         noScroll: true,
@@ -530,6 +600,7 @@
       delete links[target.id];
       links = { ...links };
       if (user) saveLinks(user.id, links);
+      if (user && target.kind === "slots") removeReceiveKey(user.id, target.id);
       pendingDelete = null;
       notice = "Link revoked and server files deleted.";
     });
@@ -858,6 +929,22 @@
                 ? `${received.reduce((n, t) => n + t.count, 0)} files received. Ready to save below.`
                 : "Waiting for files. Arrivals update automatically."}
             </p>{/if}
+          {#if receiveInfo && !receiveUnavailable}
+            {#if receiveInfo.receive_protocol !== 2}<p class="notice">
+                This older inbox is read-only. Its original shared link may have allowed other
+                holders to read submissions. Create a new receive link for future files.
+              </p>{/if}
+            {#if receiveNeedsKey}<p class="notice">
+                This browser has no private key for this inbox. Use the device that created it to
+                save files. You can still view its status and revoke it.
+              </p>{/if}
+            <p class="muted small">
+              {receiveInfo.completed_files} completed files · {receiveInfo.reserved_files} file allocations
+              used{receiveInfo.remaining_files === null
+                ? " · No creator file limit"
+                : ` · ${receiveInfo.remaining_files} allocations remaining`}
+            </p>
+          {/if}
           <label
             >Link name (optional)<input
               maxlength="200"
@@ -866,6 +953,12 @@
             /></label
           >
           <p class="muted small">The name stays in this browser and can be changed in History.</p>
+          <OptionalLimit
+            bind:value={maxFiles}
+            disabled={busy}
+            label="Limit files accepted"
+            description="Counts file allocations across every sender. Unfinished or abandoned uploads count; retries of the same upload do not. Deleting files does not restore this fixed limit."
+          />
           <button class="primary" disabled={busy} onclick={createReceive}
             >{receiveUrl
               ? "Create another receive link"
@@ -918,6 +1011,15 @@
                     ? `${item.transfers?.reduce((n, t) => n + t.file_count, 0) ?? item.file_count ?? 0} files received`
                     : `${item.file_count ?? 0} files · ${status(item)}`}
                 </p>
+                {#if item.kind === "slots" && item.receive_protocol === 2}<p class="muted small">
+                    {item.reserved_files ?? 0} file allocations used{item.remaining_files == null
+                      ? " · no file-count limit"
+                      : ` · ${item.remaining_files} remaining`}
+                  </p>{:else if item.kind === "transfers" && item.max_downloads}<p
+                    class="muted small"
+                  >
+                    {item.max_downloads} download attempts per file
+                  </p>{/if}
                 <p class="muted small">
                   {labelFor(labels, item.kind, item.id).size
                     ? formatSize(labelFor(labels, item.kind, item.id).size ?? 0) + " · "
@@ -941,9 +1043,10 @@
                 {#if links[item.id]}<button onclick={() => copy(links[item.id])}
                     ><Icon name="Copy" size={17} />Copy link</button
                   >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
-                    >{:else}<button disabled={busy} onclick={() => openReceive(item.id)}
-                      >View files</button
-                    >{/if}{/if}<button
+                    >{/if}{/if}{#if item.kind === "slots"}<button
+                    disabled={busy}
+                    onclick={() => openReceive(item.id)}>View files</button
+                  >{/if}<button
                   class="danger"
                   disabled={busy}
                   onclick={() => {
@@ -1183,9 +1286,11 @@
           </form>
         {/if}
         {#if (tab === "Receive" || tab === "History") && received.length}<h2>Received files</h2>
-          {#each received as item}<a class="received" href={item.url}
-              >{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
-            >{/each}{/if}
+          {#each received as item}{#if !receiveNeedsKey}<a class="received" href={item.url}
+                >{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
+              >{:else}<p>
+                {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating device
+              </p>{/if}{/each}{/if}
       </section>
     </div>
   </div>

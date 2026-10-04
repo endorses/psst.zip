@@ -54,6 +54,7 @@ data class SendUiState(
     val downloadUrl: String? = null,
     val maxFileBytes: Long? = null,
     val completionConsumed: Boolean = false,
+    val maxDownloadsInput: String = "",
 ) {
     fun pendingCompletion(): Pair<String, String>? =
         if (isUploading || completionConsumed) null
@@ -61,6 +62,10 @@ data class SendUiState(
 }
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
+    fun setMaxDownloads(value: String) {
+        if (!_uiState.value.isUploading)
+            _uiState.update { it.copy(maxDownloadsInput = value.take(10), error = null) }
+    }
 
     private val app = application as PsstApplication
     private val _uiState = MutableStateFlow(SendUiState())
@@ -141,6 +146,13 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
     @OptIn(ExperimentalEncodingApi::class)
     fun startUpload() {
         if (_uiState.value.isUploading) return
+        val selectedLimit =
+            try {
+                zip.psst.android.data.optionalLinkLimit(_uiState.value.maxDownloadsInput)
+            } catch (e: IllegalArgumentException) {
+                _uiState.update { it.copy(error = e.message) }
+                return
+            }
         val files = _uiState.value.files
         if (files.isEmpty()) return
 
@@ -204,7 +216,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     var totalEncryptedBytes = files.sumOf { ChunkedFileCrypto.wireSize(it.size) }
 
                     // Create transfer
-                    val transfer = client.transfers.create()
+                    val maxDownloads = selectedLimit
+                    val transfer = client.transfers.create(maxDownloads)
                     createdTransferId = transfer.id
                     deletionToken = transfer.deleteToken
                     ensureActive()
@@ -227,6 +240,11 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         )
                     _uiState.update { it.copy(transferId = transfer.id) }
+                    if (maxDownloads > 0)
+                        zip.psst.android.data.verifyDownloadPolicy(
+                            client.transfers.get(transfer.id),
+                            maxDownloads,
+                        )
 
                     val context = getApplication<PsstApplication>()
                     val fileMetadataList = mutableListOf<FileMetadata>()
@@ -325,7 +343,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                     e is AdminTransferForbiddenException,
                             error =
                                 if (
-                                    e is PasswordChangeRequiredException ||
+                                    e is zip.psst.android.data.UnsupportedLinkPolicyException ||
+                                        e is PasswordChangeRequiredException ||
                                         e is AdminTransferForbiddenException
                                 )
                                     e.message

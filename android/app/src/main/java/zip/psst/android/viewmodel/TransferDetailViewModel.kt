@@ -7,7 +7,6 @@ import zip.psst.android.PsstApplication
 import zip.psst.android.data.refreshHistoryEntry
 import zip.psst.shared.model.UrlHelper
 import java.time.Instant
-import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -29,6 +28,8 @@ data class TransferDetailUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val offline: Boolean = false,
+    val maxDownloads: Int = 0,
+    val exhaustedFiles: Int = 0,
 )
 
 class TransferDetailViewModel(application: Application) : AndroidViewModel(application) {
@@ -86,9 +87,9 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                 }
                 val keyBytes =
                     try {
-                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-                            .decode(row.encryptionKey)
-                            .also { require(it.size == 32) }
+                        zip.psst.android.data.decodeInboxKeyMarker(row.encryptionKey).also {
+                            require(it.size == 32)
+                        }
                     } catch (_: Exception) {
                         _uiState.value =
                             TransferDetailUiState(
@@ -105,7 +106,9 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     }
                 val shareUrl =
                     if (row.type in listOf("receive", "received")) {
-                        UrlHelper.buildUploadUrl(row.serverUrl, row.id, keyBytes)
+                        if (row.encryptionKey.startsWith("v2."))
+                            UrlHelper.buildReceiveUrl(row.serverUrl, row.id, keyBytes)
+                        else ""
                     } else {
                         UrlHelper.buildDownloadUrl(row.serverUrl, row.id, keyBytes)
                     }
@@ -122,7 +125,30 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                 while (isActive && app.prefs.historyAccess.value == access) {
                     try {
                         val refreshed =
-                            refreshHistoryEntry(dao, row.id, reportFailure = true) ?: return@launch
+                            refreshHistoryEntry(
+                                dao,
+                                row.id,
+                                reportFailure = true,
+                                createClient = { config ->
+                                    zip.psst.shared.api.ApiClient(
+                                        config,
+                                        sessionToken =
+                                            app.prefs.getSessionToken(config.normalizedBaseUrl),
+                                    )
+                                },
+                                onTransfer = { metadata ->
+                                    if (app.prefs.historyAccess.value == access)
+                                        _uiState.value =
+                                            _uiState.value.copy(
+                                                maxDownloads = metadata.maxDownloads,
+                                                exhaustedFiles =
+                                                    metadata.files.count {
+                                                        it.remainingDownloads == 0L
+                                                    },
+                                            )
+                                },
+                                privateReceiveKey = zip.psst.android.data.InboxKeyStore(app)::read,
+                            ) ?: return@launch
                         if (app.prefs.historyAccess.value != access || !access.permits(refreshed))
                             return@launch
                         _uiState.value =

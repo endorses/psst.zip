@@ -35,6 +35,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.coroutines.android)
+            implementation("com.google.crypto.tink:tink-android:1.23.0")
         }
 
         iosMain.dependencies { implementation(libs.ktor.client.darwin) }

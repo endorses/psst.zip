@@ -13,6 +13,8 @@ struct HomeView: View {
     @State private var error: String?
     @State private var selected: [URL] = []
     @State private var receiveName = ""
+    @State private var limitEnabled = false
+    @State private var limitValue = "1"
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -26,13 +28,14 @@ struct HomeView: View {
                             TextField("Name this receive link (optional)", text: $receiveName)
                             Text("Names are saved only on this device.").font(.caption).foregroundStyle(PsstTheme.secondary)
                         }
+                        LinkLimitControl(receiving: receiving, enabled: $limitEnabled, value: $limitValue)
                         Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
                             if receiving {
                                 createReceive()
                             } else {
                                 picking = true
                             }
-                        }.buttonStyle(PrimaryAction())
+                        }.buttonStyle(PrimaryAction()).disabled(LinkLimit.parse(limitValue, enabled: limitEnabled) == nil)
                         if !selected.isEmpty, send == nil {
                             Text(String(format: String(localized: "%lld files selected"), Int64(selected.count)))
                             Button("Send files") { startSend() }.buttonStyle(PrimaryAction())
@@ -70,6 +73,9 @@ struct HomeView: View {
                     send = nil
                     receive = nil
                     selected = []
+                    limitEnabled = false
+                    limitValue = "1"
+                    receiveName = ""
                     showing = false
                 }
             }
@@ -83,8 +89,10 @@ struct HomeView: View {
     }
 
     private func startSend() {
-        guard !selected.isEmpty else { return }
-        let vm = SendViewModel(fileURLs: selected, serverConfig: config, historyStore: history)
+        guard !selected.isEmpty, let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
+        let vm = SendViewModel(fileURLs: selected, serverConfig: config, historyStore: history, maxDownloads: limit)
+        limitEnabled = false
+        limitValue = "1"
         send = vm
         receive = nil
         showing = true
@@ -92,7 +100,11 @@ struct HomeView: View {
     }
 
     private func createReceive() {
-        let vm = ReceiveViewModel(serverConfig: config, historyStore: history, localName: receiveName)
+        guard let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
+        let vm = ReceiveViewModel(serverConfig: config, historyStore: history, localName: receiveName, maxFiles: limit)
+        limitEnabled = false
+        limitValue = "1"
+        receiveName = ""
         receive = vm
         send = nil
         showing = true

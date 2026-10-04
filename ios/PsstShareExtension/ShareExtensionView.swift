@@ -12,6 +12,9 @@ struct ShareExtensionView: View {
                     Text(viewModel.config.limitDescription + " Files are encrypted in chunks.")
                         .font(.footnote).foregroundStyle(PsstTheme.secondary)
                     Text(String(format: String(localized: "%lld files · %@"), Int64(viewModel.fileCount), ByteCountFormatter.string(fromByteCount: viewModel.totalSize, countStyle: .file)))
+                    if viewModel.send == nil {
+                        LinkLimitControl(receiving: false, enabled: $viewModel.limitEnabled, value: $viewModel.limitValue)
+                    }
                     if !viewModel.config.isConfigured || viewModel.config.needsSignIn {
                         LoginFields()
                     } else if let send = viewModel.send {
@@ -36,7 +39,7 @@ struct ShareExtensionView: View {
                             DisclosureGroup("Sign in again") { LoginFields() }
                         }
                     } else {
-                        Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction()).disabled(viewModel.files.isEmpty)
+                        Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction()).disabled(viewModel.files.isEmpty || LinkLimit.parse(viewModel.limitValue, enabled: viewModel.limitEnabled) == nil)
                     }
                     if let error = viewModel.error {
                         Text(error).foregroundStyle(PsstTheme.error)

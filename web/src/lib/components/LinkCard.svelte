@@ -42,7 +42,13 @@
 
 <div class="link-card">
   <p>{label}</p>
-  {#if qr}<img class="qr" src={qr} alt="QR code for shared link" />{/if}
+  {#if qr}<img
+      class="qr"
+      src={qr}
+      alt="QR code for shared link"
+      onload={(event) =>
+        event.currentTarget.closest(".link-card")?.scrollIntoView({ block: "nearest" })}
+    />{/if}
   <div class="link-actions">
     <button class="primary" onclick={copy}><Icon name="Copy" size={18} />Copy link</button><button
       onclick={share}><Icon name="Share" size={18} />Share</button

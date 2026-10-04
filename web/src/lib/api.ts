@@ -1,5 +1,6 @@
 import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
+import { validateLinkLimit } from "./link-limits.ts";
 
 /**
  * Thin wrapper around the backend REST API.
@@ -34,8 +35,12 @@ export interface CreateTransferResponse {
   delete_token?: string;
 }
 
-export async function createTransfer(): Promise<CreateTransferResponse> {
-  return request<CreateTransferResponse>("/transfers", { method: "POST" });
+export async function createTransfer(maxDownloads = 0): Promise<CreateTransferResponse> {
+  return request<CreateTransferResponse>("/transfers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ max_downloads: validateLinkLimit(maxDownloads) }),
+  });
 }
 
 export async function uploadManifest(
@@ -67,6 +72,8 @@ export interface TransferInfo {
   total_size: number;
   expires_at: string;
   downloaded_at: string | null;
+  max_downloads?: number;
+  files?: { id: string; download_count: number; remaining_downloads: number | null }[];
 }
 
 export async function getTransferInfo(transferId: string): Promise<TransferInfo> {
@@ -102,16 +109,45 @@ export async function downloadFile(
 
 export interface CreateSlotResponse {
   id: string;
+  delete_token?: string;
 }
 
-export async function createSlot(): Promise<CreateSlotResponse> {
-  return request<CreateSlotResponse>("/slots", { method: "POST" });
+export async function createSlot(publicKey: string, maxFiles = 0): Promise<CreateSlotResponse> {
+  return request<CreateSlotResponse>("/slots", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      receive_protocol: 2,
+      recipient_public_key: publicKey,
+      max_files: validateLinkLimit(maxFiles),
+    }),
+  });
 }
 
 export interface SlotInfo {
   id: string;
   transfers: { transfer_id: string; status: string; file_count: number }[];
   expires_at: string;
+  receive_protocol: number;
+  recipient_public_key: string;
+  max_files: number;
+  reserved_files: number;
+  completed_files: number;
+  remaining_files: number | null;
+}
+
+export interface SlotAvailability {
+  id: string;
+  receive_protocol: number;
+  recipient_public_key: string;
+  max_files: number;
+  remaining_files: number | null;
+  remaining_bytes: number;
+  remaining_transfers: number;
+  available: boolean;
+}
+export async function getSlotAvailability(slotId: string): Promise<SlotAvailability> {
+  return request<SlotAvailability>(`/slots/${slotId}/availability`, { credentials: "omit" });
 }
 
 export async function getSlotInfo(slotId: string): Promise<SlotInfo> {
@@ -139,7 +175,10 @@ export function tusEndpoint(transferId: string): string {
 
 /** Create a transfer owned by a drop slot before uploading its files. */
 export async function createSlotTransfer(slotId: string): Promise<CreateTransferResponse> {
-  return request<CreateTransferResponse>(`/slots/${slotId}/transfers`, { method: "POST" });
+  return request<CreateTransferResponse>(`/slots/${slotId}/transfers`, {
+    method: "POST",
+    credentials: "omit",
+  });
 }
 
 async function readBounded(

@@ -16,7 +16,7 @@ func TestReceiveBudgetReservationConcurrentAndCumulative(t *testing.T) {
 	}
 	defer db.Close()
 	q := NewQueries(db)
-	if err := q.CreateSlot("slot", time.Now().Add(time.Hour), nil); err != nil {
+	if err := q.CreateReceiveSlot("slot", time.Now().Add(time.Hour), nil, "", 2, "fixture-key", 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"one", "two"} {

@@ -85,6 +85,10 @@ fun TransferDetailScreen(
                         )
                         ExpiryCountdown(state.expiresAt)
                     }
+                if (state.maxDownloads > 0)
+                    Text(
+                        "Limit: ${state.maxDownloads} download attempts per file. ${state.exhaustedFiles} of ${state.fileCount} files have no attempts remaining. Interrupted downloads and retries count."
+                    )
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.offline) Text(stringResource(R.string.offline_retained))
                 TextButton(onClick = { viewModel.load(transferId, encryptionKey, type) }) {

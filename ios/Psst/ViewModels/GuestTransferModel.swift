@@ -13,6 +13,8 @@ struct ReceiveConsent {
     let manifest: [GuestFile]
     let total: Int64
     let allowRedownload: Bool
+    var availableOnly = false
+    var unavailableCount = 0
 }
 
 @Observable
@@ -66,14 +68,14 @@ final class GuestTransferModel {
     func confirmReceive() {
         guard let consent = pendingConsent, !active else { return }
         pendingConsent = nil
-        begin(consent.record, allowRedownload: consent.allowRedownload, approved: consent.manifest)
+        begin(consent.record, allowRedownload: consent.allowRedownload, approved: consent.manifest, availableOnly: consent.availableOnly)
     }
 
     func resume(_ requested: GuestDownload, allowRedownload: Bool = false) {
         begin(requested, allowRedownload: allowRedownload, approved: nil)
     }
 
-    private func begin(_ requested: GuestDownload, allowRedownload: Bool, approved: [GuestFile]?) {
+    private func begin(_ requested: GuestDownload, allowRedownload: Bool, approved: [GuestFile]?, availableOnly: Bool = false) {
         guard !active else { return }
         let record = store.records.first { $0.id == requested.id } ?? requested
         currentID = record.id
@@ -92,10 +94,10 @@ final class GuestTransferModel {
         active = true
         let identifier = UUID()
         run = identifier
-        task = Task { await download(record, identifier: identifier, allowRedownload: allowRedownload, approved: approved) }
+        task = Task { await download(record, identifier: identifier, allowRedownload: allowRedownload, approved: approved, availableOnly: availableOnly) }
     }
 
-    private func download(_ original: GuestDownload, identifier: UUID, allowRedownload: Bool, approved: [GuestFile]?) async {
+    private func download(_ original: GuestDownload, identifier: UUID, allowRedownload: Bool, approved: [GuestFile]?, availableOnly: Bool) async {
         var record = original
         defer { self.client?.close(); self.client = nil; active = false }
         do {
@@ -131,12 +133,20 @@ final class GuestTransferModel {
                     try store.update(record)
                 }
             }
-            if totalBytes > ReceiveSafety.automaticBytes, approved != incoming {
-                pendingConsent = ReceiveConsent(record: record, manifest: incoming, total: totalBytes, allowRedownload: allowRedownload)
+            record.remainingDownloads = Self.remainingAttempts(transfer)
+            try store.update(record)
+            let missing = record.files.filter { store.url($0) == nil }
+            let unavailable = missing.filter { record.remainingDownloads?[$0.id] == 0 }
+            let eligible = missing.filter { record.remainingDownloads?[$0.id] != 0 }
+            guard !eligible.isEmpty || missing.isEmpty else { throw GuestError.downloadLimit }
+            if (!unavailable.isEmpty && !availableOnly) || (totalBytes > ReceiveSafety.automaticBytes && approved != incoming) {
+                pendingConsent = try ReceiveConsent(record: record, manifest: incoming,
+                                                    total: ReceiveSafety.total(eligible.map(\.size)), allowRedownload: allowRedownload,
+                                                    availableOnly: !unavailable.isEmpty, unavailableCount: unavailable.count)
                 stage = "Ready to receive"
                 return
             }
-            let remaining = try ReceiveSafety.total(record.files.filter { store.url($0) == nil }.map(\.size))
+            let remaining = try ReceiveSafety.total(eligible.map(\.size))
             try ReceiveSafety.checkSpace(at: store.documents, additional: remaining)
             for index in record.files.indices {
                 try Task.checkCancellation()
@@ -144,6 +154,9 @@ final class GuestTransferModel {
                     continue
                 }
                 let file = record.files[index]
+                if availableOnly && record.remainingDownloads?[file.id] == 0 {
+                    continue
+                }
                 // A local copy can also disappear after the initial resume check.
                 guard allowRedownload || !file.saved else { throw GuestError.redownloadConsent }
                 fileNumber = index + 1
@@ -162,16 +175,49 @@ final class GuestTransferModel {
                 try store.publish(temporary, index: index, record: &record)
             }
             try Task.checkCancellation()
-            guard !record.files.isEmpty, record.files.allSatisfy({ store.url($0) != nil }) else { throw GuestError.invalidManifest }
+            guard !record.files.isEmpty else { throw GuestError.invalidManifest }
+            guard record.files.allSatisfy({ store.url($0) != nil }) else {
+                stage = "Available files saved"
+                error = GuestError.downloadLimit.localizedDescription
+                await refreshAttempts(record)
+                return
+            }
+            await refreshAttempts(record)
+            record = store.records.first { $0.id == record.id } ?? record
             record.complete = true
             record.receiptPending = !record.receiptDelivered
             try store.update(record)
             stage = "Saved"
             await store.flushReceipts()
         } catch {
+            if !Task.isCancelled {
+                await refreshAttempts(record)
+            }
             stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
             self.error = (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
         }
+    }
+
+    private static func remainingAttempts(_ transfer: Transfer) -> [String: Int64] {
+        var result: [String: Int64] = [:]
+        for file in transfer.files {
+            if let remaining = file.remainingDownloads, remaining.int64Value >= 0 {
+                result[file.id] = remaining.int64Value
+            }
+        }
+        return result
+    }
+
+    func refreshAttempts(_ requested: GuestDownload) async {
+        do {
+            let client = try GuestNetwork.client(requested.origin)
+            defer { client.close() }
+            let transfer = try await client.transfers.get(transferId: requested.transferID)
+            guard transfer.id == requested.transferID,
+                  var record = store.records.first(where: { $0.id == requested.id }) else { return }
+            record.remainingDownloads = Self.remainingAttempts(transfer)
+            try store.update(record)
+        } catch { /* Keep last known counters; a network failure is not proof of exhaustion. */ }
     }
 
     func send(_ urls: [URL], to link: ParsedUrl) {
@@ -187,8 +233,11 @@ final class GuestTransferModel {
         var finished = false
         defer { client?.close(); client = nil; active = false; GuestUploadCleanup.activeID = nil }
         do {
+            guard link.receiveVersion == 2 else { throw ReceiveCryptoError.invalidEnvelope }
             let anonymous = try GuestNetwork.client(link.origin)
             defer { anonymous.close() }
+            let availability = try await anonymous.slots.availability(slotId: link.id)
+            try availability.validateForSubmission(slotId: link.id, publicKey: link.key, fileCount: Int32(urls.count))
             let limit = try await Int(anonymous.limits.get().maxFileSize)
             let sizes = try BufferedUpload.sizes(urls, limit: limit)
             let selection = Manifest(files: zip(urls, sizes).map { url, size in
@@ -206,7 +255,9 @@ final class GuestTransferModel {
             try Task.checkCancellation()
             let scoped = try ApiClient.companion.slotUpload(origin: link.origin, capability: capability)
             client = scoped
-            let metadata = try await BufferedUpload.send(fileURLs: urls, client: scoped, transferId: transfer.id, key: link.key,
+            let key = try CryptoProvider.shared.generateKey()
+            let wrappedKey = try ReceiveCrypto.sealSubmissionKey(key.toData(), publicKey: link.key.toData(), slotID: link.id, transferID: transfer.id)
+            let metadata = try await BufferedUpload.send(fileURLs: urls, client: scoped, transferId: transfer.id, key: key,
                                                          limit: limit, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = "Encrypting" },
                                                          progress: { progress in
                                                              guard self.run == identifier, self.active, self.task?.isCancelled != true else { return }
@@ -214,9 +265,10 @@ final class GuestTransferModel {
                                                          })
             let manifest = try ManifestSerializer.encode(manifest: Manifest(files: metadata))
             let nonce = try CryptoProvider.shared.generateNonce()
-            let encrypted = try CryptoProvider.shared.encrypt(key: link.key, nonce: nonce, plaintext: Data(manifest.utf8).toKotlinByteArray())
+            let encrypted = try CryptoProvider.shared.encrypt(key: key, nonce: nonce, plaintext: Data(manifest.utf8).toKotlinByteArray())
             try Task.checkCancellation()
-            try await scoped.transfers.uploadManifest(transferId: transfer.id, manifestBytes: (nonce.toData() + encrypted.toData()).toKotlinByteArray())
+            let envelope = try ReceiveCrypto.encodeEnvelope(wrappedKey: wrappedKey, encryptedManifest: nonce.toData() + encrypted.toData())
+            try await scoped.transfers.uploadManifest(transferId: transfer.id, manifestBytes: envelope.toKotlinByteArray())
             try await scoped.transfers.complete(transferId: transfer.id)
             finished = true
             try GuestUploadCleanup.remove(origin: link.origin, transferID: transfer.id)
@@ -270,9 +322,11 @@ enum GuestUploadCleanup {
 
     /// Returns true when a lost finalization response concealed a successful upload.
     nonisolated static func attempt(origin: String, transferID: String, capability: String) async throws -> Bool {
-        struct Status: Decodable { let status: String }
+        let client = try ApiClient.companion.slotUpload(origin: origin, capability: capability)
+        defer { client.close() }
         do {
-            let data = try await AccountHTTP.request(server: origin, path: "transfers/" + transferID)
+            struct Status: Decodable { let status: String }
+            let data = try await AccountHTTP.request(server: origin, path: "transfers/" + transferID + "/upload-status", token: capability)
             let status = try JSONDecoder().decode(Status.self, from: data)
             if status.status == "complete" {
                 return true
@@ -281,8 +335,6 @@ enum GuestUploadCleanup {
                 return false
             }
         } catch AccountError.unavailable { return false }
-        let client = try ApiClient.companion.slotUpload(origin: origin, capability: capability)
-        defer { client.close() }
         try await client.transfers.delete(transferId: transferID, deleteToken: capability)
         return false
     }

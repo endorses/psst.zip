@@ -4,8 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.data.InboxKeyStore
 import zip.psst.android.data.ReceivedSnapshot
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.decodeInboxKeyMarker
+import zip.psst.android.data.decryptInboxManifest
+import zip.psst.android.data.optionalLinkLimit
 import zip.psst.android.data.parseHistoryExpiry
 import zip.psst.android.data.receiveAndSaveChild
 import zip.psst.android.data.receivedSnapshot
@@ -17,10 +21,8 @@ import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.api.SlotEvent
-import zip.psst.shared.crypto.CryptoProvider
-import zip.psst.shared.model.EncryptedManifest
+import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.model.FileMetadata
-import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.UrlHelper
 import kotlin.io.encoding.Base64
@@ -44,6 +46,11 @@ import kotlinx.serialization.json.Json
 
 data class ReceiveUiState(
     val localName: String = "",
+    val maxFilesInput: String = "",
+    val maxFiles: Int = 0,
+    val remainingFiles: Long? = null,
+    val reservedFiles: Long = 0,
+    val legacyReadOnly: Boolean = false,
     val isCreatingSlot: Boolean = false,
     val slotId: String? = null,
     val encryptionKey: String? = null,
@@ -63,6 +70,7 @@ data class ReceiveUiState(
 class ReceiveViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as PsstApplication
+    private val inboxKeys = InboxKeyStore(application)
     private val _uiState = MutableStateFlow(ReceiveUiState())
     val uiState: StateFlow<ReceiveUiState> = _uiState.asStateFlow()
 
@@ -120,26 +128,26 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         )
                     return@launch
                 }
-                if (row.encryptionKey.isBlank()) {
-                    _uiState.value =
-                        ReceiveUiState(
-                            slotId = row.id,
-                            slotStatus = row.status,
-                            error = app.getString(zip.psst.android.R.string.unavailable_key),
-                            keyUnavailable = true,
-                        )
-                    return@launch
-                }
                 try {
-                    val key =
-                        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-                            .decode(row.encryptionKey)
-                    require(key.size == 32)
+                    val key = runCatching { decodeInboxKeyMarker(row.encryptionKey) }.getOrNull()
+                    val privateAvailable =
+                        !row.encryptionKey.startsWith("v2.") || inboxKeys.read(row) != null
                     check(app.prefs.historyAccess.value == access)
-                    encryptionKeyBytes = key
-                    val client = ApiClient(ServerConfig(row.serverUrl))
+                    encryptionKeyBytes = key.takeIf { privateAvailable }
+                    val client =
+                        ApiClient(
+                            ServerConfig(row.serverUrl),
+                            sessionToken = requireNotNull(app.prefs.getSessionToken(row.serverUrl)),
+                        )
                     slotClient = client
-                    _uiState.value = restoreReceiveEntry(row, access)
+                    val restored = restoreReceiveEntry(row, access, privateAvailable)
+                    _uiState.value =
+                        restored.copy(
+                            error =
+                                if (restored.keyUnavailable)
+                                    app.getString(zip.psst.android.R.string.unavailable_key)
+                                else null
+                        )
                     if (visible) listenForEvents(client, id)
                 } catch (e: CancellationException) {
                     throw e
@@ -193,7 +201,21 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setMaxFiles(value: String) {
+        if (_uiState.value.slotId == null && !_uiState.value.isCreatingSlot)
+            _uiState.update { it.copy(maxFilesInput = value.take(10), error = null) }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
     fun createSlot() {
+        if (createJob?.isActive == true || _uiState.value.slotId != null) return
+        val limit =
+            try {
+                optionalLinkLimit(_uiState.value.maxFilesInput)
+            } catch (e: IllegalArgumentException) {
+                _uiState.update { it.copy(error = e.message) }
+                return
+            }
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
             _uiState.update {
@@ -223,26 +245,54 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         sseJob?.cancel()
         pollJob?.cancel()
         slotClient?.close()
-        _uiState.value = ReceiveUiState(isCreatingSlot = true)
+        _uiState.update { it.copy(isCreatingSlot = true, error = null, maxFiles = limit) }
 
         val access = app.prefs.historyAccess.value
         createJob =
             viewModelScope.launch(Dispatchers.IO) {
+                var allocation: TransferHistoryEntity? = null
+                var retained = false
                 try {
                     val client = ApiClient(ServerConfig(serverUrl), sessionToken = sessionToken)
                     slotClient = client
-                    val slot = client.slots.create()
-                    val key = CryptoProvider.generateKey()
-                    encryptionKeyBytes = key
-                    val base64Key =
+                    val pair = AndroidReceiveCrypto.generateKeyPair()
+                    val key = pair.publicKey
+                    val publicKey =
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
-                    val uploadUrl = UrlHelper.buildUploadUrl(serverUrl, slot.id, key)
-
-                    // Save to history
+                    val slot = client.slots.create(publicKey, limit)
+                    allocation =
+                        TransferHistoryEntity(
+                            slot.id,
+                            "received",
+                            0,
+                            0,
+                            serverUrl,
+                            "",
+                            "failed",
+                            deletionToken = slot.deleteToken,
+                            accountId = accountId,
+                            expiresAt = parseHistoryExpiry(slot.expiresAt),
+                        )
                     withContext(NonCancellable) {
+                        app.database.transferHistoryDao().insert(requireNotNull(allocation))
+                    }
+                    zip.psst.android.data.verifyReceivePolicy(
+                        client.slots.get(slot.id),
+                        publicKey,
+                        limit,
+                    )
+                    encryptionKeyBytes = key
+                    val base64Key = "v2.$publicKey"
+                    val uploadUrl = UrlHelper.buildReceiveUrl(serverUrl, slot.id, key)
+
+                    // Persist the private key under its original account/server/slot before
+                    // history.
+                    withContext(NonCancellable) {
+                        inboxKeys.save(serverUrl, accountId, slot.id, pair.privateKey)
+                        pair.privateKey.fill(0)
                         app.database
                             .transferHistoryDao()
-                            .insert(
+                            .update(
                                 TransferHistoryEntity(
                                     id = slot.id,
                                     type = "received",
@@ -257,6 +307,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 )
                             )
                     }
+                    retained = true
                     ensureActive()
                     check(app.prefs.historyAccess.value == access)
                     _uiState.update {
@@ -271,6 +322,23 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     // Start listening for SSE events
                     if (visible) listenForEvents(client, slot.id)
                 } catch (e: Exception) {
+                    if (!retained && allocation != null)
+                        withContext(NonCancellable) {
+                            val failed = requireNotNull(allocation)
+                            val cleanup =
+                                ApiClient(ServerConfig(serverUrl), sessionToken = sessionToken)
+                            try {
+                                kotlinx.coroutines.withTimeout(5000) {
+                                    cleanup.slots.delete(failed.id, failed.deletionToken)
+                                }
+                                app.database.transferHistoryDao().delete(failed.id)
+                                inboxKeys.delete(failed)
+                            } catch (_: Exception) {
+                                /* Capability remains in non-shareable History for owner cleanup. */
+                            } finally {
+                                cleanup.close()
+                            }
+                        }
                     if (e is CancellationException) throw e
                     if (
                         e is AuthenticationRequiredException &&
@@ -287,7 +355,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     e is AdminTransferForbiddenException,
                             error =
                                 if (
-                                    e is PasswordChangeRequiredException ||
+                                    e is zip.psst.android.data.UnsupportedLinkPolicyException ||
+                                        e is PasswordChangeRequiredException ||
                                         e is AdminTransferForbiddenException
                                 )
                                     e.message
@@ -345,6 +414,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 connectionError = false,
                                 slotStatus = row.status,
                                 downloadComplete = row.status == "complete",
+                                maxFiles = slot.maxFiles,
+                                remainingFiles = slot.remainingFiles,
+                                reservedFiles = slot.reservedFiles,
                             )
                         else it
                     }
@@ -392,7 +464,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     }
                     return@launch
                 }
-                val client = ApiClient(ServerConfig(row.serverUrl))
+                val client =
+                    ApiClient(
+                        ServerConfig(row.serverUrl),
+                        sessionToken = requireNotNull(app.prefs.getSessionToken(row.serverUrl)),
+                    )
                 try {
                     val slot = client.slots.get(slotId)
                     check(app.prefs.historyAccess.value == access)
@@ -403,18 +479,27 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         }
                     require(transfers.isNotEmpty()) { "No new completed uploads to save" }
                     val received = mutableListOf<Pair<String, FileMetadata>>()
+                    val childKeys = mutableMapOf<String, ByteArray>()
+                    val privateKey = inboxKeys.read(row)
                     for (transfer in transfers) {
                         val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
-                        val encManifest = EncryptedManifest.fromBytes(manifestBytes)
-                        val manifestPlaintext =
-                            CryptoProvider.decrypt(key, encManifest.nonce, encManifest.ciphertext)
-                        val manifest =
-                            Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
-
-                        zip.psst.shared.model.ManifestValidator.validate(manifest)
+                        val decoded =
+                            decryptInboxManifest(
+                                row,
+                                transfer.transferId,
+                                manifestBytes,
+                                privateKey,
+                            )
+                        val manifest = decoded.manifest
+                        val metadata = client.transfers.get(transfer.transferId)
+                        zip.psst.shared.model.ManifestValidator.validateForTransfer(
+                            manifest,
+                            metadata,
+                        )
                         require(manifest.files.size == transfer.fileCount) {
                             "Manifest file count mismatch"
                         }
+                        childKeys[transfer.transferId] = decoded.key
                         received += manifest.files.map { transfer.transferId to it }
                     }
                     ensureActive()
@@ -436,7 +521,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 received
                                     .filter { it.first == transfer.transferId }
                                     .map { it.second },
-                            key = key,
+                            key = requireNotNull(childKeys[transfer.transferId]),
                             saveFile = { fileMeta, plaintext ->
                                 check(app.prefs.historyAccess.value == access) {
                                     "Your account changed"

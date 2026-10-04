@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/endorses/psst.zip/backend/internal/store"
@@ -24,7 +25,9 @@ func requestLimits(next http.Handler) http.Handler {
 func withRequestDeadlines(next http.Handler, controlTimeout, idleTimeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		controller := http.NewResponseController(w)
-		body := &deadlineBody{ReadCloser: r.Body, controller: controller, idle: idleTimeout}
+		state := &requestDeadlineState{controller: controller}
+		r = r.WithContext(context.WithValue(r.Context(), requestDeadlineKey{}, state))
+		body := &deadlineBody{ReadCloser: r.Body, state: state, idle: idleTimeout}
 		streaming := r.Method == http.MethodPatch || (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/manifest"))
 		if !streaming {
 			body.expires = time.Now().Add(controlTimeout)
@@ -35,15 +38,16 @@ func withRequestDeadlines(next http.Handler, controlTimeout, idleTimeout time.Du
 		if !body.expires.IsZero() {
 			deadline = body.expires
 		}
-		_ = controller.SetReadDeadline(deadline)
+		if r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0 {
+			state.read(deadline)
+		}
 		r.Body = body
-		writer := &deadlineWriter{ResponseWriter: w, controller: controller, idle: idleTimeout}
+		writer := &deadlineWriter{ResponseWriter: w, state: state, idle: idleTimeout}
 		defer func() {
 			// Flush net/http's final buffered bytes under the same deadline. Clearing
 			// deadlines then avoids carrying them into a subsequent keep-alive request.
 			_ = writer.FlushError()
-			_ = controller.SetReadDeadline(time.Time{})
-			_ = controller.SetWriteDeadline(time.Time{})
+			state.clear()
 		}()
 		next.ServeHTTP(writer, r)
 	})
@@ -51,9 +55,9 @@ func withRequestDeadlines(next http.Handler, controlTimeout, idleTimeout time.Du
 
 type deadlineBody struct {
 	io.ReadCloser
-	controller *http.ResponseController
-	idle       time.Duration
-	expires    time.Time
+	state   *requestDeadlineState
+	idle    time.Duration
+	expires time.Time
 }
 
 func (b *deadlineBody) Read(p []byte) (int, error) {
@@ -61,31 +65,31 @@ func (b *deadlineBody) Read(p []byte) (int, error) {
 	if !b.expires.IsZero() && b.expires.Before(deadline) {
 		deadline = b.expires
 	}
-	_ = b.controller.SetReadDeadline(deadline)
+	b.state.read(deadline)
 	return b.ReadCloser.Read(p)
 }
 
 type deadlineWriter struct {
 	http.ResponseWriter
-	controller *http.ResponseController
-	idle       time.Duration
+	state *requestDeadlineState
+	idle  time.Duration
 }
 
 func (w *deadlineWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (w *deadlineWriter) WriteHeader(status int) {
-	_ = w.controller.SetWriteDeadline(time.Now().Add(w.idle))
+	w.state.write(time.Now().Add(w.idle))
 	w.ResponseWriter.WriteHeader(status)
 }
 func (w *deadlineWriter) Write(p []byte) (int, error) {
-	_ = w.controller.SetWriteDeadline(time.Now().Add(w.idle))
+	w.state.write(time.Now().Add(w.idle))
 	return w.ResponseWriter.Write(p)
 }
 func (w *deadlineWriter) FlushError() error {
-	_ = w.controller.SetWriteDeadline(time.Now().Add(w.idle))
-	err := w.controller.Flush()
+	w.state.write(time.Now().Add(w.idle))
+	err := w.state.controller.Flush()
 	// An SSE stream can legitimately have no events for longer than the idle
 	// write timeout. Only blocked writes, not time between events, are timed out.
-	_ = w.controller.SetWriteDeadline(time.Time{})
+	w.state.write(time.Time{})
 	return err
 }
 func (w *deadlineWriter) Flush() { _ = w.FlushError() }
@@ -106,4 +110,50 @@ func acquireResource(w http.ResponseWriter, r *http.Request, id string, slot boo
 		return nil, false
 	}
 	return unlock, true
+}
+
+// Serialize deadline updates with cancellation so an IO operation cannot
+// accidentally extend the deadline after revocation/expiry has interrupted it.
+type requestDeadlineKey struct{}
+type requestDeadlineState struct {
+	mu         sync.Mutex
+	controller *http.ResponseController
+	canceled   bool
+}
+
+func (s *requestDeadlineState) read(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.canceled {
+		at = time.Now()
+	}
+	_ = s.controller.SetReadDeadline(at)
+}
+func (s *requestDeadlineState) write(at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.canceled {
+		at = time.Now()
+	}
+	_ = s.controller.SetWriteDeadline(at)
+}
+func (s *requestDeadlineState) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.canceled {
+		return
+	}
+	_ = s.controller.SetReadDeadline(time.Time{})
+	_ = s.controller.SetWriteDeadline(time.Time{})
+}
+func cancelRequestIO(r *http.Request) {
+	state, ok := r.Context().Value(requestDeadlineKey{}).(*requestDeadlineState)
+	if !ok {
+		return
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.canceled = true
+	_ = state.controller.SetReadDeadline(time.Now())
+	_ = state.controller.SetWriteDeadline(time.Now())
 }

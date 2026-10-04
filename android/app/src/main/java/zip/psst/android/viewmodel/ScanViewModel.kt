@@ -19,8 +19,10 @@ import zip.psst.android.data.resolveGuestUpload
 import zip.psst.android.data.spoolUpload
 import zip.psst.android.data.uploadChunkedFile
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.crypto.CryptoProvider
+import zip.psst.shared.crypto.ReceiveEnvelope
 import zip.psst.shared.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +49,9 @@ data class ScanState(
     val pendingCleanup: Int = 0,
     val pendingReceipts: Int = 0,
     val downloadConsent: GuestDownloadConsent? = null,
+    val maxUploadFiles: Int = 0,
+    val remainingUploadFiles: Long? = null,
+    val fileAttempts: Map<String, Long?> = emptyMap(),
 )
 
 /** ViewModel retains only in-memory input; secret keys never enter navigation/saved bundles. */
@@ -94,6 +99,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     pendingCleanup = _state.value.pendingCleanup,
                     pendingReceipts = _state.value.pendingReceipts,
                 )
+            if (parsed.kind == ScanInputKind.UPLOAD) refreshUploadPolicy()
             true
         } catch (_: Exception) {
             error(
@@ -233,6 +239,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         return@launch
                     }
                     val key = store.readKey(record.identity)
+                    var exhaustedBlobIds = emptySet<String>()
                     run {
                         val transfer = client.transfers.get(record.transferId)
                         require(
@@ -247,11 +254,34 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     .decodeToString()
                             )
                         ManifestValidator.validateForTransfer(manifest, transfer)
+                        exhaustedBlobIds =
+                            transfer.files
+                                .filter { it.remainingDownloads == 0L }
+                                .map { it.id.lowercase() }
+                                .toSet()
+                        _state.update {
+                            it.copy(
+                                fileAttempts =
+                                    if (transfer.maxDownloads > 0)
+                                        transfer.files.associate { f ->
+                                            f.id.lowercase() to f.remainingDownloads
+                                        }
+                                    else emptyMap()
+                            )
+                        }
                         require(record.saved.isEmpty() || record.files == manifest.files) {
                             "The file list changed after some files were saved"
                         }
                         record = record.copy(files = manifest.files)
                         store.save(record)
+                    }
+                    if (
+                        record.files.all { file -> record.saved.any { it.blobId == file.blobId } }
+                    ) {
+                        record = record.copy(complete = true, receiptPending = true)
+                        store.save(record)
+                        record = sendReceipt(client, record)
+                        return@launch
                     }
                     val preflight =
                         GuestDownloadPreflight.inspect(
@@ -260,7 +290,16 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             record.files,
                             record.saved.map { it.blobId }.toSet(),
                             redownloadMissing,
+                            exhaustedBlobIds,
                         )
+                    require(
+                        record.files.any { f ->
+                            f.blobId !in preflight.skippedBlobIds &&
+                                record.saved.none { it.blobId == f.blobId }
+                        }
+                    ) {
+                        "No download attempts remain for the missing files"
+                    }
                     saver.requireSpace(preflight.remainingBytes)
                     if (GuestDownloadPreflight.needsConsent(preflight, approved)) {
                         _state.update {
@@ -277,7 +316,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         record.transferId,
                         record.files,
                         key,
-                        record.saved.map { it.blobId }.toSet(),
+                        record.saved.map { it.blobId }.toSet() + preflight.skippedBlobIds,
                         onStage = { stage, index, file ->
                             _state.update {
                                 it.copy(
@@ -298,7 +337,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             saver.requireSpace(
                                 record.files
                                     .filterNot { candidate ->
-                                        record.saved.any { it.blobId == candidate.blobId }
+                                        candidate.blobId in preflight.skippedBlobIds ||
+                                            record.saved.any { it.blobId == candidate.blobId }
                                     }
                                     .sumOf { it.size }
                             )
@@ -313,12 +353,23 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             _state.update { it.copy(record = record) }
                         },
                     )
-                    record = record.copy(complete = true, receiptPending = true)
+                    val allSaved =
+                        record.files.all { file -> record.saved.any { it.blobId == file.blobId } }
+                    record = record.copy(complete = allSaved, receiptPending = allSaved)
                     store.save(record)
                     _state.update {
-                        it.copy(record = record, stage = "Saved in Downloads/psst.zip")
+                        it.copy(
+                            record = record,
+                            stage =
+                                if (allSaved) "Saved in Downloads/psst.zip"
+                                else "Available files saved",
+                            notice =
+                                if (allSaved) null
+                                else
+                                    "${preflight.skippedBlobIds.size} files could not be downloaded because their attempt limits were reached.",
+                        )
                     }
-                    record = sendReceipt(client, record)
+                    if (allSaved) record = sendReceipt(client, record)
                 } catch (e: CancellationException) {
                     _state.update {
                         it.copy(
@@ -347,6 +398,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             } catch (_: Exception) {}
                         }
                         client?.close()
+                        if (record.files.isNotEmpty()) {
+                            val refreshed =
+                                zip.psst.android.data.refreshGuestDownloadAttempts(record)
+                            _state.update { state ->
+                                if (state.record?.identity == record.identity)
+                                    state.copy(fileAttempts = refreshed)
+                                else state
+                            }
+                        }
                         _state.update {
                             it.copy(
                                 busy = false,
@@ -494,6 +554,34 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(uploadFiles = uris.distinct(), error = null) }
     }
 
+    private fun refreshUploadPolicy() {
+        val link = input?.link ?: return
+        job =
+            viewModelScope.launch(Dispatchers.IO) {
+                _state.update { it.copy(busy = true, stage = "Checking receive link") }
+                val client = ApiClient.anonymous(link.origin)
+                try {
+                    val policy = client.slots.availability(link.id)
+                    policy.validateForSubmission(link.id, link.key, 0)
+                    _state.update {
+                        it.copy(
+                            maxUploadFiles = policy.maxFiles,
+                            remainingUploadFiles = policy.remainingFiles,
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    error(
+                        "This receive link is unavailable, exhausted or uses an unsupported encryption version."
+                    )
+                } finally {
+                    client.close()
+                    _state.update { it.copy(busy = false) }
+                }
+            }
+    }
+
     fun upload() {
         if (job?.isActive == true || _state.value.uploaded) return
         val link = input?.link ?: return
@@ -508,10 +596,29 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 var cleanup: zip.psst.android.data.GuestUploadCleanup? = null
                 _state.update { it.copy(busy = true, error = null, stage = "Preparing upload") }
                 try {
+                    require(link.receiveVersion == 2) {
+                        "This older receive link no longer accepts uploads"
+                    }
+                    val availability = guest.slots.availability(link.id)
+                    availability.validateForSubmission(link.id, link.key, uris.size)
+                    _state.update {
+                        it.copy(
+                            maxUploadFiles = availability.maxFiles,
+                            remainingUploadFiles = availability.remainingFiles,
+                        )
+                    }
                     val maxBytes = guest.limits.get().maxFileSize
                     _state.update { it.copy(maxFileBytes = maxBytes) }
                     require(uris.size <= TransferLimits.MAX_FILES)
                     child = guest.slots.createTransfer(link.id)
+                    val submissionKey = CryptoProvider.generateKey()
+                    val wrappedKey =
+                        AndroidReceiveCrypto.sealSubmissionKey(
+                            link.key,
+                            link.id,
+                            child.id,
+                            submissionKey,
+                        )
                     withContext(NonCancellable) {
                         cleanup =
                             store.queueUpload(
@@ -548,7 +655,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     snapshot,
                                     safeName,
                                     resolver.getType(uri) ?: "application/octet-stream",
-                                    link.key,
+                                    submissionKey,
                                 ) { uploaded ->
                                     _state.update { it.copy(bytes = uploaded) }
                                 }
@@ -560,7 +667,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     val nonce = CryptoProvider.generateNonce()
                     scoped.transfers.uploadManifest(
                         child.id,
-                        nonce + CryptoProvider.encrypt(link.key, nonce, manifest),
+                        ReceiveEnvelope.encode(
+                            wrappedKey,
+                            nonce + CryptoProvider.encrypt(submissionKey, nonce, manifest),
+                        ),
                     )
                     scoped.transfers.complete(child.id)
                     complete = true

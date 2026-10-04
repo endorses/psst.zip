@@ -2,23 +2,29 @@ package zip.psst.android.viewmodel
 
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.decodeInboxKeyMarker
 import zip.psst.android.data.savedFileCount
 import zip.psst.shared.model.UrlHelper
-import kotlin.io.encoding.Base64
 
 /** Existing links are restored entirely from the scoped local record; this never creates a slot. */
 internal fun restoreReceiveEntry(
     row: TransferHistoryEntity,
     access: HistoryAccess,
+    privateKeyAvailable: Boolean = true,
 ): ReceiveUiState {
     require(access.permits(row)) { "Receive link belongs to another account" }
     require(row.type in listOf("receive", "received"))
-    val key = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).decode(row.encryptionKey)
-    require(key.size == 32) { "Missing encryption key" }
+    val key = runCatching { decodeInboxKeyMarker(row.encryptionKey) }.getOrNull()
+    val canDecrypt = key?.size == 32 && privateKeyAvailable
     return ReceiveUiState(
         slotId = row.id,
         encryptionKey = row.encryptionKey,
-        uploadUrl = UrlHelper.buildUploadUrl(row.serverUrl, row.id, key),
+        keyUnavailable = !canDecrypt,
+        uploadUrl =
+            if (canDecrypt && row.encryptionKey.startsWith("v2."))
+                UrlHelper.buildReceiveUrl(row.serverUrl, row.id, requireNotNull(key))
+            else null,
+        legacyReadOnly = !row.encryptionKey.startsWith("v2."),
         slotStatus = row.status,
         downloadComplete = row.status == "complete",
         savedFileCount = row.savedFileCount(),

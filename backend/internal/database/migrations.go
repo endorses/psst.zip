@@ -96,6 +96,11 @@ var migrations = []string{
  standalone_files_uploaded INTEGER NOT NULL DEFAULT 0 CHECK(typeof(standalone_files_uploaded)='integer' AND standalone_files_uploaded>=0),
  received_files_uploaded INTEGER NOT NULL DEFAULT 0 CHECK(typeof(received_files_uploaded)='integer' AND received_files_uploaded>=0)
 )`,
+	`ALTER TABLE slots ADD COLUMN receive_protocol INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE slots ADD COLUMN recipient_public_key TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE slots ADD COLUMN max_files INTEGER NOT NULL DEFAULT 0 CHECK(max_files BETWEEN 0 AND 2147483647)`,
+	`ALTER TABLE slots ADD COLUMN reserved_files INTEGER NOT NULL DEFAULT 0 CHECK(typeof(reserved_files)='integer' AND reserved_files>=0)`,
+	`UPDATE slots SET reserved_files=(SELECT COUNT(*) FROM files f JOIN slot_transfers st ON st.transfer_id=f.transfer_id WHERE st.slot_id=slots.id)`,
 }
 
 func runMigrations(db *sql.DB) error {

@@ -48,6 +48,31 @@ object ManifestValidator {
         ) {
             "The transfer details do not match its encrypted file list"
         }
+        require(transfer.maxDownloads >= 0) { "Invalid download policy" }
+        require(transfer.maxDownloads == 0 || transfer.files.isNotEmpty()) {
+            "Missing per-file download policy"
+        }
+        if (transfer.files.isNotEmpty()) {
+            val actual = transfer.files.associateBy { it.id.lowercase() }
+            require(
+                actual.size == transfer.files.size &&
+                    actual.keys == manifest.files.map { it.blobId.lowercase() }.toSet()
+            ) {
+                "The server's files do not match the encrypted manifest"
+            }
+            for (file in manifest.files) {
+                val metadata = actual.getValue(file.blobId.lowercase())
+                require(metadata.size == ChunkedFileCrypto.wireSize(file.size)) {
+                    "Encrypted file size mismatch"
+                }
+                metadata.downloadCount?.let { require(it >= 0) { "Invalid download count" } }
+                metadata.remainingDownloads?.let {
+                    require(transfer.maxDownloads > 0 && it in 0..transfer.maxDownloads.toLong()) {
+                        "Invalid remaining download count"
+                    }
+                }
+            }
+        }
         return total
     }
 

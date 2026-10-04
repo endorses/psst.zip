@@ -20,6 +20,19 @@ struct TransferRecord: Identifiable, Codable {
     var isSlot: Bool? = nil
     var savedFiles: [String: String]? = nil
     var savedTransfers: [String]? = nil
+    var receiveProtocol: Int? = nil
+    var maxFiles: Int? = nil
+    var reservedFiles: Int64? = nil
+    var maxDownloads: Int? = nil
+
+    var canDecryptInbox: Bool {
+        guard isSlot == true else { return false }
+        if receiveProtocol == 2 || fullLink?.contains("#v2.") == true {
+            return capabilities?.receivePrivateKey?.count == 32
+        }
+        return fullLink != nil
+    }
+
     var statusText: String {
         if isExpired {
             return String(localized: "Expired")
@@ -80,8 +93,8 @@ struct TransferRecord: Identifiable, Codable {
         capabilities?.link ?? shareURL
     }
 
-    func saveSecrets(link: String?, deletionToken: String?) throws {
-        try SecretStore.write(JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken)), name: vaultID)
+    func saveSecrets(link: String?, deletionToken: String?, receivePrivateKey: Data? = nil) throws {
+        try SecretStore.write(JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken, receivePrivateKey: receivePrivateKey ?? capabilities?.receivePrivateKey)), name: vaultID)
     }
 
     func belongs(to session: DeviceSession) -> Bool {
@@ -95,4 +108,5 @@ struct TransferRecord: Identifiable, Codable {
 
 struct ResourceSecrets: Codable { let link: String?
     let deletionToken: String?
+    var receivePrivateKey: Data? = nil
 }

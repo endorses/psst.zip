@@ -4,7 +4,6 @@ import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.Transfer
 import zip.psst.shared.model.TransferLimits
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
@@ -26,17 +25,20 @@ class TransferApi(
     private val sessionToken: String? = null,
 ) {
     /** Create a new transfer. Returns the created transfer with its server-assigned ID. */
+    @Throws(Exception::class) suspend fun create(): Transfer = create(0)
+
     @Throws(Exception::class)
-    suspend fun create(): Transfer {
+    suspend fun create(maxDownloads: Int): Transfer {
+        require(maxDownloads >= 0) { "Invalid download limit" }
         val response =
             httpClient.post("${config.apiBaseUrl}/transfers") {
                 expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
                 contentType(ContentType.Application.Json)
-                setBody(mapOf<String, String>())
+                setBody(mapOf("max_downloads" to maxDownloads))
             }
         response.checkAuthenticatedWrite()
-        return response.body()
+        return response.readControlJson(4096)
     }
 
     /** Revoke the link and stored uploads. Missing resources are already revoked. */
@@ -52,10 +54,25 @@ class TransferApi(
     /** Get transfer metadata (status, file count, sizes, expiry). */
     @Throws(Exception::class)
     suspend fun get(transferId: String): Transfer {
-        val response = httpClient.get("${config.apiBaseUrl}/transfers/$transferId")
-        return response.body<Transfer>().also {
+        val response =
+            httpClient.get("${config.apiBaseUrl}/transfers/$transferId") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
+        return response.readControlJson<Transfer>().also {
             require(it.id == transferId) { "The server returned details for a different transfer" }
         }
+    }
+
+    /** Only the invited uploader's exact scoped capability can inspect completion state. */
+    @Throws(Exception::class)
+    suspend fun uploadStatus(transferId: String): Transfer {
+        val response =
+            httpClient.get("${config.apiBaseUrl}/transfers/$transferId/upload-status") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
+        return response.readControlJson<Transfer>(4096).also { require(it.id == transferId) }
     }
 
     /**
@@ -92,7 +109,9 @@ class TransferApi(
     suspend fun acknowledgeDownload(transferId: String) {
         val response =
             withTimeout(5_000L) {
-                httpClient.post("${config.apiBaseUrl}/transfers/$transferId/downloaded")
+                httpClient.post("${config.apiBaseUrl}/transfers/$transferId/downloaded") {
+                    sessionToken?.let { bearerAuth(it) }
+                }
             }
         require(response.status == HttpStatusCode.NoContent) {
             "Download acknowledgement failed: ${response.status}"
@@ -163,6 +182,7 @@ class TransferApi(
         httpClient
             .prepareGet("${config.apiBaseUrl}/transfers/$transferId/files/$fileId") {
                 expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
             }
             .execute { response ->
                 require(response.status.value == 200) { "Download failed: ${response.status}" }
@@ -196,7 +216,10 @@ class TransferApi(
         onProgress: ((Long, Long?) -> Unit)? = null,
     ): ByteArray =
         httpClient
-            .prepareGet(url) { expectSuccess = false }
+            .prepareGet(url) {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+            }
             .execute { response ->
                 require(response.status.value in 200..299) { "Download failed: ${response.status}" }
                 val declaredSize = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()

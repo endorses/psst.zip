@@ -9,6 +9,8 @@ final class ShareExtensionViewModel {
     var files: [URL] = []
     var error: String?
     var cancelRequested = false
+    var limitEnabled = false
+    var limitValue = "1"
     var fileCount: Int {
         files.count
     }
@@ -30,7 +32,7 @@ final class ShareExtensionViewModel {
     }
 
     func start() {
-        guard config.isConfigured, !files.isEmpty else { return }
+        guard config.isConfigured, !files.isEmpty, let maxDownloads = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
         if let originAccount, originAccount != config.accountID {
             cancel()
             error = String(localized: "The account changed. Share the files again to choose this account.")
@@ -38,7 +40,7 @@ final class ShareExtensionViewModel {
         }
         originAccount = config.accountID
         if send == nil {
-            send = SendViewModel(fileURLs: files, serverConfig: config, historyStore: history, limit: BufferedUpload.maxFileBytes)
+            send = SendViewModel(fileURLs: files, serverConfig: config, historyStore: history, limit: BufferedUpload.maxFileBytes, maxDownloads: maxDownloads)
         }
         send?.start()
     }

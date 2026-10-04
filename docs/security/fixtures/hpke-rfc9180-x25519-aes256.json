@@ -1,0 +1,15 @@
+{
+  "source": "https://raw.githubusercontent.com/cfrg/draft-irtf-cfrg-hpke/5f503c564da00b0687b3de75f1dfbdfc4079ad31/test-vectors.json",
+  "warning": "PUBLIC RFC CONFORMANCE TEST ONLY. Nonempty AAD tests the HPKE provider, not the production empty-AAD wrapper.",
+  "mode": 0,
+  "kem_id": 32,
+  "kdf_id": 1,
+  "aead_id": 2,
+  "info": "4f6465206f6e2061204772656369616e2055726e",
+  "skRm": "497b4502664cfea5d5af0b39934dac72242a74f8480451e1aee7d6a53320333d",
+  "pkRm": "430f4b9859665145a6b1ba274024487bd66f03a2dd577d7753c68d7d7d00c00c",
+  "enc": "6c93e09869df3402d7bf231bf540fadd35cd56be14f97178f0954db94b7fc256",
+  "aad": "436f756e742d30",
+  "ct": "e5d84cd531cfb583096e7cfa9641bd3079cf3a91cda813c52deb5f512be9931980a41de125a925cdad859d5b7a",
+  "pt": "4265617574792069732074727574682c20747275746820626561757479"
+}

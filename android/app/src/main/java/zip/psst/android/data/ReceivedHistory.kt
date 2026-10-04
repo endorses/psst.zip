@@ -1,15 +1,11 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.DropSlot
-import zip.psst.shared.model.EncryptedManifest
-import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.Transfer
 import zip.psst.shared.model.TransferStatus
 import java.time.Instant
-import kotlin.io.encoding.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
@@ -95,6 +91,8 @@ internal suspend fun refreshHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
     reportFailure: Boolean = false,
+    privateReceiveKey: (TransferHistoryEntity) -> ByteArray? = { null },
+    onTransfer: (Transfer) -> Unit = {},
     createClient: (ServerConfig) -> ApiClient = { ApiClient(it) },
 ): TransferHistoryEntity? {
     val row = dao.getById(id) ?: return null
@@ -103,29 +101,26 @@ internal suspend fun refreshHistoryEntry(
             val client = createClient(ServerConfig(row.serverUrl))
             try {
                 if (row.type == "sent" || row.type == "send") {
-                    dao.mergeSent(row.id, client.transfers.get(row.id))
+                    val transfer = client.transfers.get(row.id)
+                    dao.mergeSent(row.id, transfer)
+                    onTransfer(transfer)
                 } else {
                     retrySavedDownloadAcknowledgements(row, client)
                     val slot = client.slots.get(row.id)
                     dao.mergeReceived(row.id, slot.receivedSnapshot())
                     if (slot.completedTransfers.isNotEmpty() && row.encryptionKey.isNotBlank()) {
-                        val key =
-                            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-                                .decode(row.encryptionKey)
+                        val privateKey = privateReceiveKey(row)
+                        if (row.encryptionKey.startsWith("v2.") && privateKey == null)
+                            return@withTimeout
                         for (transfer in slot.completedTransfers) {
-                            val encrypted =
-                                EncryptedManifest.fromBytes(
-                                    client.transfers.downloadManifest(transfer.transferId)
-                                )
                             val manifest =
-                                Json.decodeFromString<Manifest>(
-                                    CryptoProvider.decrypt(
-                                            key,
-                                            encrypted.nonce,
-                                            encrypted.ciphertext,
-                                        )
-                                        .decodeToString()
-                                )
+                                decryptInboxManifest(
+                                        row,
+                                        transfer.transferId,
+                                        client.transfers.downloadManifest(transfer.transferId),
+                                        privateKey,
+                                    )
+                                    .manifest
                             require(manifest.files.size == transfer.fileCount) {
                                 "Manifest file count mismatch"
                             }
