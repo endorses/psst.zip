@@ -749,28 +749,45 @@
           </a>
         {/each}
       </nav>
-      <div class="account-bar">
-        <span class="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
-        <div class="identity">
-          <span class="small muted">Signed in as</span><strong>{user.username}</strong>
+      <section class="account-bar" aria-label="Signed-in account">
+        <div class="account-identity">
+          <span class="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
+          <div class="identity">
+            <span class="small muted">Signed in as</span><strong>{user.username}</strong>
+          </div>
         </div>
-        {#if user.role === "admin"}<div class="admin-account">
-            <a href="/?view=account">Account</a><a href="/?view=devices">Sessions</a>
-          </div>{/if}
-        <button
-          class="sign-out"
-          disabled={busy}
-          onclick={() =>
-            act(async () => {
-              await cancelPair();
-              await request("/auth/logout", "POST");
-              try {
-                localStorage.setItem("psst.auth-change", String(Date.now()));
-              } catch {}
-              clearAccount();
-            })}><Icon name="SignOut" size={17} />Sign out</button
-        >
-      </div>
+        <div class="account-actions">
+          {#if user.role === "admin"}<div class="admin-account">
+              <a
+                href="/?view=account"
+                class:active={tab === "Account"}
+                aria-current={tab === "Account" ? "page" : undefined}
+              >
+                <Icon name="Account" size={17} />Account
+              </a>
+              <a
+                href="/?view=devices"
+                class:active={tab === "Devices"}
+                aria-current={tab === "Devices" ? "page" : undefined}
+              >
+                <Icon name="Devices" size={17} />Sessions
+              </a>
+            </div>{/if}
+          <button
+            class="sign-out"
+            disabled={busy}
+            onclick={() =>
+              act(async () => {
+                await cancelPair();
+                await request("/auth/logout", "POST");
+                try {
+                  localStorage.setItem("psst.auth-change", String(Date.now()));
+                } catch {}
+                clearAccount();
+              })}><Icon name="SignOut" size={17} />Sign out</button
+          >
+        </div>
+      </section>
     </aside>
     <div class="workspace-content">
       {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
@@ -1286,16 +1303,27 @@
     box-shadow: inset 3px 0 var(--primary);
   }
   .account-bar {
+    margin-top: 2rem;
+    border: 1px solid var(--divider);
+    border-radius: 14px;
+    background: var(--surface);
+  }
+  .account-identity {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr);
     align-items: center;
     gap: 0.65rem;
+    padding: 0.9rem;
+  }
+  .account-actions {
+    padding: 0.4rem;
     border-top: 1px solid var(--divider);
-    padding: 1.25rem 0.6rem 0;
-    margin-top: 2rem;
+    border-radius: 0 0 13px 13px;
+    background: var(--elevated);
   }
   .avatar {
-    background: var(--elevated);
+    background: var(--accent);
+    color: var(--primary);
     border-radius: 50%;
     width: 34px;
     height: 34px;
@@ -1318,8 +1346,8 @@
   .sign-out {
     white-space: nowrap;
     flex-shrink: 0;
-    grid-column: 2;
-    justify-self: start;
+    width: 100%;
+    justify-content: flex-start;
     border: 0;
     background: transparent;
     color: var(--muted);
@@ -1417,11 +1445,29 @@
     color: var(--muted);
   }
   .admin-account {
-    display: flex;
-    gap: 1rem;
-    grid-column: 2;
-    font-size: 0.8rem;
+    display: grid;
+    gap: 0.15rem;
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.4rem;
+    border-bottom: 1px solid var(--divider);
   }
+  .admin-account a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+  }
+  .admin-account a:hover,
+  .admin-account a.active {
+    background: var(--accent);
+    color: var(--primary);
+  }
+
   .resource {
     flex-wrap: wrap;
     padding: 1rem 0;
@@ -1490,29 +1536,38 @@
       box-shadow: inset 0 -3px var(--primary);
     }
     .account-bar {
-      display: flex;
-      justify-content: space-between;
-      margin: 0 0 0.75rem;
-      padding: 0;
-      border: 0;
-      gap: 1rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      margin: 0 0 1rem;
     }
-    .identity {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-      align-items: baseline;
+    .account-identity {
+      grid-template-columns: minmax(0, 1fr);
+      padding: 0.75rem;
     }
-    .identity .small {
-      font-size: 0.8rem;
+    .account-actions {
+      display: contents;
     }
-  }
-  @media (max-width: 760px) {
+    .sign-out {
+      grid-column: 2;
+      grid-row: 1;
+      width: auto;
+      margin: 0.4rem;
+    }
+    .admin-account {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.3rem;
+      padding: 0.4rem;
+      margin: 0;
+      border-top: 1px solid var(--divider);
+      border-bottom: 0;
+      border-radius: 0 0 13px 13px;
+      background: var(--elevated);
+    }
     nav.admin-nav {
       grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-    .account-bar:has(.admin-account) {
-      flex-wrap: wrap;
     }
   }
   @media (max-width: 600px) {
