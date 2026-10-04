@@ -87,7 +87,10 @@ class SlotApi(
         return httpClient
             .get("${config.apiBaseUrl}/slots/$slotId/availability") { expectSuccess = false }
             .readControlJson<SlotAvailability>(4096)
-            .also { require(it.id == slotId) { "Receive link identity mismatch" } }
+            .also {
+                require(it.id == slotId) { "Receive link identity mismatch" }
+                it.uploadCapacity?.validate()
+            }
     }
 
     /**

@@ -2,8 +2,11 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"math"
 	"net/http"
 	"time"
@@ -82,16 +85,24 @@ func (s *Server) filePolicy(t *database.Transfer) ([]FileInfo, error) {
 	return result, nil
 }
 func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
 	id := chi.URLParam(r, "slotID")
 	if !isValidUUID(id) {
 		writeError(w, 400, "invalid slot ID")
 		return
 	}
-	slot, err := s.queries.GetSlot(id)
+	snapshot, err := s.queries.GuestSlotCapacity(ctx, id, database.GuestCapacityLimits{SlotBytes: s.cfg.MaxSlotSize, SlotTransfers: s.cfg.MaxSlotTransfers, FilesPerTransfer: s.cfg.MaxFilesPerTransfer, ManifestBytes: s.cfg.MaxManifestSize})
 	if err != nil {
-		writeError(w, 404, "slot not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 404, "slot not found")
+		} else {
+			writeError(w, 503, "receive capacity unavailable")
+		}
 		return
 	}
+	slot := snapshot.Slot
 	if slot.Status == "revoked" {
 		incidentFailure(w, database.ErrResourceRevoked)
 		return
@@ -100,7 +111,12 @@ func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 		policyError(w, 410, "link_unavailable", "receive link expired or revoked")
 		return
 	}
-	if !s.slotOwnerActive(w, id) {
+	if snapshot.LegacyOwner {
+		writeError(w, 403, "legacy receive links cannot accept new uploads; create a new receive link")
+		return
+	}
+	if snapshot.OwnerDisabled {
+		incidentFailure(w, database.ErrAccountDisabled)
 		return
 	}
 	bytesLimit := s.cfg.MaxSlotSize
@@ -114,7 +130,7 @@ func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 	remaining := remainingFiles(slot)
 	response := SlotAvailability{ID: id, Status: "waiting", ExpiresAt: slot.ExpiresAt, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, RemainingFiles: remaining, RemainingBytes: max(int64(0), bytesLimit-slot.ReservedBytes), RemainingTransfers: max(0, transferLimit-slot.UploadCount)}
 	response.Available = slot.ReceiveProtocol == 2 && response.RemainingBytes > 0 && response.RemainingTransfers > 0 && (remaining == nil || *remaining > 0)
-	w.Header().Set("Cache-Control", "no-store")
+	response.UploadCapacity = snapshot.Capacity
 	writeJSON(w, 200, response)
 }
 func (s *Server) requireInboxOwner(next http.Handler) http.Handler {

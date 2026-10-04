@@ -24,7 +24,7 @@
     initialFiles?: File[];
     onselection?: (files: File[]) => void;
   } = $props();
-  const job = new UploadJob();
+  const job = new UploadJob(untrack(() => (slotId ? { slotId, key: keyString ?? "" } : undefined)));
   let maxDownloads = $state(0);
   onMount(() => {
     void job.refreshLimit();
@@ -49,7 +49,7 @@
       cancel();
   });
   onDestroy(() => {
-    void job.cancel();
+    job.dispose();
   });
   function start() {
     void job.start({ accountId, slotId, key: keyString, maxDownloads, oncreated });
@@ -71,6 +71,7 @@
       job.state = "idle";
       job.url = "";
       maxDownloads = 0;
+      if (slotId) void job.refreshLimit();
     }}>Send more files</button
   >
 {:else if job.active}
@@ -99,7 +100,39 @@
   >
 {:else}
   <h1>Send files</h1>
-  <p class="muted">A private link for anything you need to share.</p>
+  <p class="muted">
+    {slotId
+      ? "Send encrypted files to the owner of this receive link."
+      : "A private link for anything you need to share."}
+  </p>
+  {#if slotId}
+    <section class="guest-capacity" aria-label="Upload availability">
+      {#if job.checking}<p role="status">Checking upload availability…</p>
+      {:else if job.availabilityStale}<p>
+          Upload availability could not be confirmed. Refresh before sending.
+        </p>
+      {:else if job.availability?.upload_capacity.state === "ready"}
+        <p>
+          Up to {job.availability.upload_capacity.available_files} files · {formatSize(
+            job.availability.upload_capacity.available_wire_bytes!,
+          )} available for encrypted files.
+        </p>
+      {:else if job.availability?.upload_capacity.state === "unknown"}<p>
+          Upload space could not be checked. Try refreshing in a moment.
+        </p>
+      {:else}<p>This link cannot accept a new upload right now.</p>{/if}
+      {#if job.availability}<p class="muted small">
+          Last checked {new Date(
+            job.availability.upload_capacity.checked_at,
+          ).toLocaleTimeString()}{job.availabilityStale
+            ? "; this snapshot may be stale."
+            : ". Availability is checked again before sending."}
+        </p>{/if}
+      <button disabled={job.checking} onclick={() => job.refreshLimit()}
+        ><Icon name="Refresh" size={16} />Refresh availability</button
+      >
+    </section>
+  {/if}
   <label
     class="dropzone"
     ondragover={(e) => e.preventDefault()}
@@ -130,7 +163,7 @@
       }}
     /></label
   >
-  {#if job.resourcePolicy}<p class="muted small">
+  {#if !slotId && job.resourcePolicy}<p class="muted small">
       Server policy: {capacityLabel(job.resourcePolicy.account_storage_bytes)} reserved storage per account,
       {job.resourcePolicy.account_files} file allocations, links up to {durationLabel(
         job.resourcePolicy.max_retention_seconds,
@@ -153,9 +186,7 @@
       {#each job.files as file, i}<li>
           <span class="file-name">{file.name}</span><span class="file-size"
             >{formatSize(file.size)}</span
-          ><button
-            aria-label={`Remove ${file.name}`}
-            onclick={() => (job.files = job.files.filter((_, index) => index !== i))}
+          ><button aria-label={`Remove ${file.name}`} onclick={() => job.remove(i)}
             ><Icon name="Close" size={18} /></button
           >
         </li>{/each}
@@ -165,7 +196,7 @@
         label="Limit downloads per file"
         description="Each file allows this many download attempts. Interrupted downloads and retries count. This limit is fixed when you send."
       />{/if}
-    <button class="primary" onclick={start}
+    <button class="primary" disabled={job.checking || !job.guestReady} onclick={start}
       ><Icon name={job.state === "error" ? "Refresh" : "Send"} size={18} />{job.state === "error"
         ? "Retry upload"
         : "Send files"}</button

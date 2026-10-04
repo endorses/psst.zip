@@ -486,10 +486,9 @@ publishing owner usage, private issue counts or activity.
 Web, Android and iOS must validate the complete accumulated selection using
 encrypted wire sizes, including empty-file overhead, before allocating a child.
 Refresh capacity on opening, selection changes and immediately before allocation;
-preserve selections when capacity is unknown or an allocation race loses. The
-shared/native code currently lacks aggregate receive-byte preflight, and Android
-allocates before complete selection sizing. These are part of the remaining
-cross-platform capacity work, not fulfilled by the server-only payload checks.
+preserve selections when capacity is unknown or an allocation race loses. The public receive capacity checkpoint below implements aggregate preflight
+across web and native clients and moves Android allocation after complete local
+preparation. Native iOS/device verification remains separate from implementation.
 
 ### Bounded deletion durability checkpoint, 2026-10-04
 
@@ -595,3 +594,62 @@ cross-platform capacity work, not fulfilled by the server-only payload checks.
       restore exercises and deployment/native release gates. Orphan recovery does
       not prove filesystem health, cryptographic integrity or reconstruct missing
       historical usage. The full security plan remains open.
+
+### Public receive capacity and cumulative selection, 2026-10-04
+
+- [x] Add a non-cacheable, context-bounded `upload_capacity` snapshot to public
+      receive availability. Read canonical link, account and server reservations
+      in one database snapshot; combine them with current disk headroom and
+      outstanding writes. Report `ready`, `blocked` or `unknown`, a check time,
+      coarse reason, available encrypted file bytes/files for one new submission,
+      and the manifest reserve. Do not expose owner identity, quotas, usage,
+      child IDs, private activity or recovery issue counts.
+- [x] Reserve up to 1 MiB of encrypted manifest capacity, clamped by the configured
+      manifest ceiling, before advertising file bytes. Include database/WAL room
+      on the relevant volumes. Cap file counts by the link, account/server,
+      per-transfer policy and 100-file protocol limit, and account for the
+      60-byte authenticated frame of an empty file. Known exhaustion takes
+      precedence over an unrelated failed disk probe; unknown capacity is never
+      represented as unlimited or as a known zero allowance.
+- [x] Integrate strict validation and complete accumulated selection checks into
+      web, Android and iOS guest uploads. Refresh on opening, selection changes
+      and immediately before child creation. Verify the invitation's recipient
+      key, encrypted file bytes, file counts, runtime per-file policy and encrypted
+      manifest size. Reject missing, malformed and stale snapshots. Retain prior
+      selections on failed checks or allocation races; allow removal and refresh.
+- [x] Prepare Android provider streams into bounded private temporary files before
+      allocating server resources, retaining local free space and removing
+      temporary files on success/error/cancellation. iOS validates actual source
+      sizes before allocation and rechecks them before streaming; changed lengths
+      cannot silently enlarge the preflighted selection. Web uses the immutable
+      selected File snapshots and the same metadata builder for estimation and
+      upload. Anonymous origin isolation and scoped child capabilities remain.
+- [x] Verify the backend with `go test -race ./internal/api` (167.532 s) and
+      `go test -race ./internal/database` (173.847 s); the focused guest suites
+      also pass (API 3.909 s, database 9.737 s). The API suite uses disposable
+      loopback services outside the sandbox. Tests cover each quota/disk boundary,
+      canonical usage with missing display summaries, privacy, unavailable probes,
+      empty-file framing, reserve clamping and concurrent authoritative admission.
+- [x] Run web `npm test` (64 passing tests), `npm run check` (zero errors/warnings),
+      `npm run build`, and 10 focused browser cases. One existing LAN-only case is
+      skipped outside its designated insecure-context environment. A final
+      wording-only adjustment passes all three guest cases again. Inspect the
+      narrow guest page with no horizontal overflow; remove disposable servers.
+- [x] Run shared/Android `:app:testDebugUnitTest :app:assembleDebug
+    :shared:testDebugUnitTest --offline --no-daemon` with Android Studio's JDK:
+      143 shared and 102 Android tests pass without failures/errors/skips and the
+      APK builds. Review corrects plaintext per-file versus encrypted batch limit
+      semantics, with exact-boundary, limit-plus-one and empty-file regressions.
+- [x] Run `python3 ios/scripts/test_guest_upload_selection.py`: all four portable
+      tests pass, covering encrypted aggregate arithmetic/overflow, empty files,
+      manifest envelope capacity and changed source sizes. All Swift sources pass
+      compiler syntax parsing; `python3 ios/scripts/check_sources.py` passes.
+      A bounded integration review finds no concrete enforcement/generation issue.
+      These checks do not establish native framework ABI or SwiftUI correctness.
+- [ ] Run native iOS build/device checks for the picker, Kotlin framework bridge,
+      late responses across same-origin invitations, provider size changes,
+      capacity loss and retries. Available Linux checks do not prove these flows.
+- [ ] Continue restore consistency exercises, remaining query bounds and all
+      outstanding deployment/native security gates. This advisory preflight does
+      not reserve an entire batch, guarantee later admission, prove disk health,
+      reconstruct historical consumption or close the full security plan.

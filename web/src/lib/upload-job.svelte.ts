@@ -5,7 +5,7 @@ import {
   type TrafficPolicy,
 } from "./traffic-policy";
 import { uploadEncryptedFile } from "./stream-upload";
-import { newEncryptionId, wireSize, FILE_CHUNK_SIZE } from "./chunked-files";
+import { newEncryptionId, wireSize } from "./chunked-files";
 import { generateKey, exportKey, encryptManifest, type FileManifestEntry } from "./crypto";
 import { assertFileSize, loadUploadLimit, loadServerLimits } from "./limits";
 import { ResourceLimitError, resourceLimitError, type ResourcePolicy } from "./resource-policy";
@@ -14,6 +14,16 @@ import { parseReceiveFragment } from "./receive-keys";
 import { sealSubmissionKey, encodeReceiveEnvelope } from "./receive-crypto";
 import { validateLinkLimit } from "./link-limits";
 import { TransferStateError, transferStateError } from "./incident-state";
+import {
+  GuestCapacityError,
+  CAPACITY_UNAVAILABLE,
+  assertGuestKey,
+  assertGuestFresh,
+  assertGuestSelection,
+  selectionWireSize,
+  fileManifestEntry,
+  type SlotAvailability,
+} from "./guest-capacity";
 export function formatSize(bytes: number) {
   if (!bytes) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB"];
@@ -21,11 +31,92 @@ export function formatSize(bytes: number) {
   return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 export class UploadJob {
+  constructor(private readonly guest?: { slotId: string; key: string }) {}
   files = $state<File[]>([]);
   limit = $state<number | null>(null);
   trafficPolicy = $state<TrafficPolicy | null>(null);
   resourcePolicy = $state<ResourcePolicy | null>(null);
+  availability = $state<SlotAvailability | null>(null);
+  availabilityStale = $state(true);
+  checking = $state(false);
+  private policyQueue: Promise<void> = Promise.resolve();
+  private pendingChecks = 0;
+  private disposed = false;
+  private policyController = new AbortController();
+  get guestReady() {
+    if (!this.guest) return true;
+    if (this.checking || this.availabilityStale || !this.availability || this.limit === null)
+      return false;
+    try {
+      assertGuestSelection(this.availability, this.files, this.limit);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  private queuePolicy(action: () => Promise<void>): Promise<void> {
+    this.pendingChecks++;
+    this.checking = true;
+    const next = this.policyQueue
+      .then(async () => {
+        if (this.disposed || this.active) return;
+        try {
+          await action();
+        } catch (cause) {
+          if (!this.disposed)
+            this.error =
+              this.guest &&
+              !(cause instanceof GuestCapacityError) &&
+              !(cause instanceof Error && /^Files must be no larger/.test(cause.message))
+                ? CAPACITY_UNAVAILABLE
+                : cause instanceof Error
+                  ? cause.message
+                  : CAPACITY_UNAVAILABLE;
+        }
+      })
+      .finally(() => {
+        this.pendingChecks--;
+        this.checking = this.pendingChecks > 0;
+      });
+    this.policyQueue = next;
+    return next;
+  }
+  private async readGuestPolicy(guest: { slotId: string; key: string }, signal: AbortSignal) {
+    this.availabilityStale = true;
+    try {
+      const [limits, availability] = await Promise.all([
+        loadServerLimits(signal),
+        getSlotAvailability(guest.slotId, signal),
+      ]);
+      signal.throwIfAborted();
+      assertGuestKey(availability, parseReceiveFragment(guest.key).encoded);
+      assertGuestFresh(availability);
+      this.limit = limits.max_file_size;
+      this.trafficPolicy = limits.traffic_policy ?? null;
+      this.availability = availability;
+      this.availabilityStale = false;
+      return availability;
+    } catch (cause) {
+      if (
+        cause instanceof GuestCapacityError ||
+        cause instanceof TrafficLimitError ||
+        cause instanceof TransferStateError ||
+        cause instanceof ResourceLimitError
+      )
+        throw cause;
+      throw new GuestCapacityError(CAPACITY_UNAVAILABLE);
+    }
+  }
   async refreshLimit() {
+    if (this.guest)
+      return this.queuePolicy(async () => {
+        const available = await this.readGuestPolicy(
+          this.guest!,
+          AbortSignal.any([this.policyController.signal, AbortSignal.timeout(10000)]),
+        );
+        assertGuestSelection(available, this.files, this.limit!);
+        this.error = "";
+      });
     try {
       const limits = await loadServerLimits();
       this.limit = limits.max_file_size;
@@ -50,18 +141,45 @@ export class UploadJob {
     return this.state === "preparing" || this.state === "uploading" || this.state === "stopping";
   }
   async add(files: File[]) {
-    try {
-      this.limit = await loadUploadLimit();
-      if (this.active) return;
+    return this.queuePolicy(async () => {
+      if (!files.length) return;
+      let available: SlotAvailability | null = null;
+      if (this.guest) {
+        available = await this.readGuestPolicy(
+          this.guest,
+          AbortSignal.any([this.policyController.signal, AbortSignal.timeout(10000)]),
+        );
+      } else {
+        this.limit = await loadUploadLimit();
+      }
+      if (this.active || this.disposed) return;
+      const selection = [...this.files, ...files];
+      if (available) {
+        try {
+          assertGuestSelection(available, selection, this.limit!);
+        } catch (cause) {
+          if (cause instanceof GuestCapacityError)
+            throw new GuestCapacityError(`New files were not added. ${cause.message}`);
+          throw cause;
+        }
+      }
       if (this.files.length + files.length > 100)
         throw new Error("Choose no more than 100 files per transfer.");
       files.forEach((f) => assertFileSize(f.size, this.limit!));
-      this.files = [...this.files, ...files];
+      this.files = selection;
       this.error = "";
-    } catch (cause) {
-      this.error =
-        cause instanceof Error ? cause.message : "Could not check this server’s file limit.";
-    }
+    });
+  }
+  remove(index: number) {
+    if (this.active) return;
+    this.files = this.files.filter((_, i) => i !== index);
+    this.error = "";
+    if (this.guest) void this.refreshLimit();
+  }
+  dispose() {
+    this.disposed = true;
+    this.policyController.abort();
+    void this.cancel();
   }
   async cancel() {
     this.run++;
@@ -97,7 +215,7 @@ export class UploadJob {
     maxDownloads?: number;
     oncreated?: (id: string, url: string, title: string, size: number) => void;
   }) {
-    if (this.active || !this.files.length) return;
+    if (this.active || this.checking || this.disposed || !this.files.length) return;
     if (this.transferId) {
       await this.cleanup();
       if (this.transferId) return;
@@ -172,12 +290,12 @@ export class UploadJob {
     this.state = "preparing";
     this.error = "";
     this.sent = 0;
-    this.total = files.reduce((n, f) => n + wireSize(f.size), 0);
+    this.total = 0;
     try {
       if (files.length > 100) throw new Error("Choose no more than 100 files per transfer.");
-      this.limit = await loadUploadLimit(signal);
+      if (!options.slotId) this.limit = await loadUploadLimit(signal);
       check();
-      files.forEach((file) => assertFileSize(file.size, this.limit!));
+      this.total = selectionWireSize(files, options.slotId ? undefined : this.limit!);
       if (options.accountId) {
         const me = await (await request("/auth/me")).json();
         check();
@@ -190,26 +308,18 @@ export class UploadJob {
       }
       const maxDownloads = validateLinkLimit(options.maxDownloads ?? 0);
       const receiver = options.slotId ? parseReceiveFragment(options.key ?? "") : null;
-      if (options.slotId && receiver) {
-        const available = await getSlotAvailability(options.slotId);
-        check();
-        if (available.receive_protocol !== 2 || available.recipient_public_key !== receiver.encoded)
-          throw new Error(
-            "The receive link's encryption key does not match this inbox. Ask its owner for a new link.",
-          );
-        if (
-          !available.available ||
-          (available.remaining_files !== null && files.length > available.remaining_files) ||
-          this.total > available.remaining_bytes
-        )
-          throw new Error(
-            "This receive link cannot accept these files. Ask its owner for a new link.",
-          );
-      }
       const key = await generateKey();
       check();
       const keyString = await exportKey(key);
       check();
+      if (options.slotId && receiver) {
+        const available = await this.readGuestPolicy(
+          { slotId: options.slotId, key: options.key! },
+          signal,
+        );
+        check();
+        this.total = assertGuestSelection(available, files, this.limit!);
+      }
       const created = await (
         await request(options.slotId ? `/slots/${options.slotId}/transfers` : "/transfers", {
           method: "POST",
@@ -262,15 +372,7 @@ export class UploadJob {
         check();
         completed += wireSize(file.size);
         this.sent = completed;
-        entries.push({
-          name: file.name,
-          size: file.size,
-          mime_type: file.type || "application/octet-stream",
-          blob_id: id,
-          encoding: "chunked-v1",
-          chunk_size: FILE_CHUNK_SIZE,
-          encryption_id: encryptionId,
-        });
+        entries.push(fileManifestEntry(file, id, encryptionId));
       }
       const encryptedManifest = await encryptManifest(key, { files: entries });
       const manifest =
@@ -331,7 +433,8 @@ export class UploadJob {
       ];
       this.error =
         error instanceof Error &&
-        (error instanceof TrafficLimitError ||
+        (error instanceof GuestCapacityError ||
+          error instanceof TrafficLimitError ||
           error instanceof TransferStateError ||
           error instanceof ResourceLimitError ||
           safeErrors.includes(error.message) ||

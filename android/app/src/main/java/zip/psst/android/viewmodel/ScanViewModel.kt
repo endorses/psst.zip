@@ -10,14 +10,18 @@ import zip.psst.android.data.GuestDownloadConsent
 import zip.psst.android.data.GuestDownloadPreflight
 import zip.psst.android.data.GuestDownloadStore
 import zip.psst.android.data.GuestFileSaver
+import zip.psst.android.data.GuestUploadSource
 import zip.psst.android.data.InsufficientDownloadSpaceException
+import zip.psst.android.data.PreparedGuestUpload
 import zip.psst.android.data.acknowledgeSavedDownload
+import zip.psst.android.data.appendGuestSelection
 import zip.psst.android.data.cleanupGuestUpload
+import zip.psst.android.data.prepareGuestUpload
 import zip.psst.android.data.receiveGuestFiles
 import zip.psst.android.data.reconcileGuestOutput
 import zip.psst.android.data.resolveGuestUpload
-import zip.psst.android.data.spoolUpload
 import zip.psst.android.data.uploadChunkedFile
+import zip.psst.android.data.validatePreparedGuestUpload
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.crypto.ChunkedFileCrypto
@@ -52,6 +56,8 @@ data class ScanState(
     val downloadConsent: GuestDownloadConsent? = null,
     val maxUploadFiles: Int = 0,
     val remainingUploadFiles: Long? = null,
+    val uploadCapacity: UploadCapacity? = null,
+    val uploadCapacityMessage: String = "Checking receive capacity…",
     val fileAttempts: Map<String, Long?> = emptyMap(),
 )
 
@@ -64,6 +70,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private var input: ScanInput? = null
     private var rawPairing: String? = null
     private var job: Job? = null
+    private var capacityExpiry: Job? = null
 
     init {
         refreshHistory()
@@ -580,38 +587,146 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     fun selectUpload(uris: List<Uri>) {
-        if (job?.isActive != true)
-            _state.update { it.copy(uploadFiles = uris.distinct(), error = null) }
+        if (job?.isActive == true || _state.value.uploaded || uris.isEmpty()) return
+        try {
+            val selected = appendGuestSelection(_state.value.uploadFiles, uris)
+            require(selected.all { it.scheme == "content" }) {
+                "Choose files from the document picker"
+            }
+            _state.update { it.copy(uploadFiles = selected, error = null) }
+            refreshUploadPolicy()
+        } catch (e: IllegalArgumentException) {
+            error(e.message ?: "Could not select these files")
+        }
     }
 
-    private fun refreshUploadPolicy() {
+    fun removeUpload(uri: Uri) {
+        if (job?.isActive == true || _state.value.uploaded) return
+        _state.update { it.copy(uploadFiles = it.uploadFiles - uri, error = null) }
+        refreshUploadPolicy()
+    }
+
+    fun refreshUploadPolicy() {
+        if (job?.isActive == true) return
         val link = input?.link ?: return
         job =
             viewModelScope.launch(Dispatchers.IO) {
-                _state.update { it.copy(busy = true, stage = "Checking receive link") }
+                _state.update {
+                    it.copy(
+                        busy = true,
+                        stage = "Checking receive link",
+                        uploadCapacity = null,
+                        uploadCapacityMessage = "Checking receive capacity…",
+                    )
+                }
                 val client = ApiClient.anonymous(link.origin)
                 try {
                     val policy = client.slots.availability(link.id)
-                    policy.validateForSubmission(link.id, link.key, 0)
-                    _state.update {
-                        it.copy(
-                            maxUploadFiles = policy.maxFiles,
-                            remainingUploadFiles = policy.remainingFiles,
+                    val limit = client.limits.get().maxFileSize
+                    policy.validateInvitation(link.id, link.key)
+                    publishUploadPolicy(policy, limit)
+                    val selected = _state.value.uploadFiles
+                    // This is advisory only. Unknown/provider-changing lengths are sized by
+                    // spooling
+                    // every selected file before the authoritative pre-allocation refresh.
+                    val sizes = selected.map { uploadSize(it) }
+                    if (sizes.all { it != null } && selected.isNotEmpty()) {
+                        require(sizes.filterNotNull().all { it <= limit }) {
+                            "A selected file exceeds this server's per-file limit"
+                        }
+                        policy.validateForSubmission(
+                            link.id,
+                            link.key,
+                            selected.size,
+                            GuestUploadCapacity.totalWireBytes(sizes.filterNotNull()),
                         )
+                    } else if (selected.isNotEmpty()) {
+                        requireNotNull(policy.uploadCapacity) {
+                                "Receive capacity could not be checked. Refresh and try again."
+                            }
+                            .validateSelection(
+                                selected.size,
+                                selected.size.toLong() * ChunkedFileCrypto.FRAME_OVERHEAD,
+                            )
+                        _state.update {
+                            it.copy(
+                                uploadCapacityMessage =
+                                    it.uploadCapacityMessage +
+                                        " Some file sizes will be checked before sending."
+                            )
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (e: zip.psst.shared.api.TransferPolicyException) {
-                    error(requireNotNull(e.message))
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    _state.update {
+                        it.copy(
+                            uploadCapacityMessage =
+                                "Capacity is unavailable or out of date. Refresh before sending; your files are still selected."
+                        )
+                    }
                     error(
-                        "This receive link is unavailable, exhausted or uses an unsupported encryption version."
+                        e.message ?: "Receive capacity could not be checked. Refresh and try again."
                     )
                 } finally {
                     client.close()
                     _state.update { it.copy(busy = false) }
                 }
             }
+    }
+
+    private fun uploadSize(uri: Uri): Long? =
+        try {
+            getApplication<Application>()
+                .contentResolver
+                .query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+                ?.use {
+                    if (it.moveToFirst() && !it.isNull(0))
+                        it.getLong(0).takeIf { size -> size >= 0 }
+                    else null
+                }
+        } catch (_: Exception) {
+            null
+        }
+
+    private fun publishUploadPolicy(policy: SlotAvailability, limit: Long) {
+        val capacity = policy.uploadCapacity
+        capacityExpiry?.cancel()
+        if (capacity?.isFresh() == true) {
+            capacityExpiry =
+                viewModelScope.launch {
+                    val age =
+                        kotlin.time.Clock.System.now() -
+                            kotlin.time.Instant.parse(capacity.checkedAt)
+                    delay((120001 - age.inWholeMilliseconds).coerceIn(1, 240001))
+                    _state.update {
+                        if (it.uploadCapacity == capacity && !capacity.isFresh())
+                            it.copy(
+                                uploadCapacityMessage =
+                                    "Capacity is out of date. Refresh before sending; your files are still selected."
+                            )
+                        else it
+                    }
+                }
+        }
+        val message =
+            when {
+                capacity == null || !capacity.isFresh() || capacity.state == "unknown" ->
+                    "Receive capacity could not be checked. Refresh and try again."
+                capacity.state == "blocked" ->
+                    "This receive link cannot accept files right now. Remove files or refresh and try again."
+                else ->
+                    "Up to ${capacity.availableFiles} files and ${android.text.format.Formatter.formatFileSize(getApplication(), requireNotNull(capacity.availableWireBytes))} of encrypted data available for this submission. Capacity is checked again before sending."
+            }
+        _state.update {
+            it.copy(
+                maxUploadFiles = policy.maxFiles,
+                remainingUploadFiles = policy.remainingFiles,
+                maxFileBytes = limit,
+                uploadCapacity = capacity,
+                uploadCapacityMessage = message,
+            )
+        }
     }
 
     fun upload() {
@@ -625,6 +740,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 var scoped: ApiClient? = null
                 var child: Transfer? = null
                 var complete = false
+                var prepared: PreparedGuestUpload? = null
                 var cleanup: zip.psst.android.data.GuestUploadCleanup? = null
                 _state.update { it.copy(busy = true, error = null, stage = "Preparing upload") }
                 try {
@@ -632,16 +748,45 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         "This older receive link no longer accepts uploads"
                     }
                     val availability = guest.slots.availability(link.id)
-                    availability.validateForSubmission(link.id, link.key, uris.size)
-                    _state.update {
-                        it.copy(
-                            maxUploadFiles = availability.maxFiles,
-                            remainingUploadFiles = availability.remainingFiles,
-                        )
-                    }
+                    availability.validateInvitation(link.id, link.key)
                     val maxBytes = guest.limits.get().maxFileSize
-                    _state.update { it.copy(maxFileBytes = maxBytes) }
-                    require(uris.size <= TransferLimits.MAX_FILES)
+                    publishUploadPolicy(availability, maxBytes)
+                    requireNotNull(availability.uploadCapacity) {
+                            "Receive capacity could not be checked. Refresh and try again; your files are still selected."
+                        }
+                        .validateSelection(
+                            uris.size,
+                            uris.size.toLong() * ChunkedFileCrypto.FRAME_OVERHEAD,
+                        )
+                    require(uris.all { it.scheme == "content" }) {
+                        "Choose files from the document picker"
+                    }
+                    val resolver = getApplication<Application>().contentResolver
+                    val sources =
+                        uris.map { uri ->
+                            GuestUploadSource(
+                                ManifestValidator.safeFilename(uploadName(uri)),
+                                resolver.getType(uri) ?: "application/octet-stream",
+                                {
+                                    requireNotNull(resolver.openInputStream(uri)) {
+                                        "Cannot read selected file"
+                                    }
+                                },
+                            )
+                        }
+                    prepared =
+                        prepareGuestUpload(
+                            sources,
+                            getApplication<Application>().cacheDir,
+                            maxBytes,
+                        )
+                    val ready = requireNotNull(prepared)
+                    validatePreparedGuestUpload(ready, link.id, link.key) {
+                        val refreshed = guest.slots.availability(link.id)
+                        val limit = guest.limits.get().maxFileSize
+                        publishUploadPolicy(refreshed, limit)
+                        refreshed to limit
+                    }
                     child = guest.slots.createTransfer(link.id)
                     val submissionKey = CryptoProvider.generateKey()
                     val wrappedKey =
@@ -661,39 +806,27 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     scoped = ApiClient.slotUpload(link.origin, requireNotNull(child.deleteToken))
                     val files = mutableListOf<FileMetadata>()
-                    for ((index, uri) in uris.withIndex()) {
+                    for ((index, file) in ready.files.withIndex()) {
                         ensureActive()
-                        val resolver = getApplication<Application>().contentResolver
-                        val name =
-                            resolver
-                                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                                ?.use { if (it.moveToFirst()) it.getString(0) else "file" }
-                                ?: "file"
-                        val safeName = ManifestValidator.safeFilename(name)
-                        val snapshot = spoolUpload(getApplication(), uri, maxBytes)
-                        try {
-                            _state.update {
-                                it.copy(
-                                    stage = "Uploading",
-                                    fileIndex = index + 1,
-                                    bytes = 0,
-                                    totalBytes = ChunkedFileCrypto.wireSize(snapshot.length()),
-                                )
-                            }
-                            files +=
-                                uploadChunkedFile(
-                                    scoped,
-                                    child.id,
-                                    snapshot,
-                                    safeName,
-                                    resolver.getType(uri) ?: "application/octet-stream",
-                                    submissionKey,
-                                ) { uploaded ->
-                                    _state.update { it.copy(bytes = uploaded) }
-                                }
-                        } finally {
-                            snapshot.delete()
+                        _state.update {
+                            it.copy(
+                                stage = "Uploading",
+                                fileIndex = index + 1,
+                                bytes = 0,
+                                totalBytes = file.wireBytes,
+                            )
                         }
+                        files +=
+                            uploadChunkedFile(
+                                scoped,
+                                child.id,
+                                file.snapshot,
+                                file.name,
+                                file.mimeType,
+                                submissionKey,
+                            ) { uploaded ->
+                                _state.update { it.copy(bytes = uploaded) }
+                            }
                     }
                     val manifest = Json.encodeToString(Manifest(files)).encodeToByteArray()
                     val nonce = CryptoProvider.generateNonce()
@@ -712,6 +845,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     throw e
                 } catch (e: zip.psst.shared.api.TransferPolicyException) {
                     _state.update { it.copy(stage = e.title, error = e.message) }
+                } catch (e: IllegalArgumentException) {
+                    _state.update {
+                        it.copy(
+                            stage = "Check selected files",
+                            error = e.message,
+                            uploadCapacityMessage =
+                                "Capacity may have changed. Refresh and try again; your files are still selected.",
+                        )
+                    }
                 } catch (e: Exception) {
                     val trafficError =
                         zip.psst.android.data.classifyTrafficFailure(e) {
@@ -724,6 +866,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } finally {
                     withContext(NonCancellable) {
+                        prepared?.close()
                         if (child != null) {
                             try {
                                 withTimeout(5000) {

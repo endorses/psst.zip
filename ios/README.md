@@ -183,3 +183,23 @@ Run `python3 ios/scripts/test_abuse_report.py` on Linux with the existing `swift
 
 - [ ] On macOS, build the app and share extension using the Xcode workflow above; execute `AbuseReportTests` with the app test suite.
 - [ ] On an iPhone, verify valid and invalid-key scanned links, unavailable metadata, switching between two origins during contact lookup, configured-server Help, copy actions, and explicit mail composition with and without a mail app.
+
+### Guest upload capacity
+
+Receive-link uploads refresh public capacity on opening, each cumulative picker
+change and immediately before creating a child transfer. The check includes all
+selected files, encrypted frame overhead (including empty files), encrypted
+manifest space and the current per-file policy. Unknown, malformed, expired or
+exhausted snapshots keep the existing selection available for removal and retry.
+A request generation prevents an old response from changing another invitation,
+including two links on the same server. Source sizes are rechecked before
+streaming; server admission remains authoritative if capacity changes afterward.
+
+Run `python3 ios/scripts/test_guest_upload_selection.py` for the offline portable
+Swift tests of empty-file overhead, aggregate overflow, manifest reserve and
+changed-file rejection. The harness cleans its temporary workspace. It does not
+build SwiftUI or the Kotlin framework bridge. On macOS, run the build/test commands
+above and exercise multiple Add actions, removal while a refresh is pending,
+switching same-origin invitations, unknown/exhausted/restored capacity, provider
+files changed after preflight and server allocation races. Verify preserved
+selection, no allocation on failed preflight, explicit retry and scoped cleanup.

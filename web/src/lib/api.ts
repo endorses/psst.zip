@@ -4,6 +4,8 @@ import { MAX_BUFFERED_BYTES } from "./limits.ts";
 import { validateLinkLimit } from "./link-limits.ts";
 import { resourceLimitError } from "./resource-policy.ts";
 import { TransferStateError, transferStateError } from "./incident-state.ts";
+import { validateSlotAvailability, type SlotAvailability } from "./guest-capacity.ts";
+export type { SlotAvailability } from "./guest-capacity.ts";
 
 /**
  * Thin wrapper around the backend REST API.
@@ -167,18 +169,19 @@ export interface SlotInfo {
   remaining_files: number | null;
 }
 
-export interface SlotAvailability {
-  id: string;
-  receive_protocol: number;
-  recipient_public_key: string;
-  max_files: number;
-  remaining_files: number | null;
-  remaining_bytes: number;
-  remaining_transfers: number;
-  available: boolean;
-}
-export async function getSlotAvailability(slotId: string): Promise<SlotAvailability> {
-  return request<SlotAvailability>(`/slots/${slotId}/availability`, { credentials: "omit" });
+export async function getSlotAvailability(
+  slotId: string,
+  signal?: AbortSignal,
+): Promise<SlotAvailability> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slotId))
+    throw new Error("Invalid receive link ID");
+  const response = await requestRaw(`/slots/${slotId}/availability`, {
+    credentials: "omit",
+    cache: "no-store",
+    signal: signal ?? AbortSignal.timeout(10000),
+  });
+  const bytes = await readBounded(response, 4096);
+  return validateSlotAvailability(JSON.parse(new TextDecoder().decode(bytes)), slotId);
 }
 
 export async function getSlotInfo(slotId: string): Promise<SlotInfo> {

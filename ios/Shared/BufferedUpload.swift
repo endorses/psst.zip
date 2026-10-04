@@ -13,6 +13,9 @@ struct UploadProgress {
 
 enum BufferedUpload {
     static let maxFileBytes = 1024 * 1024 * 1024 * 1024
+    static func mimeType(for url: URL) -> String {
+        UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+    }
     static func sizes(_ urls: [URL], limit: Int) throws -> [Int64] {
         guard !urls.isEmpty, urls.count <= 100 else { throw AccountError.request }
         return try urls.map { url in
@@ -23,18 +26,24 @@ enum BufferedUpload {
                 }
             }
             guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { throw AccountError.request }
-            guard size >= 0, size <= limit else { throw NSError(domain: "Psst", code: 1, userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Each file must be no larger than %lld MiB."), Int64(limit / 1024 / 1024))]) }
+            guard size >= 0, size <= limit else {
+                throw NSError(
+                    domain: "Psst", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Each file must be no larger than %lld MiB."), Int64(limit / 1024 / 1024))])
+            }
             return Int64(size)
         }
     }
 
     @MainActor
-    static func send(fileURLs: [URL], client: ApiClient, transferId: String, key: KotlinByteArray,
-                     limit: Int, check: () throws -> Void,
-                     preparing: (String) -> Void, progress: @escaping @MainActor (UploadProgress) -> Void) async throws -> [FileMetadata]
-    {
+    static func send(
+        fileURLs: [URL], client: ApiClient, transferId: String, key: KotlinByteArray,
+        limit: Int, expectedSizes: [Int64]? = nil, check: () throws -> Void,
+        preparing: (String) -> Void, progress: @escaping @MainActor (UploadProgress) -> Void
+    ) async throws -> [FileMetadata] {
         let sizes = try sizes(fileURLs, limit: limit)
-        let total = try sizes.reduce(Int64(0)) { try $0 + ChunkedFileCrypto.shared.wireSize(totalSize: $1) }
+        try GuestUploadSelection.requireUnchanged(sizes, expected: expectedSizes)
+        let total = try GuestUploadSelection.totalWireBytes(sizes.map { try ChunkedFileCrypto.shared.wireSize(totalSize: $0) })
         var sent: Int64 = 0
         var files: [FileMetadata] = []
         for (index, url) in fileURLs.enumerated() {
@@ -68,17 +77,20 @@ enum BufferedUpload {
                 try await client.tus.uploadChunk(resourceUrl: resourceURL, data: frame, offset: offset)
                 offset += Int64(frame.size)
                 progress(UploadProgress(name: url.lastPathComponent, sent: sent + offset, total: total))
-                remaining -= Int64(expected); frameIndex += 1
+                remaining -= Int64(expected)
+                frameIndex += 1
             } while remaining > 0
             guard try (handle.read(upToCount: 1) ?? Data()).isEmpty, offset == wireSize else {
                 throw AccountError.request
             }
             try check()
             sent += wireSize
-            files.append(FileMetadata(name: url.lastPathComponent, size: size,
-                                      mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream",
-                                      blobId: URL(string: resourceURL)?.lastPathComponent ?? resourceURL,
-                                      encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: encryptionID))
+            files.append(
+                FileMetadata(
+                    name: url.lastPathComponent, size: size,
+                    mimeType: mimeType(for: url),
+                    blobId: URL(string: resourceURL)?.lastPathComponent ?? resourceURL,
+                    encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: encryptionID))
         }
         return files
     }

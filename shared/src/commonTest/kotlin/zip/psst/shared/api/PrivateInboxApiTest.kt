@@ -63,7 +63,7 @@ class PrivateInboxApiTest {
                     when {
                         path.endsWith("availability") ->
                             respond(
-                                """{"id":"$slot","available":true,"receive_protocol":2,"recipient_public_key":"$publicKey","remaining_transfers":3,"remaining_bytes":1000}""",
+                                """{"id":"$slot","available":true,"receive_protocol":2,"recipient_public_key":"$publicKey","remaining_transfers":3,"remaining_bytes":1000,"upload_capacity":{"checked_at":"${kotlin.time.Clock.System.now()}","state":"ready","available_wire_bytes":1000,"available_files":16,"manifest_reserve_bytes":1048576}}""",
                                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
                             )
                         path.endsWith("/slots/$slot") ->

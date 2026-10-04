@@ -8,6 +8,7 @@
   import SendPanel from "$lib/components/SendPanel.svelte";
   import { BRAND } from "$lib/brand";
   import { TransferStateError } from "$lib/incident-state";
+  import { GuestCapacityError } from "$lib/guest-capacity";
   let reconnect = $state(false);
   let availability = $state<SlotAvailability | null>(null);
   let ready = $state(false),
@@ -46,6 +47,12 @@
       }
       ready = true;
     } catch (e) {
+      if (e instanceof GuestCapacityError) {
+        error =
+          "Could not check this receive link's upload availability. Try reconnecting in a moment.";
+        reconnect = true;
+        return;
+      }
       if (e instanceof TrafficLimitError || e instanceof TransferStateError) {
         error = e.message;
         reconnect = false;
@@ -72,7 +79,8 @@
         class="notice"
       >
         {availability.remaining_files} file allocations remaining. Unfinished uploads also count.
-      </p>{/if}<SendPanel slotId={$page.params.slotId} keyString={key} />{:else}<p role="status">
-      Opening receive link…
-    </p>{/if}
+      </p>{/if}{#key `${$page.params.slotId}:${key}`}<SendPanel
+        slotId={$page.params.slotId}
+        keyString={key}
+      />{/key}{:else}<p role="status">Opening receive link…</p>{/if}
 </section>

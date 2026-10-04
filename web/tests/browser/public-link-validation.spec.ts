@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { randomBytes, randomUUID } from "node:crypto";
+import { guestAvailability } from "../guest-capacity-fixture";
 
 test("a substituted inbox public key or exhausted capacity never offers an upload", async ({
   page,
@@ -10,10 +11,12 @@ test("a substituted inbox public key or exhausted capacity never offers an uploa
   await page.route(`**/api/v1/slots/${id}/availability`, (route) =>
     route.fulfill({
       json: {
+        ...guestAvailability(),
         id,
         receive_protocol: 2,
         recipient_public_key: changedKey ? randomBytes(32).toString("base64url") : key,
         available: false,
+        max_files: 1,
         remaining_files: 0,
       },
     }),
@@ -54,6 +57,7 @@ test("revoked receive links request a new link while connection errors offer rec
     route.fulfill({
       status: responseStatus,
       json: {
+        ...guestAvailability(),
         id,
         receive_protocol: 2,
         recipient_public_key: key,

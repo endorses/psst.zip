@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/endorses/psst.zip/backend/internal/database"
+)
 
 // --- Request types ---
 
@@ -93,14 +97,15 @@ type ErrorResponse struct {
 
 // SlotAvailability exposes submission policy, never private inbox history.
 type SlotAvailability struct {
-	ID                 string    `json:"id"`
-	Status             string    `json:"status"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	ReceiveProtocol    int       `json:"receive_protocol"`
-	RecipientPublicKey string    `json:"recipient_public_key"`
-	MaxFiles           int       `json:"max_files"`
-	RemainingFiles     *int64    `json:"remaining_files"`
-	RemainingBytes     int64     `json:"remaining_bytes"`
-	RemainingTransfers int       `json:"remaining_transfers"`
-	Available          bool      `json:"available"`
+	UploadCapacity     database.GuestUploadCapacity `json:"upload_capacity"`
+	ID                 string                       `json:"id"`
+	Status             string                       `json:"status"`
+	ExpiresAt          time.Time                    `json:"expires_at"`
+	ReceiveProtocol    int                          `json:"receive_protocol"`
+	RecipientPublicKey string                       `json:"recipient_public_key"`
+	MaxFiles           int                          `json:"max_files"`
+	RemainingFiles     *int64                       `json:"remaining_files"`
+	RemainingBytes     int64                        `json:"remaining_bytes"`
+	RemainingTransfers int                          `json:"remaining_transfers"`
+	Available          bool                         `json:"available"`
 }

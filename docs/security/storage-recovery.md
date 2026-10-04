@@ -193,8 +193,14 @@ entries require operator inspection; the worker deliberately retains them.
       restore. Derived database summaries are reconstructed as described above;
       lost lifetime allowances require matching historical database state and
       cannot be inferred from surviving payloads.
-- [ ] Integrate reconciliation coverage with effective-capacity admission and
-      public guest capacity responses.
+- [x] Provide public receive capacity from canonical reservations and current
+      filesystem headroom, independently of display-counter and payload-inventory
+      coverage. Missing disk measurements produce unknown capacity; unrelated
+      payload damage does not globally block new uploads. Public snapshots contain
+      no private recovery details.
+- [ ] Verify complete restore/accounting consistency and recovery coverage in the
+      backup/restore exercises; the advisory capacity snapshot alone cannot prove
+      a restored database represents all historical consumption.
 - [ ] Perform the complete backup/restore and hostile-client release exercises
       in the security plan.
 
@@ -202,3 +208,24 @@ A completed database-file pass is not evidence of complete disk health, physical
 disk usage, orphan-free storage, or a consistent backup. Restore the database and
 encrypted payloads together with the server stopped. Keep the instance private
 until the remaining security-plan release gates are verified.
+
+## Guest upload headroom
+
+Public receive availability now includes a timestamped `upload_capacity` estimate
+for one new submission. Available bytes mean encrypted file bytes after reserving
+up to 1 MiB for the encrypted manifest (clamped by the configured manifest limit).
+The estimate combines cumulative link allowances, canonical account/server quotas,
+object headroom, outstanding writes and current filesystem free space. Database
+and WAL room are considered on their actual volume. Orphan and open-but-unlinked
+files already reduce filesystem free space and are not subtracted a second time.
+
+Clients recheck whole selections, including empty-file frames and manifest size,
+immediately before allocation. Unknown capacity preserves their selection and
+requires refresh. An estimate does not reserve the batch: concurrent uploaders or
+external disk writers can consume headroom. Allocation and streaming remain the
+authoritative checks. A failed or interrupted attempt may consume cumulative link
+allowances even after cleanup; explicit retry creates a fresh child and can need
+a replacement invitation. Existing authenticated upload offsets remain resumable
+within their allocation while policy/lifetime permits; clients do not regenerate
+old random ciphertext automatically. Never refund cumulative allowances merely
+because payloads have been deleted.

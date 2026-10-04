@@ -23,6 +23,10 @@ struct ScanReceiveView: View {
     @State private var error: String?
     @State private var uploadLink: ParsedUrl?
     @State private var uploadLimit: Int64?
+    @State private var capacityMessage = "Checking receive capacity…"
+    @State private var capacityReady = false
+    @State private var checkingCapacity = false
+    @State private var capacityRequest = UUID()
     @State private var pairingRaw: String?
     @State private var pairingServer = ""
     @State private var pairing = false
@@ -69,19 +73,24 @@ struct ScanReceiveView: View {
             .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 do {
                     let values = try result.get()
-                    _ = try BufferedUpload.sizes(values, limit: BufferedUpload.maxFileBytes)
-                    selected = values
+                    refreshCapacity(adding: values)
                 } catch { self.error = "Could not select these files. Check file access and the server’s file-size limit." }
             }
-            .confirmationDialog("Download missing files again? The server may no longer permit another download.", isPresented: Binding(get: { redownload != nil }, set: {
-                if !$0 {
-                    redownload = nil
-                }
-            }), titleVisibility: .visible) {
+            .confirmationDialog(
+                "Download missing files again? The server may no longer permit another download.",
+                isPresented: Binding(
+                    get: { redownload != nil },
+                    set: {
+                        if !$0 {
+                            redownload = nil
+                        }
+                    }), titleVisibility: .visible
+            ) {
                 Button("Download missing files") {
                     if let redownload {
                         model.resume(redownload, allowRedownload: true)
-                    }; redownload = nil
+                    }
+                    redownload = nil
                 }
             }
         }.modifier(PsstStyle())
@@ -97,8 +106,13 @@ struct ScanReceiveView: View {
             .accessibilityLabel("QR camera preview")
         } else {
             Button("Scan again") {
-                model.resetPresentation(); uploadLink = nil; pairingRaw = nil
-                error = nil; reportContext = nil; cameraEnabled = true
+                model.resetPresentation()
+                uploadLink = nil
+                pairingRaw = nil
+                clearUploadSelection()
+                error = nil
+                reportContext = nil
+                cameraEnabled = true
             }.disabled(model.active || pairing)
         }
         Text("Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received.")
@@ -108,16 +122,26 @@ struct ScanReceiveView: View {
             .textFieldStyle(.roundedBorder).privacySensitive()
         HStack {
             PasteButton(payloadType: String.self) { values in pasted = values.first ?? "" }
-            Button("Receive files") { let value = pasted; pasted = ""; cameraEnabled = false; accept(value) }
-                .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Receive files") {
+                let value = pasted
+                pasted = ""
+                cameraEnabled = false
+                accept(value)
+            }
+            .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }.disabled(model.active || pairing)
         Button("Camera settings") {
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 openURL(url)
             }
         }.font(.footnote)
-        Button { cameraEnabled = false; imagePicking = true } label: { Label("Choose QR image", systemImage: "photo") }
-            .disabled(model.active || pairing)
+        Button {
+            cameraEnabled = false
+            imagePicking = true
+        } label: {
+            Label("Choose QR image", systemImage: "photo")
+        }
+        .disabled(model.active || pairing)
     }
 
     @ViewBuilder private var pairingPanel: some View {
@@ -129,9 +153,11 @@ struct ScanReceiveView: View {
                 Button("Connect to this server") {
                     pairing = true
                     Task {
-                        defer { pairing = false; pairingRaw = nil }
-                        do { try await config.pair(raw: raw) }
-                        catch { self.error = "This login code could not be used. Generate a fresh code and check the connection." }
+                        defer {
+                            pairing = false
+                            pairingRaw = nil
+                        }
+                        do { try await config.pair(raw: raw) } catch { self.error = "This login code could not be used. Generate a fresh code and check the connection." }
                     }
                 }.buttonStyle(PrimaryAction()).disabled(pairing)
                 Button("Cancel") { pairingRaw = nil }.disabled(pairing)
@@ -148,10 +174,27 @@ struct ScanReceiveView: View {
                 if let uploadLimit {
                     Text("Up to " + ByteCountFormatter.string(fromByteCount: uploadLimit, countStyle: .binary) + " per file.").font(.footnote)
                 }
-                Button("Choose files") { picking = true }.disabled(model.active)
-                ForEach(selected, id: \.self) { Text($0.lastPathComponent).lineLimit(2) }
+                Text(capacityMessage).font(.footnote).accessibilityAddTraits(.updatesFrequently)
+                Button("Refresh capacity") { refreshCapacity() }
+                    .disabled(model.active || checkingCapacity)
+                Button(selected.isEmpty ? "Choose files" : "Add files") { picking = true }
+                    .disabled(model.active || checkingCapacity || model.uploadComplete)
+                ForEach(selected, id: \.self) { url in
+                    HStack {
+                        Text(url.lastPathComponent).lineLimit(2)
+                        Spacer()
+                        Button {
+                            selected.removeAll { $0 == url }
+                            refreshCapacity()
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .accessibilityLabel("Remove " + url.lastPathComponent)
+                        .disabled(model.active)
+                    }
+                }
                 Button("Send files") { model.send(selected, to: uploadLink) }
-                    .buttonStyle(PrimaryAction()).disabled(selected.isEmpty || model.active || model.uploadComplete)
+                    .buttonStyle(PrimaryAction()).disabled(selected.isEmpty || !capacityReady || checkingCapacity || model.active || model.uploadComplete)
                 if model.uploadComplete {
                     Label("Files sent", systemImage: "checkmark.circle")
                 }
@@ -159,7 +202,9 @@ struct ScanReceiveView: View {
                     Text("Partial server files will be removed when the connection is restored.").font(.footnote)
                 }
                 Button("Close receive link") {
-                    self.uploadLink = nil; reportContext = nil; selected = []
+                    self.uploadLink = nil
+                    reportContext = nil
+                    clearUploadSelection()
                 }.disabled(model.active)
             }
         }
@@ -170,7 +215,8 @@ struct ScanReceiveView: View {
             Text(model.stage).font(.headline).accessibilityAddTraits(.updatesFrequently)
             if model.stage == "Downloading" || model.stage == "Uploading" {
                 ProgressView(value: Double(model.bytes), total: Double(max(1, model.total)))
-                Text(ByteCountFormatter.string(fromByteCount: model.bytes, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: model.total, countStyle: .file)).font(.caption)
+                Text(ByteCountFormatter.string(fromByteCount: model.bytes, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: model.total, countStyle: .file))
+                    .font(.caption)
                 if model.fileNumber > 0 {
                     Text("File \(model.fileNumber)").font(.caption)
                 }
@@ -184,9 +230,15 @@ struct ScanReceiveView: View {
     private func accept(_ raw: String) {
         guard !model.active, !pairing else { return }
         model.resetPresentation()
-        error = nil; pairingRaw = nil; uploadLink = nil; selected = []
+        error = nil
+        pairingRaw = nil
+        uploadLink = nil
+        clearUploadSelection()
         reportContext = AbuseReportContext.fromLink(raw)
-        guard let input = ScanInputClassifier.shared.classify(raw: raw) else { error = GuestError.input.localizedDescription; return }
+        guard let input = ScanInputClassifier.shared.classify(raw: raw) else {
+            error = GuestError.input.localizedDescription
+            return
+        }
         switch input.kind {
         case .download:
             guard let link = input.link else { return }
@@ -194,31 +246,71 @@ struct ScanReceiveView: View {
             let id = GuestDownload.identity(origin: link.origin, transferID: link.id)
             if let record = store.records.first(where: { $0.id == id }), store.requiresRedownloadConsent(record) {
                 // Validate the key without changing the stored working key before offering redownload.
-                do { _ = try store.prepare(origin: link.origin, transferID: link.id, key: link.key.toData()); redownload = record }
-                catch { error = GuestError.conflictingKey.localizedDescription }
+                do {
+                    _ = try store.prepare(origin: link.origin, transferID: link.id, key: link.key.toData())
+                    redownload = record
+                } catch { error = GuestError.conflictingKey.localizedDescription }
             } else {
                 model.receive(link)
             }
         case .upload:
             uploadLink = input.link
             if let link = input.link { reportContext = AbuseReportContext(origin: link.origin, resourceType: "slot", resourceID: link.id) }
-            uploadLimit = nil
-            if let link = input.link {
-                Task {
-                    do {
-                        let client = try ApiClient.companion.anonymous(origin: link.origin)
-                        defer { client.close() }
-                        let limit = try await client.limits.get().maxFileSize
-                        if uploadLink?.origin == link.origin {
-                            uploadLimit = limit
-                        }
-                    } catch { error = "Could not read this server’s file-size limit. Check the connection before sending." }
-                }
-            }
+            refreshCapacity()
         case .pairing:
             pairingRaw = raw
             pairingServer = input.pairing?.serverUrl ?? ""
         default: error = GuestError.input.localizedDescription
+        }
+    }
+
+    private func clearUploadSelection() {
+        capacityRequest = UUID()
+        checkingCapacity = false
+        capacityReady = false
+        uploadLimit = nil
+        selected = []
+        capacityMessage = "Checking receive capacity…"
+    }
+
+    private func refreshCapacity(adding additions: [URL] = []) {
+        guard let link = uploadLink, !model.active else { return }
+        let request = UUID()
+        capacityRequest = request
+        checkingCapacity = true
+        capacityReady = false
+        error = nil
+        capacityMessage = "Checking receive capacity…"
+        // Add is cumulative; a rejected addition leaves the previous selection intact.
+        let candidate = additions.reduce(into: selected) { files, url in
+            if !files.contains(url) { files.append(url) }
+        }
+        Task { @MainActor in
+            defer { if capacityRequest == request { checkingCapacity = false } }
+            do {
+                let client = try ApiClient.companion.anonymous(origin: link.origin)
+                defer { client.close() }
+                let limit = try await client.limits.get().maxFileSize
+                guard capacityRequest == request else { return }
+                guard limit > 0, limit <= Int64(BufferedUpload.maxFileBytes) else { throw GuestUploadSelectionError.unavailable }
+                uploadLimit = limit
+                let sizes: [Int64]
+                do { sizes = candidate.isEmpty ? [] : try BufferedUpload.sizes(candidate, limit: Int(limit)) } catch { throw GuestUploadSelectionError.invalidFiles }
+                let availability = try await client.slots.availability(slotId: link.id)
+                guard capacityRequest == request else { return }
+                try GuestUploadPreflight.validate(availability, link: link, urls: candidate, sizes: sizes)
+                guard let capacity = availability.uploadCapacity,
+                    let files = capacity.availableFiles, let bytes = capacity.availableWireBytes
+                else { throw GuestUploadSelectionError.unavailable }
+                selected = candidate
+                capacityReady = true
+                capacityMessage =
+                    "Available for this upload: \(files.int64Value) files · " + ByteCountFormatter.string(fromByteCount: bytes.int64Value, countStyle: .binary)
+                    + " encrypted data. Capacity is checked again before sending."
+            } catch {
+                guard capacityRequest == request else { return }
+                capacityMessage = (error as? GuestUploadSelectionError)?.localizedDescription ?? GuestUploadSelectionError.unavailable.localizedDescription
+            }
         }
     }
 }

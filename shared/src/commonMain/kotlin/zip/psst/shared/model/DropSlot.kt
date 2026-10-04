@@ -4,8 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * A drop slot allows others to upload files to the slot creator. The creator generates the
- * encryption key and shares it via a URL fragment.
+ * A private receive inbox lets guests submit encrypted files. Its public receive key is shared in
+ * the invitation fragment; only the creator retains the private key and owner capability.
  */
 @Serializable
 data class DropSlot(
@@ -40,9 +40,10 @@ data class SlotAvailability(
     @SerialName("remaining_files") val remainingFiles: Long? = null,
     @SerialName("remaining_bytes") val remainingBytes: Long = 0,
     @SerialName("remaining_transfers") val remainingTransfers: Int = 0,
+    @SerialName("upload_capacity") val uploadCapacity: UploadCapacity? = null,
 ) {
     @Throws(Exception::class)
-    fun validateForSubmission(slotId: String, publicKey: ByteArray, fileCount: Int) {
+    fun validateInvitation(slotId: String, publicKey: ByteArray) {
         require(id == slotId && available && receiveProtocol == 2) {
             "This receive link is unavailable"
         }
@@ -56,17 +57,35 @@ data class SlotAvailability(
         ) {
             "The server's receive key does not match the invitation"
         }
-        require(
-            fileCount in 0..TransferLimits.MAX_FILES &&
-                maxFiles >= 0 &&
-                remainingBytes >= 0 &&
-                remainingTransfers > 0
-        )
-        remainingFiles?.let {
-            require(it >= fileCount && maxFiles > 0 && it <= maxFiles) {
-                "This receive link has too few file allocations remaining"
-            }
+        require(maxFiles >= 0 && remainingBytes >= 0 && remainingTransfers > 0) {
+            "This receive link cannot accept another submission"
         }
+        require(
+            if (maxFiles == 0) remainingFiles == null
+            else remainingFiles != null && remainingFiles in 0..maxFiles.toLong()
+        ) {
+            "The server returned an invalid receive allowance"
+        }
+        uploadCapacity?.validate()
+    }
+
+    @Throws(Exception::class)
+    fun validateForSubmission(
+        slotId: String,
+        publicKey: ByteArray,
+        fileCount: Int,
+        totalWireBytes: Long,
+    ) {
+        validateInvitation(slotId, publicKey)
+        require(fileCount in 1..TransferLimits.MAX_FILES) { "Select between 1 and 100 files" }
+        require(remainingFiles == null || fileCount.toLong() <= remainingFiles) {
+            "This receive link has too few file allocations remaining"
+        }
+        require(totalWireBytes >= 0 && totalWireBytes <= remainingBytes) {
+            "The selected files exceed this receive link's remaining byte allowance"
+        }
+        requireNotNull(uploadCapacity) { CAPACITY_RETRY }
+            .validateSelection(fileCount, totalWireBytes)
     }
 }
 

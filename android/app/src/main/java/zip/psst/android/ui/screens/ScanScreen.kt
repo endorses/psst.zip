@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -273,9 +274,23 @@ fun ScanScreen(
                                     Text(
                                         "${state.remainingUploadFiles ?: "…"} file allocations remaining. Unfinished uploads also count; deletion does not restore the allowance."
                                     )
-                                state.uploadFiles.forEach { Text(viewModel.uploadName(it)) }
+                                Text(state.uploadCapacityMessage)
+                                state.uploadFiles.forEach { uri ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            viewModel.uploadName(uri),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        TextButton(onClick = { viewModel.removeUpload(uri) }) {
+                                            Text("Remove")
+                                        }
+                                    }
+                                }
+                                TextButton(onClick = viewModel::refreshUploadPolicy) {
+                                    Text("Refresh capacity")
+                                }
                                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) {
-                                    Text("Choose files")
+                                    Text("Add files")
                                 }
                                 Button(
                                     onClick = viewModel::upload,
