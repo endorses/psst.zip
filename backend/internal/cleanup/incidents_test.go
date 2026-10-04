@@ -52,25 +52,30 @@ func TestIncidentCleanupBatchesAdvancePastFailuresAndRetainReservations(t *testi
 			t.Fatal(err)
 		}
 	}
-	after := incidentCleanupBatch(context.Background(), q, fs, "transfer", "")
-	if after != "15" {
-		t.Fatalf("unbounded first batch cursor %q", after)
-	}
+	_ = SweepPending(context.Background(), q, fs)
 	usage, err := q.ResourceUsage("")
 	if err != nil || usage.Transfers != 5 || usage.ReservedBytes != 5 {
 		t.Fatalf("failed unlink refunded or batch unbounded %+v %v", usage, err)
 	}
-	after = incidentCleanupBatch(context.Background(), q, fs, "transfer", after)
+	_ = SweepPending(context.Background(), q, fs)
 	usage, err = q.ResourceUsage("")
 	if err != nil || usage.Transfers != 1 || usage.ReservedBytes != 1 {
 		t.Fatalf("failed first item blocked other cleanup %+v %v", usage, err)
 	}
-	after = incidentCleanupBatch(context.Background(), q, fs, "transfer", after)
-	if after != "" {
-		t.Fatal("cursor did not wrap")
+	state, err := q.ResourceCleanup("transfer", "00")
+	if err != nil || state.State != "failed" || state.FailureCode != "storage_delete_failed" || state.AttemptCount != 1 || state.NextRetryAt == nil {
+		t.Fatalf("missing durable failure: %+v / %v", state, err)
+	}
+	_ = SweepPending(context.Background(), q, fs)
+	unchanged, _ := q.ResourceCleanup("transfer", "00")
+	if unchanged.AttemptCount != state.AttemptCount {
+		t.Fatal("failed resource retried before backoff")
 	}
 	fs.fail = false
-	incidentCleanupBatch(context.Background(), q, fs, "transfer", after)
+	if err := q.RequestResourceCleanup("transfer", "00"); err != nil {
+		t.Fatal(err)
+	}
+	_ = SweepPending(context.Background(), q, fs)
 	usage, err = q.ResourceUsage("")
 	if err != nil || usage.ReservedBytes != 0 {
 		t.Fatalf("retry did not release verified deletion %+v %v", usage, err)

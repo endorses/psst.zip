@@ -53,17 +53,30 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
   await page.goto("/?view=send");
   await authenticate(page, adminCredentials);
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("link")).toHaveCount(4);
+  await expect(
+    page.getByRole("navigation", { name: "Account navigation" }).getByRole("link"),
+  ).toHaveCount(5);
   await expect(page.getByRole("link", { name: "Send", exact: true })).toHaveCount(0);
   await expect(page.locator("input[type=file]")).toHaveCount(0);
-  await page.getByRole("button", { name: "View resources", exact: true }).click();
+  await page.getByRole("link", { name: "View resources", exact: true }).click();
   await expect(page.getByRole("button", { name: "Refresh resources" })).toBeVisible();
   const row = page.locator(`[data-resource-id="${slot.id}"]`);
   await expect(row).toContainText("browser-member");
-  await row.getByRole("button", { name: "Revoke", exact: true }).click();
+  await row.getByRole("button", { name: "Inspect", exact: true }).click();
+  await page.getByRole("button", { name: "Revoke", exact: true }).click();
+  const revoked = page.waitForResponse((r) =>
+    r.url().endsWith(`/admin/resources/slot/${slot.id}/revoke`),
+  );
   await page.getByRole("button", { name: "Revoke and delete" }).click();
-  await expect(row).toHaveCount(0);
-  expect((await request.get(`/api/v1/slots/${slot.id}`)).status()).toBe(404);
+  const outcome = await (await revoked).json();
+  if (outcome.state === "removed") await expect(row).toHaveCount(0);
+  else {
+    await expect(row).toContainText("Revoked");
+    await expect(page.getByRole("status").filter({ hasText: "cleanup is complete" })).toHaveCount(
+      0,
+    );
+  }
+  expect([404, 410]).toContain((await request.get(`/api/v1/slots/${slot.id}`)).status());
   await page.evaluate(() => {
     (document.activeElement as HTMLElement)?.blur();
     window.scrollTo(0, 0);
@@ -199,13 +212,13 @@ test("admin metrics and resources distinguish unavailable, degraded and stale da
   );
   await expect(page.getByText("Measured lifetime", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Overview", exact: true }).click();
-  await page.route("**/api/v1/auth/resources?*all=true*", (route) =>
+  await page.route("**/api/v1/admin/resources?**", (route) =>
     route.fulfill({ status: 503, json: { error: "Resource service unavailable" } }),
   );
-  await page.getByRole("button", { name: "View resources", exact: true }).click();
+  await page.getByRole("link", { name: "View resources", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Resources could not be loaded");
   await expect(page.getByText("No resources found.", { exact: true })).toHaveCount(0);
-  await page.unroute("**/api/v1/auth/resources?*all=true*");
+  await page.unroute("**/api/v1/admin/resources?**");
   await page.getByRole("button", { name: "Refresh resources", exact: true }).click();
   await expect(page.getByText("Resources could not be loaded", { exact: false })).toHaveCount(0);
 });

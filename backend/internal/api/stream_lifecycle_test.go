@@ -175,7 +175,7 @@ func TestExhaustedCleanupRetainsPayloadUntilFinalReaderCloses(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("final download stalled")
 	}
-	sweep(t, env)
+	sweepAfterRetryDue(t, env, "transfer", id)
 	if size, err := fixtureStore(t, env).Size(id + "/" + files[0].ID); err != nil || size != 0 {
 		t.Fatalf("cleanup did not release closed payload: %d %v", size, err)
 	}

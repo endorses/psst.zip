@@ -1,3 +1,4 @@
+import { adminResource, cleanupOverview } from "../admin-resource-fixture";
 import { test, expect, type Page } from "@playwright/test";
 import { resourcePolicy, resourceUsage } from "../resource-policy-fixture";
 
@@ -249,16 +250,36 @@ for (const role of ["user", "admin"] as const) {
         route.fulfill({ status: 503, json: { error: "Metrics unavailable in fixture" } }),
       );
       await page.route("**/api/v1/admin/users", (route) => route.fulfill({ json: { users: [] } }));
+      await page.route("**/api/v1/admin/resources?**", (route) =>
+        route.fulfill({
+          json: {
+            resources: [
+              adminResource({
+                id,
+                type: "slot",
+                status: "waiting",
+                file_count: 154,
+                child_transfer_count: 151,
+              }),
+            ],
+            next_cursor: null,
+          },
+        }),
+      );
+      await page.route("**/api/v1/admin/cleanup", (route) =>
+        route.fulfill({ json: cleanupOverview }),
+      );
       await page.goto("/?view=overview");
-      await page.getByRole("button", { name: "View resources", exact: true }).click();
+      await page.getByRole("link", { name: "View resources", exact: true }).click();
     } else await page.goto("/?view=history");
     const summary = page.locator(`[data-resource-id="${id}"]`);
     await expect(summary).toContainText(role === "admin" ? "154 files" : "151 files received");
     await expect(summary).toContainText("1.0 MiB");
     if (role === "admin") await expect(summary).toContainText("Files received");
-    await expect(page.locator(`[data-resource-id="${unknown}"]`)).toContainText(
-      "File count unavailable",
-    );
+    if (role === "user")
+      await expect(page.locator(`[data-resource-id="${unknown}"]`)).toContainText(
+        "File count unavailable",
+      );
     expect(detailedRequests).toBe(0);
   });
 }

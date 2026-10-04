@@ -315,52 +315,27 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 
 // --- Expiry / Cleanup ---
 
-// ExpiredTransferIDs returns expired or revoked transfers. Exhausting a
-// download quota removes payloads separately, keeping acknowledgement metadata.
-func (q *Queries) ExpiredTransferIDs() ([]string, error) {
-	// Compare parsed times, since historical rows use Go timestamp strings with
-	// different timezone offsets, which SQLite cannot order chronologically.
-	rows, err := q.db.Query(`SELECT id, expires_at, status,pending_expires_at FROM transfers`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	now := time.Now()
-	var ids []string
-	for rows.Next() {
-		var id string
-		var expiresAt time.Time
-		var status string
-		var pending sql.NullTime
-		if err := rows.Scan(&id, &expiresAt, &status, &pending); err != nil {
-			return nil, err
-		}
-		if status == "revoked" || !now.Before(expiresAt) || (status == "pending" && pending.Valid && !now.Before(pending.Time)) {
-			ids = append(ids, id)
-		}
-	}
-	return ids, rows.Err()
-}
-
-// ExhaustedTransferIDs returns immutable transfers whose file GET allowances
-// are all consumed. Their metadata stays until TTL so recipients can acknowledge
-// after downloading and senders can subsequently retrieve that acknowledgement.
+// ExpiredTransferIDs is a bounded compatibility view of discovered cleanup.
+// Workers use DiscoverCleanup and DueCleanup directly; this never scans all rows.
+func (q *Queries) ExpiredTransferIDs() ([]string, error) { return q.cleanupIDs("transfer", "full") }
 func (q *Queries) ExhaustedTransferIDs() ([]string, error) {
-	rows, err := q.db.Query(`SELECT id FROM transfers
- WHERE status = 'complete' AND max_downloads > 0 AND download_count >= max_downloads`)
+	return q.cleanupIDs("transfer", "payload")
+}
+func (q *Queries) cleanupIDs(kind, mode string) ([]string, error) {
+	if err := q.DiscoverCleanup(time.Now()); err != nil {
+		return nil, err
+	}
+	tasks, err := q.DueCleanup(kind, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
+	ids := []string{}
+	for _, task := range tasks {
+		if task.Mode == mode {
+			ids = append(ids, task.ID)
 		}
-		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	return ids, nil
 }
 
 func (q *Queries) DeleteTransfer(id string) error {
@@ -368,28 +343,8 @@ func (q *Queries) DeleteTransfer(id string) error {
 	return err
 }
 
-// ExpiredSlotIDs returns IDs of expired or revoked slots.
-func (q *Queries) ExpiredSlotIDs() ([]string, error) {
-	rows, err := q.db.Query(`SELECT id, expires_at, status FROM slots`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	now := time.Now()
-	var ids []string
-	for rows.Next() {
-		var id string
-		var expiresAt time.Time
-		var status string
-		if err := rows.Scan(&id, &expiresAt, &status); err != nil {
-			return nil, err
-		}
-		if status == "revoked" || !now.Before(expiresAt) {
-			ids = append(ids, id)
-		}
-	}
-	return ids, rows.Err()
-}
+// ExpiredSlotIDs returns at most one discovered cleanup batch.
+func (q *Queries) ExpiredSlotIDs() ([]string, error) { return q.cleanupIDs("slot", "full") }
 
 func (q *Queries) DeleteSlot(id string) error {
 	_, err := q.db.Exec(`DELETE FROM slots WHERE id = ?`, id)
@@ -521,6 +476,9 @@ func (q *Queries) revokeTransfer(id string, event *SecurityEvent, actors []*Admi
 	if err != nil {
 		return err
 	}
+	if _, err = tx.Exec(`INSERT INTO cleanup_tasks(kind,resource_id,mode,reason,pending_since) SELECT 'transfer',id,'full','revoked',unixepoch() FROM transfers WHERE id=? AND status='revoked' ON CONFLICT(kind,resource_id) DO UPDATE SET mode='full',reason=CASE WHEN cleanup_tasks.mode='full' THEN cleanup_tasks.reason ELSE 'revoked' END WHERE cleanup_tasks.mode!='full'`, id); err != nil {
+		return err
+	}
 	n, err := result.RowsAffected()
 	if err != nil {
 		return err
@@ -542,64 +500,53 @@ func (q *Queries) revokeTransfer(id string, event *SecurityEvent, actors []*Admi
 	return tx.Commit()
 }
 
-// RevokeSlot closes the slot and every linked transfer atomically before disk
-// cleanup. Retaining these rows on cleanup failure keeps revocation retryable.
-func (q *Queries) RevokeSlot(id string, actors ...*AdminActor) ([]string, error) {
-	return q.revokeSlot(id, nil, actors)
+// RevokeSlotQueued atomically denies the inbox and its current children and
+// persists cleanup intent without loading child identifiers into memory.
+func (q *Queries) RevokeSlotQueued(id string, event SecurityEvent, actors ...*AdminActor) error {
+	if event.Kind == "" {
+		return q.revokeSlotQueued(id, nil, actors)
+	}
+	return q.revokeSlotQueued(id, &event, actors)
 }
-func (q *Queries) RevokeSlotAudited(id string, event SecurityEvent, actors ...*AdminActor) ([]string, error) {
-	return q.revokeSlot(id, &event, actors)
-}
-func (q *Queries) revokeSlot(id string, event *SecurityEvent, actors []*AdminActor) ([]string, error) {
+func (q *Queries) revokeSlotQueued(id string, event *SecurityEvent, actors []*AdminActor) error {
 	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`UPDATE slots SET status = 'revoked' WHERE id = ? AND status!='revoked'`, id)
+	result, err := tx.Exec(`UPDATE slots SET status='revoked' WHERE id=? AND status!='revoked'`, id)
 	if err != nil {
-		return nil, err
-	}
-	if _, err := tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id IN (SELECT transfer_id FROM slot_transfers WHERE slot_id = ?)`, id); err != nil {
-		return nil, err
-	}
-	rows, err := tx.Query(`SELECT transfer_id FROM slot_transfers WHERE slot_id = ?`, id)
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for rows.Next() {
-		var child string
-		if err := rows.Scan(&child); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		ids = append(ids, child)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
+		return err
 	}
 	n, err := result.RowsAffected()
 	if err != nil {
-		return nil, err
+		return err
 	}
+	// The initial denial is atomic. Repeated cleanup of an already-revoked
+	// inbox must not rescan/requeue every child. Legacy inconsistencies are
+	// repaired by the bounded discovery cursor.
+	if n > 0 {
+		if _, err = tx.Exec(`UPDATE transfers SET status='revoked' WHERE status!='revoked' AND id IN (SELECT transfer_id FROM slot_transfers WHERE slot_id=?)`, id); err != nil {
+			return err
+		}
+	}
+	// Queue the parent even if it predates the cleanup migration.
+	if _, err = tx.Exec(`INSERT INTO cleanup_tasks(kind,resource_id,mode,reason,pending_since) SELECT 'slot',id,'full','revoked',unixepoch() FROM slots WHERE id=? AND status='revoked' ON CONFLICT(kind,resource_id) DO NOTHING`, id); err != nil {
+		return err
+	}
+
 	if n > 0 {
 		if event != nil {
-			event.Kind = "slot.revoked"
-			event.TargetType = "slot"
-			event.TargetID = id
-			event.Outcome = "succeeded"
+			event.Kind, event.TargetType, event.TargetID, event.Outcome = "slot.revoked", "slot", id, "succeeded"
 			err = q.AppendRecoverySecurityEvent(tx, *event)
 		} else {
 			err = q.auditAdminMutation(tx, actors, "slot.revoked", "slot", id, true)
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return ids, tx.Commit()
+	return tx.Commit()
 }
 
 func optionalOwner(owner []string) any {

@@ -120,9 +120,26 @@ func sweep(t *testing.T, env *testEnv) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	cleanup.NewWorker(env.queries, fs, time.Hour).Run(ctx)
+	if err := cleanup.SweepPending(context.Background(), env.queries, fs); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Busy readers and parent inboxes retry on their persisted deadline; a second
+// sweep must not bypass backoff merely because the fixture is ready immediately.
+func sweepAfterRetryDue(t *testing.T, env *testEnv, kind, id string) {
+	t.Helper()
+	state, err := env.queries.ResourceCleanup(kind, id)
+	if err != nil || state.State == "none" || state.NextRetryAt == nil {
+		t.Fatalf("missing queued retry: %+v / %v", state, err)
+	}
+	if delay := time.Until(*state.NextRetryAt); delay > 0 {
+		if delay > 2*time.Second {
+			t.Fatalf("unexpected busy retry delay: %s", delay)
+		}
+		time.Sleep(delay)
+	}
+	sweep(t, env)
 }
 
 func TestTusBoundsOwnershipAndConcurrentOffsets(t *testing.T) {
@@ -322,7 +339,20 @@ func TestSlotCompletionEventsAndLifetime(t *testing.T) {
 	request(t, env, "GET", slotURL+"/events", nil, http.StatusGone)
 	request(t, env, "POST", slotURL+"/transfers", nil, http.StatusGone)
 	sweep(t, env)
+	pending, err := env.queries.ResourceCleanup("slot", slot.ID)
+	if err != nil || pending.State != "waiting_children" {
+		t.Fatalf("inbox not waiting for bounded child cleanup: %+v / %v", pending, err)
+	}
+	child, err := env.queries.GetTransfer(transfer.ID)
+	if err != nil || child.Status != "revoked" {
+		t.Fatalf("child was not denied before deferred deletion: %+v / %v", child, err)
+	}
+	sweepAfterRetryDue(t, env, "slot", slot.ID)
 	request(t, env, "GET", slotURL, nil, http.StatusNotFound)
+	request(t, env, "GET", env.url("/api/v1/transfers/"+transfer.ID), nil, http.StatusNotFound)
+	if _, err := os.Stat(env.dataDir + "/files/" + transfer.ID); !os.IsNotExist(err) {
+		t.Fatalf("expired inbox child payload remains: %v", err)
+	}
 }
 
 func TestCleanupComparesTimezoneAwareExpiry(t *testing.T) {

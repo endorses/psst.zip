@@ -173,6 +173,11 @@ in the web workspace. The bounded history separates administrative changes,
 link revocations and authentication-failure summaries, without collecting
 credentials, filenames or encryption keys. Recording gaps are surfaced explicitly.
 
+The administrator [resource manager](docs/security/resource-management.md) supports
+exact ID lookup, owner/type filters, current storage counters and related security
+activity. Revocation denies access immediately; persistent cleanup status shows
+pending work and failures until server-file removal is confirmed.
+
 For incidents, administrators can persistently pause payload transfers or shut
 down an account and revoke all its links. These are separate from disabling
 future sign-in. See [incident response and local recovery](docs/security/incident-response.md)

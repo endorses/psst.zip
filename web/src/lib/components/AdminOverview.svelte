@@ -1,31 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    accountRequest,
-    resourceFileCount,
-    receivedFileCount,
-    type Resource,
-    type User,
-  } from "$lib/account";
+  import { accountRequest } from "$lib/account";
   import { utcTime, type Overview } from "$lib/admin";
   import { formatSize } from "$lib/upload-job.svelte";
-  import RevokeDialog from "./RevokeDialog.svelte";
   import PublicTransferControl from "./PublicTransferControl.svelte";
-  import { loadResourcePage } from "$lib/resource-history";
   let data = $state<Overview | null>(null),
-    resources = $state<(Resource & { kind: "transfers" | "slots" })[]>([]),
-    users = $state<User[]>([]),
     busy = $state(false),
-    error = $state(""),
-    notice = $state(""),
-    resourceError = $state(""),
-    resourcesLoaded = $state(false);
-  let target = $state<(Resource & { kind: "transfers" | "slots" }) | null>(null),
-    expanded = $state(false),
-    disposed = false;
-  let resourceCursor = $state(""),
-    resourceNext = $state<string | null>(null),
-    resourcePrevious = $state<string[]>([]);
+    error = $state("");
+  let disposed = false;
   async function load() {
     busy = true;
     error = "";
@@ -37,76 +19,6 @@
     } finally {
       if (!disposed) busy = false;
     }
-  }
-  async function inspect(direction: "refresh" | "next" | "previous" = "refresh") {
-    if (busy) return;
-    const cursor =
-      direction === "next"
-        ? resourceNext
-        : direction === "previous"
-          ? resourcePrevious.at(-1)
-          : resourceCursor;
-    if (cursor == null) return;
-    expanded = true;
-    busy = true;
-    resourceError = "";
-    try {
-      const [r, u] = await Promise.all([
-        loadResourcePage(cursor, true),
-        accountRequest<{ users: User[] }>("/admin/users"),
-      ]);
-      if (disposed) return;
-      resources = [
-        ...(r.transfers ?? []).map((t) => ({ ...t, kind: "transfers" as const })),
-        ...(r.slots ?? []).map((t) => ({ ...t, kind: "slots" as const })),
-      ].sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || ""));
-      users = u.users;
-      resourcePrevious =
-        direction === "next"
-          ? [...resourcePrevious, resourceCursor]
-          : direction === "previous"
-            ? resourcePrevious.slice(0, -1)
-            : resourcePrevious;
-      resourceCursor = cursor;
-      resourceNext = r.next_cursor;
-      resourcesLoaded = true;
-    } catch (e) {
-      if (!disposed) resourceError = e instanceof Error ? e.message : "Could not load resources.";
-    } finally {
-      busy = false;
-    }
-  }
-  async function revoke() {
-    if (!target) return;
-    busy = true;
-    error = "";
-    try {
-      await accountRequest(`/${target.kind}/${target.id}`, "DELETE");
-      resources = resources.filter((r) => r.id !== target?.id || r.kind !== target?.kind);
-      target = null;
-      notice = "Resource revoked and its server files deleted.";
-      await load();
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Revocation failed.";
-    } finally {
-      busy = false;
-    }
-  }
-  function resourceStatus(item: Resource & { kind: "transfers" | "slots" }) {
-    if (Date.parse(item.expires_at) <= Date.now()) return "Expired";
-    if (item.status === "revoked") return "Revoked";
-    if (item.kind === "slots") {
-      const count = receivedFileCount(item);
-      return count === null
-        ? "File status unavailable"
-        : count > 0
-          ? "Files received"
-          : "Waiting for files";
-    }
-    if (item.downloaded_at) return "Delivery confirmed";
-    if (item.status === "complete")
-      return item.download_count ? "Download started" : "Ready to download";
-    return "Upload unfinished";
   }
   onMount(() => {
     void load();
@@ -125,7 +37,7 @@
 {#if error}<p class="error" role="alert">
     {error}
     {data ? "Previous metrics may be stale." : ""}
-  </p>{/if}{#if notice}<p class="notice" role="status">{notice}</p>{/if}
+  </p>{/if}
 {#if data}
   {#if data.enabled_users === 0}<section class="first-user">
       <h2>Create your first user</h2>
@@ -202,59 +114,7 @@
   Inspect ownership, status and storage, or revoke a link. Encryption keys and decrypted file names
   are unavailable to the server.
 </p>
-<button disabled={busy} onclick={() => inspect()}
-  >{expanded ? "Refresh resources" : "View resources"}</button
->
-{#if resourceError}<p class="error" role="alert">
-    {resourceError}
-    {resourcesLoaded
-      ? "Previous resources may be stale."
-      : "Resources could not be loaded. Retry with Refresh resources."}
-  </p>{/if}
-{#if expanded && resourcesLoaded && !resourceError && !busy && !resources.length}<p>
-    No resources found.
-  </p>{/if}
-{#if expanded && (resourcePrevious.length || resourceNext)}<nav aria-label="Resource pages">
-    <button disabled={busy || !resourcePrevious.length} onclick={() => inspect("previous")}
-      >Newer resources</button
-    >
-    <span class="muted small">Page {resourcePrevious.length + 1}</span>
-    <button disabled={busy || !resourceNext} onclick={() => inspect("next")}>Older resources</button
-    >
-  </nav>{/if}
-{#if expanded}{#each resources as item}<article class="resource" data-resource-id={item.id}>
-      <div>
-        <strong>{item.kind === "slots" ? "Receive link" : "Sent transfer"}</strong>
-        <p>
-          Owner: {users.find((u) => u.id === item.owner_id)?.username ||
-            item.owner_id ||
-            "Unknown account"} · {resourceFileCount(item) === null
-            ? "File count unavailable"
-            : `${resourceFileCount(item)} files`} · {item.total_size === undefined
-            ? "Size unavailable"
-            : formatSize(item.total_size)}
-        </p>
-        <p class="muted small">
-          {resourceStatus(item)} · {item.created_at
-            ? "Created " + new Date(item.created_at).toLocaleString() + " · "
-            : ""}Expires {new Date(item.expires_at).toLocaleString()}
-        </p>
-        <details>
-          <summary>Technical details</summary>
-          <p>Resource ID: {item.id}</p>
-          <p>Owner ID: {item.owner_id || "Unavailable"}</p>
-        </details>
-      </div>
-      <button
-        class="danger"
-        disabled={busy}
-        onclick={() => {
-          target = item;
-          error = "";
-        }}>Revoke</button
-      >
-    </article>{/each}{/if}
-{#if target}<RevokeDialog {busy} {error} oncancel={() => (target = null)} onconfirm={revoke} />{/if}
+<a class="button" href="/?view=resources">View resources</a>
 
 <style>
   .heading {
@@ -290,30 +150,5 @@
     flex-wrap: wrap;
     gap: 0.75rem;
     margin: 1.5rem 0;
-  }
-  .resource {
-    display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 1rem;
-    border-bottom: 1px solid var(--divider);
-    padding: 1rem 0;
-    overflow-wrap: anywhere;
-  }
-  .resource p {
-    margin: 0.4rem 0;
-  }
-  .resource button {
-    flex-shrink: 0;
-  }
-  summary {
-    cursor: pointer;
-    min-height: 32px;
-    color: var(--muted);
-  }
-  @media (max-width: 480px) {
-    .resource {
-      flex-direction: column;
-    }
   }
 </style>

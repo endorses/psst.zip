@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,9 @@ func TestCleanupSkipsBusyTransferAndRetries(t *testing.T) {
 		t.Fatalf("busy not retained revoked: %v %v", transfer, err)
 	}
 	unlock()
+	if err := q.RequestResourceCleanup("transfer", "busy"); err != nil {
+		t.Fatal(err)
+	}
 	worker.sweep()
 	if _, err := q.GetTransfer("busy"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("retry did not clean: %v", err)
@@ -129,5 +133,45 @@ func TestSecurityAuditRetentionFailureDoesNotBlockPayloadCleanup(t *testing.T) {
 	}
 	if !q.SecurityAuditDegraded() {
 		t.Fatal("audit cleanup failure not surfaced")
+	}
+}
+
+func TestCanceledCleanupWorkerDoesNotPerformStartupWork(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := database.NewQueries(db)
+	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.CreateTransfer("expired", time.Now().Add(-time.Hour), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := files.Save("expired/payload", strings.NewReader("preserve")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	NewWorker(q, files, time.Hour).Run(ctx)
+	resource, err := q.GetTransfer("expired")
+	if err != nil || resource.Status != "pending" {
+		t.Fatal("canceled worker changed resource", resource, err)
+	}
+	if size, err := files.Size("expired/payload"); err != nil || size != 8 {
+		t.Fatal("canceled worker removed payload", size, err)
+	}
+	status, err := q.ResourceCleanup("transfer", "expired")
+	if err != nil || status.State != "none" {
+		t.Fatal("canceled worker ran discovery", status, err)
+	}
+	if err := SweepPending(context.Background(), q, files); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.GetTransfer("expired"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("live explicit sweep did not remove resource", err)
 	}
 }

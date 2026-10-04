@@ -10,6 +10,7 @@
   import { securityIdentityChanged } from "$lib/admin-security";
   import PasswordChange from "$lib/components/PasswordChange.svelte";
   import AdminOverview from "$lib/components/AdminOverview.svelte";
+  import AdminResources from "$lib/components/AdminResources.svelte";
   import TrafficPanel from "$lib/components/TrafficPanel.svelte";
   import SecurityEvents from "$lib/components/SecurityEvents.svelte";
   import {
@@ -50,6 +51,7 @@
   import { storeReceiveKey, loadReceiveKey, removeReceiveKey } from "$lib/receive-keys";
   import OptionalLimit from "$lib/components/OptionalLimit.svelte";
   type Tab =
+    | "Resources"
     | "Overview"
     | "Traffic"
     | "Security"
@@ -88,6 +90,7 @@
     pairingStatus = $state("pending"),
     pairedDevice = $state("");
   const destinations = [
+    "Resources",
     "Overview",
     "Traffic",
     "Security",
@@ -624,7 +627,7 @@
     }
     const allowed =
       user.role === "admin"
-        ? [...adminDestinations, "Account", "Devices"]
+        ? [...adminDestinations, "Account", "Devices", "Resources"]
         : [...mainDestinations, "Account", "Devices"];
     if (!allowed.includes(next as never)) {
       next = user.role === "admin" ? "Overview" : "Send";
@@ -1046,10 +1049,12 @@
                   : item}
             aria-current={tab === item
               ? "page"
-              : item === "Settings" && ["Account", "Devices"].includes(tab)
+              : (item === "Overview" && tab === "Resources") ||
+                  (item === "Settings" && ["Account", "Devices"].includes(tab))
                 ? "location"
                 : undefined}
             class:active={tab === item ||
+              (item === "Overview" && tab === "Resources") ||
               (item === "Settings" && ["Account", "Devices"].includes(tab))}
             data-sveltekit-keepfocus
             data-sveltekit-noscroll
@@ -1145,9 +1150,12 @@
             </div>{/key}{/if}
         {#if tab === "Scan"}<ScanPanel authorize={authorizeScanner} />{/if}
         {#if tab === "Overview"}<AdminOverview />
+        {:else if tab === "Resources" && user.role === "admin"}{#key user.id}<AdminResources
+            />{/key}
         {:else if tab === "Traffic"}<TrafficPanel />
         {:else if tab === "Security" && user.role === "admin"}{#key user.id}<SecurityEvents />{/key}
         {:else if tab === "Server"}<h1>Server settings</h1>
+          <p><a href="/?view=resources">Inspect resources and cleanup</a></p>
           <PublicTransferControl />
           <ServerSettings />
           <ResourcePolicySettings />

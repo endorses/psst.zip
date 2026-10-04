@@ -579,7 +579,7 @@ func TestCleanupExpiredTransfers(t *testing.T) {
 		t.Fatalf("update expires_at: %v", err)
 	}
 
-	// Run the same worker that production starts, including its immediate sweep.
+	// Run one explicit bounded cleanup step with a live context.
 	fs, err := store.NewDiskStore(env.dataDir + "/files")
 	if err != nil {
 		t.Fatal(err)
@@ -587,9 +587,9 @@ func TestCleanupExpiredTransfers(t *testing.T) {
 	if err := fs.Save(created.ID+"/blob", strings.NewReader("expired bytes")); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	cleanup.NewWorker(env.queries, fs, time.Hour).Run(ctx)
+	if err := cleanup.SweepPending(context.Background(), env.queries, fs); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(env.dataDir + "/files/" + created.ID); !os.IsNotExist(err) {
 		t.Fatalf("expired files still exist: %v", err)
 	}

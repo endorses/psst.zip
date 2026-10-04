@@ -151,7 +151,4 @@ func (q *Queries) allocationExec(extra int64, manifest bool, expires *time.Time,
 	return tx.Commit()
 }
 
-func (q *Queries) ReleasePayloads(id string) error {
-	_, err := q.db.Exec(`UPDATE files SET payload_deleted=1 WHERE transfer_id=?`, id)
-	return err
-}
+func (q *Queries) ReleasePayloads(id string) error { return q.ReleaseCleanedPayloads(id) }

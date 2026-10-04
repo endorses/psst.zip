@@ -3,6 +3,11 @@
   import { accountRequest } from "$lib/account";
   import { utcTime } from "$lib/admin";
   import Icon from "./Icon.svelte";
+  import { resourcePath, type ResourceType } from "$lib/admin-resources";
+  let { resource }: { resource?: { type: ResourceType; id: string } } = $props();
+  const endpoint = $derived(
+    resource ? `${resourcePath(resource.type, resource.id)}/events` : "/admin/security-events",
+  );
 
   interface SecurityEvent {
     id: number;
@@ -134,7 +139,7 @@
     controller = new AbortController();
     try {
       const next = await accountRequest<EventPage>(
-        `/admin/security-events?limit=50${cursor === undefined ? "" : `&before=${cursor}`}`,
+        `${endpoint}?limit=50${cursor === undefined ? "" : `&before=${cursor}`}`,
         "GET",
         undefined,
         controller.signal,
@@ -164,8 +169,12 @@
   });
 </script>
 
-<h1>Security activity</h1>
-<p class="muted">Recent account and administration events on this server.</p>
+{#if resource}<h2>Related security activity</h2>{:else}<h1>Security activity</h1>{/if}
+<p class="muted">
+  {resource
+    ? "Activity for this resource, including relevant owner and receive-link changes while its metadata remains available."
+    : "Recent account and administration events on this server."}
+</p>
 <p class="muted small">
   Retained for up to 90 days and 10,000 entries, with separate limits for event categories. Repeated
   events may be grouped. Older activity is removed as these limits are reached.

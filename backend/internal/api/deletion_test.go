@@ -251,8 +251,21 @@ func TestFailedDeletionKeepsRevocationAndTokenUntilCleanupRetry(t *testing.T) {
 	request(t, broken, http.MethodPost, slotURL+"/transfers", nil, http.StatusGone)
 	deleteResource(t, broken, slotURL, "", http.StatusForbidden)
 	deleteResource(t, broken, slotURL, slot.DeleteToken, http.StatusServiceUnavailable)
-	// The ordinary cleanup worker uses the same removal path and retries tombstones.
+	// Recovery does not bypass the persisted storage-failure backoff. An
+	// administrator can explicitly request a retry after fixing the store.
+	failed, err := env.queries.ResourceCleanup("transfer", child.ID)
+	if err != nil || failed.State != "failed" || failed.FailureCode != "storage_delete_failed" || failed.NextRetryAt == nil {
+		t.Fatalf("failure wasn't retained: %+v / %v", failed, err)
+	}
 	fs.fail.Store(false)
+	sweep(t, env)
+	stillQueued, err := env.queries.ResourceCleanup("transfer", child.ID)
+	if err != nil || stillQueued.AttemptCount != failed.AttemptCount {
+		t.Fatalf("cleanup ignored durable failure backoff: %+v / %v", stillQueued, err)
+	}
+	for _, item := range []struct{ kind, id string }{{"transfer", child.ID}, {"slot", slot.ID}} {
+		authRequest(t, env, "POST", "/admin/resources/"+item.kind+"/"+item.id+"/cleanup", env.authToken, map[string]any{}, http.StatusAccepted)
+	}
 	sweep(t, env)
 	request(t, env, http.MethodGet, env.url("/api/v1/slots/"+slot.ID), nil, http.StatusNotFound)
 	request(t, env, http.MethodGet, env.url("/api/v1/transfers/"+child.ID), nil, http.StatusNotFound)

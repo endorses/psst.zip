@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -232,23 +233,43 @@ func TestQuotaCleanupKeepsAlreadyOpenPayloadReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Match the handler's resource lock and reader lease, not merely an open
+	// OS handle: reservations stay charged while the response remains active.
+	unlock, err := store.AcquireTransfer(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	releaseReader, err := store.AcquireReader(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseReader()
 	reader, err := fs.Load(id + "/" + path.Base(target))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reader.Close()
-	// Match the handler ordering: open the file, reserve the GET, then stream.
 	allowed, err := env.queries.ReserveFileDownload(id, path.Base(target))
 	if err != nil || !allowed {
 		t.Fatalf("reserve: %v %v", allowed, err)
 	}
+	unlock()
 	sweep(t, env)
 	body, err := io.ReadAll(reader)
 	if err != nil || string(body) != "data" {
 		t.Fatalf("cleanup interrupted open reader: %q %v", body, err)
 	}
-	if _, err := fs.Load(id + "/" + path.Base(target)); err == nil {
-		t.Fatal("cleanup retained quota-exhausted path")
+	if size, err := fs.Size(id + "/" + path.Base(target)); err != nil || size != 4 {
+		t.Fatalf("cleanup unlinked an active reader's payload: %d / %v", size, err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	releaseReader()
+	sweepAfterRetryDue(t, env, "transfer", id)
+	if _, err := os.Stat(env.dataDir + "/files/" + id); !os.IsNotExist(err) {
+		t.Fatalf("cleanup retained quota-exhausted path: %v", err)
 	}
 	// The encrypted manifest remains readable after blob cleanup.
 	resp := request(t, env, http.MethodGet, env.url("/api/v1/transfers/"+id+"/manifest"), nil, http.StatusOK)

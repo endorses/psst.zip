@@ -216,6 +216,9 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 			operationID = "slot:" + slot
 		}
 		scopes := []string{s.ownerScope(owner), s.queries.StreamNamespace() + "\x00streams"}
+		if slot != "" {
+			scopes = append(scopes, s.slotStreamScope(slot))
+		}
 		if !events {
 			scopes = append(scopes, s.payloadScope())
 		}
