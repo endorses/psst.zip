@@ -6,6 +6,7 @@ import {
   receiveID,
   storageChecks,
   counterChecks,
+  orphanChecks,
 } from "../admin-resource-fixture";
 
 async function session(page: Page, role = "admin") {
@@ -14,6 +15,9 @@ async function session(page: Page, role = "admin") {
   );
   await page.route("**/api/v1/admin/storage-checks", (route) =>
     route.fulfill({ json: storageChecks }),
+  );
+  await page.route("**/api/v1/admin/orphan-checks", (route) =>
+    route.fulfill({ json: orphanChecks }),
   );
   await page.route("**/api/v1/auth/me", (route) =>
     route.fulfill({ json: { user: { id: role, role, username: role } } }),

@@ -23,6 +23,7 @@
   import SecurityEvents from "./SecurityEvents.svelte";
   import StorageChecks from "./StorageChecks.svelte";
   import CounterChecks from "./CounterChecks.svelte";
+  import OrphanChecks from "./OrphanChecks.svelte";
   import AdminResourceRevoke from "./AdminResourceRevoke.svelte";
   let result = $state<AdminResourcePage | null>(null),
     overview = $state<CleanupOverview | null>(null);
@@ -292,6 +293,7 @@
 </section>
 <StorageChecks />
 <CounterChecks />
+<OrphanChecks />
 <form
   class="filters"
   onsubmit={(event) => {

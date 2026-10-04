@@ -113,6 +113,7 @@ var migrations = []string{
 	abuseContactMigration(),
 	reconciliationMigration(),
 	counterRebuildMigration(),
+	orphanMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

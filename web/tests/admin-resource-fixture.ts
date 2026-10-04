@@ -51,3 +51,16 @@ export const counterChecks = {
   last_scan_completed_at: "2026-10-04T12:00:00Z",
   scan_pending: false,
 };
+
+export const orphanChecks = {
+  state: "checked",
+  scan_pending: false,
+  last_scan_completed_at: "2026-10-04T12:00:00Z",
+  pending_directories: 0,
+  pending_candidates: 0,
+  busy_count: 0,
+  failed_count: 0,
+  unsupported_count: 0,
+  saturated: false,
+  unstable: false,
+};

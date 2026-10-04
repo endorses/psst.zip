@@ -127,10 +127,68 @@ recovered from the remaining files after historical data has been deleted. Use
 matching database and payload backups; counter reconstruction cannot recreate
 consumption that is absent from a restored database.
 
-## Scope still to complete
+## Orphan filesystem recovery
 
-- [ ] Discover and safely account for or remove orphan filesystem entries that
-      have no database file row.
+An orphan is an entry on the payload volume with no matching canonical database
+reference. Expiry, revocation or an incomplete upload alone does not make a
+referenced file an orphan; those resources remain the responsibility of normal
+cleanup. This worker does not remove database resources or refill cumulative
+upload, download or traffic allowances.
+
+The Linux inventory uses descriptor-relative, no-follow directory access and
+bounded pages. It preserves the filesystem's opaque continuation cookie rather
+than treating it as a byte offset or a count of entries; see the Linux
+[`getdents` documentation](https://man7.org/linux/man-pages/man2/getdents.2.html).
+Directory changes make coverage unstable, and replacement invalidates the
+cursor. The inventory does not follow symlinks or descend into unexpected nested
+trees. Unsupported platforms or storage behavior remain unresolved rather than
+being reported as a successful scan.
+
+Each worker step reads at most two 16-record directory pages and examines eight
+candidates. Persistent queues hold at most 64 directories and 256 candidates.
+Directory discovery waits for queue space; failed or repeatedly changing
+directories yield so later entries can be reached. Candidate overflow leaves
+coverage incomplete and permits another pass instead of claiming that a short
+queue proves a complete inventory. Restart invalidates previous coverage while
+retaining candidate observations and useful partial directory work.
+
+Regular orphan payloads are observed for at least one hour before removal. The
+worker then obtains the transfer lock, checks for active readers, and acquires
+the SQLite writer lock used by allocation before rechecking the exact database
+reference. It removes only the recorded file if its identity is still unchanged.
+An orphan transfer directory is removed only when empty. Directory sync and
+close failures keep the candidate pending, including when unlink already made
+the entry disappear. A changed entry requires a fresh observation.
+
+Replacing a parent invalidates the old observation and requires another pass;
+it does not authorize deleting the replacement. Unsupported entries removed by
+an operator disappear from the report only after stable enumeration confirms
+their absence. A failed database write cannot advance a page without recording
+its observations. Fixed failure state remains visible until a later successful
+pass verifies coverage. As with payload checks, synchronous filesystem calls
+cannot be forcibly canceled; shutdown waits five seconds for this worker and
+reports a timeout if it remains blocked.
+
+The administrator Resources page separates **Orphan file checks** from stored
+payload checks and database summary reconstruction. Its non-cacheable,
+administrator-only `/api/v1/admin/orphan-checks` endpoint reports queued work,
+unsupported entries, incomplete coverage and retry conditions without exposing
+filesystem paths. Counts describe bounded queues, not the entire volume. A
+stale status request keeps the last snapshot with an explicit warning.
+
+Only one server process may own a storage directory: transfer and reader locks
+are process-local. SQLite serializes allocations across database connections,
+but cannot synchronize external filesystem writers, arbitrary mount/rename
+operations, or active readers in a second server process. Stop the service when
+restoring or moving storage, restore the matching database and payloads together,
+and retain recovery copies outside the managed payload directory. Unexpected
+entries require operator inspection; the worker deliberately retains them.
+
+## Recovery scope
+
+- [x] Discover and safely remove supported orphan payload entries without
+      changing canonical reservations or cumulative allowances. Retain and expose
+      unsupported entries and incomplete inventory coverage.
 - [ ] Validate database and physical-capacity consistency after a mismatched
       restore. Derived database summaries are reconstructed as described above;
       lost lifetime allowances require matching historical database state and

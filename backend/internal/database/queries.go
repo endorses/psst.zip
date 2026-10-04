@@ -59,6 +59,7 @@ type Queries struct {
 	incidentNamespace     string
 	auditDegraded         atomic.Bool
 	reconciliation        reconciliationTracker
+	orphan                reconciliationTracker
 }
 
 // NewQueries returns a new Queries instance.

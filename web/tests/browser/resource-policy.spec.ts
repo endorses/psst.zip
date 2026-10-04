@@ -3,6 +3,7 @@ import {
   cleanupOverview,
   storageChecks,
   counterChecks,
+  orphanChecks,
 } from "../admin-resource-fixture";
 import { test, expect, type Page } from "@playwright/test";
 import { resourcePolicy, resourceUsage } from "../resource-policy-fixture";
@@ -254,6 +255,9 @@ for (const role of ["user", "admin"] as const) {
       }),
     );
     if (role === "admin") {
+      await page.route("**/api/v1/admin/orphan-checks", (route) =>
+        route.fulfill({ json: orphanChecks }),
+      );
       await page.route("**/api/v1/admin/counter-checks", (route) =>
         route.fulfill({ json: counterChecks }),
       );

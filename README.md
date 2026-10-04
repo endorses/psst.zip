@@ -184,6 +184,10 @@ shows the progress and failures of bounded database-file checks.
 Separate counter checks rebuild derived storage summaries from canonical rows
 without resetting historical link allowances; missing summaries do not hide
 resources from administrators.
+Orphan file checks inventory the payload volume and remove unreferenced regular
+files after a one-hour observation period and fresh safety checks. Unexpected
+entries and incomplete scans remain visible. Run one server process per storage
+directory and stop it before restoring or moving that storage.
 
 An optional [abuse contact](docs/security/abuse-contact.md) lets administrators
 publish a contact email. Web and mobile clients prepare a local report reference

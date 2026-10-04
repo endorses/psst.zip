@@ -554,3 +554,44 @@ cross-platform capacity work, not fulfilled by the server-only payload checks.
 - [ ] Continue orphan filesystem inventory/recovery, public effective capacity,
       remaining query bounds and deployment/native release gates. This database
       work does not establish disk health or restore lost historical consumption.
+
+### Orphan filesystem recovery, 2026-10-04
+
+- [x] Add bounded, descriptor-relative Linux directory inventory with opaque
+      continuation cookies, identity checks and explicit unstable/incomplete
+      coverage. Never follow symlinks or recursively inspect unexpected trees.
+- [x] Persist bounded directory jobs and orphan candidates, preserving useful
+      observations through restart and advancing past busy/failed work. Keep
+      saturation, unsupported entries and unverified coverage visible.
+- [x] Observe unreferenced payloads for one hour before deletion. Recheck exact
+      database membership under the allocation writer lock and require the
+      transfer lock, no active readers and unchanged filesystem identity. Remove
+      only the exact regular file or an empty orphan transfer directory; confirm
+      durable deletion before retiring a candidate. Preserve lifetime allowances.
+- [x] Expose administrator-only, non-cacheable orphan status in the Resources
+      page with bounded validation, stale snapshots and separate inventory,
+      grace-period, retry and unresolved-entry states. Do not expose paths or
+      imply that inventory verifies file integrity or backup consistency.
+- [x] Resolve recovery edge cases: root discovery uses queue headroom so a busy
+      prefix cannot hide later directories; durable absent-file confirmation does
+      not require rediscovery of a vanished file. Stable enumeration retires
+      obsolete unsupported-entry reports. Parent replacement retires only the
+      stale observation and requires fresh coverage and a new grace period for
+      any replacement. Generation guards prevent an old finisher from completing
+      or resetting a newer pass. Targeted race regressions cover these cases.
+- [x] Verify continuation, saturation/fairness, restart, allocation/read races,
+      missing/replaced entries, symlinks, cancellation and durability failures;
+      run backend regression and focused web checks, document supported storage
+      assumptions, then commit the verified implementation and plan update.
+      The complete backend `go test -race ./...` run passes (API 160.654 s,
+      database 166.946 s, reconciliation 49.530 s, store 1.094 s); the subsequent
+      generation guard and stale-finisher regression separately pass the focused
+      database orphan race suite (3.251 s). Both real HTTP access/privacy tests
+      pass. Web check/build and 16 focused browser cases pass; the narrow orphan
+      panel screenshot has no overflow. Later wording-only corrections clarify
+      sticky saturation and that candidates include directories. All changed
+      sources are formatted and diff checks pass. This does not close the plan.
+- [ ] Continue public/guest effective capacity, remaining query bounds, complete
+      restore exercises and deployment/native release gates. Orphan recovery does
+      not prove filesystem health, cryptographic integrity or reconstruct missing
+      historical usage. The full security plan remains open.

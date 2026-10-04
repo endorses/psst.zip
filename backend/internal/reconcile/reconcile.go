@@ -1,5 +1,5 @@
-// Package reconcile verifies payloads represented by database file rows.
-// It does not discover orphan disk paths or reconstruct lifetime abuse allowances.
+// Package reconcile checks stored payloads, derived counters and orphan disk
+// entries. It never reconstructs lifetime abuse allowances from surviving files.
 package reconcile
 
 import (
