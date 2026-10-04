@@ -102,7 +102,4 @@ abstract class CheckpointTestDao : TransferHistoryDao {
             (offset + maximum).toInt().coerceAtMost(sourceBytes.size),
         )
     }
-
-    override suspend fun checkpointLegacyLength(id: String, scope: String, source: Int) =
-        legacy(id, scope, source).size.toLong()
 }

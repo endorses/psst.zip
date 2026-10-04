@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Indexed local history, guest retry queues and inbox checkpoints now have implementation evidence below; exceptional legacy-source recovery and native validation remain open. Work still includes complete native/provider protocol validation and deployment/client verification; bounded independent source reviews are recorded below. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
+Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Indexed local history, guest retry queues, inbox checkpoints and streaming recovery of growing legacy collections now have implementation evidence below; oversized-source engine/device verification and native validation remain open. Work still includes complete native/provider protocol validation and deployment/client verification; bounded independent source reviews are recorded below. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
 
 Protect self-hosted operators and recipients from confidentiality failures, resource exhaustion, unexpected traffic costs, compromised accounts and malicious submissions. Include optional per-link download/receive limits across web, Android and iOS, including sending through the iOS share extension. Preserve straightforward default workflows, public standalone download links, public receive submission, administrator-only management accounts, chunked encryption, configurable maximum file size and delivery acknowledgements. A public receive link grants submission access, not permission to read other submissions.
 
@@ -1044,7 +1044,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
       real authority checks; denied attempts preserve counts/receipt state. The
       new canonical regular owner can read and acknowledge without rewriting the
       child's historical owner. `go test -race ./internal/api -run
-  '^TestPrivateInboxReadAuthorityChanges$' -count=1` passes in 7.749 s.
+'^TestPrivateInboxReadAuthorityChanges$' -count=1` passes in 7.749 s.
 - [x] Validate current hardened production Caddy/backend images in two disposable
       Compose projects at `http://192.168.178.29:19784`, with unique fresh volumes,
       isolated private networks and explicit development HTTP opt-in. Genuine
@@ -1070,3 +1070,57 @@ and iOS guest storage/queues still need bounded local reads and writes.
       Chromium execution does not establish second-device reachability, Safari/
       Firefox behavior or HTTPS delivery. The live service is unchanged and this
       is an intermediate committed checkpoint.
+
+### Large legacy inbox recovery checkpoint
+
+- [x] Remove Android's aggregate 64 MiB checkpoint-source rejection without
+      increasing per-entry, source-slice or batch allocations. Validate persisted
+      columns/offsets and check cancellation before each new slice. Keep originals,
+      account/server identity, keys and committed counters. Invalid or unsupported
+      data pauses saving with specific recovery feedback. SQLite may still
+      materialize a whole legacy TEXT column during archive/substr operations;
+      this change does not claim to bound that engine allocation.
+- [x] Run ten focused Android checkpoint tests, including a real 65 MiB JSON array
+      parsed through the production reader, restart at an entry boundary, a
+      separate persisted-offset/idempotence contract test, cancellation and invalid
+      progress. Run the full Android unit/app/instrumentation build command from
+      `android/`: `JAVA_HOME=/opt/android-studio/jbr ./gradlew :app:testDebugUnitTest
+  :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon`.
+      All 127 tests pass with zero failures/errors/skips; both APKs build. The
+      large file test verifies the application parser, not native SQLite engine
+      memory behavior or a physical-device oversized migration.
+- [x] Implement iOS entry-level account JSON recovery without decoding a growing
+      saved-file map or completion array. Stage entries before identity metadata
+      when needed; preserve arbitrary member order, original file fingerprints
+      and source ranges. Commit staging, parent promotion and resumable positions
+      atomically. Retain Keychain identities and newer/tombstoned records; normal
+      active record/page limits remain 16 MiB. Retained SQLite sources use
+      incremental BLOB reads, with immutable-source triggers and indexed slot
+      discovery; the initial engine-side source copy remains an allocation
+      exception. Missing/changed/malformed sources do not become empty history.
+- [x] Resolve both findings from one bounded delta review: older partially
+      imported SQLite jobs recover completion only with source-matching,
+      progress-proven unsized files; newer saves remain protected. Parser and
+      migration callers yield at a 256 KiB byte quantum as well as a 32-action
+      bound, avoiding unbounded work from padded metadata. Regression coverage
+      includes completion arrays before maps and padded metadata. The reviewer
+      verified both fixes in source/test coverage; this is not full-plan closure.
+- [x] Run the final exact-source portable Swift storage harnesses:
+      `python3 ios/scripts/test_receive_checkpoints.py` (17/17, 42.931 s),
+      `python3 ios/scripts/test_history_database.py` (22/22, 10.388 s),
+      `python3 ios/scripts/test_guest_store.py` (13/13, 5.261 s), and
+      `python3 ios/scripts/test_device_retry_queue.py` (6/6, 8.407 s). The 58 tests
+      include a growing file map above 16 MiB, recovery of the same oversized
+      preexisting SQLite parent, a completion-array parser above 16 MiB, rollback,
+      source changes, key identity and old-job/newer-row/tombstone preservation.
+      Storage tests use real SQLite and production sources with explicit Apple/
+      Keychain/network boundary stubs. They do not prove native iOS integration.
+- [x] Pass `python3 ios/scripts/check_sources.py`, strict Swift formatting lint,
+      Kotlin formatter dry-run, Python/Markdown formatting and `git diff --check`.
+      Clean the task formatter and self-removing harness workspaces. Commit code
+      and this plan together; no backend/web protocol change is introduced.
+- [ ] Complete native iOS app/share-extension, protected-file/Keychain behavior,
+      physical/older Android, large-source engine/device memory and remaining
+      deployment/full-plan gates. Unsupported individual values still require
+      explicit recovery rather than truncation. The live service is unchanged
+      and the full plan remains open.

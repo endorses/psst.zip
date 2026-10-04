@@ -73,15 +73,18 @@ final class HistoryJSONStream {
     func verifyUnchanged() throws {
         guard try Self.snapshot(file: file, source: source) == original else { throw Failure.sourceChanged }
         var pathInfo = stat()
-        guard source.path.withCString({ lstat($0, &pathInfo) }) == 0,
-            UInt64(pathInfo.st_dev) == original.device, UInt64(pathInfo.st_ino) == original.inode,
+        guard source.path.withCString({ lstat($0, &pathInfo) }) == 0, UInt64(pathInfo.st_dev) == original.device, UInt64(pathInfo.st_ino) == original.inode,
             UInt32(pathInfo.st_mode) & UInt32(S_IFMT) == UInt32(S_IFREG)
         else { throw Failure.sourceChanged }
     }
 
-    func checkpoint() throws -> String {
-        snapshot ? String(decoding: try JSONEncoder().encode(snapshotState), as: UTF8.self) : ""
+    func readRange(at offset: Int64, count: Int) throws -> Data {
+        guard offset >= 0, offset <= original.size, (1...65536).contains(count) else { throw Failure.invalidSource }
+        try file.seek(toOffset: UInt64(offset))
+        return try file.read(upToCount: count) ?? Data()
     }
+
+    func checkpoint() throws -> String { snapshot ? String(decoding: try JSONEncoder().encode(snapshotState), as: UTF8.self) : "" }
 
     func resume(at offset: Int64, state: String = "") throws {
         guard offset >= 0, offset <= original.size else { throw Failure.invalidArray }
@@ -89,8 +92,7 @@ final class HistoryJSONStream {
             guard state.utf8.count <= 1024, !state.isEmpty else { throw Failure.invalidArray }
             snapshotState = try JSONDecoder().decode(SnapshotState.self, from: Data(state.utf8))
             guard snapshotState.arrays.count <= 2, Set(snapshotState.arrays).count == snapshotState.arrays.count,
-                snapshotState.arrays.allSatisfy({ $0 == "records" || $0 == "receipts" }),
-                snapshotState.current == "records" || snapshotState.current == "receipts",
+                snapshotState.arrays.allSatisfy({ $0 == "records" || $0 == "receipts" }), snapshotState.current == "records" || snapshotState.current == "receipts",
                 snapshotState.objectRoot ? snapshotState.arrays.contains(snapshotState.current) : snapshotState.arrays.isEmpty && snapshotState.current == "records"
             else { throw Failure.invalidArray }
         } else {
@@ -138,8 +140,7 @@ final class HistoryJSONStream {
             case 123, 91:
                 guard expected.count < 256 else { throw Failure.tooLarge }
                 expected.append(byte == 123 ? 125 : 93)
-            case 125, 93:
-                guard expected.removeLast() == byte else { throw Failure.invalidArray }
+            case 125, 93: guard expected.removeLast() == byte else { throw Failure.invalidArray }
             default: break
             }
         }
@@ -241,9 +242,7 @@ final class HistoryJSONStream {
 
     private static func snapshot(file: FileHandle, source: URL) throws -> Identity {
         var info = stat()
-        guard fstat(file.fileDescriptor, &info) == 0, info.st_size >= 0,
-            UInt32(info.st_mode) & UInt32(S_IFMT) == UInt32(S_IFREG)
-        else { throw Failure.invalidSource }
+        guard fstat(file.fileDescriptor, &info) == 0, info.st_size >= 0, UInt32(info.st_mode) & UInt32(S_IFMT) == UInt32(S_IFREG) else { throw Failure.invalidSource }
         #if canImport(Darwin)
             let modified = info.st_mtimespec
             let changed = info.st_ctimespec
@@ -252,8 +251,7 @@ final class HistoryJSONStream {
             let changed = info.st_ctim
         #endif
         return Identity(
-            path: source.standardizedFileURL.path, device: UInt64(info.st_dev), inode: UInt64(info.st_ino), size: Int64(info.st_size),
-            modifiedSeconds: Int64(modified.tv_sec), modifiedNanoseconds: Int64(modified.tv_nsec), changedSeconds: Int64(changed.tv_sec), changedNanoseconds: Int64(changed.tv_nsec)
-        )
+            path: source.standardizedFileURL.path, device: UInt64(info.st_dev), inode: UInt64(info.st_ino), size: Int64(info.st_size), modifiedSeconds: Int64(modified.tv_sec),
+            modifiedNanoseconds: Int64(modified.tv_nsec), changedSeconds: Int64(changed.tv_sec), changedNanoseconds: Int64(changed.tv_nsec))
     }
 }

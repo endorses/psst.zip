@@ -2,8 +2,8 @@ import CryptoKit
 import Foundation
 
 /// Indexed per-file and per-child local state in the history transaction domain.
-/// Legacy bodies are immutable and at most 16 MiB; migration decodes that capped
-/// body per batch, then imports at most 32 entries. Originals remain retained.
+/// Immutable originals are read in 16 KiB slices. Parser progress and at most
+/// 32 staged/promoted checkpoints commit together; source bodies remain retained.
 enum ReceiveCheckpointStorage {
     struct File: Codable {
         let transferID: String
@@ -15,6 +15,7 @@ enum ReceiveCheckpointStorage {
         let transferID: String
         var fileCount = 0
         var complete = false
+        var imported: Bool? = nil
     }
     private struct Discovery: Codable {
         var afterID: String?
@@ -26,6 +27,9 @@ enum ReceiveCheckpointStorage {
         var afterFile: String?
         var filesComplete = false
         var afterTransfer: String?
+        var stream: ReceiveHistoryStream.State?
+        var identity: String?
+        var compatibilityScanned: Int64?
     }
     private static let migrationScope = "receive-checkpoint-migration"
     private static let discoveryID = "receive-system|discovery-v1"
@@ -73,18 +77,16 @@ enum ReceiveCheckpointStorage {
             return ReceiveCheckpoint(slotID: parent.id, transferID: transferID, paths: paths, sizes: sizes, complete: complete, fileExists: fileExists)
         }
     }
-    @discardableResult
-    static func save(_ db: HistoryRecordDatabase, parent: TransferRecord, file: File, importing: Bool = false) throws -> Bool {
+    @discardableResult static func save(_ db: HistoryRecordDatabase, parent: TransferRecord, file: File, importing: Bool = false) throws -> Bool {
         guard parent.isSlot == true, validID(file.transferID), validID(file.blobID), validPath(file.path), file.size.map({ $0 >= 0 }) ?? true else { throw AccountError.storage }
         let id = fileID(parent, file.transferID, file.blobID)
         let childKey = childID(parent, file.transferID)
         let existing = try db.read(id)
         if importing, existing != nil { return false }
         let existingChild = try db.read(childKey)
-        var child = try existingChild.map { try JSONDecoder().decode(Child.self, from: $0.body) } ?? Child(transferID: file.transferID)
-        if importing, existingChild == nil {
-            guard try db.importIfAbsent(row(child, id: childKey, scope: scope(parent), kind: "receive-child")) else { return false }
-        }
+        var child = try existingChild.map { try JSONDecoder().decode(Child.self, from: $0.body) } ?? Child(transferID: file.transferID, imported: importing ? true : nil)
+        if importing, existingChild == nil { guard try db.importIfAbsent(row(child, id: childKey, scope: scope(parent), kind: "receive-child")) else { return false } }
+        if !importing { child.imported = nil }
         guard child.transferID == file.transferID, (0...100).contains(child.fileCount) else { throw AccountError.storage }
         let value = try row(file, id: id, scope: scope(parent), kind: fileKind(file.transferID))
         if existing == nil {
@@ -104,6 +106,8 @@ enum ReceiveCheckpointStorage {
         let existing = try db.read(key)
         var child = try existing.map { try JSONDecoder().decode(Child.self, from: $0.body) } ?? Child(transferID: transferID)
         guard child.transferID == transferID else { throw AccountError.storage }
+        if importing, existing != nil, child.imported != true { return }
+        if !importing { child.imported = nil }
         child.complete = true
         let value = try row(child, id: key, scope: scope(parent), kind: "receive-child")
         if importing, existing == nil { try db.importIfAbsent(value) } else { try db.write(value) }
@@ -128,64 +132,138 @@ enum ReceiveCheckpointStorage {
         }
         return stripped(record)
     }
-    /// Returns true only after all existing parent records and their jobs are
-    /// normalized. The wrapper blocks reads/writes until this is committed.
-    static func migrateBatch(
-        _ db: HistoryRecordDatabase, decode: (Data) throws -> TransferRecord,
-        encode: (TransferRecord) throws -> HistoryRecordDatabase.Record
-    ) throws -> Bool {
+    private static func recognizeOldImportedChild(_ db: HistoryRecordDatabase, parent: TransferRecord, entry: ReceiveHistoryStream.Entry, afterFile: String, stagingScope: String)
+        throws
+    {
+        guard let key = entry.key, !afterFile.utf8.lexicographicallyPrecedes(key.utf8) else { return }
+        let parts = key.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { throw ReceiveHistoryStream.Failure.invalidCheckpoint }
+        let transfer = String(parts[0])
+        guard let saved = try db.read(fileID(parent, transfer, String(parts[1]))) else { return }
+        let file = try JSONDecoder().decode(File.self, from: saved.body)
+        // Old imports had no length. A newer save/path edit is never adopted.
+        guard file.transferID == transfer, file.blobID == String(parts[1]), file.size == nil, file.path == entry.value, let row = try db.read(childID(parent, transfer)) else {
+            return
+        }
+        var child = try JSONDecoder().decode(Child.self, from: row.body)
+        guard child.transferID == transfer else { throw AccountError.storage }
+        let files = try db.page(scopes: [scope(parent)], kinds: [fileKind(transfer)], limit: 100)
+        guard files.next == nil else { throw AccountError.storage }
+        for saved in files.records {
+            let value = try JSONDecoder().decode(File.self, from: saved.body)
+            let sourceKey = transfer + "/" + value.blobID
+            guard value.size == nil, !afterFile.utf8.lexicographicallyPrecedes(sourceKey.utf8), let staged = try db.read(stagingScope + "|key|" + sourceKey),
+                try JSONDecoder().decode(ReceiveHistoryStream.Entry.self, from: staged.body).value == value.path
+            else { return }
+        }
+        if child.imported == nil {
+            child.imported = true
+            try db.write(Self.row(child, id: row.id, scope: row.scope, kind: row.kind))
+        }
+    }
+    static func validateEntry(_ entry: ReceiveHistoryStream.Entry) throws {
+        if let key = entry.key {
+            let parts = key.split(separator: "/", omittingEmptySubsequences: false)
+            guard parts.count == 2, validID(String(parts[0])), validID(String(parts[1])), validPath(entry.value) else { throw ReceiveHistoryStream.Failure.invalidCheckpoint }
+        } else {
+            guard validID(entry.value) else { throw ReceiveHistoryStream.Failure.invalidCheckpoint }
+        }
+    }
+    static func promote(_ db: HistoryRecordDatabase, parent: TransferRecord, entry: ReceiveHistoryStream.Entry) throws {
+        try validateEntry(entry)
+        guard parent.isSlot == true else { throw ReceiveHistoryStream.Failure.invalidCheckpoint }
+        if let key = entry.key {
+            let parts = key.split(separator: "/", omittingEmptySubsequences: false)
+            try save(db, parent: parent, file: File(transferID: String(parts[0]), blobID: String(parts[1]), path: entry.value, size: nil), importing: true)
+        } else {
+            try complete(db, parent: parent, transferID: entry.value, importing: true)
+        }
+    }
+    /// Discovery copies a single original in SQLite, without materializing its
+    /// body in Swift. Staging/promotion then resumes inside that object's BLOB.
+    static func migrateBatch(_ db: HistoryRecordDatabase, decode: (Data) throws -> TransferRecord, encode: (TransferRecord) throws -> HistoryRecordDatabase.Record) throws -> Bool {
         try db.transaction { db in
             var discovery = try db.read(discoveryID).map { try JSONDecoder().decode(Discovery.self, from: $0.body) } ?? Discovery()
-            if !discovery.complete {
-                let page = try db.migrationPage(afterID: discovery.afterID, limit: 1)
-                for entry in page.entries where entry.kind == "slot" {
-                    guard let original = try db.read(entry.id) else { continue }
-                    let parent = try decode(original.body)
-                    if parent.checkpointVersion != 1 || parent.savedFiles != nil || parent.savedTransfers != nil {
-                        try db.write(encode(stage(db, record: parent, original: original)))
+            // Process queued jobs before discovering another parent. A discovery
+            // checkpoint and immutable source/job are committed atomically.
+            if let queued = try db.page(scopes: [migrationScope], kinds: ["job"], limit: 1).records.first {
+                var job = try JSONDecoder().decode(Job.self, from: queued.body)
+                let scope = "receive-stage|" + hash(job.sourceID)
+                try db.withReceiveBody(id: job.sourceID) { identity, read in
+                    if let original = job.identity, original != identity { throw ReceiveHistoryStream.Failure.sourceChanged }
+                    job.identity = identity
+                    let parser = ReceiveHistoryStream(state: job.stream ?? .init(), objectOnly: true, read: read)
+                    var budget = 32
+                    let beginning = parser.state.offset
+                    while budget > 0, parser.state.phase != "done", parser.state.offset - beginning < 262144 {
+                        if parser.state.phase != "ready" {
+                            if let entry = try parser.next() {
+                                try validateEntry(entry)
+                                try ReceiveHistoryStream.stageEntry(db, entry: entry, scope: scope, index: parser.state.staged)
+                                budget -= 1
+                                continue
+                            }
+                            if parser.state.phase != "ready" { break }
+                        }
+                        let original = try decode(parser.metadata())
+                        guard original.localID == job.parentID, original.isSlot == true else { throw ReceiveHistoryStream.Failure.invalidCheckpoint }
+                        if parser.state.parentID == nil {
+                            parser.state.parentID = original.localID
+                            // Read ordinary bounded current metadata when present;
+                            // an oversized legacy parent is reduced only after its
+                            // complete scalar metadata has validated.
+                            do {
+                                if let current = try db.read(job.parentID) {
+                                    let value = try decode(current.body)
+                                    if value.checkpointVersion != 1 || value.savedFiles != nil || value.savedTransfers != nil { try db.write(encode(stripped(value))) }
+                                }
+                            } catch HistoryRecordDatabase.Failure.tooLarge { try db.write(encode(stripped(original))) }
+                            budget -= 1
+                        }
+                        // Older builds persisted sorted map progress and created
+                        // unsized child rows before reaching completion arrays. A
+                        // bounded compatibility pass recognizes only those exact
+                        // source-matching rows, before source-order promotion.
+                        if let afterFile = job.afterFile {
+                            var scanned = job.compatibilityScanned ?? 0
+                            while budget > 0, scanned < parser.state.staged {
+                                let index = scanned + 1
+                                let entry = try ReceiveHistoryStream.stagedEntry(db, scope: scope, index: index)
+                                if let current = try db.read(job.parentID) {
+                                    try recognizeOldImportedChild(db, parent: decode(current.body), entry: entry, afterFile: afterFile, stagingScope: scope)
+                                }
+                                scanned = index
+                                budget -= 1
+                            }
+                            job.compatibilityScanned = scanned
+                            if scanned < parser.state.staged { break }
+                        }
+                        while budget > 0, parser.state.promoted < parser.state.staged {
+                            let index = parser.state.promoted + 1
+                            let entry = try ReceiveHistoryStream.stagedEntry(db, scope: scope, index: index)
+                            if let current = try db.read(job.parentID) { try promote(db, parent: decode(current.body), entry: entry) }
+                            parser.state.promoted = index
+                            budget -= 1
+                        }
+                        if parser.state.promoted == parser.state.staged { try parser.advance() }
                     }
+                    job.stream = parser.state
                 }
-                discovery.afterID = page.nextID
-                discovery.complete = page.nextID == nil
-                try db.write(row(discovery, id: discoveryID, scope: migrationScope, kind: "discovery"))
-                if try !discovery.complete || db.hasAny(scopes: [migrationScope], kinds: ["job"]) { return false }
-            }
-            guard let queued = try db.page(scopes: [migrationScope], kinds: ["job"], limit: 1).records.first else { return true }
-            var job = try JSONDecoder().decode(Job.self, from: queued.body)
-            guard let source = try db.read(job.sourceID) else { throw AccountError.storage }
-            let legacy = try decode(source.body)
-            guard legacy.localID == job.parentID else { throw AccountError.storage }
-            guard let current = try db.read(job.parentID) else {
-                try db.remove(queued.id)
+                if job.stream?.phase == "done" { try db.remove(queued.id) } else { try db.write(row(job, id: queued.id, scope: migrationScope, kind: "job")) }
                 return false
             }
-            let parent = try decode(current.body)
-            var budget = 32
-            if !job.filesComplete {
-                let keys = (legacy.savedFiles ?? [:]).keys.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
-                for key in keys where job.afterFile.map({ $0.utf8.lexicographicallyPrecedes(key.utf8) }) ?? true {
-                    if budget == 0 { break }
-                    let parts = key.split(separator: "/", omittingEmptySubsequences: false)
-                    guard parts.count == 2, let path = legacy.savedFiles?[key] else { throw AccountError.storage }
-                    try save(db, parent: parent, file: File(transferID: String(parts[0]), blobID: String(parts[1]), path: path, size: nil), importing: true)
-                    job.afterFile = key
-                    budget -= 1
+            if discovery.complete { return true }
+            let page = try db.receiveParentPage(afterID: discovery.afterID)
+            for entry in page.entries where entry.kind == "slot" {
+                let sourceID = "receive-source|" + hash(entry.id)
+                if try db.archiveReceiveBody(id: entry.id, sourceID: sourceID, scope: migrationScope) {
+                    try db.write(row(Job(parentID: entry.id, sourceID: sourceID), id: "receive-job|" + hash(entry.id), scope: migrationScope, kind: "job"))
                 }
-                job.filesComplete = keys.last == job.afterFile || keys.isEmpty
             }
-            var transfersComplete = false
-            if job.filesComplete {
-                let transfers = Set(legacy.savedTransfers ?? []).sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
-                for transfer in transfers where job.afterTransfer.map({ $0.utf8.lexicographicallyPrecedes(transfer.utf8) }) ?? true {
-                    if budget == 0 { break }
-                    try complete(db, parent: parent, transferID: transfer, importing: true)
-                    job.afterTransfer = transfer
-                    budget -= 1
-                }
-                transfersComplete = transfers.last == job.afterTransfer || transfers.isEmpty
-            }
-            if job.filesComplete && transfersComplete { try db.remove(queued.id) } else { try db.write(row(job, id: queued.id, scope: migrationScope, kind: "job")) }
-            return false
+            discovery.afterID = page.nextID
+            discovery.complete = page.nextID == nil
+            try db.write(row(discovery, id: discoveryID, scope: migrationScope, kind: "discovery"))
+            return try discovery.complete && !db.hasAny(scopes: [migrationScope], kinds: ["job"])
         }
     }
 }

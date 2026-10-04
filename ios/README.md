@@ -252,8 +252,12 @@ they do not prove Keychain/protection, networking, cryptography or native UI beh
 ### Indexed inbox checkpoints
 
 Inbox paths and child completion state now use individually indexed records in the
-same transaction domain as account history. Legacy maps move into retained source
-rows and import in resumable batches before account history becomes writable.
+same transaction domain as account history. Legacy account JSON maps and arrays
+stream into individually staged entries before bounded parent metadata is decoded;
+member order and aggregate checkpoint size do not require a whole-map allocation.
+Parser positions and promotion progress commit with their rows. Retained SQLite
+sources use incremental BLOB reads. Import finishes before account history becomes
+writable, preserving the unchanged original source for recovery.
 Normal status refreshes cannot replace already committed saves. New file entries
 also retain their expected length; legacy entries without a length keep their
 previous existence-only check.

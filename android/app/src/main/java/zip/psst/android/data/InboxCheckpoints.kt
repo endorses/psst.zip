@@ -149,11 +149,6 @@ interface InboxCheckpointQueries {
         offset: Long,
         maximum: Int,
     ): ByteArray?
-
-    @Query(
-        "SELECT CASE :source WHEN 0 THEN length(CAST(receivedTransfersJson AS BLOB)) WHEN 1 THEN length(CAST(savedFileIdsJson AS BLOB)) ELSE length(CAST(savedTransferIdsJson AS BLOB)) END FROM inbox_legacy_checkpoint WHERE slotId=:id AND scope=:scope"
-    )
-    suspend fun checkpointLegacyLength(id: String, scope: String, source: Int): Long?
 }
 
 /** Caller owns the Room transaction. Changes to counters are exact old/new child deltas. */

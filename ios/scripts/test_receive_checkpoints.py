@@ -23,6 +23,7 @@ def main():
         for name in (
             "HistoryRecordDatabase",
             "HistoryJSONStream",
+            "ReceiveHistoryStream",
             "TransferRecord",
             "ReceiveCheckpoint",
             "ReceiveCheckpointStorage",
@@ -31,13 +32,16 @@ def main():
         fixture = ROOT / "scripts/receive_checkpoint_harness"
         crypto = work / "Sources/CryptoKit"
         crypto.mkdir()
-        shutil.copy2(ROOT / "scripts/guest_store_harness/CryptoKit.swift", crypto)
+        shutil.copy2(
+            ROOT / "scripts/guest_store_harness/CryptoKit.swift", crypto
+        )
         shutil.copy2(fixture / "BoundaryStubs.swift", sources)
         (tests / "ReceiveCheckpointTests.swift").write_text(
             (ROOT / "PsstTests/ReceiveCheckpointTests.swift")
             .read_text()
             .replace(
-                "@testable import Psst", "@testable import ReceiveCheckpointHarness"
+                "@testable import Psst",
+                "@testable import ReceiveCheckpointHarness",
             )
         )
         for name, path in (

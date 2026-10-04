@@ -11,14 +11,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="psst-guest-store-swift-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="psst-guest-store-swift-"
+    ) as directory:
         work = Path(directory)
         sources = work / "Sources" / "GuestStoreHarness"
         tests = work / "Tests" / "GuestStoreHarnessTests"
         sqlite = work / "Sources" / "SQLite3"
         for path in (sources, tests, sqlite):
             path.mkdir(parents=True)
-        for name in ("HistoryRecordDatabase", "HistoryJSONStream"):
+        for name in (
+            "HistoryRecordDatabase",
+            "HistoryJSONStream",
+            "ReceiveHistoryStream",
+        ):
             shutil.copy2(ROOT / f"Shared/{name}.swift", sources)
         fixture = ROOT / "scripts/guest_store_harness"
         for name in ("CryptoKit", "Shared"):
@@ -34,7 +40,9 @@ def main():
         )
         (sources / "GuestHistoryPageViewModel.swift").write_text(
             "import Observation\n"
-            + (ROOT / "Psst/ViewModels/GuestHistoryPageViewModel.swift").read_text()
+            + (
+                ROOT / "Psst/ViewModels/GuestHistoryPageViewModel.swift"
+            ).read_text()
         )
         shutil.copy2("/usr/include/sqlite3.h", sqlite / "sqlite3.h")
         (sqlite / "module.modulemap").write_text(

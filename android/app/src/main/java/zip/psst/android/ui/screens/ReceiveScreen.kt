@@ -234,7 +234,7 @@ fun ReceiveScreen(
             if (state.checkpointState != "ready") {
                 Text(
                     if (state.checkpointState == "recovery")
-                        "Older saved checkpoints need recovery. Their original records and saved files are retained; saving is paused to avoid duplicate downloads."
+                        "An older saved checkpoint contains invalid or unsupported data. Original records and saved files are retained; saving is paused to avoid duplicate downloads. Retrying after an app update may resolve it."
                     else
                         "Importing saved-file checkpoints. Saved files remain on this device; saving resumes when the import finishes."
                 )

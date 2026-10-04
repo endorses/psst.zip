@@ -11,19 +11,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="psst-history-db-swift-") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="psst-history-db-swift-"
+    ) as directory:
         work = Path(directory)
         sources = work / "Sources" / "HistoryDatabaseHarness"
         tests = work / "Tests" / "HistoryDatabaseHarnessTests"
         sqlite = work / "Sources" / "SQLite3"
         for path in (sources, tests, sqlite):
             path.mkdir(parents=True)
-        for name in ("HistoryRecordDatabase", "HistoryJSONStream"):
+        for name in (
+            "HistoryRecordDatabase",
+            "HistoryJSONStream",
+            "ReceiveHistoryStream",
+        ):
             shutil.copy2(ROOT / f"Shared/{name}.swift", sources)
         (tests / "HistoryRecordDatabaseTests.swift").write_text(
             (ROOT / "PsstTests/HistoryRecordDatabaseTests.swift")
             .read_text()
-            .replace("@testable import Psst", "@testable import HistoryDatabaseHarness")
+            .replace(
+                "@testable import Psst",
+                "@testable import HistoryDatabaseHarness",
+            )
         )
         shutil.copy2("/usr/include/sqlite3.h", sqlite / "sqlite3.h")
         (sqlite / "module.modulemap").write_text(

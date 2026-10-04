@@ -66,10 +66,12 @@ the upload from starting under a different session. Very old UserDefaults data
 requires one allocation to copy it to a streaming source file; the preferences
 API cannot supply it incrementally.
 
-The SQLite layer rejects individual record bodies above 16 MiB and caps the total
-body bytes loaded by a page at 16 MiB. These are explicit failures that preserve
-source data, not truncation. Unsupported oversized legacy records require recovery;
-this limit is not a claim that arbitrarily large historical records can be imported.
+The SQLite layer rejects individual active record bodies above 16 MiB and caps the
+total body bytes loaded by a page at 16 MiB. Legacy account import separates growing
+inbox checkpoint maps and arrays from the bounded parent metadata while streaming
+the original source. Their aggregate size does not need to fit into an active
+record. Individual JSON values remain bounded; malformed or unsupported values
+pause recovery and retain the source rather than truncating it.
 
 ## Mobile inbox checkpoints
 
@@ -83,17 +85,29 @@ Android archives the original JSON columns in a separate scoped table before
 clearing the active parent fields, in the same transaction. Import checkpoints
 UTF-8 offsets and processes at most 64 entries/256 KiB per parent call using 16 KiB
 slices. It preserves newer state and retries after interruption without counting a
-file twice. Exceptional sources above 64 MiB or entries above 64 KiB remain archived
-with visible recovery and saving paused. SQLite may materialize a whole source
-internally while archiving, measuring or slicing it: the small returned slices do
-not prove a bound on that one-time engine allocation.
+file twice. There is no aggregate source-size ceiling. Entries above 64 KiB or
+invalid checkpoint identities still pause recovery with the original archived and
+saving disabled. Cancellation is checked before each new source slice. SQLite may
+materialize a whole source internally while archiving or slicing it: the small
+returned slices do not prove a bound on that one-time engine allocation.
 
-iOS retains an immutable source row before stripping maps from the active parent.
-Discovery seeks metadata by primary key and examines at most one parent body per
-step. Import decodes that capped 16 MiB source and commits at most 32 entries per
-batch. The original JSON and source row remain retained; account history stays
-gated until normalization finishes. Existing/newer rows and deletion tombstones
-take precedence. Normal writes reject reintroduced maps and preserve local totals.
+iOS stages individual checkpoint entries under an immutable source/object identity
+before validating the parent metadata. Maps may precede the parent identity in the
+JSON. Source fingerprints, parser positions, staged entries and promotion progress
+commit transactionally. The original JSON remains retained, including its source
+range when a growing map exceeds the active-record cap. Existing SQLite sources
+use incremental BLOB reads instead of repeatedly decoding and sorting a whole map.
+Discovery uses an indexed slot seek; import and promotion use bounded batches.
+Account history stays gated until normalization finishes. Existing/newer rows and
+deletion tombstones take precedence. Normal writes reject reintroduced maps and
+preserve local totals.
+The streaming reader fetches at most 16 KiB per slice. Each batch spends at most
+32 checkpoint/staging/promotion actions and yields at a 256 KiB input quantum,
+with at most one bounded token/member crossing that boundary. Individual JSON
+values are limited to 64 KiB, parent metadata to 1 MiB, and whitespace runs to
+8 KiB. Oversized values or padding produce explicit recovery feedback; they are
+not silently discarded. Staged entries and retained originals also occupy local
+storage, so an import can still pause safely when the device runs out of space.
 New per-file checkpoints include expected length, so truncated output is missing;
 legacy checkpoints without lengths retain an explicit existence-only check.
 
@@ -171,10 +185,10 @@ assert a different process ID from preparation. The checked run used API 36.1
 with KVM and airplane mode; all four phases passed. Stop the emulator afterward
 and remove only its task-owned AVD/data directory.
 
-- [ ] Complete recovery handling for exceptional oversized legacy sources. Retained
-      originals and visible rejection do not establish successful migration of
-      arbitrary historical blobs; Android's one-time SQLite materialization and
-      iOS's capped source decoding remain explicit migration limitations.
+- [ ] Verify recovery of aggregate legacy sources above the former Android/iOS
+      ceilings, including interruption, malformed entries and source changes.
+      Android's one-time SQLite materialization remains an explicit engine
+      allocation exception; individual metadata/checkpoint limits still apply.
 - [ ] Verify native iOS SQLite linking, protected-file behavior, main-app/share-
       extension concurrency and migration on macOS/Xcode and devices. Portable
       SQLite tests and Swift parsing do not constitute that native validation.

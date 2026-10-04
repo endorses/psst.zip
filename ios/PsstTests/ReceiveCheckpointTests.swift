@@ -1,10 +1,10 @@
 import Foundation
+import SQLite3
 import XCTest
 
 @testable import Psst
 
-@MainActor
-final class ReceiveCheckpointTests: XCTestCase {
+@MainActor final class ReceiveCheckpointTests: XCTestCase {
     private func setup() throws -> (URL, UserDefaults) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -112,9 +112,9 @@ final class ReceiveCheckpointTests: XCTestCase {
             XCTAssertTrue(restored.values.allSatisfy { $0.isSaved(fileCount: 1) })
         }
         XCTAssertEqual(try Data(contentsOf: file), original)
-        let sources = try database(file).page(scopes: ["receive-checkpoint-migration"], kinds: ["source"], limit: 1)
-        XCTAssertEqual(sources.records.count, 1)
-        XCTAssertTrue(String(decoding: sources.records[0].body, as: UTF8.self).contains("savedFiles"))
+        let sources = try database(file).page(scopes: ["receive-checkpoint-migration"], kinds: ["source"], limit: 50)
+        XCTAssertFalse(sources.records.isEmpty)
+        XCTAssertTrue(sources.records.contains { String(decoding: $0.body, as: UTF8.self).contains("savedFiles") })
         let checkpoint = try XCTUnwrap(resumed.receiveCheckpoints(parent: old, transferIDs: ["child-129"], fileExists: { _, _ in false })["child-129"])
         XCTAssertTrue(checkpoint.needsFile(blobID: "file"))
     }
@@ -194,9 +194,7 @@ final class ReceiveCheckpointTests: XCTestCase {
         let store = TransferHistoryStore(defaults: defaults, fileURL: file)
         var old = parent()
         try store.add(old)
-        for child in ["newer", "deleted"] {
-            try store.saveReceivedFile(parent: old, transferID: child, blobID: "file", path: "Received/" + child, size: 1, title: "file")
-        }
+        for child in ["newer", "deleted"] { try store.saveReceivedFile(parent: old, transferID: child, blobID: "file", path: "Received/" + child, size: 1, title: "file") }
         let db = try database(file)
         var cursor: String?
         var remove: [String] = []
@@ -224,7 +222,7 @@ final class ReceiveCheckpointTests: XCTestCase {
         XCTAssertTrue(resumed.isReady, resumed.migrationError ?? "")
         let values = try resumed.receiveCheckpoints(parent: old, transferIDs: ["newer", "deleted"], fileExists: { _, _ in true })
         XCTAssertEqual(values["newer"]?.paths["file"], "Received/newer")
-        XCTAssertTrue(values["newer"]?.complete == true)
+        XCTAssertFalse(values["newer"]?.complete ?? true)
         XCTAssertTrue(values["deleted"]?.paths.isEmpty == true)
         XCTAssertFalse(values["deleted"]?.complete ?? true)
     }
@@ -238,5 +236,217 @@ final class ReceiveCheckpointTests: XCTestCase {
         try store.remove(old)
         XCTAssertThrowsError(try store.saveReceivedFile(parent: old, transferID: "child", blobID: "late", path: "Received/late", size: 1, title: "late"))
         XCTAssertNil(try store.record(old.localID))
+    }
+}
+
+extension ReceiveCheckpointTests {
+    func testOversizedInboxStreamsBeforeLateIdentityAndResumesWithinObject() async throws {
+        let (file, defaults) = try setup()
+        var old = parent("large-inbox")
+        old.totalSize = 987_654_321
+        let scalar = try encode(old)
+        let tail = scalar.dropFirst()
+        let output = try FileHandle(
+            forWritingTo: {
+                _ = FileManager.default.createFile(atPath: file.path, contents: nil)
+                return file
+            }())
+        try output.write(contentsOf: Data("[{\"savedFiles\":{".utf8))
+        let suffix = String(repeating: "x", count: 3500)
+        for index in 0..<5000 {
+            if index > 0 { try output.write(contentsOf: Data([44])) }
+            try output.write(contentsOf: Data("\"child-\(index)/file\":\"Received/\(index)-\(suffix)\"".utf8))
+        }
+        try output.write(contentsOf: Data("},\"savedTransfers\":[\"child-4999\"],".utf8))
+        try output.write(contentsOf: tail)
+        try output.write(contentsOf: Data([93]))
+        try output.close()
+        let bytes = try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber
+        XCTAssertGreaterThan(bytes.intValue, HistoryRecordDatabase.maximumRecordBytes)
+        try old.saveSecrets(link: "private-link", deletionToken: "delete", receivePrivateKey: Data(repeating: 7, count: 32))
+        let first = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertFalse(first.isReady)
+        let db = try database(file)
+        XCTAssertEqual(try db.migrationProgress(key: "account-history-v2")?.processed, 0)
+        XCTAssertNil(try db.read(old.localID))
+        let staged = try db.page(scopes: ["receive-stage|account-history-v2|1"], kinds: ["stage-entry"], limit: 50)
+        XCTAssertEqual(staged.records.count, 32)
+        let resumed = TransferHistoryStore(defaults: defaults, fileURL: file)
+        await resumed.finishMigration()
+        XCTAssertTrue(resumed.isReady, resumed.migrationError ?? "")
+        let current = try XCTUnwrap(resumed.record(old.localID))
+        XCTAssertEqual(current.totalSize, old.totalSize)
+        XCTAssertEqual(current.vaultID, "resource|https://one.example|alice|large-inbox")
+        XCTAssertEqual(current.capabilities?.receivePrivateKey, Data(repeating: 7, count: 32))
+        XCTAssertNil(current.savedFiles)
+        let value = try XCTUnwrap(resumed.receiveCheckpoints(parent: current, transferIDs: ["child-4999"], fileExists: { _, _ in true })["child-4999"])
+        XCTAssertEqual(value.paths["file"], "Received/4999-" + suffix)
+        XCTAssertTrue(value.complete)
+        XCTAssertEqual((try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber).intValue, bytes.intValue)
+        // Installed SQLite histories can already contain an oversized parent.
+        // Fixture insertion bypasses only the normal 16 MiB writer cap.
+        let (sqliteSource, sqliteDefaults) = try setup()
+        let legacyDB = try database(sqliteSource)
+        let sqlitePath = sqliteSource.deletingLastPathComponent().appendingPathComponent(sqliteSource.lastPathComponent + ".store/records.sqlite3").path
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(sqlitePath, &handle), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        var statement: OpaquePointer?
+        XCTAssertEqual(
+            sqlite3_prepare_v2(handle, "INSERT INTO records(id,scope,kind,sort_created,body_bytes,body) VALUES(?,'https://one.example|alice','slot',-1,?,?)", -1, &statement, nil),
+            SQLITE_OK)
+        let original = try Data(contentsOf: file).dropFirst().dropLast()
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        XCTAssertEqual(sqlite3_bind_text(statement, 1, old.localID, -1, transient), SQLITE_OK)
+        XCTAssertEqual(sqlite3_bind_int64(statement, 2, Int64(original.count)), SQLITE_OK)
+        original.withUnsafeBytes { XCTAssertEqual(sqlite3_bind_blob(statement, 3, $0.baseAddress, Int32(original.count), transient), SQLITE_OK) }
+        XCTAssertEqual(sqlite3_step(statement), SQLITE_DONE)
+        sqlite3_finalize(statement)
+        XCTAssertThrowsError(try legacyDB.read(old.localID))
+        let sqliteStore = TransferHistoryStore(defaults: sqliteDefaults, fileURL: sqliteSource)
+        await sqliteStore.finishMigration()
+        XCTAssertTrue(sqliteStore.isReady, sqliteStore.migrationError ?? "")
+        XCTAssertEqual(try sqliteStore.record(old.localID)?.totalSize, old.totalSize)
+        let restored = try XCTUnwrap(sqliteStore.receiveCheckpoints(parent: old, transferIDs: ["child-4999"], fileExists: { _, _ in true })["child-4999"])
+        XCTAssertEqual(restored.paths, value.paths)
+        XCTAssertTrue(restored.complete)
+    }
+
+    func testStreamingStateRowsRollbackAndChangedSourceCannotResume() async throws {
+        let (file, _) = try setup()
+        var old = parent()
+        old.savedFiles = Dictionary(uniqueKeysWithValues: (0..<70).map { ("child-\($0)/file", "Received/\($0)") })
+        let source = Data([91]) + (try encode(old)) + Data([93])
+        try source.write(to: file)
+        let db = try database(file)
+        enum Injected: Error { case fail }
+        XCTAssertThrowsError(
+            try db.transaction { db in
+                _ = try db.migrateReceiveJSONBatch(
+                    source: file, key: "atomic", decode: { _ in throw Injected.fail }, validateEntry: ReceiveCheckpointStorage.validateEntry, promote: { _, _ in })
+                throw Injected.fail
+            })
+        XCTAssertNil(try db.migrationProgress(key: "atomic"))
+        XCTAssertTrue(try db.page(scopes: ["receive-stage|atomic|1"], kinds: ["stage-entry"], limit: 50).records.isEmpty)
+        _ = try db.migrateReceiveJSONBatch(
+            source: file, key: "atomic", decode: { _ in throw Injected.fail }, validateEntry: ReceiveCheckpointStorage.validateEntry, promote: { _, _ in })
+        XCTAssertEqual(try db.page(scopes: ["receive-stage|atomic|1"], kinds: ["stage-entry"], limit: 50).records.count, 32)
+        try (source + Data([32])).write(to: file)
+        XCTAssertThrowsError(
+            try db.migrateReceiveJSONBatch(
+                source: file, key: "atomic", decode: { _ in throw Injected.fail }, validateEntry: ReceiveCheckpointStorage.validateEntry, promote: { _, _ in }))
+        XCTAssertEqual(try db.migrationProgress(key: "atomic")?.processed, 0)
+    }
+
+    func testStreamingMalformedAndOversizedIndividualValuesGiveSpecificFeedback() async throws {
+        for fragment in ["\"child/file\":\"../bad\"", "\"child/file\":\"" + String(repeating: "x", count: 66000) + "\"", "\"child/file\":\"ok\","] {
+            let (file, defaults) = try setup()
+            let source = Data(("[{\"savedFiles\":{" + fragment + "}}]").utf8)
+            try source.write(to: file)
+            let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+            await store.finishMigration()
+            XCTAssertFalse(store.isReady)
+            XCTAssertTrue(store.migrationError?.contains("recovery") == true)
+            XCTAssertEqual(try Data(contentsOf: file), source)
+        }
+    }
+
+    func testCompletionArrayBeyondRecordCapUsesBoundedTokenReadsAndState() async throws {
+        let (file, _) = try setup()
+        let entry = String(repeating: "a", count: 128)
+        _ = FileManager.default.createFile(atPath: file.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.write(contentsOf: Data("[{\"savedTransfers\":[".utf8))
+        for index in 0..<130000 { try handle.write(contentsOf: Data(((index == 0 ? "" : ",") + "\"" + entry + "\"").utf8)) }
+        try handle.write(contentsOf: Data("],\"id\":\"after-array\"}]".utf8))
+        try handle.close()
+        let source = try HistoryJSONStream(url: file, maximumObjectBytes: HistoryRecordDatabase.maximumRecordBytes)
+        defer { source.close() }
+        var state = ReceiveHistoryStream.State()
+        var count = 0
+        var largestRead = 0
+        repeat {
+            let parser = ReceiveHistoryStream(
+                state: state,
+                read: { offset, bytes in
+                    largestRead = max(largestRead, bytes)
+                    return try source.readRange(at: offset, count: bytes)
+                })
+            for _ in 0..<32 {
+                guard let value = try parser.next() else { break }
+                XCTAssertEqual(value.value, entry)
+                count += 1
+            }
+            state = try JSONDecoder().decode(ReceiveHistoryStream.State.self, from: JSONEncoder().encode(parser.state))
+        } while state.phase != "ready"
+        XCTAssertEqual(count, 130000)
+        XCTAssertEqual(largestRead, 16384)
+        XCTAssertGreaterThan(state.offset, Int64(HistoryRecordDatabase.maximumRecordBytes))
+        XCTAssertEqual(state.fields["id"], Data("\"after-array\"".utf8))
+    }
+}
+
+extension ReceiveCheckpointTests {
+    func testOldPartialJobRecoversCompletionBeforeMapsWithoutAdoptingNewerFiles() async throws {
+        let (file, defaults) = try setup()
+        let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+        var old = parent("upgrade")
+        try store.add(old)
+        let db = try database(file)
+        old.savedFiles = ["child/file": "Received/old", "newer/file": "Received/old"]
+        var body = Data("{\"savedTransfers\":[\"child\",\"newer\"],".utf8)
+        body.append(try encode(old).dropFirst())
+        try db.transaction { db in
+            let original = HistoryRecordDatabase.Record(id: old.localID, scope: "https://one.example|alice", kind: "slot", created: 1, body: body)
+            let stripped = try ReceiveCheckpointStorage.stage(db, record: old, original: original)
+            try db.write(.init(id: original.id, scope: original.scope, kind: original.kind, created: original.created, body: encode(stripped)))
+            try ReceiveCheckpointStorage.save(db, parent: old, file: .init(transferID: "child", blobID: "file", path: "Received/old", size: nil), importing: true)
+            try ReceiveCheckpointStorage.save(db, parent: old, file: .init(transferID: "newer", blobID: "file", path: "Received/new", size: 12))
+            var cursor: String?
+            repeat {
+                let page = try db.migrationPage(afterID: cursor)
+                for entry in page.entries where entry.kind == "receive-child" || entry.kind == "job" {
+                    let row = try XCTUnwrap(db.read(entry.id))
+                    var value = try JSONSerialization.jsonObject(with: row.body) as! [String: Any]
+                    if entry.kind == "receive-child" { value.removeValue(forKey: "imported") }
+                    if entry.kind == "job" { value["afterFile"] = "newer/file" }
+                    try db.write(.init(id: row.id, scope: row.scope, kind: row.kind, created: row.created, body: JSONSerialization.data(withJSONObject: value)))
+                }
+                cursor = page.nextID
+            } while cursor != nil
+        }
+        let resumed = TransferHistoryStore(defaults: defaults, fileURL: file)
+        await resumed.finishMigration()
+        XCTAssertTrue(resumed.isReady, resumed.migrationError ?? "")
+        let values = try resumed.receiveCheckpoints(parent: old, transferIDs: ["child", "newer"], fileExists: { _, _ in true })
+        XCTAssertTrue(values["child"]?.complete == true)
+        XCTAssertFalse(values["newer"]?.complete ?? true)
+        XCTAssertEqual(values["newer"]?.paths["file"], "Received/new")
+    }
+
+    func testPaddedMetadataYieldsAtBoundedMemberBoundary() async throws {
+        var text = "[{"
+        for index in 0..<100 {
+            if index > 0 { text += "," }
+            text += "\"unknown-\(index)\":0" + String(repeating: " ", count: 7000)
+        }
+        text += "}]"
+        let source = Data(text.utf8)
+        var state = ReceiveHistoryStream.State()
+        var batches = 0
+        repeat {
+            let start = state.offset
+            let parser = ReceiveHistoryStream(
+                state: state,
+                read: { offset, count in
+                    let start = Int(offset)
+                    return source.subdata(in: start..<min(start + count, source.count))
+                })
+            XCTAssertNil(try parser.next())
+            state = parser.state
+            XCTAssertLessThanOrEqual(state.offset - start, 262144 + 16384)
+            batches += 1
+        } while state.phase != "ready"
+        XCTAssertGreaterThan(batches, 1)
     }
 }

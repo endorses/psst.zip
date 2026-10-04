@@ -1,9 +1,10 @@
 package zip.psst.android.data
 
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.Json
 
-internal const val LEGACY_CHECKPOINT_SOURCE_LIMIT = 64L * 1024 * 1024
 private const val LEGACY_ENTRY_LIMIT = 64 * 1024
 
 /** Byte offsets survive process restarts. No parser buffer or whole JSON tree is persisted. */
@@ -18,8 +19,13 @@ internal class LegacyCheckpointReader(
     private var buffer = byteArrayOf()
     private var bufferStart = start
 
+    init {
+        require(start >= 0 && source in 0..2) { "Invalid saved checkpoint position" }
+    }
+
     private suspend fun peek(): Int {
         if (position - bufferStart >= buffer.size) {
+            currentCoroutineContext().ensureActive()
             bufferStart = position
             buffer = readChunk(position, 16 * 1024)
         }
@@ -117,7 +123,12 @@ internal class LegacyCheckpointReader(
     }
 }
 
-/** SQLite may internally materialize TEXT for substr/length; this bounds app allocations only. */
+/**
+ * There is no aggregate JSON-size ceiling: each entry/read and batch is bounded, so a legitimately
+ * large inbox can continue from its committed byte offset. SQLite may internally materialize legacy
+ * TEXT for archive/substr; this bounds app parser allocations, not that migration engine
+ * allocation.
+ */
 internal suspend fun TransferHistoryDao.advanceCheckpointMigration(
     initial: TransferHistoryEntity
 ): TransferHistoryEntity {
@@ -130,15 +141,15 @@ internal suspend fun TransferHistoryDao.advanceCheckpointMigration(
             savedTransferIdsJson = "[]",
         )
     try {
+        require(row.checkpointColumn in 0..3 && row.checkpointOffset >= 0) {
+            "Invalid saved checkpoint progress"
+        }
+        require(row.checkpointColumn != 3 || row.checkpointOffset == 0L) {
+            "Invalid completed checkpoint progress"
+        }
         var consumed = 0
         while (row.checkpointColumn < 3 && consumed < 64) {
             val source = row.checkpointColumn
-            require(
-                (checkpointLegacyLength(row.id, row.checkpointScope(), source) ?: 0) <=
-                    LEGACY_CHECKPOINT_SOURCE_LIMIT
-            ) {
-                "Legacy saved checkpoints require large-record recovery"
-            }
             val reader =
                 LegacyCheckpointReader(row.checkpointOffset, source) { offset, maximum ->
                     checkpointLegacyChunk(row.id, row.checkpointScope(), source, offset, maximum)

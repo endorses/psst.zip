@@ -1,6 +1,13 @@
 package zip.psst.android.data
 
+import java.io.RandomAccessFile
+import java.nio.file.Files
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
@@ -179,39 +186,154 @@ class InboxCheckpointTest {
     }
 
     @Test
-    fun oversizedSourceIsRetainedWithoutReadingItsPayload() = runTest {
-        val original =
-            parent()
-                .copy(
-                    checkpointState = "pending",
-                    receivedTransfersJson = "{\"child\":{\"fileCount\":1}}",
-                )
+    fun largeAggregateSourceContinuesWithBoundedReadsAndPersistedOffsets() = runTest {
+        val original = parent().copy(checkpointState = "pending")
+        // An exact virtual byte source avoids allocating a giant String in the
+        // test DAO. Its valid repeated prefix is >64 MiB, followed by one new
+        // saved file. Repetition has the same idempotent checkpoint state.
+        val repeated = "\"child/blob\",".toByteArray()
+        val repeats = (65L * 1024 * 1024 / repeated.size) + 1
+        val tail = "\"last/blob\"]".toByteArray()
+        val tailOffset = 1 + repeated.size * repeats
+        val totalBytes = tailOffset + tail.size
+        var maximumRead = 0
+        var readCalls = 0
         val dao =
             object : HistoryTest.MemoryDao(original) {
-                override suspend fun checkpointLegacyLength(
-                    id: String,
-                    scope: String,
-                    source: Int,
-                ) = LEGACY_CHECKPOINT_SOURCE_LIMIT + 1
-
                 override suspend fun checkpointLegacyChunk(
                     id: String,
                     scope: String,
                     source: Int,
                     offset: Long,
                     maximum: Int,
-                ): ByteArray = error("Oversized source was read")
+                ): ByteArray {
+                    if (source != 1)
+                        return super.checkpointLegacyChunk(id, scope, source, offset, maximum)
+                    assertEquals(original.checkpointScope(), scope)
+                    maximumRead = maxOf(maximumRead, maximum)
+                    readCalls++
+                    return ByteArray(
+                        minOf(maximum.toLong(), maxOf(0L, totalBytes - offset)).toInt()
+                    ) { index ->
+                        val position = offset + index
+                        when {
+                            position == 0L -> '['.code.toByte()
+                            position < tailOffset ->
+                                repeated[((position - 1) % repeated.size).toInt()]
+                            else -> tail[(position - tailOffset).toInt()]
+                        }
+                    }
+                }
             }
-        val row =
+        var row =
             requireNotNull(
                 dao.mergeReceived(original.id, ReceivedSnapshot(emptyMap(), partial = true))
             )
-        assertEquals("recovery", row.checkpointState)
-        assertEquals(
-            original.receivedTransfersJson,
-            dao.archives[original.checkpointScope() to original.id]?.receivedTransfersJson,
-        )
-        assertEquals("{}", row.receivedTransfersJson)
+        assertEquals("pending", row.checkpointState)
+        assertEquals(1, row.checkpointColumn)
+        assertEquals(1 + repeated.size * 64L, row.checkpointOffset)
+        assertEquals(1L, row.checkpointSavedFiles)
+        // Simulate a persisted offset after the identical idempotent prefix.
+        // All rows/counters are exactly those of the already imported first
+        // entry. The production parser resumes using Long UTF-8 offsets.
+        dao.update(row.copy(checkpointOffset = tailOffset))
+        row =
+            requireNotNull(
+                dao.mergeReceived(original.id, ReceivedSnapshot(emptyMap(), partial = true))
+            )
+        assertEquals("ready", row.checkpointState)
+        assertEquals(2L, row.checkpointSavedFiles)
+        assertEquals(setOf("child/blob", "last/blob"), dao.savedFiles(row, listOf("child", "last")))
+        assertEquals("private-key", row.encryptionKey)
+        assertTrue(readCalls > 1)
+        assertTrue(maximumRead <= 16384)
+        assertTrue(totalBytes > 64L * 1024 * 1024)
+        assertEquals(original, dao.archives[original.checkpointScope() to original.id])
+    }
+
+    @Test
+    fun realLargeSourceParsesWithoutHoldingItsWholeArrayAndResumesAtEntryBoundary() = runTest {
+        val path = Files.createTempFile("psst-checkpoint-large-", ".json")
+        try {
+            val id = "c".repeat(128) + "/" + "b".repeat(128)
+            val member = ("\"" + id + "\",").toByteArray()
+            val count = (65L * 1024 * 1024 / member.size + 1).toInt()
+            Files.newOutputStream(path).buffered(65536).use { output ->
+                output.write('['.code)
+                repeat(count - 1) { output.write(member) }
+                output.write(("\"" + id + "\"]").toByteArray())
+            }
+            assertTrue(Files.size(path) > 64L * 1024 * 1024)
+            RandomAccessFile(path.toFile(), "r").use { source ->
+                var reads = 0
+                suspend fun read(offset: Long, maximum: Int): ByteArray {
+                    assertTrue(maximum <= 16384)
+                    reads++
+                    source.seek(offset)
+                    val buffer = ByteArray(maximum)
+                    val amount = source.read(buffer)
+                    return if (amount < 0) byteArrayOf() else buffer.copyOf(amount)
+                }
+                var reader = LegacyCheckpointReader(0, 1, ::read)
+                repeat(count) { index ->
+                    assertEquals(id, reader.next()!!.first)
+                    if (index == 63) reader = LegacyCheckpointReader(reader.position, 1, ::read)
+                }
+                assertNull(reader.next())
+                assertEquals(Files.size(path), reader.position)
+                assertTrue(reads > 4096)
+            }
+        } finally {
+            Files.deleteIfExists(path)
+        }
+    }
+
+    @Test
+    fun cancellationStopsBeforeAnotherSourceSliceIsRead() = runTest {
+        var reads = 0
+        val probe = Job()
+        try {
+            withContext(probe) {
+                val reader =
+                    LegacyCheckpointReader(0, 1) { _, maximum ->
+                        reads++
+                        currentCoroutineContext().cancel()
+                        ByteArray(maximum) { index ->
+                            when (index) {
+                                0 -> '['.code.toByte()
+                                1 -> '"'.code.toByte()
+                                else -> 'a'.code.toByte()
+                            }
+                        }
+                    }
+                reader.next()
+                fail("Canceled parser kept reading")
+            }
+        } catch (_: CancellationException) {
+            assertEquals(1, reads)
+        } finally {
+            probe.cancel()
+        }
+    }
+
+    @Test
+    fun invalidProgressRetainsArchiveAndDoesNotClaimCheckpointsReady() = runTest {
+        for ((column, offset) in listOf(-1 to 0L, 4 to 0L, 1 to -1L, 3 to 1L)) {
+            val original =
+                parent()
+                    .copy(
+                        checkpointState = "pending",
+                        checkpointColumn = column,
+                        checkpointOffset = offset,
+                    )
+            val dao = HistoryTest.MemoryDao(original)
+            val row =
+                requireNotNull(
+                    dao.mergeReceived(original.id, ReceivedSnapshot(emptyMap(), partial = true))
+                )
+            assertEquals("recovery", row.checkpointState)
+            assertEquals(original, dao.archives[original.checkpointScope() to original.id])
+        }
     }
 
     @Test

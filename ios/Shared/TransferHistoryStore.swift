@@ -2,9 +2,7 @@ import Foundation
 
 /// Main app and share extension address individual records in the same SQLite store.
 /// Migration keeps its original JSON/preferences and checkpoints each import batch.
-@Observable
-@MainActor
-final class TransferHistoryStore {
+@Observable @MainActor final class TransferHistoryStore {
     private(set) var revision = 0
     private(set) var isReady = false
     private(set) var migrationError: String?
@@ -24,10 +22,23 @@ final class TransferHistoryStore {
         do {
             try openDatabase()
             try migrationStep()
-        } catch { migrationError = Self.storageMessage }
+        } catch { migrationError = Self.storageMessage(for: error) }
     }
 
     private static let storageMessage = "Local history could not be opened or imported. Existing records and keys have been preserved. Restore storage access and retry."
+    private static func storageMessage(for error: Error) -> String {
+        switch error {
+        case ReceiveHistoryStream.Failure.scalarTooLarge:
+            return "A local history scalar or checkpoint entry exceeds the recovery limit. Original history and keys are preserved; recovery is paused."
+        case ReceiveHistoryStream.Failure.invalidCheckpoint:
+            return "A saved inbox checkpoint has an invalid identity or unsafe path. Original history and keys are preserved; recovery is paused."
+        case ReceiveHistoryStream.Failure.malformed, is DecodingError:
+            return "Local history contains malformed JSON or metadata. Original history and keys are preserved; recovery is paused."
+        case HistoryRecordDatabase.Failure.migrationSourceChanged, HistoryJSONStream.Failure.sourceChanged, ReceiveHistoryStream.Failure.sourceChanged:
+            return "The original local history source changed during recovery. Restore the unchanged original and retry. Records and keys are preserved."
+        default: return storageMessage
+        }
+    }
     private func decoder() -> JSONDecoder {
         let result = JSONDecoder()
         result.dateDecodingStrategy = .iso8601
@@ -46,8 +57,8 @@ final class TransferHistoryStore {
         let opened = try HistoryRecordDatabase(url: directory.appendingPathComponent("records.sqlite3"))
         // Older UserDefaults APIs expose Data as one allocation. Copy it once;
         // parsing/import after this point streams the source and retains it.
-        if try opened.migrationProgress(key: "account-history-v2")?.complete != true,
-            !FileManager.default.fileExists(atPath: fileURL.path), let data = defaults.data(forKey: AppConstants.transferHistoryKey)
+        if try opened.migrationProgress(key: "account-history-v2")?.complete != true, !FileManager.default.fileExists(atPath: fileURL.path),
+            let data = defaults.data(forKey: AppConstants.transferHistoryKey)
         {
             if defaults.string(forKey: "legacyHistoryServerURL") == nil, let original = defaults.string(forKey: AppConstants.serverURLKey) {
                 defaults.set(original, forKey: "legacyHistoryServerURL")
@@ -79,20 +90,22 @@ final class TransferHistoryStore {
             return
         }
         let original = defaults.string(forKey: "legacyHistoryServerURL")
-        let progress = try database.migrateJSONBatch(source: fileURL, key: "account-history-v2", limit: 25) { data in
-            var record = try self.decoder().decode(TransferRecord.self, from: data)
-            if record.ownerID == nil && record.serverURL == nil {
-                if var origin = URLComponents(string: record.shareURL ?? "") {
-                    origin.path = ""
-                    origin.query = nil
-                    origin.fragment = nil
-                    record.serverURL = try? AccountHTTP.origin(origin.string ?? "")
+        let progress = try database.migrateReceiveJSONBatch(
+            source: fileURL, key: "account-history-v2",
+            decode: { data in
+                var record = try self.decoder().decode(TransferRecord.self, from: data)
+                if record.ownerID == nil && record.serverURL == nil {
+                    if var origin = URLComponents(string: record.shareURL ?? "") {
+                        origin.path = ""
+                        origin.query = nil
+                        origin.fragment = nil
+                        record.serverURL = try? AccountHTTP.origin(origin.string ?? "")
+                    }
+                    if record.serverURL == nil, let original { record.serverURL = try? AccountHTTP.origin(original) }
                 }
-                if record.serverURL == nil, let original { record.serverURL = try? AccountHTTP.origin(original) }
-            }
-            let original = try self.stored(record)
-            return try self.stored(ReceiveCheckpointStorage.stage(database, record: record, original: original))
-        }
+                return try self.stored(ReceiveCheckpointStorage.stripped(record))
+            }, validateEntry: ReceiveCheckpointStorage.validateEntry,
+            promote: { current, entry in try ReceiveCheckpointStorage.promote(database, parent: self.decoder().decode(TransferRecord.self, from: current.body), entry: entry) })
         importedRecords = progress.processed
         if progress.complete { isReady = try normalizeCheckpoints(database) } else { isReady = false }
         revision &+= 1
@@ -113,7 +126,7 @@ final class TransferHistoryStore {
                 try migrationStep()
                 await Task.yield()
             }
-        } catch { migrationError = Self.storageMessage }
+        } catch { migrationError = Self.storageMessage(for: error) }
     }
 
     private func readyDatabase() throws -> HistoryRecordDatabase {
@@ -122,9 +135,8 @@ final class TransferHistoryStore {
     }
     private func stored(_ record: TransferRecord) throws -> HistoryRecordDatabase.Record {
         HistoryRecordDatabase.Record(
-            id: record.localID,
-            scope: record.ownerID.flatMap { owner in record.serverURL.map { $0 + "|" + owner } } ?? "legacy",
-            kind: record.isSlot == true ? "slot" : "transfer", created: record.createdAt.timeIntervalSince1970, body: try encoder().encode(record))
+            id: record.localID, scope: record.ownerID.flatMap { owner in record.serverURL.map { $0 + "|" + owner } } ?? "legacy", kind: record.isSlot == true ? "slot" : "transfer",
+            created: record.createdAt.timeIntervalSince1970, body: try encoder().encode(record))
     }
     func reload() { revision &+= 1 }
     func record(_ localID: String) throws -> TransferRecord? {
@@ -166,11 +178,7 @@ final class TransferHistoryStore {
         return (try? page(session: session).records) ?? []
     }
     func add(_ record: TransferRecord) throws { try update(record) }
-    func update(_ record: TransferRecord) throws {
-        try mutate(ids: [record.localID]) { values in
-            values = [record.preservingLocalName(from: values.first)]
-        }
-    }
+    func update(_ record: TransferRecord) throws { try mutate(ids: [record.localID]) { values in values = [record.preservingLocalName(from: values.first)] } }
     func applySnapshot(_ records: [TransferRecord]) throws {
         try mutate(ids: records.map(\.localID)) { values in
             let existing = Dictionary(values.map { ($0.localID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -242,15 +250,12 @@ final class TransferHistoryStore {
         }
     }
 
-    @discardableResult
-    func saveReceivedFile(parent: TransferRecord, transferID: String, blobID: String, path: String, size: Int64, title: String) throws -> TransferRecord {
+    @discardableResult func saveReceivedFile(parent: TransferRecord, transferID: String, blobID: String, path: String, size: Int64, title: String) throws -> TransferRecord {
         let result = try readyDatabase().transaction { database in
             guard let row = try database.read(parent.localID) else { throw AccountError.storage }
             var current = try decoder().decode(TransferRecord.self, from: row.body)
             guard current.checkpointVersion == 1 else { throw AccountError.storage }
-            let inserted = try ReceiveCheckpointStorage.save(
-                database, parent: current,
-                file: .init(transferID: transferID, blobID: blobID, path: path, size: size))
+            let inserted = try ReceiveCheckpointStorage.save(database, parent: current, file: .init(transferID: transferID, blobID: blobID, path: path, size: size))
             if inserted {
                 let total = current.totalSize.addingReportingOverflow(size)
                 guard !total.overflow, total.partialValue >= 0 else { throw AccountError.storage }
