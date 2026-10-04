@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import TrafficBudgetSettings from "./TrafficBudgetSettings.svelte";
-  import { accountRequest } from "$lib/account";
+  import { accountRequest, AccountError } from "$lib/account";
   import { formatSize } from "$lib/upload-job.svelte";
   import { utcTime, measurementExplanation, type TrafficReport } from "$lib/admin";
   let report = $state<TrafficReport | null>(null),
@@ -35,7 +35,13 @@
       day = next.settings.cycle_start_day;
       basis = next.settings.basis;
     } catch (e) {
-      if (!disposed) error = e instanceof Error ? e.message : "Traffic is unavailable.";
+      if (!disposed)
+        error =
+          e instanceof AccountError && e.code === "traffic_history_unavailable"
+            ? "This period is outside the available daily history. Choose dates within the retained history, through today (UTC). Lifetime totals are preserved."
+            : e instanceof Error
+              ? e.message
+              : "Traffic is unavailable.";
     } finally {
       if (!disposed) busy = false;
     }
@@ -128,15 +134,32 @@
     void load();
   }}
 >
-  <label>From (UTC)<input type="date" required bind:value={from} /></label><label
-    >Through (UTC, inclusive)<input type="date" required min={from} bind:value={to} /></label
+  <label
+    >From (UTC)<input
+      type="date"
+      required
+      min={report?.history_retained_from}
+      bind:value={from}
+    /></label
+  ><label
+    >Through (UTC, inclusive)<input
+      type="date"
+      required
+      min={from && from > (report?.history_retained_from ?? "")
+        ? from
+        : report?.history_retained_from}
+      bind:value={to}
+    /></label
   ><button disabled={busy}>{busy ? "Loading…" : "Show traffic"}</button>
 </form>
 {#if report}
   <p class="muted small">
-    Choose up to 367 days. Measured lifetime totals above include the full recorded history.
+    Daily details are retained for {report.history_retention_days} days, from {report.history_retained_from}
+    (UTC). Choose up to 367 days at a time. Measured lifetime totals preserve all recorded traffic, including
+    older days.
   </p>
   <h2>Selected period</h2>
+  <p class="muted">{report.range.from} through {report.range.to} (inclusive, UTC)</p>
   <p>
     Uploaded {formatSize(report.totals.uploaded_bytes)} · Downloaded {formatSize(
       report.totals.downloaded_bytes,

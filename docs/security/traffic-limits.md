@@ -22,6 +22,10 @@ has a 64 KiB token-bucket burst allowance. Bandwidth values accept 1 byte/s thro
 10 GiB/s; stream limits accept 1–4096. Request admission and rate limits apply
 separately and may impose a lower effective concurrency.
 
+Daily traffic detail has [bounded retention](metadata-retention.md): 400 UTC
+dates, with measured lifetime totals preserved separately. Expired detail does
+not refund current-cycle traffic, and outstanding leases remain accounted for.
+
 The administrator may override an individual account's allowance or restore
 inheritance from the default. An account cannot bypass the server budget. The
 account default and a newly saved override cannot exceed the server allowance;

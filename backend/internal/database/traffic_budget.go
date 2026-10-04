@@ -181,6 +181,13 @@ type TrafficBudgetSnapshot struct {
 
 func trafficUsage(q trafficQuerier, owner string, global bool, p TrafficPolicy, cycle TrafficCycle) (TrafficBudgetUsage, *int64, error) {
 	u := TrafficBudgetUsage{BudgetBytes: p.ServerBudgetBytes}
+	floor, err := trafficRetainedFrom(q)
+	if err != nil {
+		return u, nil, err
+	}
+	if cycle.Start.UTC().Format("2006-01-02") < floor {
+		return u, nil, ErrTrafficAccounting
+	}
 	var override *int64
 	if !global {
 		u.BudgetBytes = p.DefaultAccountBudgetBytes
@@ -200,7 +207,7 @@ func trafficUsage(q trafficQuerier, owner string, global bool, p TrafficPolicy, 
 		filter = " AND owner=?"
 		args = append(args, owner)
 	}
-	err := q.QueryRow(`SELECT COALESCE(SUM(observed_up),0),COALESCE(SUM(observed_down),0),COALESCE(SUM(conservative_up),0),COALESCE(SUM(conservative_down),0) FROM traffic_owner_days WHERE date>=? AND date<?`+filter, args...).Scan(&u.ObservedUploadedBytes, &u.ObservedDownloadedBytes, &u.ConservativeUploadedBytes, &u.ConservativeDownloadedBytes)
+	err = q.QueryRow(`SELECT COALESCE(SUM(observed_up),0),COALESCE(SUM(observed_down),0),COALESCE(SUM(conservative_up),0),COALESCE(SUM(conservative_down),0) FROM traffic_owner_days WHERE date>=? AND date<?`+filter, args...).Scan(&u.ObservedUploadedBytes, &u.ObservedDownloadedBytes, &u.ConservativeUploadedBytes, &u.ConservativeDownloadedBytes)
 	if err != nil {
 		return u, override, err
 	}
@@ -346,7 +353,15 @@ func (q *Queries) SettleTraffic(id string, actual int64) error {
 	} else {
 		down = actual
 	}
-	_, err = tx.Exec(`INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down) VALUES(?,?,?,?) ON CONFLICT(owner,date) DO UPDATE SET observed_up=observed_up+excluded.observed_up,observed_down=observed_down+excluded.observed_down`, owner, date, up, down)
+	floor, err := trafficRetainedFrom(tx)
+	if err != nil {
+		return err
+	}
+	if date < floor {
+		err = archiveBudgetTraffic(tx, up, down, 0, 0)
+	} else {
+		_, err = tx.Exec(`INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down) VALUES(?,?,?,?) ON CONFLICT(owner,date) DO UPDATE SET observed_up=observed_up+excluded.observed_up,observed_down=observed_down+excluded.observed_down`, owner, date, up, down)
+	}
 	if err != nil {
 		return err
 	}
@@ -367,7 +382,18 @@ func (q *Queries) RecoverTrafficLeases() error {
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO traffic_owner_days(owner,date,conservative_up,conservative_down) SELECT owner,date,SUM(CASE WHEN direction='up' THEN bytes ELSE 0 END),SUM(CASE WHEN direction='down' THEN bytes ELSE 0 END) FROM traffic_leases GROUP BY owner,date ON CONFLICT(owner,date) DO UPDATE SET conservative_up=conservative_up+excluded.conservative_up,conservative_down=conservative_down+excluded.conservative_down`)
+	floor, err := trafficRetainedFrom(tx)
+	if err != nil {
+		return err
+	}
+	var up, down int64
+	if err = tx.QueryRow(`SELECT COALESCE(SUM(CASE WHEN direction='up' THEN bytes ELSE 0 END),0),COALESCE(SUM(CASE WHEN direction='down' THEN bytes ELSE 0 END),0) FROM traffic_leases WHERE date<?`, floor).Scan(&up, &down); err != nil {
+		return err
+	}
+	if err = archiveBudgetTraffic(tx, 0, 0, up, down); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO traffic_owner_days(owner,date,conservative_up,conservative_down) SELECT owner,date,SUM(CASE WHEN direction='up' THEN bytes ELSE 0 END),SUM(CASE WHEN direction='down' THEN bytes ELSE 0 END) FROM traffic_leases WHERE date>=? GROUP BY owner,date ON CONFLICT(owner,date) DO UPDATE SET conservative_up=conservative_up+excluded.conservative_up,conservative_down=conservative_down+excluded.conservative_down`, floor)
 	if err != nil {
 		return err
 	}

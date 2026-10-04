@@ -58,16 +58,25 @@ func addTraffic(tx sqlExecutor, at time.Time, t TrafficTotals) error {
 	if err := new(TrafficTotals).Add(t); err != nil {
 		return err
 	}
-	_, err := tx.Exec(`INSERT INTO traffic_days
+	result, err := tx.Exec(`UPDATE traffic_retention SET uploaded_bytes=uploaded_bytes+?,downloaded_bytes=downloaded_bytes+?,files_uploaded=files_uploaded+?,files_delivered=files_delivered+?,standalone_files_uploaded=standalone_files_uploaded+?,received_files_uploaded=received_files_uploaded+? WHERE id=1`, t.UploadedBytes, t.DownloadedBytes, t.FilesUploaded, t.FilesDelivered, t.StandaloneFilesUploaded, t.ReceivedFilesUploaded)
+	if err != nil {
+		return err
+	}
+	if n, e := result.RowsAffected(); e != nil {
+		return e
+	} else if n != 1 {
+		return ErrTrafficAccounting
+	}
+	_, err = tx.Exec(`INSERT INTO traffic_days
  (date,uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded)
- VALUES (?,?,?,?,?,?,?) ON CONFLICT(date) DO UPDATE SET
+ SELECT ?,?,?,?,?,?,? WHERE ? >= (SELECT retained_from FROM traffic_retention WHERE id=1) ON CONFLICT(date) DO UPDATE SET
  uploaded_bytes=uploaded_bytes+excluded.uploaded_bytes,
  downloaded_bytes=downloaded_bytes+excluded.downloaded_bytes,
  files_uploaded=files_uploaded+excluded.files_uploaded,
  files_delivered=files_delivered+excluded.files_delivered,
  standalone_files_uploaded=standalone_files_uploaded+excluded.standalone_files_uploaded,
  received_files_uploaded=received_files_uploaded+excluded.received_files_uploaded`,
-		at.UTC().Format("2006-01-02"), t.UploadedBytes, t.DownloadedBytes, t.FilesUploaded, t.FilesDelivered, t.StandaloneFilesUploaded, t.ReceivedFilesUploaded)
+		at.UTC().Format("2006-01-02"), t.UploadedBytes, t.DownloadedBytes, t.FilesUploaded, t.FilesDelivered, t.StandaloneFilesUploaded, t.ReceivedFilesUploaded, at.UTC().Format("2006-01-02"))
 	if err != nil {
 		return err
 	}
@@ -114,7 +123,7 @@ func (q *Queries) SetTrafficSettings(s TrafficSettings, actors ...*AdminActor) e
 	return tx.Commit()
 }
 func (q *Queries) TrafficDays() ([]TrafficDay, error) {
-	rows, err := q.db.Query(`SELECT date,uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded FROM traffic_days ORDER BY date`)
+	rows, err := q.db.Query(`SELECT date,uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded FROM traffic_days WHERE date >= (SELECT retained_from FROM traffic_retention WHERE id=1) ORDER BY date LIMIT 400`)
 	if err != nil {
 		return nil, err
 	}

@@ -442,16 +442,17 @@ func (s *Server) clearCookie(w http.ResponseWriter) {
 }
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	a := identity(r)
-	list, err := s.queries.Sessions(a.user.ID)
+	listing, err := s.queries.AuthenticationSessions(a.user.ID, a.session.ID)
 	if err != nil {
 		writeError(w, 500, "database error")
 		return
 	}
+	list := listing.Sessions
 	for i := range list {
 		list[i].Current = list[i].ID == a.session.ID
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"sessions": list})
+	writeJSON(w, 200, map[string]any{"sessions": list, "sessions_limited": listing.Limited, "total_active_sessions": listing.TotalActive, "total_active_sessions_exact": listing.TotalActiveExact, "session_limit": database.MaxAuthSessionsPerUser})
 }
 func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	a := identity(r)
@@ -495,6 +496,9 @@ func pairingError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		writeError(w, 404, "pairing not found")
+	case errors.Is(err, database.ErrPairingCapacity):
+		w.Header().Set("Retry-After", "60")
+		writeJSON(w, 429, map[string]string{"code": "pairing_capacity", "error": "Too many login QR codes. Cancel unused codes or wait for old codes to expire before creating another."})
 	case errors.Is(err, database.ErrPairingConnected):
 		writeError(w, 409, "Phone already connected. Revoke its session in Connected devices if needed.")
 	default:
@@ -593,6 +597,10 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	if err := s.queries.CreateUser(u, false, adminActor(r)); err != nil {
 		if errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired) {
 			adminSecurityFailure(w, err)
+			return
+		}
+		if errors.Is(err, database.ErrAccountCapacity) {
+			writeJSON(w, 409, map[string]string{"code": "account_capacity", "error": "The server has reached its 1,000-account limit, including disabled accounts."})
 			return
 		}
 		writeError(w, 409, "username already exists or account could not be created")

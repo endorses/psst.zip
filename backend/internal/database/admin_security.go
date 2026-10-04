@@ -201,6 +201,9 @@ func (q *Queries) CreateAdminSession(s Session, tokenHash, passwordHash []byte, 
 	if err = verifyAdminFactor(tx, s.UserID, security, code, recovery, now); err != nil {
 		return err
 	}
+	if err = reserveAuthSession(tx, s.UserID, "", now); err != nil {
+		return err
+	}
 	_, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at,recent_until,security_revision) VALUES(?,?,?,?,?,?,?,?)`, s.ID, s.UserID, tokenHash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC(), now.Add(AdminRecentDuration).Unix(), revision)
 	if err != nil {
 		return err

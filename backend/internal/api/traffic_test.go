@@ -137,3 +137,39 @@ func TestTrafficAccessRangeSettingsAndCoverage(t *testing.T) {
 	}
 	authRequest(t, env, "GET", "/admin/traffic", env.authToken, nil, 503)
 }
+
+func TestTrafficRetainedCoverageAndLifetime(t *testing.T) {
+	env := setupAuthFixture(t, false)
+	now := time.Now().UTC()
+	floor := now.AddDate(0, 0, 1-database.TrafficHistoryRetentionDays).Format("2006-01-02")
+	if err := env.queries.AddTraffic(now.AddDate(-2, 0, 0), database.TrafficTotals{UploadedBytes: 123, FilesUploaded: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.queries.AddTraffic(now, database.TrafficTotals{DownloadedBytes: 17}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.queries.PruneTrafficHistory(now); err != nil {
+		t.Fatal(err)
+	}
+	got := authRequest(t, env, "GET", "/admin/traffic", env.authToken, nil, 200)
+	if got["history_retained_from"] != floor || got["history_retention_days"] != float64(400) || got["lifetime"].(map[string]any)["total_bytes"] != float64(140) || got["totals"].(map[string]any)["total_bytes"] != float64(17) {
+		t.Fatal(got)
+	}
+	old := now.AddDate(0, 0, -400).Format("2006-01-02")
+	unavailable := authRequest(t, env, "GET", "/admin/traffic?from="+old+"&to="+floor, env.authToken, nil, 400)
+	if unavailable["code"] != "traffic_history_unavailable" || unavailable["history_retained_from"] != floor || unavailable["days"] != nil {
+		t.Fatal(unavailable)
+	}
+	today := now.Format("2006-01-02")
+	first := now.AddDate(0, 0, -366).Format("2006-01-02")
+	full := authRequest(t, env, "GET", "/admin/traffic?from="+first+"&to="+today, env.authToken, nil, 200)
+	if len(full["days"].([]any)) != 367 {
+		t.Fatal("maximum supported chart window changed")
+	}
+	authRequest(t, env, "GET", "/admin/traffic?from="+now.AddDate(0, 0, -367).Format("2006-01-02")+"&to="+today, env.authToken, nil, 400)
+	future := now.AddDate(0, 0, 1).Format("2006-01-02")
+	invalid := authRequest(t, env, "GET", "/admin/traffic?from="+future+"&to="+future, env.authToken, nil, 400)
+	if invalid["code"] != "traffic_history_unavailable" {
+		t.Fatal(invalid)
+	}
+}

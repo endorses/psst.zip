@@ -54,3 +54,41 @@ func TestCleanupSkipsBusyTransferAndRetries(t *testing.T) {
 		t.Fatalf("retry did not clean: %v", err)
 	}
 }
+
+func TestSweepRetainsTrafficTotalsAndContinuesAfterRetentionFailure(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := database.NewQueries(db)
+	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := q.AddTraffic(now.AddDate(0, 0, -500), database.TrafficTotals{DownloadedBytes: 42}); err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(q, files, time.Hour)
+	worker.sweep()
+	history, err := q.TrafficHistory(now)
+	if err != nil || len(history.Days) != 0 || history.Lifetime.DownloadedBytes != 42 {
+		t.Fatalf("retention lost lifetime totals or retained old detail: %+v / %v", history, err)
+	}
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM traffic_days`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("sweep did not prune daily rows: %d / %v", rows, err)
+	}
+	if err := q.CreateTransfer("expired-during-retention-failure", now.Add(-time.Hour), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE traffic_retention`); err != nil {
+		t.Fatal(err)
+	}
+	worker.sweep()
+	if _, err := q.GetTransfer("expired-during-retention-failure"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("failed retention blocked file cleanup: %v", err)
+	}
+}

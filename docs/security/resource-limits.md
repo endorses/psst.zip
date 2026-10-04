@@ -105,7 +105,8 @@ repeated-cursor or oversized scan leaves existing local history intact rather
 than treating unseen records as deleted. Very large native history still needs
 a separate incremental browsing UX; the hard bound is deliberate.
 
-Account/session metadata retention, audit/traffic-table retention, enforceable
-traffic budgets are separate plan requirements. Manual [incident controls](incident-response.md)
+Account/session records and daily traffic have separate
+[metadata limits and retention](metadata-retention.md). A bounded security audit
+trail remains a separate plan requirement. Manual [incident controls](incident-response.md)
 can pause payload traffic or shut down an account; storage policy itself does
 not enforce a hosting provider's traffic bill.

@@ -158,6 +158,21 @@
   beforeNavigate((navigation) => {
     if (securityMutationActive) navigation.cancel();
   });
+  interface SessionsResponse {
+    sessions: Session[];
+    total_active_sessions: number;
+    total_active_sessions_exact: boolean;
+    sessions_limited: boolean;
+  }
+  let totalActiveSessions = $state(0),
+    totalActiveSessionsExact = $state(true),
+    sessionsLimited = $state(false);
+  function updateSessions(result: SessionsResponse) {
+    sessions = result.sessions;
+    totalActiveSessions = result.total_active_sessions;
+    totalActiveSessionsExact = result.total_active_sessions_exact;
+    sessionsLimited = result.sessions_limited;
+  }
   let users = $state<User[]>([]),
     sessions = $state<Session[]>([]),
     transfers = $state<Resource[]>([]),
@@ -233,8 +248,8 @@
               if (result.status !== "pending") pairingQr = "";
               if (result.status === "connected") {
                 pairedDevice = result.device_name || "Phone";
-                const devices = await request<{ sessions: Session[] }>("/auth/sessions");
-                if (owner === epoch) sessions = devices.sessions;
+                const devices = await request<SessionsResponse>("/auth/sessions");
+                if (owner === epoch) updateSessions(devices);
               }
             }
           }
@@ -454,6 +469,9 @@
     historyPrevious = [];
     historyLoading = false;
     sessions = [];
+    totalActiveSessions = 0;
+    totalActiveSessionsExact = true;
+    sessionsLimited = false;
     users = [];
     usersCursor = "";
     usersNext = null;
@@ -630,8 +648,8 @@
       if (next === "History") await refreshHistory(owner);
       if (next === "Receive" && receiveId) await refreshReceived(receiveId, owner);
       if (next === "Devices") {
-        const result = await request<{ sessions: Session[] }>("/auth/sessions");
-        if (owner === epoch) sessions = result.sessions;
+        const result = await request<SessionsResponse>("/auth/sessions");
+        if (owner === epoch) updateSessions(result);
       }
       if (next === "Users") {
         const result = await loadUsersPage(usersCursor);
@@ -1381,7 +1399,17 @@
             >
           {/if}
           <h2>{user.role === "admin" ? "Signed-in sessions" : "Connected devices"}</h2>
-          <p class="muted">Revoke a session to sign that device out.</p>
+          <p class="muted">
+            Revoke a session to sign that device out. Up to 32 active sessions are allowed per
+            account. Signing in or connecting another device at the limit signs out an older
+            eligible session.
+          </p>
+          {#if sessionsLimited}<p class="notice" role="status">
+              Showing {sessions.length} of {totalActiveSessionsExact
+                ? ""
+                : "at least "}{totalActiveSessions} active sessions. Older sessions are being removed
+              to apply the session limit. Reload this page to check the remaining sessions.
+            </p>{/if}
           {#each sessions as session}<article class="resource">
               <div>
                 <strong
@@ -1396,9 +1424,14 @@
                 disabled={busy}
                 onclick={() =>
                   act(async () => {
+                    const owner = epoch;
                     await request(`/auth/sessions/${session.id}`, "DELETE");
+                    if (owner !== epoch) return;
                     if (session.current) clearAccount();
-                    else sessions = sessions.filter((s) => s.id !== session.id);
+                    else {
+                      const result = await request<SessionsResponse>("/auth/sessions");
+                      if (owner === epoch) updateSessions(result);
+                    }
                   })}>Revoke session</button
               >
             </article>{/each}

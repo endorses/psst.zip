@@ -44,6 +44,9 @@ func (w *Worker) sweep() {
 	if err := w.queries.PruneAuthentication(); err != nil {
 		log.Printf("cleanup: expired authentication credentials: %v", err)
 	}
+	if _, err := w.queries.PruneTrafficHistory(time.Now()); err != nil {
+		log.Printf("cleanup: traffic history retention failed")
+	}
 	w.sweepTransfers()
 	w.sweepExhaustedPayloads()
 	w.sweepSlots()

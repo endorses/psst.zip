@@ -164,6 +164,10 @@ during upgrade. Factor changes revoke existing sessions. See
 for enrollment, recovery codes, database protection and the explicit
 `server admin-factor-reset --username NAME --confirm` operator command.
 
+[Authentication metadata limits](docs/security/metadata-retention.md) cap accounts,
+active sessions and pairing records. Successful sign-in at the session limit
+replaces an older session; legacy excess records are reconciled in bounded batches.
+
 For incidents, administrators can persistently pause payload transfers or shut
 down an account and revoke all its links. These are separate from disabling
 future sign-in. See [incident response and local recovery](docs/security/incident-response.md)
@@ -438,6 +442,12 @@ uncertain outstanding leases become conservative charges after a crash. See
 [traffic limits and recovery](docs/security/traffic-limits.md) for defaults,
 measurement boundaries, API routes, cycle rules and deployment limitations.
 The monitoring allowance described above remains observational.
+
+Daily traffic detail is retained for 400 UTC dates. Measured lifetime totals stay
+available after old detail is removed. The date picker and API expose the retained
+range; an unavailable period is not reported as zero. See
+[metadata retention](docs/security/metadata-retention.md) for pruning, outstanding
+leases and upgrade behavior.
 
 ## Configuration
 

@@ -24,19 +24,27 @@ type trafficCycle struct {
 	CountedBytes   int64  `json:"counted_bytes"`
 	RemainingBytes *int64 `json:"remaining_bytes"`
 }
+type trafficHistoryUnavailable struct{ RetainedFrom string }
+
+func (e *trafficHistoryUnavailable) Error() string {
+	return "daily traffic history is outside retained coverage"
+}
+
 type trafficReport struct {
-	RecordingStartedAt string                   `json:"recording_started_at"`
-	UpdatedAt          string                   `json:"updated_at"`
-	Status             string                   `json:"status"`
-	Timezone           string                   `json:"timezone"`
-	Settings           database.TrafficSettings `json:"settings"`
-	Today              database.TrafficTotals   `json:"today"`
-	Month              database.TrafficTotals   `json:"month"`
-	Lifetime           database.TrafficTotals   `json:"lifetime"`
-	Range              trafficRange             `json:"range"`
-	Totals             database.TrafficTotals   `json:"totals"`
-	Days               []database.TrafficDay    `json:"days"`
-	Cycle              trafficCycle             `json:"cycle"`
+	HistoryRetainedFrom  string                   `json:"history_retained_from"`
+	HistoryRetentionDays int                      `json:"history_retention_days"`
+	RecordingStartedAt   string                   `json:"recording_started_at"`
+	UpdatedAt            string                   `json:"updated_at"`
+	Status               string                   `json:"status"`
+	Timezone             string                   `json:"timezone"`
+	Settings             database.TrafficSettings `json:"settings"`
+	Today                database.TrafficTotals   `json:"today"`
+	Month                database.TrafficTotals   `json:"month"`
+	Lifetime             database.TrafficTotals   `json:"lifetime"`
+	Range                trafficRange             `json:"range"`
+	Totals               database.TrafficTotals   `json:"totals"`
+	Days                 []database.TrafficDay    `json:"days"`
+	Cycle                trafficCycle             `json:"cycle"`
 }
 
 func calendarStart(now time.Time, day int) time.Time {
@@ -59,18 +67,22 @@ func billingCycle(now time.Time, day int) (time.Time, time.Time) {
 }
 func (s *Server) trafficReport(now time.Time, from, to string) (trafficReport, error) {
 	var report trafficReport
-	state, err := s.queries.TrafficState()
+	history, err := s.queries.TrafficHistory(now)
 	if err != nil {
 		return report, err
 	}
-	days, err := s.queries.TrafficDays()
-	if err != nil {
-		return report, err
+	state, days := history.State, history.Days
+	if from < history.RetainedFrom || to > now.UTC().Format(dateLayout) {
+		return report, &trafficHistoryUnavailable{history.RetainedFrom}
 	}
 	today := now.UTC().Format(dateLayout)
 	month := calendarStart(now, 1).Format(dateLayout)
 	start, end := billingCycle(now, state.Settings.CycleStartDay)
+	if month < history.RetainedFrom || start.Format(dateLayout) < history.RetainedFrom {
+		return report, database.ErrTrafficAccounting
+	}
 	report = trafficReport{
+		HistoryRetainedFrom: history.RetainedFrom, HistoryRetentionDays: database.TrafficHistoryRetentionDays, Lifetime: history.Lifetime,
 		RecordingStartedAt: state.RecordingStartedAt, UpdatedAt: state.UpdatedAt, Status: "ok", Timezone: "UTC",
 		Settings: state.Settings, Range: trafficRange{from, to}, Days: []database.TrafficDay{},
 		Cycle: trafficCycle{Start: start.Format(dateLayout), End: end.Format(dateLayout)},
@@ -81,7 +93,7 @@ func (s *Server) trafficReport(now time.Time, from, to string) (trafficReport, e
 	byDate := make(map[string]database.TrafficTotals, len(days))
 	for _, d := range days {
 		byDate[d.Date] = d.TrafficTotals
-		targets := []*database.TrafficTotals{&report.Lifetime}
+		targets := []*database.TrafficTotals{}
 		if d.Date == today {
 			targets = append(targets, &report.Today)
 		}
@@ -130,13 +142,19 @@ func (s *Server) getTraffic(w http.ResponseWriter, r *http.Request) {
 	}
 	first, e1 := time.Parse(dateLayout, from)
 	last, e2 := time.Parse(dateLayout, to)
-	// Limit only chart response size. Measured lifetime totals remain unbounded.
+	// Limit chart response size independently of finite retained daily detail.
+	// Lifetime counters remain durable after detail is pruned.
 	if e1 != nil || e2 != nil || last.Before(first) || last.Sub(first) > 366*24*time.Hour {
 		writeError(w, 400, "choose a valid UTC date range of at most 367 days")
 		return
 	}
 	report, err := s.trafficReport(now, from, to)
 	if err != nil {
+		var unavailable *trafficHistoryUnavailable
+		if errors.As(err, &unavailable) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Choose dates within the retained daily traffic history.", "code": "traffic_history_unavailable", "history_retained_from": unavailable.RetainedFrom, "history_retention_days": database.TrafficHistoryRetentionDays})
+			return
+		}
 		writeError(w, 503, "traffic accounting is unavailable")
 		return
 	}

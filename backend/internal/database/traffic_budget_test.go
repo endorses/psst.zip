@@ -224,7 +224,10 @@ func TestTrafficMigrationSeedsGlobalWithoutInventingOwners(t *testing.T) {
 		}
 	}
 	now := time.Now()
-	if err = NewQueries(db).AddTraffic(now, TrafficTotals{UploadedBytes: 11, DownloadedBytes: 22}); err != nil {
+	if err = func() error {
+		_, e := db.Exec(`INSERT INTO traffic_days(date,uploaded_bytes,downloaded_bytes) VALUES(?,11,22)`, now.UTC().Format("2006-01-02"))
+		return e
+	}(); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

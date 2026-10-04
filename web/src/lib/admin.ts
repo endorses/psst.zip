@@ -14,6 +14,8 @@ export interface TrafficSettings {
 }
 export interface TrafficReport {
   recording_started_at: string;
+  history_retained_from: string;
+  history_retention_days: number;
   updated_at: string;
   status: "ok" | "degraded";
   timezone: "UTC";

@@ -13,6 +13,8 @@ async function admin(page: Page) {
     route.fulfill({
       json: {
         recording_started_at: "2026-10-01T00:00:00Z",
+        history_retained_from: "2025-08-31",
+        history_retention_days: 400,
         updated_at: "2026-10-04T00:00:00Z",
         status: "ok",
         timezone: "UTC",

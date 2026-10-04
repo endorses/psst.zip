@@ -46,6 +46,17 @@ func (q *Queries) CreateUser(u User, bootstrap bool, actors ...*AdminActor) erro
 	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
 		return err
 	}
+	// Serialize the capacity check with every account creator, including bootstrap.
+	if _, err = tx.Exec(`UPDATE auth_metadata_cleanup SET user_cursor=user_cursor WHERE id=1`); err != nil {
+		return err
+	}
+	full, err := authCountAtLeast(tx, "users", "", MaxAuthUsers)
+	if err != nil {
+		return err
+	}
+	if full && !bootstrap {
+		return ErrAccountCapacity
+	}
 	query := `INSERT INTO users (id,username,role,password_hash,must_change_password) VALUES (?,?,?,?,?)`
 	if bootstrap {
 		query = `INSERT INTO users (id,username,role,password_hash,must_change_password) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM users)`
@@ -168,15 +179,29 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 	return tx.Commit()
 }
 func (q *Queries) CreateSession(s Session, hash []byte, passwordHash []byte) error {
-	res, err := q.db.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) SELECT ?,id,?,?,?,? FROM users WHERE id=? AND disabled=0 AND password_hash=? AND NOT EXISTS(SELECT 1 FROM admin_security a WHERE a.user_id=users.id AND a.secret!='')`, s.ID, hash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC(), s.UserID, passwordHash)
+	tx, err := q.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE users SET disabled=disabled WHERE id=? AND disabled=0 AND password_hash=? AND NOT EXISTS(SELECT 1 FROM admin_security a WHERE a.user_id=users.id AND a.secret!='')`, s.UserID, passwordHash)
 	if err != nil {
 		return err
 	}
 	n, err := res.RowsAffected()
-	if err == nil && n == 0 {
+	if err != nil {
+		return err
+	}
+	if n != 1 {
 		return sql.ErrNoRows
 	}
-	return err
+	if err = reserveAuthSession(tx, s.UserID, "", time.Now()); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, s.ID, s.UserID, hash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC()); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (q *Queries) SessionByHash(hash []byte) (*Session, *User, error) {
 	s := &Session{}
@@ -190,22 +215,8 @@ func (q *Queries) SessionByHash(hash []byte) (*Session, *User, error) {
 	return s, u, err
 }
 func (q *Queries) Sessions(user string) ([]Session, error) {
-	rows, err := q.db.Query(`SELECT id,user_id,device_name,created_at,expires_at FROM sessions WHERE user_id=?`, user)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Session{}
-	for rows.Next() {
-		var s Session
-		if err := rows.Scan(&s.ID, &s.UserID, &s.DeviceName, &s.CreatedAt, &s.ExpiresAt); err != nil {
-			return nil, err
-		}
-		if time.Now().Before(s.ExpiresAt) {
-			out = append(out, s)
-		}
-	}
-	return out, rows.Err()
+	list, err := q.AuthenticationSessions(user, "")
+	return list.Sessions, err
 }
 func (q *Queries) DeleteSession(id, user string, actors ...*AdminActor) error {
 	tx, err := q.db.Begin()
@@ -245,10 +256,30 @@ func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session str
 		return err
 	}
 	defer tx.Rollback()
+	if _, err = tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, user); err != nil {
+		return err
+	}
+	if err = pruneUserAuth(tx, user, time.Now()); err != nil {
+		return err
+	}
 	if replaceID != "" {
 		if err := cancelPairing(tx, replaceID, user, session); err != nil {
 			return err
 		}
+	}
+	full, err := authCountAtLeast(tx, "pairings", user, MaxAuthPairingsPerUser)
+	if err != nil {
+		return err
+	}
+	if full {
+		return ErrPairingCapacity
+	}
+	var pending int
+	if err = tx.QueryRow(`SELECT COUNT(*) FROM (SELECT 1 FROM pairings WHERE user_id=? AND status='pending' AND substr(expires_at,1,19)>=? LIMIT ?)`, user, authTimePrefix(time.Now()), MaxAuthPendingPairingsPerUser).Scan(&pending); err != nil {
+		return err
+	}
+	if pending >= MaxAuthPendingPairingsPerUser {
+		return ErrPairingCapacity
 	}
 	res, err := tx.Exec(`INSERT INTO pairings(id,code_hash,user_id,session_id,expires_at)
  SELECT ?,?,s.user_id,s.id,? FROM sessions s JOIN users u ON u.id=s.user_id
@@ -341,6 +372,9 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 	if u.MustChangePassword {
 		return nil, ErrPasswordChangeRequired
 	}
+	if err = reserveAuthSession(tx, user, parentSession, time.Now()); err != nil {
+		return nil, err
+	}
 	_, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, s.ID, u.ID, tokenHash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC())
 	if err != nil {
 		return nil, err
@@ -382,20 +416,4 @@ func (q *Queries) OwnedIDs(kind, user string) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-// PruneAuthentication removes expired session and pairing credentials. Session
-// foreign keys also invalidate outstanding pairing grants from those sessions.
-func (q *Queries) PruneAuthentication() error {
-	if _, err := q.db.Exec(`DELETE FROM admin_pending_factors WHERE expires_at<=?`, time.Now().Unix()); err != nil {
-		return err
-	}
-	if _, err := q.db.Exec(`DELETE FROM sessions WHERE julianday(substr(expires_at,1,19))<=julianday('now')`); err != nil {
-		return err
-	}
-	// UTC timestamps include a Go zone suffix; SQLite parses the date/time prefix.
-	// Retain terminal status briefly so an open pairing view can explain expiry.
-	// Expired grants are never redeemable during this observation window.
-	_, err := q.db.Exec(`DELETE FROM pairings WHERE julianday(substr(expires_at,1,19))<=julianday('now','-15 minutes')`)
-	return err
 }
