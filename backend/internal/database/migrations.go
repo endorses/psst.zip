@@ -74,6 +74,7 @@ var migrations = []string{
 	`CREATE UNIQUE INDEX pairing_id ON pairings(id)`,
 	`ALTER TABLE pairings ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','connected','canceled'))`,
 	`ALTER TABLE pairings ADD COLUMN device_name TEXT NOT NULL DEFAULT ''`,
+	`CREATE TABLE server_settings (id INTEGER PRIMARY KEY CHECK(id=1), max_file_size INTEGER NOT NULL CHECK(max_file_size>0))`,
 }
 
 func runMigrations(db *sql.DB) error {

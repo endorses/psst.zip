@@ -7,8 +7,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.TransferHistoryEntity
+import zip.psst.android.data.spoolUpload
+import zip.psst.android.data.uploadChunkedFile
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
+import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.EncryptedManifest
 import zip.psst.shared.model.FileMetadata
@@ -16,7 +19,6 @@ import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.TransferLimits
 import zip.psst.shared.model.UrlHelper
-import java.io.ByteArrayOutputStream
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CancellationException
@@ -48,7 +50,13 @@ data class SendUiState(
     val transferId: String? = null,
     val encryptionKey: String? = null,
     val downloadUrl: String? = null,
-)
+    val maxFileBytes: Long? = null,
+    val completionConsumed: Boolean = false,
+) {
+    fun pendingCompletion(): Pair<String, String>? =
+        if (isUploading || completionConsumed) null
+        else transferId?.let { id -> encryptionKey?.let { id to it } }
+}
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -82,15 +90,41 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun consumeCompletion(): Pair<String, String>? {
+        val state = _uiState.value
+        val completion = state.pendingCompletion() ?: return null
+        _uiState.value = state.copy(completionConsumed = true)
+        return completion
+    }
+
+    fun refreshLimit() {
+        val origin = app.prefs.getServerUrl()
+        if (origin.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val client = ApiClient.anonymous(origin)
+            try {
+                val limit = client.limits.get().maxFileSize
+                if (app.prefs.getServerUrl() == origin)
+                    _uiState.update { it.copy(maxFileBytes = limit) }
+            } catch (_: Exception) {
+                /* Upload retries policy retrieval and surfaces failure. */
+            } finally {
+                client.close()
+            }
+        }
+    }
+
     fun addFiles(uris: List<Uri>) {
         val context = getApplication<PsstApplication>()
         val newFiles = uris.mapNotNull { uri -> resolveFileInfo(context, uri) }
-        val rejected = newFiles.any { it.size > TransferLimits.MAX_FILE_BYTES }
-        val accepted = newFiles.filter { it.size <= TransferLimits.MAX_FILE_BYTES }
+        val limit = _uiState.value.maxFileBytes
+        val rejected = limit != null && newFiles.any { it.size > limit }
+        val accepted = newFiles.filter { limit == null || it.size <= limit }
         _uiState.update {
             it.copy(
                 files = (it.files + accepted).distinctBy { file -> file.uri },
-                error = if (rejected) app.getString(zip.psst.android.R.string.file_limit) else null,
+                error =
+                    if (rejected) "A selected file exceeds this server’s per-file limit" else null,
             )
         }
     }
@@ -109,15 +143,6 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isUploading) return
         val files = _uiState.value.files
         if (files.isEmpty()) return
-        if (files.any { it.size > TransferLimits.MAX_FILE_BYTES }) {
-            _uiState.update {
-                it.copy(
-                    error =
-                        app.getString(zip.psst.android.R.string.ui_files_up_to_25_mib_are_supported)
-                )
-            }
-            return
-        }
 
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
@@ -165,12 +190,18 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 var deletionToken: String? = null
                 var completed = false
                 try {
+                    val maxBytes = client.limits.get().maxFileSize
+                    _uiState.update { it.copy(maxFileBytes = maxBytes) }
+                    require(files.size <= TransferLimits.MAX_FILES) { "Too many files" }
+                    require(files.all { it.size <= maxBytes }) {
+                        "A file exceeds this server’s per-file limit"
+                    }
                     val key = CryptoProvider.generateKey()
                     val base64Key =
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
 
                     val totalBytes = files.sumOf { it.size }
-                    var totalEncryptedBytes = totalBytes + files.size * 28L
+                    var totalEncryptedBytes = files.sumOf { ChunkedFileCrypto.wireSize(it.size) }
 
                     // Create transfer
                     val transfer = client.transfers.create()
@@ -205,65 +236,40 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     for ((index, fileInfo) in files.withIndex()) {
                         _uiState.update { it.copy(currentFileIndex = index, isPreparing = true) }
 
-                        val inputStream =
-                            context.contentResolver.openInputStream(fileInfo.uri)
-                                ?: throw Exception("Cannot read file: ${fileInfo.name}")
-
-                        val plaintext =
-                            inputStream.use { input ->
-                                val output = ByteArrayOutputStream()
-                                val buffer = ByteArray(8192)
-                                while (true) {
-                                    ensureActive()
-                                    val count = input.read(buffer)
-                                    if (count == -1) break
-                                    require(
-                                        output.size() + count <= TransferLimits.MAX_FILE_BYTES
-                                    ) {
-                                        "Files up to 25 MiB are supported"
+                        val snapshot = spoolUpload(context, fileInfo.uri, maxBytes)
+                        try {
+                            totalEncryptedBytes +=
+                                ChunkedFileCrypto.wireSize(snapshot.length()) -
+                                    ChunkedFileCrypto.wireSize(fileInfo.size)
+                            _uiState.update {
+                                it.copy(totalUploadBytes = totalEncryptedBytes, isPreparing = false)
+                            }
+                            ensureActive()
+                            check(app.prefs.historyAccess.value == access)
+                            val metadata =
+                                uploadChunkedFile(
+                                    client,
+                                    transfer.id,
+                                    snapshot,
+                                    fileInfo.name,
+                                    fileInfo.mimeType,
+                                    key,
+                                ) { uploaded ->
+                                    _uiState.update {
+                                        it.copy(
+                                            uploadProgress =
+                                                ((uploadedBytes + uploaded).toFloat() /
+                                                        totalEncryptedBytes)
+                                                    .coerceIn(0f, 1f),
+                                            uploadedBytes = uploadedBytes + uploaded,
+                                        )
                                     }
-                                    output.write(buffer, 0, count)
                                 }
-                                output.toByteArray()
-                            }
-
-                        // Encrypt the file
-                        val nonce = CryptoProvider.generateNonce()
-                        val ciphertext = CryptoProvider.encrypt(key, nonce, plaintext)
-                        val encryptedData = nonce + ciphertext
-                        totalEncryptedBytes += plaintext.size.toLong() - fileInfo.size
-                        _uiState.update { it.copy(totalUploadBytes = totalEncryptedBytes) }
-
-                        // Upload via tus
-                        ensureActive()
-                        check(app.prefs.historyAccess.value == access)
-                        _uiState.update { it.copy(isPreparing = false) }
-                        val resourceUrl =
-                            client.uploadFile(transferId = transfer.id, data = encryptedData) {
-                                uploaded ->
-                                val progress =
-                                    (uploadedBytes + uploaded).toFloat() /
-                                        totalEncryptedBytes.toFloat()
-                                _uiState.update {
-                                    it.copy(
-                                        uploadProgress = progress.coerceIn(0f, 1f),
-                                        uploadedBytes = uploadedBytes + uploaded,
-                                    )
-                                }
-                            }
-
-                        uploadedBytes += encryptedData.size
-
-                        // Extract blob ID from resource URL
-                        val blobId = resourceUrl.substringAfterLast("/")
-                        fileMetadataList.add(
-                            FileMetadata(
-                                name = fileInfo.name,
-                                size = plaintext.size.toLong(),
-                                mimeType = fileInfo.mimeType,
-                                blobId = blobId,
-                            )
-                        )
+                            uploadedBytes += ChunkedFileCrypto.wireSize(metadata.size)
+                            fileMetadataList.add(metadata)
+                        } finally {
+                            snapshot.delete()
+                        }
                     }
 
                     // Create and upload encrypted manifest

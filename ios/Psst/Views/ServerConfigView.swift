@@ -3,39 +3,73 @@ import SwiftUI
 struct ServerConfigView: View {
     @Environment(ServerConfigManager.self) private var serverConfig
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(AppConstants.appearanceKey, store: AppConstants.sharedDefaults)
-    private var appearance = AppAppearance.system
-    var isInitialSetup = false
+    @AppStorage(AppConstants.appearanceKey, store: AppConstants.sharedDefaults) private var appearance = AppAppearance.system
+    @State private var editing = false
+    @State private var checking = false
+    @State private var connection: String?
     var body: some View {
         Form {
             Section("Appearance") {
                 Picker("Theme", selection: $appearance) {
-                    ForEach(AppAppearance.allCases, id: \.self) { value in
-                        Text(value.title).tag(value)
+                    ForEach(AppAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }.pickerStyle(.menu)
+            }
+            Section("Server & account") {
+                if let session = serverConfig.session {
+                    LabeledContent("Username", value: session.username)
+                    LabeledContent("Server") { Text(session.serverURL).textSelection(.enabled) }
+                    if serverConfig.needsSignIn {
+                        Text("Your session expired. Sign in again.").foregroundStyle(PsstTheme.warning)
                     }
+                } else {
+                    Text("Not signed in")
                 }
-                .pickerStyle(.menu)
+                Button(serverConfig.isConfigured ? "Change server or account" : "Sign in") { editing = true }
+            }
+            Section("Connection") {
+                if !serverConfig.serverURL.isEmpty {
+                    Label(serverConfig.serverURL.hasPrefix("https://") ? "Encrypted connection" : "HTTP · Unencrypted connection", systemImage: serverConfig.serverURL.hasPrefix("https://") ? "lock" : "lock.open")
+                    Button("Test connection") {
+                        checking = true
+                        Task {
+                            defer { checking = false }
+                            do { try await serverConfig.testConnection(server: serverConfig.serverURL); connection = "Connected" }
+                            catch { connection = "Could not connect. Check the server address and network." }
+                        }
+                    }.disabled(checking)
+                }
+                if checking {
+                    ProgressView()
+                }
+                if let connection {
+                    Text(connection).font(.footnote)
+                }
             }
             if serverConfig.isConfigured {
-                Section("Account") {
-                    Text(serverConfig.indicator).textSelection(.enabled)
-                    LogoutButton()
-                }
-            }
-            Section("Server login") { LoginFields() }
-            Section {
-                Text("Use a server address other people can reach. Your files are encrypted automatically before upload.")
-                    .foregroundStyle(PsstTheme.secondary)
+                Section { LogoutButton() }
             }
         }
-        .modifier(PsstStyle())
-        .modifier(PsstAppearance())
-        .navigationTitle(LocalizedStringKey(isInitialSetup ? "psst.zip" : "Settings"))
-        .toolbar {
-            if !isInitialSetup {
-                Button("Done") { dismiss() }
-            }
+        .modifier(PsstStyle()).modifier(PsstAppearance())
+        .sheet(isPresented: $editing) { NavigationStack { AccountSetupView() } }
+        .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+    }
+}
+
+/// Fields are local drafts; only successful authentication installs a new session.
+struct AccountSetupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var busy = false
+    var body: some View {
+        Form {
+            Section("Server login") { LoginFields(onSuccess: { dismiss() }, onBusyChanged: { busy = $0 }) }
+            Section { Text("Use a server address other people can reach. Your files are encrypted automatically before upload.").foregroundStyle(PsstTheme.secondary) }
         }
+        .navigationTitle("Server & account").navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(busy)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
+        .interactiveDismissDisabled(busy)
+        .modifier(PsstStyle()).modifier(PsstAppearance())
     }
 }
 

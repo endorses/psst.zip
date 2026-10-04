@@ -23,6 +23,7 @@ import zip.psst.android.ui.screens.ReceiveScreen
 import zip.psst.android.ui.screens.ScanScreen
 import zip.psst.android.ui.screens.SendScreen
 import zip.psst.android.ui.screens.ServerConfigScreen
+import zip.psst.android.ui.screens.SettingsScreen
 import zip.psst.android.ui.screens.TransferDetailScreen
 import zip.psst.android.viewmodel.ScanViewModel
 
@@ -34,7 +35,9 @@ object Routes {
     const val TRANSFER_DETAIL = "transfer_detail/{transferId}/{encryptionKey}/{type}"
     const val HISTORY = "history"
     const val SCAN = "scan"
-    const val LOCAL_RECEIVED = "local_received"
+    const val DOWNLOAD_DETAIL = "download_detail"
+    const val SETTINGS = "settings"
+    const val DOWNLOADED_HISTORY = "history_downloaded"
 
     fun transferDetail(transferId: String, encryptionKey: String, type: String): String {
         val encodedKey = Uri.encode(encryptionKey)
@@ -81,17 +84,7 @@ fun PsstNavGraph(
     ) {
         composable(Routes.SERVER_CONFIG) {
             ServerConfigScreen(
-                onScan = { navController.navigate(Routes.SCAN) },
-                onLocalReceived = { navController.navigate(Routes.LOCAL_RECEIVED) },
                 onBack = { if (!navController.popBackStack()) navController.navigate(Routes.HOME) },
-                onSignedOut = {
-                    intendedRoute = Routes.HOME
-                    intendedAccess = zip.psst.android.data.HistoryAccess()
-                    navController.navigate(Routes.SERVER_CONFIG) {
-                        popUpTo(navController.graph.id) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
                 onConfigured = {
                     val now = prefs.historyAccess.value
                     val sameAccount =
@@ -99,31 +92,52 @@ fun PsstNavGraph(
                             (intendedAccess.accountId == now.accountId &&
                                 intendedAccess.serverUrl == now.serverUrl)
                     val destination = if (sameAccount) intendedRoute else Routes.HOME
+                    if (!sameAccount) onSharedUrisConsumed()
                     if (
                         sameAccount &&
                             navController.previousBackStackEntry?.destination?.route == destination
                     )
                         navController.popBackStack()
-                    else
-                        navController.navigate(destination) {
-                            popUpTo(navController.graph.id) { inclusive = true }
-                            launchSingleTop = true
-                        }
+                    else {
+                        navController.popBackStack(Routes.HOME, false)
+                        if (destination != Routes.HOME)
+                            navController.navigate(destination) { launchSingleTop = true }
+                    }
                     intendedAccess = now
+                },
+            )
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onAccount = {
+                    intendedRoute = Routes.HOME
+                    intendedAccess = prefs.historyAccess.value
+                    navController.navigate(Routes.SERVER_CONFIG)
+                },
+                onSignedOut = {
+                    onSharedUrisConsumed()
+                    intendedRoute = Routes.HOME
+                    intendedAccess = prefs.historyAccess.value
+                    navController.popBackStack(Routes.HOME, false)
                 },
             )
         }
 
         composable(Routes.HOME) {
             HomeScreen(
-                onScan = { navController.navigate(Routes.SCAN) },
+                onScan = {
+                    guestDownloads.clear()
+                    navController.navigate(Routes.SCAN)
+                },
                 onShareFiles = { navController.navigate(authenticatedRoute(Routes.SEND)) },
                 onReceiveFiles = { navController.navigate(authenticatedRoute(Routes.RECEIVE)) },
                 onHistory = { navController.navigate(Routes.HISTORY) },
                 onSettings = {
                     intendedRoute = Routes.HOME
                     intendedAccess = prefs.historyAccess.value
-                    navController.navigate(Routes.SERVER_CONFIG)
+                    navController.navigate(Routes.SETTINGS)
                 },
             )
         }
@@ -187,26 +201,41 @@ fun PsstNavGraph(
         }
 
         composable(Routes.SCAN) {
-            ScanScreen(onBack = { navController.popBackStack() }, viewModel = guestDownloads)
-        }
-        composable(Routes.LOCAL_RECEIVED) {
             ScanScreen(
                 onBack = { navController.popBackStack() },
-                showHistoryInitially = true,
+                onHistory = {
+                    navController.navigate(Routes.DOWNLOADED_HISTORY) {
+                        popUpTo(Routes.SCAN) { inclusive = true }
+                    }
+                },
                 viewModel = guestDownloads,
             )
         }
-
-        composable(Routes.HISTORY) {
-            HistoryScreen(
-                onLocalReceived = { navController.navigate(Routes.LOCAL_RECEIVED) },
-                onTransferClick = { entity ->
-                    navController.navigate(
-                        Routes.transferDetail(entity.id, entity.encryptionKey, entity.type)
-                    )
-                },
+        composable(Routes.DOWNLOAD_DETAIL) {
+            ScanScreen(
                 onBack = { navController.popBackStack() },
+                historical = true,
+                onHistory = { navController.popBackStack() },
+                viewModel = guestDownloads,
             )
+        }
+        listOf(Routes.HISTORY, Routes.DOWNLOADED_HISTORY).forEach { route ->
+            composable(route) {
+                HistoryScreen(
+                    guest = guestDownloads,
+                    initialFilter = if (route == Routes.DOWNLOADED_HISTORY) "downloaded" else "all",
+                    onDownloadClick = { record ->
+                        if (guestDownloads.open(record))
+                            navController.navigate(Routes.DOWNLOAD_DETAIL)
+                    },
+                    onTransferClick = { entity ->
+                        navController.navigate(
+                            Routes.transferDetail(entity.id, entity.encryptionKey, entity.type)
+                        )
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
         }
     }
 }

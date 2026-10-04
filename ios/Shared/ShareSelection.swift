@@ -6,7 +6,7 @@ enum ShareSelectionError: Error, Equatable {
     var message: String {
         switch self {
         case .tooLarge:
-            String(localized: "The share extension accepts files up to 10 MiB each because its memory is limited. Use the app for files up to 25 MiB.")
+            String(localized: "Files are encrypted in chunks. The server sets the maximum file size.")
         case .unreadable:
             String(localized: "Some selected files could not be loaded. Nothing was sent. Share the files again.")
         }
@@ -49,7 +49,7 @@ enum ShareSelection {
             guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
                 throw ShareSelectionError.unreadable
             }
-            guard size <= 10 * 1024 * 1024 else { throw ShareSelectionError.tooLarge }
+            guard size <= BufferedUpload.maxFileBytes else { throw ShareSelectionError.tooLarge }
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let copy = directory.appendingPathComponent(url.lastPathComponent)
             try FileManager.default.copyItem(at: url, to: copy)

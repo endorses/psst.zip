@@ -11,6 +11,26 @@ struct GuestFile: Codable, Equatable, Identifiable {
     var relativePath: String?
     var digest: String?
     var saved = false
+    var encoding = "chunked-v1"
+    var chunkSize: Int32 = 4_194_304
+    var encryptionID = ""
+}
+
+/// Old local entries remain openable; absent frame metadata never enables legacy wire decoding.
+extension GuestFile {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        size = try values.decode(Int64.self, forKey: .size)
+        mime = try values.decode(String.self, forKey: .mime)
+        relativePath = try values.decodeIfPresent(String.self, forKey: .relativePath)
+        digest = try values.decodeIfPresent(String.self, forKey: .digest)
+        saved = try values.decodeIfPresent(Bool.self, forKey: .saved) ?? false
+        encoding = try values.decodeIfPresent(String.self, forKey: .encoding) ?? ""
+        chunkSize = try values.decodeIfPresent(Int32.self, forKey: .chunkSize) ?? 0
+        encryptionID = try values.decodeIfPresent(String.self, forKey: .encryptionID) ?? ""
+    }
 }
 
 struct GuestDownload: Codable, Identifiable, Equatable {
@@ -122,25 +142,28 @@ final class GuestDownloadStore {
 
     /// An intent is persisted before publication; its digest reconciles a kill between rename and checkpoint.
     func save(_ data: Data, index: Int, record: inout GuestDownload) throws {
-        guard record.files.indices.contains(index), Int64(data.count) == record.files[index].size,
-              data.count <= BufferedUpload.maxFileBytes else { throw GuestError.invalidManifest }
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try data.write(to: temporary, options: [.atomic, .completeFileProtection])
+        try publish(temporary, index: index, record: &record)
+    }
+
+    func publish(_ temporary: URL, index: Int, record: inout GuestDownload) throws {
+        guard record.files.indices.contains(index),
+              let size = try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              Int64(size) == record.files[index].size else { throw GuestError.invalidManifest }
         let directory = "Received/Guest/" + record.id
-        let destinationDirectory = documents.appendingPathComponent(directory)
-        try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: documents.appendingPathComponent(directory), withIntermediateDirectories: true)
         let safe = try GuestFiles.filename(record.files[index].name)
         let relative = directory + "/" + UUID().uuidString + "-" + safe
         let destination = documents.appendingPathComponent(relative)
-        let temporary = destination.appendingPathExtension("pending")
         record.files[index].relativePath = relative
-        record.files[index].digest = GuestFiles.digest(data)
+        record.files[index].digest = try StreamedFiles.digest(temporary)
         record.files[index].saved = false
         try update(record)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        try data.write(to: temporary, options: [.atomic, .completeFileProtection])
         try Task.checkCancellation()
         try FileManager.default.moveItem(at: temporary, to: destination)
         record.files[index].saved = true
-        // If persistence fails, keep the published file and its prior intent for reconciliation.
         try update(record)
     }
 
@@ -151,8 +174,8 @@ final class GuestDownloadStore {
                 let value = next[row].files[index]
                 guard let path = value.relativePath, let destination = safeURL(path) else { continue }
                 try? FileManager.default.removeItem(at: destination.appendingPathExtension("pending"))
-                if !value.saved, let data = try? Data(contentsOf: destination), Int64(data.count) == value.size,
-                   GuestFiles.digest(data) == value.digest
+                if !value.saved, let size = try? destination.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) == value.size,
+                   (try? StreamedFiles.digest(destination)) == value.digest
                 {
                     next[row].files[index].saved = true
                 }

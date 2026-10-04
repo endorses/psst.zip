@@ -18,7 +18,7 @@ const server = spawn(join(directory, "server"), [], {
     ADMIN_PASSWORD: "Test-admin-password-2026",
     AUTH_ALLOW_INSECURE_HTTP: "true",
     PUBLIC_URL: "http://127.0.0.1:4173",
-    LISTEN_ADDR: "127.0.0.1:8080",
+    LISTEN_ADDR: `127.0.0.1:${process.env.PSST_TEST_BACKEND_PORT || "8080"}`,
     DB_PATH: join(directory, "psst.db"),
     STORAGE_PATH: join(directory, "files"),
   },

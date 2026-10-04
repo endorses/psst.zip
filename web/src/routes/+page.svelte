@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import QRCode from "qrcode";
+  import { brandedQr } from "$lib/branded-qr";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import ServerSettings from "$lib/components/ServerSettings.svelte";
+  import ScanPanel from "$lib/components/ScanPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import LinkCard from "$lib/components/LinkCard.svelte";
   import RevokeDialog from "$lib/components/RevokeDialog.svelte";
@@ -20,7 +22,7 @@
   } from "$lib/account";
   import { createSlot, getSlotInfo } from "$lib/api";
   import { generateKey, exportKey } from "$lib/crypto";
-  type Tab = "Send" | "Receive" | "History" | "Devices" | "Account" | "Users" | "Settings";
+  type Tab = "Scan" | "Send" | "Receive" | "History" | "Devices" | "Account" | "Users" | "Settings";
   let receiveUnavailable = $state(false);
   let pendingFiles: File[] = [],
     pendingOwner = "";
@@ -39,8 +41,17 @@
   let pairingId = $state(""),
     pairingStatus = $state("pending"),
     pairedDevice = $state("");
-  const destinations = ["Send", "Receive", "History", "Settings", "Devices", "Account", "Users"];
-  const mainDestinations = ["Send", "Receive", "History", "Settings"] as const;
+  const destinations = [
+    "Scan",
+    "Send",
+    "Receive",
+    "History",
+    "Settings",
+    "Devices",
+    "Account",
+    "Users",
+  ];
+  const mainDestinations = ["Send", "Receive", "Scan", "History", "Settings"] as const;
   const settingsDestinations = [
     {
       name: "Account",
@@ -339,6 +350,27 @@
     links = { ...links, [id]: url };
     if (user) saveLinks(user.id, links);
   }
+  async function authorizeScanner(): Promise<boolean> {
+    const owner = epoch;
+    try {
+      const identity = await request<{ user: User }>("/auth/me");
+      if (owner !== epoch || tab !== "Scan" || !user) return false;
+      if (identity.user.id !== user.id) {
+        clearAccount();
+        error = "Your account changed. Sign in again.";
+        return false;
+      }
+      return true;
+    } catch (err) {
+      if (owner === epoch) {
+        if (err instanceof AccountError && err.status === 401) {
+          clearAccount();
+          error = "Your session ended. Sign in again.";
+        } else error = "Could not verify your session. Check your connection and try again.";
+      }
+      return false;
+    }
+  }
   async function select(next: Tab, navigate = true) {
     if (next === "Users" && user?.role !== "admin") next = "Settings";
     if (tab === "Devices" && next !== "Devices") await cancelPair();
@@ -438,14 +470,13 @@
       pairingStatus = "pending";
       pairedDevice = "";
       pairingExpires = result.expires_at;
-      const qr = await QRCode.toDataURL(
+      const qr = await brandedQr(
         JSON.stringify({
           type: "psst-pairing",
           version: 1,
           server_url: location.origin,
           code: result.code,
         }),
-        { scale: 8, margin: 4 },
       );
       if (owner === epoch && flow === pairingFlow) pairingQr = qr;
     });
@@ -579,7 +610,9 @@
             data-sveltekit-keepfocus
             data-sveltekit-noscroll
           >
-            <Icon name={item} /><span>{item}</span>
+            <Icon name={item === "Scan" ? "QRCode" : item} /><span
+              >{item === "Scan" ? "Scan QR code" : item}</span
+            >
           </a>
         {/each}
       </nav>
@@ -630,6 +663,7 @@
               onactive={(value) => (sendActive = value)}
             />
           </div>{/key}
+        {#if tab === "Scan"}<ScanPanel authorize={authorizeScanner} />{/if}
         {#if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>
           <div class="settings-list">
@@ -650,6 +684,7 @@
               </a>
             {/each}
           </div>
+          {#if user.role === "admin"}<ServerSettings />{/if}
         {:else if tab === "Receive"}<h1>Receive files</h1>
           <p class="muted">
             Anyone with your receive link can send you encrypted files within the server’s limits.

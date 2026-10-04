@@ -4,8 +4,13 @@
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
+
+	# The authenticated workspace scanner runs only in the root document.
+	@workspace path / /index.html
+	@otherDocuments not path / /index.html
+	header @otherDocuments Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	header @workspace Permissions-Policy "camera=(self), microphone=(), geolocation=()"
 
 	# API requests go to the backend
 	handle /api/* {

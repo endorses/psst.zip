@@ -9,7 +9,7 @@ struct ShareExtensionView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     Text(viewModel.config.indicator).font(.caption)
-                    Text("The share extension accepts files up to 10 MiB each because its memory is limited. Use the app for files up to 25 MiB.")
+                    Text(viewModel.config.limitDescription + " Files are encrypted in chunks.")
                         .font(.footnote).foregroundStyle(PsstTheme.secondary)
                     Text(String(format: String(localized: "%lld files · %@"), Int64(viewModel.fileCount), ByteCountFormatter.string(fromByteCount: viewModel.totalSize, countStyle: .file)))
                     if !viewModel.config.isConfigured || viewModel.config.needsSignIn {
@@ -43,6 +43,7 @@ struct ShareExtensionView: View {
                     }
                 }.padding()
             }
+            .task(id: viewModel.config.serverURL) { await viewModel.config.refreshLimit() }
             .navigationTitle("psst.zip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -7,6 +7,29 @@ import UIKit
 final class ServerConfigManager {
     private(set) var session: DeviceSession? = SecretStore.session
     var needsSignIn = false
+    private(set) var advertisedLimit: Int64?
+    private(set) var limitOrigin: String?
+    var limitDescription: String {
+        guard limitOrigin == serverURL, let advertisedLimit else { return "The server sets the maximum file size." }
+        return "Up to " + ByteCountFormatter.string(fromByteCount: advertisedLimit, countStyle: .binary) + " per file."
+    }
+
+    func refreshLimit() async {
+        let origin = serverURL
+        guard !origin.isEmpty else { return }
+        do {
+            let client = try ApiClient.companion.anonymous(origin: origin)
+            defer { client.close() }
+            let limits = try await client.limits.get()
+            guard serverURL == origin else { return }
+            limitOrigin = origin; advertisedLimit = limits.maxFileSize
+        } catch {
+            if serverURL == origin {
+                limitOrigin = nil; advertisedLimit = nil
+            }
+        }
+    }
+
     private var expiredObserver: NSObjectProtocol?
     init() {
         expiredObserver = NotificationCenter.default.addObserver(forName: .sessionExpired, object: nil, queue: .main) { [weak self] note in
@@ -84,6 +107,10 @@ final class ServerConfigManager {
                                                  body: ["code": code.code, "device_name": UIDevice.current.name])
         guard SecretStore.session == previous else { throw AccountError.changed }
         try install(data, server: server)
+    }
+
+    func testConnection(server: String) async throws {
+        try await validate(server: AccountHTTP.origin(server))
     }
 
     private func validate(server: String) async throws {

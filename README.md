@@ -35,9 +35,9 @@ account-pairing QRs ask before connecting the account.
 
 Scanned downloads save to **Downloads/psst.zip** on Android or the app's
 **Received/Guest** folder in iOS Files. Android 8–9 requests storage permission;
-later Android versions use scoped Downloads storage. **Received on this device**
-keeps guest downloads separate from owned links and remains available after
-sign-out. Open and Share use the saved copies, including offline or after the
+later Android versions use scoped Downloads storage. **History → Downloaded**
+shows saved downloads alongside the Sent and Receive links filters and remains
+available after sign-out. Local downloads retain their own storage and actions. Open and Share use the saved copies, including offline or after the
 link expires. Removing a local entry keeps its files and does not revoke the
 sender's link. Files never open automatically.
 
@@ -45,7 +45,7 @@ Keep the app in the foreground while receiving. Retry reuses files already
 saved, and delivery confirmation follows the final durable save; receipt retries
 do not download the files again. Server expiry, revocation or download limits
 can prevent retrying an unfinished file. Direct receiving supports up to 100
-files, each up to 25 MiB. See the [native verification workflow](docs/testing/scan-to-receive.md)
+files, with the upload limit chosen by the server administrator (25 MiB by default). See the [native verification workflow](docs/testing/scan-to-receive.md)
 for disposable interoperability fixtures and platform checks.
 
 Link screens put the QR and **Copy link** / **Share** actions first; expand details
@@ -240,14 +240,27 @@ disposable deployment.
 
 ## Current limits and protocol
 
-Clients currently encrypt whole files in memory. Web and native main apps limit
-files to 25 MiB; the iOS share extension limits files to 10 MiB and processes them
-one at a time. Web ZIP downloads are limited to 25 MiB total. The backend's larger
-`MAX_FILE_SIZE` setting does not imply the clients support files that large.
-Streaming encryption and 1 GiB transfers remain unfinished.
+An administrator can change **Settings → Server upload limit** in the web UI. The
+setting is stored on the server and defaults to 25 MiB per file. The operator's
+`MAX_FILE_SIZE` environment setting defines its ceiling (5 GiB by default, at most
+1 TiB). Web, Android, iOS and the iOS share extension read the server's current
+limit before uploading. New upload reservations are rejected above that limit;
+previous reservations and existing downloads remain available after it is lowered.
 
-Encrypted blobs use `12-byte nonce || AES-GCM ciphertext || 16-byte tag`.
-Encrypted manifests use `{ "files": [{ "name", "size", "mime_type", "blob_id" }] }`.
+Files are encrypted and decrypted sequentially in 4 MiB authenticated chunks,
+with bounded working buffers and native temporary-file publication. The complete
+file's size is subject to the administrator's limit; chunk size is internal.
+Large web saves use File System Access or OPFS on supported secure origins.
+Browsers without those APIs, including plain LAN HTTP pages, retain a 25 MiB
+small-file save fallback and explain how to use a capable HTTPS browser or the
+native app for larger files. Web ZIP downloads remain limited to 25 MiB total;
+individual large-file saves do not require ZIP aggregation.
+
+See [the chunked-v1 file format](docs/protocol/chunked-files.md) for authenticated
+framing and deterministic interoperability vectors. This development format
+requires updated clients; there is no old file-ciphertext fallback. Manifests stay
+encrypted using the transfer key and a nonce/ciphertext/GCM-tag envelope, and now
+include each file's encoding, chunk size and unique encryption context.
 Transfer and slot creation return `id`. Uploaders create a child transfer with
 `POST /api/v1/slots/{id}/transfers`, upload its files and manifest through the
 transfer endpoints, then complete it. Receivers download completed child
@@ -308,7 +321,7 @@ All backend settings are controlled via environment variables.
 | `LISTEN_ADDR`              | `:8080`              | Address the backend listens on                                   |
 | `STORAGE_PATH`             | `./data/files`       | Directory for encrypted file blobs                               |
 | `DB_PATH`                  | `./data/psst.db`     | Path to the SQLite database                                      |
-| `MAX_FILE_SIZE`            | `5368709120` (5 GB)  | Maximum upload size in bytes                                     |
+| `MAX_FILE_SIZE`            | `5368709120` (5 GiB) | Operator ceiling for the admin per-file plaintext-byte limit     |
 | `DEFAULT_EXPIRY`           | `24h`                | Transfer expiry duration (Go duration syntax)                    |
 | `CLEANUP_INTERVAL`         | `5m`                 | How often the cleanup worker runs                                |
 | `ALLOW_LEGACY_DELETION`    | `false`              | Allow deletion by ID for older resources without deletion tokens |
@@ -369,3 +382,22 @@ client application itself is trustworthy.
 ## License
 
 GNU Affero General Public License, version 3 only (AGPL-3.0-only). See [LICENSE](LICENSE).
+
+## Scanning and brand assets
+
+On mobile, opening Scan QR code starts its embedded camera after permission is
+granted. Paste link and Choose QR image remain available without camera access.
+Scan no longer contains a separate history screen: all records are available from
+History, with All, Sent, Receive links and Downloaded filters. Settings separates
+appearance and account information from the dedicated account-editing flow.
+
+The web scanner is available only after signing in. It decodes locally, asks
+before opening a transfer on another server, and never redeems mobile pairing
+codes. Webcam access requires HTTPS or the localhost development exception;
+signed-in paste/image decoding remains available on LAN HTTP. Public transfer
+links continue working without login.
+
+The shushing symbol appears in app icons, favicons and generated QR codes. QR
+rendering uses high error correction and preserves its outer quiet zone. Editable
+vector masters, font license and reproducible export instructions are in
+[assets/brand](assets/brand/README.md).

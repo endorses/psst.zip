@@ -25,32 +25,29 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import zip.psst.android.data.GuestDownload
 import zip.psst.android.data.SavedGuestFile
+import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
 import zip.psst.shared.model.ScanInputKind
-import com.journeyapps.barcodescanner.ScanContract
-import com.journeyapps.barcodescanner.ScanOptions
-import java.text.DateFormat
-import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanScreen(
     onBack: () -> Unit,
-    showHistoryInitially: Boolean = false,
+    onHistory: () -> Unit = {},
+    historical: Boolean = false,
     viewModel: ScanViewModel = viewModel(),
     account: ServerConfigViewModel = viewModel(),
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val accountState by account.uiState.collectAsState()
-    var history by remember { mutableStateOf(showHistoryInitially) }
+
     var paste by remember { mutableStateOf("") }
     var pairingConfirmation by remember { mutableStateOf(false) }
-    var removal by remember { mutableStateOf<GuestDownload?>(null) }
+
     var redownload by remember { mutableStateOf(false) }
     var stopConfirmation by remember { mutableStateOf(false) }
     val storage =
@@ -75,7 +72,6 @@ fun ScanScreen(
     }
     fun accept(raw: String) {
         if (!accountState.isTesting && viewModel.classify(raw)) {
-            history = false
             paste = ""
             when (viewModel.state.value.kind) {
                 ScanInputKind.DOWNLOAD -> receive()
@@ -84,27 +80,6 @@ fun ScanScreen(
             }
         }
     }
-    val scanner =
-        rememberLauncherForActivityResult(ScanContract()) { result ->
-            result.contents?.let(::accept)
-        }
-    fun launchScanner() {
-        scanner.launch(
-            ScanOptions()
-                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                .setPrompt("Scan a psst.zip QR code. Go back to paste a link.")
-                .setBeepEnabled(false)
-                .setOrientationLocked(false)
-        )
-    }
-    val camera =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) launchScanner()
-            else
-                viewModel.error(
-                    "Camera access was denied. Paste a link below, or enable Camera in Android app settings and scan again."
-                )
-        }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
             viewModel.selectUpload(it)
@@ -174,7 +149,7 @@ fun ScanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (history) "Received on this device" else "Scan QR code") },
+                title = { Text(if (historical) "Downloaded files" else "Scan QR code") },
                 navigationIcon = {
                     IconButton(onClick = ::back) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -201,77 +176,11 @@ fun ScanScreen(
             }
             state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error)
-            if (!state.busy && !accountState.isTesting) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(
-                        onClick = {
-                            viewModel.clear()
-                            history = false
-                        }
-                    ) {
-                        Text("Scan / Paste")
-                    }
-                    TextButton(
-                        onClick = {
-                            viewModel.refreshHistory()
-                            history = true
-                        }
-                    ) {
-                        Text("Received history")
-                    }
-                }
+            if (!state.busy && !accountState.isTesting && state.kind != null) {
+                if (!historical) TextButton(onClick = viewModel::clear) { Text("Scan again") }
+                TextButton(onClick = onHistory) { Text("View in History") }
             }
-            if (history) {
-                Text(
-                    "Local history stays on this device, across sign-outs. Removing an entry keeps its files and does not revoke the sender’s link.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (state.history.isEmpty()) Text("No files received yet")
-                state.history.forEach { record ->
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors =
-                            CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            ),
-                    ) {
-                        Column(
-                            Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                record.files.firstOrNull()?.name ?: "Received transfer",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                "${record.saved.count(viewModel::fileExists)} of ${record.files.size} files available · ${record.saved.sumOf { it.size }} bytes"
-                            )
-                            Text(
-                                if (record.complete && record.saved.all(viewModel::fileExists))
-                                    "Saved on this device"
-                                else if (record.complete) "Some local files are missing"
-                                else "Partial / interrupted"
-                            )
-                            Text(record.origin, style = MaterialTheme.typography.bodySmall)
-                            Text(
-                                DateFormat.getDateTimeInstance().format(Date(record.createdAt)),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Row {
-                                TextButton(
-                                    onClick = {
-                                        viewModel.open(record)
-                                        history = false
-                                    }
-                                ) {
-                                    Text(if (record.complete) "View files" else "Resume / View")
-                                }
-                                TextButton(onClick = { removal = record }) { Text("Remove") }
-                            }
-                        }
-                    }
-                }
-            } else {
+            run {
                 if (state.origin.isNotBlank())
                     Text(state.origin, style = MaterialTheme.typography.titleMedium)
                 if (state.busy) {
@@ -348,7 +257,7 @@ fun ScanScreen(
                             )
                             if (!state.uploaded) {
                                 Text(
-                                    "Choose files deliberately to send to the server above. Up to 25 MiB per file."
+                                    "Choose files deliberately to send to the server above. Its file limit is checked before uploading."
                                 )
                                 Text("${state.uploadFiles.size} files selected")
                                 state.uploadFiles.forEach { Text(viewModel.uploadName(it)) }
@@ -383,21 +292,8 @@ fun ScanScreen(
                                 "Receive encrypted files without signing in.",
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                            Button(
-                                onClick = {
-                                    if (
-                                        ContextCompat.checkSelfPermission(
-                                            context,
-                                            Manifest.permission.CAMERA,
-                                        ) == PackageManager.PERMISSION_GRANTED
-                                    )
-                                        launchScanner()
-                                    else camera.launch(Manifest.permission.CAMERA)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("Scan QR code")
-                            }
+                            if (!historical)
+                                EmbeddedScanner(onCode = ::accept, onError = viewModel::error)
                             OutlinedTextField(
                                 value = paste,
                                 onValueChange = { paste = it },
@@ -471,26 +367,4 @@ fun ScanScreen(
                 TextButton(onClick = { pairingConfirmation = false }) { Text("Cancel") }
             },
         )
-    removal?.let { record ->
-        AlertDialog(
-            onDismissRequest = { removal = null },
-            title = { Text("Remove local history?") },
-            text = {
-                Text(
-                    "Saved files remain in Downloads/psst.zip. The sender’s link will not be revoked."
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.remove(record)
-                        removal = null
-                    }
-                ) {
-                    Text("Remove")
-                }
-            },
-            dismissButton = { TextButton(onClick = { removal = null }) { Text("Cancel") } },
-        )
-    }
 }

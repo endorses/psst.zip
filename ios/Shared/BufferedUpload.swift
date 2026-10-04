@@ -12,9 +12,10 @@ struct UploadProgress {
 }
 
 enum BufferedUpload {
-    static let maxFileBytes = 25 * 1024 * 1024
+    static let maxFileBytes = 1024 * 1024 * 1024 * 1024
     static func sizes(_ urls: [URL], limit: Int) throws -> [Int64] {
-        try urls.map { url in
+        guard !urls.isEmpty, urls.count <= 100 else { throw AccountError.request }
+        return try urls.map { url in
             let access = url.startAccessingSecurityScopedResource()
             defer {
                 if access {
@@ -22,7 +23,7 @@ enum BufferedUpload {
                 }
             }
             guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { throw AccountError.request }
-            guard size <= limit else { throw NSError(domain: "Psst", code: 1, userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Each file must be no larger than %lld MiB."), Int64(limit / 1024 / 1024))]) }
+            guard size >= 0, size <= limit else { throw NSError(domain: "Psst", code: 1, userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Each file must be no larger than %lld MiB."), Int64(limit / 1024 / 1024))]) }
             return Int64(size)
         }
     }
@@ -33,13 +34,12 @@ enum BufferedUpload {
                      preparing: (String) -> Void, progress: @escaping @MainActor (UploadProgress) -> Void) async throws -> [FileMetadata]
     {
         let sizes = try sizes(fileURLs, limit: limit)
-        let total = sizes.reduce(0, +) + Int64(fileURLs.count * 28)
+        let total = try sizes.reduce(Int64(0)) { try $0 + ChunkedFileCrypto.shared.wireSize(totalSize: $1) }
         var sent: Int64 = 0
         var files: [FileMetadata] = []
         for (index, url) in fileURLs.enumerated() {
             try check()
             preparing(url.lastPathComponent)
-            // Give SwiftUI a chance to draw the indeterminate preparation state.
             await Task.yield()
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
@@ -49,27 +49,36 @@ enum BufferedUpload {
             }
             let handle = try FileHandle(forReadingFrom: url)
             defer { try? handle.close() }
-            var plaintext = Data()
-            while plaintext.count <= limit {
+            let size = sizes[index]
+            let encryptionID = try ChunkedFileCrypto.shared.createId()
+            let wireSize = try ChunkedFileCrypto.shared.wireSize(totalSize: size)
+            let resourceURL = try await client.createFileUpload(transferId: transferId, wireSize: wireSize)
+            var remaining = size
+            var frameIndex: Int64 = 0
+            var offset: Int64 = 0
+            repeat {
                 try check()
-                let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - plaintext.count)) ?? Data()
-                if chunk.isEmpty {
-                    break
+                let expected = Int(min(Int64(StreamedFiles.chunkBytes), remaining))
+                var plain = Data()
+                while plain.count < expected {
+                    guard let part = try handle.read(upToCount: expected - plain.count), !part.isEmpty else { throw AccountError.request }
+                    plain.append(part)
                 }
-                plaintext.append(chunk)
+                let frame = try ChunkedFileCrypto.shared.encrypt(key: key, id: encryptionID, totalSize: size, index: frameIndex, plaintext: plain.toKotlinByteArray())
+                try await client.tus.uploadChunk(resourceUrl: resourceURL, data: frame, offset: offset)
+                offset += Int64(frame.size)
+                progress(UploadProgress(name: url.lastPathComponent, sent: sent + offset, total: total))
+                remaining -= Int64(expected); frameIndex += 1
+            } while remaining > 0
+            guard try (handle.read(upToCount: 1) ?? Data()).isEmpty, offset == wireSize else {
+                throw AccountError.request
             }
-            guard plaintext.count <= limit, Int64(plaintext.count) == sizes[index] else { throw AccountError.request }
-            let nonce = try CryptoProvider.shared.generateNonce()
-            let encrypted = try CryptoProvider.shared.encrypt(key: key, nonce: nonce, plaintext: plaintext.toKotlinByteArray())
-            let blob = nonce.toData() + encrypted.toData()
-            let completedBytes = sent
-            let resourceURL = try await client.uploadFile(transferId: transferId, data: blob.toKotlinByteArray(), metadata: [:], onProgress: { uploaded in
-                let value = UploadProgress(name: url.lastPathComponent, sent: completedBytes + uploaded.int64Value, total: total)
-                Task { @MainActor in progress(value) }
-            })
             try check()
-            sent += Int64(blob.count)
-            files.append(FileMetadata(name: url.lastPathComponent, size: Int64(plaintext.count), mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream", blobId: URL(string: resourceURL)?.lastPathComponent ?? resourceURL))
+            sent += wireSize
+            files.append(FileMetadata(name: url.lastPathComponent, size: size,
+                                      mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream",
+                                      blobId: URL(string: resourceURL)?.lastPathComponent ?? resourceURL,
+                                      encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: encryptionID))
         }
         return files
     }

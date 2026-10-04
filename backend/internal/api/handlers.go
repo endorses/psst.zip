@@ -261,6 +261,9 @@ func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !s.allowUploadSize(w, r) {
+		return
+	}
 	s.tusH.ServeCreate(w, r, transferID)
 }
 

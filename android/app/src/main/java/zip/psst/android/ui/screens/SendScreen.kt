@@ -99,6 +99,8 @@ fun SendScreen(
             },
         )
 
+    LaunchedEffect(Unit) { viewModel.refreshLimit() }
+
     // Add files shared via intent
     LaunchedEffect(sharedUris, state.isUploading) {
         if (sharedUris.isNotEmpty() && !state.isUploading) {
@@ -107,13 +109,9 @@ fun SendScreen(
         }
     }
 
-    // Navigate when upload completes
-    LaunchedEffect(state.transferId, state.encryptionKey) {
-        val tid = state.transferId
-        val key = state.encryptionKey
-        if (tid != null && key != null && !state.isUploading) {
-            onTransferCreated(tid, key, "sent")
-        }
+    // Consume before navigating: returning to a retained screen cannot replay completion.
+    LaunchedEffect(state.transferId, state.encryptionKey, state.isUploading) {
+        viewModel.consumeCompletion()?.let { (id, key) -> onTransferCreated(id, key, "sent") }
     }
 
     val filePicker =
@@ -150,7 +148,12 @@ fun SendScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AccountIndicator()
-            Text(stringResource(R.string.file_limit), style = MaterialTheme.typography.bodySmall)
+            Text(
+                state.maxFileBytes?.let {
+                    "Up to ${formatFileSize(it)} per file. Files are encrypted automatically."
+                } ?: "The server’s file limit is checked before uploading.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (state.files.isNotEmpty())
                 Text(
                     stringResource(

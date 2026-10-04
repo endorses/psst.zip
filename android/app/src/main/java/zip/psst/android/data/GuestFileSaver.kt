@@ -68,13 +68,25 @@ class GuestFileSaver(private val context: Context) {
 
     suspend fun save(
         file: FileMetadata,
-        bytes: ByteArray,
+        content: FileContent,
         journal: (SavedGuestFile) -> Unit,
     ): SavedGuestFile {
-        val hash =
-            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
-                "%02x".format(it)
+        val digest = MessageDigest.getInstance("SHA-256")
+        var hash = ""
+        suspend fun writeContent(stream: FileOutputStream) {
+            var written = 0L
+            val coroutine = currentCoroutineContext()
+            content { bytes ->
+                coroutine.ensureActive()
+                require(written + bytes.size <= file.size) { "File size mismatch" }
+                stream.write(bytes)
+                digest.update(bytes)
+                written += bytes.size
             }
+            require(written == file.size) { "File size mismatch" }
+            stream.fd.sync()
+            hash = digest.digest().joinToString("") { "%02x".format(it) }
+        }
         val name = ManifestValidator.safeFilename(file.name)
         if (Build.VERSION.SDK_INT >= 29) {
             val values =
@@ -104,7 +116,7 @@ class GuestFileSaver(private val context: Context) {
                             ?.use { if (it.moveToFirst()) it.getString(0) else name }
                     }
                     .getOrNull() ?: name
-            val output =
+            var output =
                 SavedGuestFile(
                     file.blobId,
                     uri.toString(),
@@ -117,10 +129,11 @@ class GuestFileSaver(private val context: Context) {
                 journal(output)
                 context.contentResolver.openFileDescriptor(uri, "w")!!.use { descriptor ->
                     FileOutputStream(descriptor.fileDescriptor).use { stream ->
-                        write(bytes, stream)
-                        stream.fd.sync()
+                        writeContent(stream)
                     }
                 }
+                output = output.copy(sha256 = hash)
+                journal(output)
                 currentCoroutineContext().ensureActive()
                 check(
                     context.contentResolver.update(
@@ -153,10 +166,7 @@ class GuestFileSaver(private val context: Context) {
         try {
             journal(result)
             check(temporary.createNewFile())
-            FileOutputStream(temporary).use {
-                write(bytes, it)
-                it.fd.sync()
-            }
+            FileOutputStream(temporary).use { writeContent(it) }
             currentCoroutineContext().ensureActive()
             publishGuestFile(temporary, folder, name) { destination ->
                 result = output(destination)
@@ -166,16 +176,6 @@ class GuestFileSaver(private val context: Context) {
         } catch (e: Exception) {
             temporary.delete()
             throw e
-        }
-    }
-
-    private suspend fun write(bytes: ByteArray, stream: FileOutputStream) {
-        var offset = 0
-        while (offset < bytes.size) {
-            currentCoroutineContext().ensureActive()
-            val count = minOf(64 * 1024, bytes.size - offset)
-            stream.write(bytes, offset, count)
-            offset += count
         }
     }
 

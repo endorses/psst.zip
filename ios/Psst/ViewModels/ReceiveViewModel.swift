@@ -57,7 +57,7 @@ final class ReceiveViewModel {
     }
 
     func createDropSlot() async {
-        guard record == nil else { return }
+        guard record == nil, state != .creating else { return }
         state = .creating
         do {
             let session = try serverConfig.requireSession()
@@ -161,21 +161,24 @@ final class ReceiveViewModel {
                 try serverConfig.check(session)
                 guard let manifest = try ManifestSerializer.decode(json: String(decoding: decrypt(bytes, key: key), as: UTF8.self)),
                       !manifest.files.isEmpty, manifest.files.count == Int(transfer.fileCount) else { throw AccountError.request }
+                _ = try ManifestValidator.shared.validate(manifest: manifest)
                 for (index, file) in manifest.files.enumerated() {
                     try serverConfig.check(session)
                     if !checkpoint.needsFile(transferID: transfer.transferId, blobID: file.blobId) {
                         continue
                     }
-                    guard file.size <= BufferedUpload.maxFileBytes else { throw AccountError.request }
                     state = .downloading(progress: Double(index) / Double(manifest.files.count))
-                    let bytes = try await client.transfers.downloadFile(transferId: transfer.transferId, fileId: file.blobId)
+                    let temporary = try await StreamedFiles.receive(client: client, transferID: transfer.transferId, file: file, key: key)
+                    defer { try? FileManager.default.removeItem(at: temporary) }
                     try serverConfig.check(session)
-                    let plain = try decrypt(bytes, key: key)
-                    guard plain.count == file.size else { throw AccountError.request }
-                    let basename = (file.name.replacingOccurrences(of: "\\", with: "/") as NSString).lastPathComponent
+                    let basename = try ManifestValidator.shared.safeFilename(name: file.name)
                     let relative = relativeDirectory + "/" + file.blobId + "-" + basename
                     let destination = documents.appendingPathComponent(relative)
-                    try plain.write(to: destination, options: [.atomic, .completeFileProtection])
+                    if FileManager.default.fileExists(atPath: destination.path) {
+                        guard try StreamedFiles.digest(destination) == StreamedFiles.digest(temporary) else { throw AccountError.request }
+                    } else {
+                        try FileManager.default.moveItem(at: temporary, to: destination)
+                    }
                     checkpoint.saved(transferID: transfer.transferId, blobID: file.blobId, path: relative, size: file.size, title: file.name)
                     entry = checkpoint.record
                     try historyStore.update(entry)

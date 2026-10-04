@@ -133,6 +133,9 @@ export interface FileManifestEntry {
   size: number;
   mime_type: string;
   blob_id: string;
+  encoding: "chunked-v1";
+  chunk_size: 4194304;
+  encryption_id: string;
 }
 
 export interface Manifest {
@@ -155,16 +158,31 @@ export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Pr
   if (
     !manifest ||
     !Array.isArray(manifest.files) ||
-    new Set(manifest.files.map((file) => file?.blob_id)).size !== manifest.files.length ||
+    manifest.files.length < 1 ||
+    manifest.files.length > 100 ||
+    new Set(
+      manifest.files.map((file) =>
+        typeof file?.blob_id === "string" ? file.blob_id.toLowerCase() : undefined,
+      ),
+    ).size !== manifest.files.length ||
+    new Set(manifest.files.map((file) => file?.encryption_id)).size !== manifest.files.length ||
     manifest.files.some(
       (file) =>
         !file ||
         typeof file.name !== "string" ||
+        !file.name.trim() ||
+        file.name.length > 1024 ||
+        /[\\/\0]/.test(file.name) ||
         typeof file.mime_type !== "string" ||
         typeof file.blob_id !== "string" ||
-        !/^[0-9a-f-]{36}$/i.test(file.blob_id) ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(file.blob_id) ||
         !Number.isSafeInteger(file.size) ||
-        file.size < 0,
+        file.size < 0 ||
+        file.size > 1024 ** 4 ||
+        file.encoding !== "chunked-v1" ||
+        file.chunk_size !== 4194304 ||
+        typeof file.encryption_id !== "string" ||
+        !/^[0-9a-f]{32}$/.test(file.encryption_id),
     )
   )
     throw new Error("Invalid file manifest");

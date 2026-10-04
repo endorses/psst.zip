@@ -45,6 +45,18 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     private var operation: Job? = null
     private var version = 0L
 
+    fun scanError(message: String) {
+        _uiState.value = _uiState.value.copy(testResult = TestResult.Error(message))
+    }
+
+    fun invalidPairing() {
+        _uiState.value =
+            _uiState.value.copy(
+                testResult =
+                    TestResult.Error("Scan a server login QR code from the web Settings page.")
+            )
+    }
+
     fun refreshSavedSession() {
         if (prefs.getSessionToken() != null) {
             _uiState.value =

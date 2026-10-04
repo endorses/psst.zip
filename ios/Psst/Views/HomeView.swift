@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     var receiving = false
     @State private var picking = false
+    @State private var accountSetup = false
     @State private var send: SendViewModel?
     @State private var receive: ReceiveViewModel?
     @State private var showing = false
@@ -15,10 +16,10 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    Text("psst.zip").font(.largeTitle.bold())
+                    HStack { Image("BrandSymbol").resizable().scaledToFit().frame(width: 40, height: 40).accessibilityHidden(true); Text("psst.zip").font(.largeTitle.bold()) }
                     Text(LocalizedStringKey(receiving ? "Create a receive link for someone to send you files, nearby or elsewhere." : "Send encrypted files with a link or QR code, nearby or elsewhere."))
                         .foregroundStyle(PsstTheme.secondary)
-                    Text("Each file can be up to 25 MiB. Files are encrypted automatically.").font(.footnote)
+                    Text(config.limitDescription + " Files are encrypted automatically.").font(.footnote)
                     if config.isConfigured, !config.needsSignIn {
                         Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
                             if receiving {
@@ -36,7 +37,7 @@ struct HomeView: View {
                         }
                     } else {
                         Text("Sign in to continue this task.").font(.headline)
-                        LoginFields()
+                        Button("Sign in") { accountSetup = true }.buttonStyle(PrimaryAction())
                     }
                     if let error {
                         Text(error).foregroundStyle(PsstTheme.error)
@@ -47,13 +48,15 @@ struct HomeView: View {
             .navigationDestination(isPresented: $showing) {
                 TransferDetailView(sendViewModel: send, receiveViewModel: receive)
             }
+            .task(id: config.serverURL) { await config.refreshLimit() }
+            .sheet(isPresented: $accountSetup) { NavigationStack { AccountSetupView() } }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 do {
                     let urls = try result.get()
                     _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
                     selected = urls
                     startSend()
-                } catch { self.error = String(localized: "Could not select these files. Check access and the 25 MiB per-file limit.") }
+                } catch { self.error = String(localized: "Could not select these files. Check file access and the server’s file-size limit.") }
             }
             .onChange(of: config.accountID) { old, next in
                 if old != nil, old != next {

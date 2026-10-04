@@ -51,10 +51,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
+import zip.psst.android.data.*
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.historyStatusLabel
 import zip.psst.android.ui.components.AccountIndicator
 import zip.psst.android.viewmodel.HistoryViewModel
+import zip.psst.android.viewmodel.ScanViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -64,13 +66,38 @@ import java.util.Locale
 fun HistoryScreen(
     onTransferClick: (TransferHistoryEntity) -> Unit,
     onBack: () -> Unit,
-    onLocalReceived: () -> Unit = {},
+    onDownloadClick: (GuestDownload) -> Unit,
+    guest: ScanViewModel,
+    initialFilter: String = "all",
     viewModel: HistoryViewModel = viewModel(),
 ) {
     val allHistory by viewModel.history.collectAsState()
     val offline by viewModel.offline.collectAsState()
-    var filter by remember { mutableStateOf("all") }
-    val history = allHistory.filter { filter == "all" || (filter == "sent") == (it.type == "sent") }
+    var filter by remember { mutableStateOf(initialFilter) }
+    val downloads by guest.state.collectAsState()
+    val history = unifiedHistory(allHistory, downloads.history, filter)
+    var removal by remember { mutableStateOf<GuestDownload?>(null) }
+    removal?.let { record ->
+        AlertDialog(
+            onDismissRequest = { removal = null },
+            title = { Text("Remove from history?") },
+            text = {
+                Text("Saved files remain on this device. The sender’s link will not be revoked.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        guest.remove(record)
+                        removal = null
+                    }
+                ) {
+                    Text("Remove from history")
+                }
+            },
+            dismissButton = { TextButton(onClick = { removal = null }) { Text("Cancel") } },
+        )
+    }
+
     val deletingIds by viewModel.deletingIds.collectAsState()
     val deletionError by viewModel.deletionError.collectAsState()
     var confirmDeletion by remember { mutableStateOf<TransferHistoryEntity?>(null) }
@@ -124,13 +151,19 @@ fun HistoryScreen(
     DisposableEffect(lifecycle, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> viewModel.refresh()
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.refresh()
+                    guest.refreshHistory()
+                }
                 Lifecycle.Event.ON_STOP -> viewModel.stopRefreshing()
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) viewModel.refresh()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            viewModel.refresh()
+            guest.refreshHistory()
+        }
         onDispose {
             lifecycle.removeObserver(observer)
             viewModel.stopRefreshing()
@@ -142,7 +175,6 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.history)) },
                 actions = {
-                    TextButton(onClick = onLocalReceived) { Text("Received") }
                     TextButton(onClick = viewModel::refresh) {
                         Text(stringResource(R.string.refresh))
                     }
@@ -167,17 +199,29 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 listOf(
-                        "all" to R.string.all,
-                        "sent" to R.string.sent,
-                        "received" to R.string.receive_links,
+                        "all" to "All",
+                        "sent" to "Sent",
+                        "received" to "Receive links",
+                        "downloaded" to "Downloaded",
                     )
                     .forEach { (value, label) ->
                         FilterChip(
                             selected = filter == value,
                             onClick = { filter = value },
-                            label = { Text(stringResource(label)) },
+                            label = { Text(label) },
                         )
                     }
+            }
+            if (downloads.pendingReceipts > 0 && !downloads.busy)
+                TextButton(onClick = guest::retryAllReceipts) {
+                    Text("Retry pending receipts (${downloads.pendingReceipts})")
+                }
+            downloads.error?.let {
+                Text(
+                    it,
+                    Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             if (offline)
                 Text(
@@ -213,13 +257,23 @@ fun HistoryScreen(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(history, key = { it.id }) { entity ->
-                        HistoryItem(
-                            entity = entity,
-                            onClick = { onTransferClick(entity) },
-                            onDelete = { confirmDeletion = entity },
-                            isDeleting = entity.id in deletingIds,
-                        )
+                    items(history, key = { it.key }) { row ->
+                        when (row) {
+                            is HistoryRow.Owned ->
+                                HistoryItem(
+                                    entity = row.value,
+                                    onClick = { onTransferClick(row.value) },
+                                    onDelete = { confirmDeletion = row.value },
+                                    isDeleting = row.value.id in deletingIds,
+                                )
+                            is HistoryRow.Downloaded ->
+                                DownloadHistoryItem(
+                                    row.value,
+                                    available = row.value.saved.count(guest::fileExists),
+                                    onClick = { onDownloadClick(row.value) },
+                                    onRemove = { removal = row.value },
+                                )
+                        }
                     }
                 }
             }
@@ -345,5 +399,40 @@ private fun relativeExpiry(time: Long): String {
         minutes < 60 -> stringResource(R.string.expires_minutes, minutes)
         minutes < 1440 -> stringResource(R.string.expires_hours, minutes / 60)
         else -> stringResource(R.string.expires_days, minutes / 1440)
+    }
+}
+
+@Composable
+private fun DownloadHistoryItem(
+    record: GuestDownload,
+    available: Int,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    record.files.firstOrNull()?.name ?: "Downloaded transfer",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Downloaded · $available of ${record.files.size} files available",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    if (record.complete && available == record.files.size) "Saved on this device"
+                    else if (record.complete) "Local copies missing" else "Partial / interrupted",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(record.origin, style = MaterialTheme.typography.bodySmall)
+                Text(formatTimestamp(record.createdAt), style = MaterialTheme.typography.bodySmall)
+                if (record.receiptPending)
+                    Text("Delivery receipt pending", style = MaterialTheme.typography.bodySmall)
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, "Remove download from history")
+            }
+        }
     }
 }

@@ -4,8 +4,10 @@ struct HistoryView: View {
     @Environment(TransferHistoryStore.self) private var history
     @Environment(ServerConfigManager.self) private var config
     @Environment(\.scenePhase) private var scenePhase
-    @State private var localReceived = false
-    @State private var receiveOnly = false
+    @Environment(GuestDownloadStore.self) private var guests
+    @Environment(GuestTransferModel.self) private var guestTransfer
+    @Binding var filter: HistoryFilter
+    @State private var removing: GuestDownload?
     @State private var deleting: TransferRecord?
     @State private var failedDeletion: TransferRecord?
     @State private var error: String?
@@ -13,21 +15,16 @@ struct HistoryView: View {
     @State private var lastUpdated: Date?
     @State private var visible = false
     @State private var busy = false
-    private var records: [TransferRecord] {
-        history.visible(for: config.session).filter { ($0.isSlot == true) == receiveOnly }
+    private var records: [HistoryEntry] {
+        HistoryEntry.combine(account: history.visible(for: config.session), downloads: guests.records, session: config.session, filter: filter)
     }
 
     var body: some View {
         NavigationStack {
             List {
-                Button { localReceived = true } label: { Label("Received on this device", systemImage: "arrow.down.doc") }
-                Picker("History filter", selection: $receiveOnly) {
-                    Text("Sent").tag(false)
-                    Text("Receive links").tag(true)
-                }.pickerStyle(.segmented)
-                if !config.isConfigured || config.needsSignIn {
-                    LoginFields()
-                }
+                Picker("History filter", selection: $filter) {
+                    ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.menu)
                 if history.legacyCount > 0 {
                     Text("Pre-account history is preserved. Only administrators signed in to its original server can manage it.").font(.footnote).foregroundStyle(PsstTheme.secondary)
                 }
@@ -40,26 +37,45 @@ struct HistoryView: View {
                     }.font(.caption)
                 }
                 if records.isEmpty {
-                    ContentUnavailableView("No transfers yet", systemImage: "clock", description: Text("Your account’s links will appear here."))
+                    ContentUnavailableView("No transfers yet", systemImage: "clock", description: Text(filter == .downloaded ? "Files downloaded on this device will appear here, including while signed out." : "No items in this filter yet."))
                 }
-                ForEach(records) { record in
-                    NavigationLink {
-                        HistoryDetail(record: record)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if record.ownerID == nil {
-                                Text("Legacy item").font(.caption)
+                ForEach(records) { entry in
+                    switch entry {
+                    case let .downloaded(record):
+                        NavigationLink {
+                            ScrollView { GuestDownloadDetail(record: record).padding() }.navigationTitle("Downloaded")
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("Downloaded", systemImage: "arrow.down.doc").font(.caption)
+                                Text(record.files.first?.name ?? "File transfer").font(.headline)
+                                Text(record.origin).font(.caption).lineLimit(2)
+                                Text(record.createdAt, style: .date).font(.caption)
+                                Text(record.complete ? "Saved on this device" : "Partially saved").font(.subheadline)
                             }
-                            Text(record.displayTitle).font(.headline).lineLimit(2)
-                            Text(record.summary).font(.subheadline)
-                            Text(record.statusText).font(.caption)
-                            if let expiry = record.expiresAt {
-                                HStack { Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
-                                    Text(expiry, style: .relative)
-                                }.font(.caption)
-                            }
-                        }.padding(.vertical, 4)
-                    }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(busy) }
+                        }.swipeActions {
+                            Button("Remove from history", role: .destructive) { removing = record }.disabled(guestTransfer.active)
+                        }
+                    case let .account(record):
+                        NavigationLink {
+                            HistoryDetail(record: record)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if record.ownerID == nil {
+                                    Text("Legacy item").font(.caption)
+                                }
+                                Text(record.isSlot == true ? "Receive link" : "Sent").font(.caption)
+                                Text(record.displayTitle).font(.headline).lineLimit(2)
+                                Text(record.createdAt, style: .date).font(.caption)
+                                Text(record.summary).font(.subheadline)
+                                Text(record.statusText).font(.caption)
+                                if let expiry = record.expiresAt {
+                                    HStack { Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
+                                        Text(expiry, style: .relative)
+                                    }.font(.caption)
+                                }
+                            }.padding(.vertical, 4)
+                        }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(busy) }
+                    }
                 }
                 if let error {
                     Text(error).foregroundStyle(PsstTheme.error)
@@ -69,7 +85,18 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
-            .sheet(isPresented: $localReceived) { ScanReceiveView(historyOnly: true).modifier(PsstAppearance()) }
+            .confirmationDialog("Remove from history? Saved files remain and the sender’s link keeps working.", isPresented: Binding(get: { removing != nil }, set: {
+                if !$0 {
+                    removing = nil
+                }
+            }), titleVisibility: .visible) {
+                Button("Remove from history", role: .destructive) {
+                    if let removing {
+                        do { try guests.remove(removing) } catch { self.error = "Could not update local history. Free storage and retry." }
+                    }
+                    removing = nil
+                }
+            }
             .refreshable { _ = await refresh() }
             .toolbar { Button("Refresh") { Task { _ = await refresh() } }.disabled(busy) }
             .confirmationDialog("Revoke and delete?", isPresented: Binding(get: { deleting != nil }, set: {
@@ -99,6 +126,7 @@ struct HistoryView: View {
                 failedDeletion = nil
                 error = nil
                 lastUpdated = nil
+                stale = false
             }
         }.modifier(PsstStyle())
     }

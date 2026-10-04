@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import { encrypt, encryptManifest, exportKey, generateKey } from "../../src/lib/crypto";
+import { encryptFileFrame } from "../../src/lib/chunked-files";
+import { encryptManifest, exportKey, generateKey } from "../../src/lib/crypto";
 
 async function prepareDownload(
   page: Page,
@@ -19,6 +20,9 @@ async function prepareDownload(
     name: `file-${index}.txt`,
     size: 6,
     mime_type: "text/plain",
+    encoding: "chunked-v1" as const,
+    chunk_size: 4194304 as const,
+    encryption_id: index.toString(16).padStart(32, "0"),
     blob_id: randomUUID(),
   }));
   if (options.wrongSize !== undefined) files[options.wrongSize].size++;
@@ -38,7 +42,13 @@ async function prepareDownload(
   );
   for (const [index, file] of files.entries()) {
     const encrypted = new Uint8Array(
-      await encrypt(key, new TextEncoder().encode(`file ${index}`).buffer),
+      await encryptFileFrame(
+        key,
+        file.encryption_id,
+        0,
+        6,
+        new TextEncoder().encode(`file ${index}`).buffer,
+      ),
     );
     if (index === options.corruptFile) encrypted[encrypted.length - 1] ^= 1;
     await page.route(`${api}/files/${file.blob_id}`, (route) => {

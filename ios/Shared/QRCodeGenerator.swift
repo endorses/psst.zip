@@ -8,7 +8,7 @@ enum QRCodeGenerator {
         let context = CIContext()
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)
-        filter.correctionLevel = "M"
+        filter.correctionLevel = "H"
 
         guard let output = filter.outputImage,
               let native = context.createCGImage(output, from: output.extent),
@@ -29,7 +29,21 @@ enum QRCodeGenerator {
         canvas.draw(modules, in: CGRect(x: quietZone * scale, y: quietZone * scale,
                                         width: modules.width * scale, height: modules.height * scale))
         guard let image = canvas.makeImage() else { return nil }
-        return UIImage(cgImage: image)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: CGSize(width: canvasSize, height: canvasSize), format: format).image { renderer in
+            renderer.cgContext.interpolationQuality = .none
+            UIImage(cgImage: image).draw(in: CGRect(x: 0, y: 0, width: canvasSize, height: canvasSize))
+            // H correction plus a small plate keeps finder and timing patterns readable.
+            if let symbol = UIImage(named: "BrandSymbol") {
+                let edge = CGFloat(modules.width * scale) * 0.15
+                let plate = CGRect(x: (CGFloat(canvasSize) - edge) / 2, y: (CGFloat(canvasSize) - edge) / 2, width: edge, height: edge)
+                UIColor.white.setFill()
+                renderer.cgContext.fill(plate)
+                symbol.draw(in: plate.insetBy(dx: edge * 0.10, dy: edge * 0.10))
+            }
+        }
     }
 
     /// Finder patterns reach all four matrix edges, so the dark-pixel bounds exclude only whitespace.

@@ -14,7 +14,7 @@ final class ShareExtensionViewModel {
     }
 
     var totalSize: Int64 {
-        (try? BufferedUpload.sizes(files, limit: 10 * 1024 * 1024).reduce(0, +)) ?? 0
+        (try? BufferedUpload.sizes(files, limit: BufferedUpload.maxFileBytes).reduce(0, +)) ?? 0
     }
 
     var active: Bool {
@@ -23,9 +23,10 @@ final class ShareExtensionViewModel {
 
     private var originAccount: String?
     func prepare(_ urls: [URL]) {
-        do { _ = try BufferedUpload.sizes(urls, limit: 10 * 1024 * 1024)
+        do { _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
             files = urls
-        } catch { error = String(localized: "The share extension accepts files up to 10 MiB each because its memory is limited. Use the app for files up to 25 MiB.") }
+            originAccount = config.accountID
+        } catch { error = String(localized: "Files are encrypted in chunks. The server sets the maximum file size.") }
     }
 
     func start() {
@@ -37,7 +38,7 @@ final class ShareExtensionViewModel {
         }
         originAccount = config.accountID
         if send == nil {
-            send = SendViewModel(fileURLs: files, serverConfig: config, historyStore: history, limit: 10 * 1024 * 1024)
+            send = SendViewModel(fileURLs: files, serverConfig: config, historyStore: history, limit: BufferedUpload.maxFileBytes)
         }
         send?.start()
     }

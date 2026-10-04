@@ -141,7 +141,7 @@ final class TransferWorkflowTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
 
-    func testProviderCopyRejectsElevenMiBBeforeCopying() throws {
+    func testProviderCopyRejectsBeyondStreamingCeilingBeforeCopying() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -149,7 +149,7 @@ final class TransferWorkflowTests: XCTestCase {
         XCTAssertTrue(FileManager.default.createFile(atPath: source.path, contents: Data()))
         let handle = try FileHandle(forWritingTo: source)
         defer { try? handle.close() }
-        try handle.truncate(atOffset: 11 * 1024 * 1024)
+        try handle.truncate(atOffset: UInt64(BufferedUpload.maxFileBytes) + 1)
         XCTAssertThrowsError(try ShareSelection.copyProviderFile(source)) { error in
             XCTAssertEqual(error as? ShareSelectionError, .tooLarge)
         }
@@ -158,12 +158,15 @@ final class TransferWorkflowTests: XCTestCase {
     func testQRCodeKeepsFourModuleQuietZoneAndDecodesAfterIntegerScaling() throws {
         let link = "https://files.example/d/transfer#abcdefghijklmnopqrstuvwxyz0123456789"
         let native = try XCTUnwrap(QRCodeGenerator.generate(from: link, size: 1)?.cgImage)
-        XCTAssertEqual(native.bitsPerPixel, 8)
-        let pixels = try XCTUnwrap(native.dataProvider?.data) as Data
+        var pixels = [UInt8](repeating: 255, count: native.width * native.height)
+        try pixels.withUnsafeMutableBytes { bytes in
+            let canvas = try XCTUnwrap(CGContext(data: bytes.baseAddress, width: native.width, height: native.height, bitsPerComponent: 8, bytesPerRow: native.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+            canvas.draw(native, in: CGRect(x: 0, y: 0, width: native.width, height: native.height))
+        }
         var darkColumns = Set<Int>()
         var darkRows = Set<Int>()
         for y in 0 ..< native.height {
-            for x in 0 ..< native.width where pixels[y * native.bytesPerRow + x] < 128 {
+            for x in 0 ..< native.width where pixels[y * native.width + x] < 128 {
                 darkColumns.insert(x)
                 darkRows.insert(y)
             }

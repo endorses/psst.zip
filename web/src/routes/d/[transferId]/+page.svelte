@@ -4,12 +4,15 @@
   import { BRAND } from "$lib/brand";
   import { page } from "$app/stores";
   import { onMount, onDestroy } from "svelte";
-  import { importKey, decrypt, decryptManifest } from "$lib/crypto";
-  import { getTransferInfo, downloadManifest, downloadFile, acknowledgeDownload } from "$lib/api";
+  import { importKey, decryptManifest } from "$lib/crypto";
+  import { getTransferInfo, downloadManifest, acknowledgeDownload } from "$lib/api";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
   import { zipSync } from "fflate";
 
-  import { assertFileSize, MAX_BUFFERED_BYTES } from "$lib/limits";
+  import { assertFileSize, MAX_ZIP_BYTES, MAX_BUFFERED_BYTES } from "$lib/limits";
+
+  import { decryptFileStream } from "$lib/chunked-files";
+  import { createSaveSink, cleanAbandonedDownloads, LARGE_SAVE_MESSAGE } from "$lib/file-save";
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
@@ -81,6 +84,7 @@
   }
   onMount(() => {
     void load();
+    void cleanAbandonedDownloads();
   });
 
   function formatSize(bytes: number): string {
@@ -121,38 +125,39 @@
     if (allFilesDownloaded && confirmation === "idle") void confirmDownload();
   }
 
-  function validateDownloadedSize(plaintext: ArrayBuffer, entry: FileManifestEntry) {
-    if (plaintext.byteLength !== entry.size) {
-      throw new Error(`Downloaded file size does not match the manifest: ${entry.name}`);
-    }
+  async function* downloadChunks(entry: FileManifestEntry, signal: AbortSignal) {
+    const key = await importKey(keyStr);
+    const response = await fetch(`/api/v1/transfers/${transferId}/files/${entry.blob_id}`, {
+      signal,
+      credentials: "omit",
+    });
+    if (!response.ok || !response.body) throw new Error("Could not download file");
+    yield* decryptFileStream(key, entry, response.body, signal);
   }
 
   async function downloadSingleFile(entry: FileManifestEntry) {
     errorMessage = "";
     controller = new AbortController();
     const signal = controller.signal;
+    let sink: Awaited<ReturnType<typeof createSaveSink>> | undefined;
     try {
       assertFileSize(entry.size);
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 0 };
-      const key = await importKey(keyStr);
-
-      const encrypted = await downloadFile(
-        transferId,
-        entry.blob_id,
-        (bytes) =>
-          (downloadProgress = {
-            ...downloadProgress,
-            [entry.blob_id]: Math.min(99, Math.floor((bytes / (entry.size + 28)) * 100)),
-          }),
-        signal,
-      );
-      if (signal.aborted || disposed) return;
-      const plaintext = await decrypt(key, encrypted);
-      if (signal.aborted || disposed) return;
-      validateDownloadedSize(plaintext, entry);
-
+      sink = await createSaveSink(entry);
+      signal.throwIfAborted();
+      let saved = 0;
+      for await (const chunk of downloadChunks(entry, signal)) {
+        await sink.write(chunk);
+        saved += chunk.length;
+        downloadProgress = {
+          ...downloadProgress,
+          [entry.blob_id]: Math.min(99, Math.floor((saved / Math.max(1, entry.size)) * 100)),
+        };
+      }
+      signal.throwIfAborted();
+      await sink.close();
+      sink = undefined;
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 100 };
-      triggerDownload(plaintext, entry.name, entry.mime_type);
       recordDownloadedFiles([entry.blob_id]);
 
       setTimeout(() => {
@@ -160,10 +165,13 @@
         downloadProgress = rest;
       }, 1000);
     } catch (err) {
+      await sink?.abort().catch(() => {});
       errorMessage =
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Saving stopped. You can retry the same files."
-          : "Could not save files. Check your connection and try Save files again.";
+        err instanceof Error && err.message === LARGE_SAVE_MESSAGE
+          ? LARGE_SAVE_MESSAGE
+          : err instanceof DOMException && err.name === "AbortError"
+            ? "Saving stopped. You can retry the same files."
+            : "Could not save files. Check your connection and try Save files again.";
       const { [entry.blob_id]: _, ...rest } = downloadProgress;
       downloadProgress = rest;
     }
@@ -177,8 +185,7 @@
     status = "downloading";
     errorMessage = "";
     try {
-      const key = await importKey(keyStr);
-      if (manifest.files.reduce((sum, file) => sum + file.size, 0) > MAX_BUFFERED_BYTES) {
+      if (manifest.files.reduce((sum, file) => sum + file.size, 0) > MAX_ZIP_BYTES) {
         throw new Error("ZIP downloads are limited to 25 MiB total. Download files individually.");
       }
       const zipData: Record<string, Uint8Array> = Object.create(null);
@@ -188,18 +195,16 @@
         assertFileSize(entry.size);
         currentFile = entry.name;
         downloadBytes = 0;
-        const encrypted = await downloadFile(
-          transferId,
-          entry.blob_id,
-          (bytes) => (downloadBytes = bytes),
-          signal,
-        );
-        if (signal.aborted || disposed) return;
-        const plaintext = await decrypt(key, encrypted);
-        if (signal.aborted || disposed) return;
-        validateDownloadedSize(plaintext, entry);
+        const plaintext = new Uint8Array(entry.size);
+        let offset = 0;
+        for await (const chunk of downloadChunks(entry, signal)) {
+          plaintext.set(chunk, offset);
+          offset += chunk.length;
+          downloadBytes = offset;
+        }
+        signal.throwIfAborted();
         const name = entry.name.split(/[\\/]/).pop() || "file";
-        zipData[`${i + 1}-${name}`] = new Uint8Array(plaintext);
+        zipData[`${i + 1}-${name}`] = plaintext;
       }
 
       const zipped = zipSync(zipData);
@@ -251,6 +256,10 @@
       {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
     </p>
 
+    {#if manifest.files.some((entry) => entry.size > MAX_BUFFERED_BYTES)}<p class="muted small">
+        Large files save directly to disk where your browser supports it. HTTPS may be required; the
+        mobile app can also save them.
+      </p>{/if}
     <ul class="file-list">
       {#each manifest.files as entry}
         <li>
@@ -281,7 +290,7 @@
       <button
         class="primary"
         disabled={Object.keys(downloadProgress).length > 0 ||
-          manifest.files.reduce((n, f) => n + f.size, 0) > MAX_BUFFERED_BYTES}
+          manifest.files.reduce((n, f) => n + f.size, 0) > MAX_ZIP_BYTES}
         onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
       >
     {/if}

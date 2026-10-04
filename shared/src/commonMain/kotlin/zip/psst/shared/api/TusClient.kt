@@ -165,6 +165,37 @@ class TusClient(
         }
     }
 
+    /** Upload one bounded frame at an absolute ciphertext offset. */
+    @Throws(Exception::class)
+    suspend fun uploadChunk(resourceUrl: String, data: ByteArray, offset: Long) {
+        require(
+            offset >= 0 &&
+                data.size in
+                    1..(zip.psst.shared.crypto.ChunkedFileCrypto.CHUNK_SIZE +
+                            zip.psst.shared.crypto.ChunkedFileCrypto.FRAME_OVERHEAD)
+        ) {
+            "Invalid upload chunk"
+        }
+        val response =
+            httpClient.patch(resourceUrl) {
+                expectSuccess = false
+                headers {
+                    authorize(resourceUrl)?.let { append(HttpHeaders.Authorization, "Bearer $it") }
+                    append("Tus-Resumable", TUS_VERSION)
+                    append("Upload-Offset", offset.toString())
+                }
+                contentType(TUS_CONTENT_TYPE)
+                setBody(data)
+            }
+        response.checkAuthenticatedWrite()
+        require(
+            response.status == HttpStatusCode.NoContent &&
+                response.headers["Upload-Offset"]?.toLongOrNull() == offset + data.size
+        ) {
+            "Upload chunk was not acknowledged"
+        }
+    }
+
     /**
      * Get the current upload offset for a tus resource. Used for resuming interrupted uploads.
      *

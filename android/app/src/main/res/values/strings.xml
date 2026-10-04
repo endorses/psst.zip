@@ -29,7 +29,6 @@
     <string name="retry">Retry</string>
     <string name="save_files">Save files</string>
     <string name="open_downloads">Open Downloads</string>
-    <string name="file_limit">Up to 25 MiB per file. Files are encrypted automatically.</string>
     <string name="upload_failed">Upload could not finish. Check your connection and retry.</string>
     <string name="cleanup_failed">Upload stopped, but server cleanup failed. Revoke the incomplete transfer from History.</string>
     <string name="preparing_files">Preparing files…</string>
@@ -88,7 +87,6 @@
     <string name="ui_could_not_save_every_file_retry_saving_files_already_saved_will_b">Could not save every file. Retry saving; files already saved will be skipped.</string>
     <string name="ui_sign_in_to_the_account_that_created_this_transfer_to_view_its_det">Sign in to the account that created this transfer to view its details.</string>
     <string name="ui_this_transfer_is_not_available_to_the_signed_in_account">This transfer is not available to the signed-in account.</string>
-    <string name="ui_files_up_to_25_mib_are_supported">Files up to 25 MiB are supported</string>
     <string name="ui_sign_in_under_server_configuration_to_upload_files">Sign in under Settings to upload files.</string>
     <string name="link_unavailable">This link has expired or been revoked</string>
     <string name="server_intro">Sign in to your self-hosted server to send files and create receive links.</string>

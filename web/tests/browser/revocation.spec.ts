@@ -1,5 +1,6 @@
 import { type APIRequestContext } from "@playwright/test";
 import { test, expect } from "./auth-fixture";
+import { encryptFileFrame, newEncryptionId } from "../../src/lib/chunked-files";
 import { randomBytes, webcrypto } from "node:crypto";
 
 async function createEncryptedTransfer(request: APIRequestContext) {
@@ -22,7 +23,16 @@ async function createEncryptedTransfer(request: APIRequestContext) {
   }
 
   const plaintext = "This file must become unavailable after revocation.";
-  const blob = await encrypted(plaintext);
+  const encryption_id = newEncryptionId();
+  const blob = Buffer.from(
+    await encryptFileFrame(
+      new Uint8Array(rawKey),
+      encryption_id,
+      0,
+      Buffer.byteLength(plaintext),
+      new TextEncoder().encode(plaintext).buffer,
+    ),
+  );
   const upload = await request.post(`/api/v1/transfers/${transfer.id}/files`, {
     headers: { "Tus-Resumable": "1.0.0", "Upload-Length": String(blob.length) },
   });
@@ -47,6 +57,9 @@ async function createEncryptedTransfer(request: APIRequestContext) {
           name: "revocable.txt",
           size: Buffer.byteLength(plaintext),
           mime_type: "text/plain",
+          encoding: "chunked-v1",
+          chunk_size: 4194304,
+          encryption_id,
           blob_id: uploadURL.pathname.split("/").pop(),
         },
       ],

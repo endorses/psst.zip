@@ -95,7 +95,7 @@ final class GuestTransferModel {
                 guard let manifest = ManifestSerializer.decode(json: String(decoding: plain, as: UTF8.self)) else { throw GuestError.invalidManifest }
                 _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: transfer)
                 record.files = try manifest.files.map {
-                    try GuestFile(id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType)
+                    try GuestFile(id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType, encoding: $0.encoding, chunkSize: $0.chunkSize, encryptionID: $0.encryptionId)
                 }
                 try store.update(record)
             }
@@ -109,23 +109,18 @@ final class GuestTransferModel {
                 guard allowRedownload || !file.saved else { throw GuestError.redownloadConsent }
                 fileNumber = index + 1
                 bytes = 0
-                total = file.size + 28
+                total = file.size
                 stage = "Downloading"
-                let encrypted = try await client.transfers.downloadFileWithProgress(transferId: record.transferID, fileId: file.id, onProgress: { received, _ in
-                    Task { @MainActor in
-                        guard self.run == identifier, self.active, self.stage == "Downloading", self.fileNumber == index + 1 else { return }
-                        self.bytes = received.int64Value
-                    }
-                })
-                try Task.checkCancellation()
-                stage = "Decrypting"
-                await Task.yield()
-                let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
-                guard Int64(plain.count) == file.size else { throw GuestError.invalidManifest }
+                let metadata = FileMetadata(name: file.name, size: file.size, mimeType: file.mime, blobId: file.id,
+                                            encoding: file.encoding, chunkSize: file.chunkSize, encryptionId: file.encryptionID)
+                let temporary = try await StreamedFiles.receive(client: client, transferID: record.transferID, file: metadata, key: key.toKotlinByteArray()) { received in
+                    guard self.run == identifier, self.active, self.fileNumber == index + 1 else { return }
+                    self.bytes = received
+                }
+                defer { try? FileManager.default.removeItem(at: temporary) }
                 try Task.checkCancellation()
                 stage = "Saving"
-                await Task.yield()
-                try store.save(plain, index: index, record: &record)
+                try store.publish(temporary, index: index, record: &record)
             }
             try Task.checkCancellation()
             guard !record.files.isEmpty, record.files.allSatisfy({ store.url($0) != nil }) else { throw GuestError.invalidManifest }
@@ -141,7 +136,7 @@ final class GuestTransferModel {
     }
 
     func send(_ urls: [URL], to link: ParsedUrl) {
-        guard !active, !urls.isEmpty else { return }
+        guard !active, !uploadComplete, !urls.isEmpty else { return }
         active = true; error = nil; currentID = nil; uploadComplete = false; cleanupPending = false; fileNumber = 0
         let identifier = UUID()
         run = identifier
@@ -155,9 +150,10 @@ final class GuestTransferModel {
         do {
             let anonymous = try GuestNetwork.client(link.origin)
             defer { anonymous.close() }
-            let sizes = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
+            let limit = try await Int(anonymous.limits.get().maxFileSize)
+            let sizes = try BufferedUpload.sizes(urls, limit: limit)
             let selection = Manifest(files: zip(urls, sizes).map { url, size in
-                FileMetadata(name: url.lastPathComponent, size: size, mimeType: "application/octet-stream", blobId: UUID().uuidString)
+                FileMetadata(name: url.lastPathComponent, size: size, mimeType: "application/octet-stream", blobId: UUID().uuidString, encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())
             })
             _ = try ManifestValidator.shared.validate(manifest: selection)
             stage = "Preparing upload"
@@ -172,7 +168,7 @@ final class GuestTransferModel {
             let scoped = try ApiClient.companion.slotUpload(origin: link.origin, capability: capability)
             client = scoped
             let metadata = try await BufferedUpload.send(fileURLs: urls, client: scoped, transferId: transfer.id, key: link.key,
-                                                         limit: BufferedUpload.maxFileBytes, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = "Encrypting" },
+                                                         limit: limit, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = "Encrypting" },
                                                          progress: { progress in
                                                              guard self.run == identifier, self.active, self.task?.isCancelled != true else { return }
                                                              self.stage = "Uploading"; self.bytes = progress.sent; self.total = progress.total

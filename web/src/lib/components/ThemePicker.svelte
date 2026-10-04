@@ -4,6 +4,7 @@
 
   type Appearance = "system" | "light" | "dark";
   let appearance = $state<Appearance>("system");
+  let ready = $state(false);
   function normalize(value: string | null | undefined): Appearance {
     return value === "light" || value === "dark" ? value : "system";
   }
@@ -21,6 +22,7 @@
   }
   onMount(() => {
     apply(document.documentElement.dataset.theme ?? null);
+    ready = true;
     const sync = (event: StorageEvent) => {
       if (event.key === "psst.theme" || event.key === null) apply(event.newValue);
     };
@@ -36,6 +38,7 @@
   />
   <select
     aria-label="Appearance"
+    disabled={!ready}
     value={appearance}
     onchange={(event) => choose(event.currentTarget.value)}
   >

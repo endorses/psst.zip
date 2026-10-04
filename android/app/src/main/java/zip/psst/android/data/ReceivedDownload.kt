@@ -1,7 +1,6 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.FileMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -14,7 +13,7 @@ internal suspend fun receiveAndSaveChild(
     transferId: String,
     files: List<FileMetadata>,
     key: ByteArray,
-    saveFile: suspend (FileMetadata, ByteArray) -> Unit,
+    saveFile: suspend (FileMetadata, FileContent) -> Unit,
     recordSaved: suspend (ReceivedChild) -> Unit,
     onFileSaved: () -> Unit = {},
     alreadySaved: Set<String> = emptySet(),
@@ -28,18 +27,9 @@ internal suspend fun receiveAndSaveChild(
             onFileSaved()
             continue
         }
-        val encrypted = client.transfers.downloadFile(transferId, file.blobId)
-        require(encrypted.size >= 28) { "Encrypted file is incomplete" }
-        val plaintext =
-            CryptoProvider.decrypt(
-                key,
-                encrypted.copyOfRange(0, 12),
-                encrypted.copyOfRange(12, encrypted.size),
-            )
-        require(plaintext.size.toLong() == file.size) { "Manifest file size mismatch" }
-        saveFile(file, plaintext)
+        saveFile(file, downloadedContent(client, transferId, file, key))
         withContext(NonCancellable) { recordFileSaved(file.blobId) }
-        savedBytes += plaintext.size
+        savedBytes += file.size
         onFileSaved()
     }
     // Persist first: acknowledgement failure/cancellation must never require another file download.

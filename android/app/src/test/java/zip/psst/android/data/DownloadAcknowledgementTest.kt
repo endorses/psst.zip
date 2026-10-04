@@ -1,7 +1,7 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
+import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.ServerConfig
 import io.ktor.client.HttpClient
@@ -27,7 +27,19 @@ class DownloadAcknowledgementTest {
     private val nonce = ByteArray(12) { it.toByte() }
     private val data = byteArrayOf(1, 2, 3)
 
-    private fun encrypted() = nonce + CryptoProvider.encrypt(key, nonce, data)
+    private val encryptionId = "1".repeat(32)
+
+    private fun file(name: String, size: Long, blobId: String) =
+        FileMetadata(
+            name,
+            size,
+            blobId = blobId,
+            encoding = "chunked-v1",
+            chunkSize = 4194304,
+            encryptionId = encryptionId,
+        )
+
+    private fun encrypted() = ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, data)
 
     private fun row() =
         TransferHistoryEntity("slot", "received", 0, 0, "https://example.com", "", "waiting")
@@ -63,9 +75,12 @@ class DownloadAcknowledgementTest {
             receiveAndSaveChild(
                 client,
                 "child",
-                listOf(FileMetadata("one", 3, blobId = "a"), FileMetadata("two", 3, blobId = "b")),
+                listOf(file("one", 3, blobId = "a"), file("two", 3, blobId = "b")),
                 key,
-                saveFile = { _, _ -> events += "write" },
+                saveFile = { _, content ->
+                    content {}
+                    events += "write"
+                },
                 recordSaved = { child ->
                     events += "persist"
                     saved =
@@ -110,11 +125,12 @@ class DownloadAcknowledgementTest {
                         client,
                         "child",
                         listOf(
-                            FileMetadata("one", 3, blobId = "a"),
-                            FileMetadata("two", if (failure == "size") 4 else 3, blobId = "b"),
+                            file("one", 3, blobId = "a"),
+                            file("two", if (failure == "size") 4 else 3, blobId = "b"),
                         ),
                         key,
-                        saveFile = { _, _ ->
+                        saveFile = { _, content ->
+                            content {}
                             writes++
                             if (writes == 2 && failure == "write") error("Disk full")
                         },
@@ -153,12 +169,10 @@ class DownloadAcknowledgementTest {
             receiveAndSaveChild(
                 client,
                 "same-child",
-                listOf(
-                    FileMetadata("first", 3, blobId = "a"),
-                    FileMetadata("second", 3, blobId = "b"),
-                ),
+                listOf(file("first", 3, blobId = "a"), file("second", 3, blobId = "b")),
                 key,
-                saveFile = { file, _ ->
+                saveFile = { file, content ->
+                    content {}
                     if (file.blobId == "b" && failSecond) error("Disk full")
                     else written += file.blobId
                 },
@@ -205,9 +219,9 @@ class DownloadAcknowledgementTest {
             receiveAndSaveChild(
                 client,
                 "child",
-                listOf(FileMetadata("one", 3, blobId = "a")),
+                listOf(file("one", 3, blobId = "a")),
                 key,
-                saveFile = { _, _ -> },
+                saveFile = { _, content -> content {} },
                 recordSaved = { child ->
                     saved =
                         mergeReceivedHistory(

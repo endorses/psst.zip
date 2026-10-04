@@ -10,7 +10,17 @@
 <div class="app" class:workspace-shell={$page.url.pathname === "/"}>
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
-    <a href="/" class="logo" aria-label={`${BRAND} home`}>{BRAND}</a>
+    <a href="/" data-sveltekit-reload class="logo" aria-label={`${BRAND} home`}>
+      <img class="brand-light" src="/brand/logo-light.svg" alt={BRAND} width="168" height="42" />
+      <img
+        class="brand-dark"
+        src="/brand/logo-dark.svg"
+        alt=""
+        aria-hidden="true"
+        width="168"
+        height="42"
+      />
+    </a>
     <div class="header-tools">
       <span class="tagline muted small">Quietly share something.</span>
       <ThemePicker />
@@ -52,6 +62,28 @@
     gap: 0.3rem;
     text-decoration: none;
     color: var(--text);
+  }
+  .logo img {
+    width: 168px;
+    height: 42px;
+    object-fit: contain;
+  }
+  .brand-dark {
+    display: none;
+  }
+  :global(:root[data-theme="dark"]) .brand-light {
+    display: none;
+  }
+  :global(:root[data-theme="dark"]) .brand-dark {
+    display: block;
+  }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme="light"])) .brand-light {
+      display: none;
+    }
+    :global(:root:not([data-theme="light"])) .brand-dark {
+      display: block;
+    }
   }
   main {
     flex: 1;

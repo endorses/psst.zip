@@ -1,7 +1,7 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
+import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.ServerConfig
 import io.ktor.client.HttpClient
@@ -25,8 +25,19 @@ class GuestReceivePipelineTest {
     private val key = ByteArray(32) { it.toByte() }
     private val nonce = ByteArray(12) { it.toByte() }
     private val plain = byteArrayOf(1, 2, 3)
-    private val files =
-        listOf(FileMetadata("same.txt", 3, blobId = "a"), FileMetadata("same.txt", 3, blobId = "b"))
+    private val encryptionId = "1".repeat(32)
+
+    private fun metadata(blobId: String) =
+        FileMetadata(
+            "same.txt",
+            3,
+            blobId = blobId,
+            encoding = "chunked-v1",
+            chunkSize = 4194304,
+            encryptionId = encryptionId,
+        )
+
+    private val files = listOf(metadata("a"), metadata("b"))
 
     private fun saved(id: String) =
         SavedGuestFile(id, "content://downloads/$id", "same-$id.txt", 3, "text/plain", "digest")
@@ -46,7 +57,7 @@ class GuestReceivePipelineTest {
                         val blob = request.url.encodedPath.substringAfterLast('/')
                         requests += blob
                         if (blob == "b" && fail) throw IOException("interrupted")
-                        respond(nonce + CryptoProvider.encrypt(key, nonce, plain))
+                        respond(ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, plain))
                     }
                 ),
             )
@@ -60,8 +71,8 @@ class GuestReceivePipelineTest {
                     emptySet(),
                     { _, _, _ -> },
                     { _, _ -> },
-                    { f, bytes ->
-                        assertArrayEquals(plain, bytes)
+                    { f, content ->
+                        content { bytes -> assertArrayEquals(plain, bytes) }
                         saved(f.blobId)
                     },
                     checkpoints::add,
@@ -78,7 +89,10 @@ class GuestReceivePipelineTest {
                 checkpoints.map { it.blobId }.toSet(),
                 { _, _, _ -> },
                 { _, _ -> },
-                { f, _ -> saved(f.blobId) },
+                { f, content ->
+                    content {}
+                    saved(f.blobId)
+                },
                 checkpoints::add,
             )
             assertEquals(listOf("a", "b", "b"), requests)
@@ -93,7 +107,7 @@ class GuestReceivePipelineTest {
         for (failure in listOf("authentication", "size", "storage", "cancel")) {
             var writes = 0
             var checkpoints = 0
-            val encrypted = nonce + CryptoProvider.encrypt(key, nonce, plain)
+            val encrypted = ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, plain)
             if (failure == "authentication")
                 encrypted[encrypted.lastIndex] = (encrypted.last().toInt() xor 1).toByte()
             val client =
@@ -111,7 +125,8 @@ class GuestReceivePipelineTest {
                         emptySet(),
                         { _, _, _ -> },
                         { _, _ -> },
-                        { _, _ ->
+                        { _, content ->
+                            content {}
                             writes++
                             if (failure == "cancel") throw CancellationException()
                             throw IOException("storage unavailable")

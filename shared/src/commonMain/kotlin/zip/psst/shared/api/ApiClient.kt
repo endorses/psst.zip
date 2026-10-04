@@ -43,6 +43,11 @@ class ApiClient(
     val slots: SlotApi = SlotApi(httpClient, config, sessionToken)
     val tus: TusClient = TusClient(httpClient, config.normalizedBaseUrl, sessionToken)
     val auth: AuthApi = AuthApi(httpClient, config, sessionToken)
+    val limits: LimitsApi = LimitsApi(httpClient, config)
+
+    @Throws(Exception::class)
+    suspend fun createFileUpload(transferId: String, wireSize: Long): String =
+        tus.create("${config.apiBaseUrl}/transfers/$transferId/files", wireSize)
 
     /**
      * Upload an encrypted file to a transfer via the tus protocol.

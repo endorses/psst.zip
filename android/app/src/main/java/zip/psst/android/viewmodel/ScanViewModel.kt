@@ -13,10 +13,12 @@ import zip.psst.android.data.cleanupGuestUpload
 import zip.psst.android.data.receiveGuestFiles
 import zip.psst.android.data.reconcileGuestOutput
 import zip.psst.android.data.resolveGuestUpload
+import zip.psst.android.data.spoolUpload
+import zip.psst.android.data.uploadChunkedFile
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.*
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +40,7 @@ data class ScanState(
     val history: List<GuestDownload> = emptyList(),
     val uploadFiles: List<Uri> = emptyList(),
     val uploaded: Boolean = false,
+    val maxFileBytes: Long? = null,
     val pendingCleanup: Int = 0,
     val pendingReceipts: Int = 0,
 )
@@ -125,8 +128,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             )
     }
 
-    fun open(record: GuestDownload) {
-        if (job?.isActive == true) return
+    fun open(record: GuestDownload): Boolean {
+        if (job?.isActive == true) return false
         input = null
         try {
             var current = store.read(record.identity)
@@ -143,8 +146,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             if (current.receiptPending) retryReceipt()
+            return true
         } catch (_: Exception) {
             error("Could not reopen this local record. Saved files remain in Downloads/psst.zip.")
+            return false
         }
     }
 
@@ -239,7 +244,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     stage = stage,
                                     fileIndex = index,
                                     bytes = if (stage == "Downloading") 0 else it.bytes,
-                                    totalBytes = file.size + 28,
+                                    totalBytes = ChunkedFileCrypto.wireSize(file.size),
                                     record = record,
                                 )
                             }
@@ -453,6 +458,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 var cleanup: zip.psst.android.data.GuestUploadCleanup? = null
                 _state.update { it.copy(busy = true, error = null, stage = "Preparing upload") }
                 try {
+                    val maxBytes = guest.limits.get().maxFileSize
+                    _state.update { it.copy(maxFileBytes = maxBytes) }
                     require(uris.size <= TransferLimits.MAX_FILES)
                     child = guest.slots.createTransfer(link.id)
                     withContext(NonCancellable) {
@@ -474,40 +481,30 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                 ?.use { if (it.moveToFirst()) it.getString(0) else "file" }
                                 ?: "file"
                         val safeName = ManifestValidator.safeFilename(name)
-                        val bytes =
-                            resolver.openInputStream(uri)!!.use { stream ->
-                                val output = ByteArrayOutputStream()
-                                val buffer = ByteArray(8192)
-                                while (true) {
-                                    ensureActive()
-                                    val count = stream.read(buffer)
-                                    if (count < 0) break
-                                    require(output.size() + count <= TransferLimits.MAX_FILE_BYTES)
-                                    output.write(buffer, 0, count)
+                        val snapshot = spoolUpload(getApplication(), uri, maxBytes)
+                        try {
+                            _state.update {
+                                it.copy(
+                                    stage = "Uploading",
+                                    fileIndex = index + 1,
+                                    bytes = 0,
+                                    totalBytes = ChunkedFileCrypto.wireSize(snapshot.length()),
+                                )
+                            }
+                            files +=
+                                uploadChunkedFile(
+                                    scoped,
+                                    child.id,
+                                    snapshot,
+                                    safeName,
+                                    resolver.getType(uri) ?: "application/octet-stream",
+                                    link.key,
+                                ) { uploaded ->
+                                    _state.update { it.copy(bytes = uploaded) }
                                 }
-                                output.toByteArray()
-                            }
-                        _state.update { it.copy(stage = "Encrypting", fileIndex = index + 1) }
-                        val nonce = CryptoProvider.generateNonce()
-                        val encrypted = nonce + CryptoProvider.encrypt(link.key, nonce, bytes)
-                        _state.update {
-                            it.copy(
-                                stage = "Uploading",
-                                bytes = 0,
-                                totalBytes = encrypted.size.toLong(),
-                            )
+                        } finally {
+                            snapshot.delete()
                         }
-                        val resource =
-                            scoped.uploadFile(child.id, encrypted) { uploaded ->
-                                _state.update { it.copy(bytes = uploaded) }
-                            }
-                        files +=
-                            FileMetadata(
-                                safeName,
-                                bytes.size.toLong(),
-                                resolver.getType(uri) ?: "application/octet-stream",
-                                resource.substringAfterLast('/'),
-                            )
                     }
                     val manifest = Json.encodeToString(Manifest(files)).encodeToByteArray()
                     val nonce = CryptoProvider.generateNonce()

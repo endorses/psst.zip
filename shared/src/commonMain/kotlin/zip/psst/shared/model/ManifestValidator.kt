@@ -1,5 +1,7 @@
 package zip.psst.shared.model
 
+import zip.psst.shared.crypto.ChunkedFileCrypto
+
 /**
  * Validation is performed on authenticated plaintext, before any blob request or filesystem write.
  */
@@ -10,13 +12,22 @@ object ManifestValidator {
             "Unsupported number of files in this transfer"
         }
         val ids = mutableSetOf<String>()
+        val contexts = mutableSetOf<String>()
         var total = 0L
         for (file in manifest.files) {
             require(UrlHelper.isResourceId(file.blobId) && ids.add(file.blobId.lowercase())) {
                 "Invalid or duplicate file identifier"
             }
-            require(file.size in 0..TransferLimits.MAX_FILE_BYTES.toLong()) {
+            require(file.size in 0..ChunkedFileCrypto.MAX_FILE_SIZE) {
                 "A file exceeds this app's supported size limit"
+            }
+            require(
+                file.encoding == ChunkedFileCrypto.ENCODING &&
+                    file.chunkSize == ChunkedFileCrypto.CHUNK_SIZE &&
+                    file.encryptionId.matches(Regex("[0-9a-f]{32}")) &&
+                    contexts.add(file.encryptionId)
+            ) {
+                "Unsupported file encryption format"
             }
             safeFilename(file.name)
             require(file.size <= Long.MAX_VALUE - total) { "Invalid transfer size" }
@@ -33,7 +44,7 @@ object ManifestValidator {
         val total = validate(manifest)
         require(
             transfer.fileCount == manifest.files.size &&
-                transfer.totalSize == total + 28L * manifest.files.size
+                transfer.totalSize == manifest.files.sumOf { ChunkedFileCrypto.wireSize(it.size) }
         ) {
             "The transfer details do not match its encrypted file list"
         }

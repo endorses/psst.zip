@@ -1,9 +1,6 @@
 package zip.psst.android.viewmodel
 
 import android.app.Application
-import android.content.ContentValues
-import android.os.Environment
-import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
@@ -379,6 +376,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         val manifest =
                             Json.decodeFromString<Manifest>(manifestPlaintext.decodeToString())
 
+                        zip.psst.shared.model.ManifestValidator.validate(manifest)
                         require(manifest.files.size == transfer.fileCount) {
                             "Manifest file count mismatch"
                         }
@@ -408,28 +406,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 check(app.prefs.historyAccess.value == access) {
                                     "Your account changed"
                                 }
-                                val contentValues =
-                                    ContentValues().apply {
-                                        put(MediaStore.Downloads.DISPLAY_NAME, fileMeta.name)
-                                        put(MediaStore.Downloads.MIME_TYPE, fileMeta.mimeType)
-                                        put(
-                                            MediaStore.Downloads.RELATIVE_PATH,
-                                            Environment.DIRECTORY_DOWNLOADS,
-                                        )
-                                    }
-                                val uri =
-                                    context.contentResolver.insert(
-                                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                                        contentValues,
-                                    ) ?: throw Exception("Failed to create file in Downloads")
-                                try {
-                                    context.contentResolver.openOutputStream(uri)?.use {
-                                        it.write(plaintext)
-                                    } ?: throw Exception("Failed to write file")
-                                } catch (error: Exception) {
-                                    context.contentResolver.delete(uri, null, null)
-                                    throw error
-                                }
+                                zip.psst.android.data.GuestFileSaver(context).save(
+                                    fileMeta,
+                                    plaintext,
+                                ) {}
                             },
                             recordSaved = { child ->
                                 historyMutex.withLock {

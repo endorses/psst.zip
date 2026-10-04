@@ -14,6 +14,11 @@ class PsstApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // No upload runs before Application startup; remove snapshots left by process termination.
+        cacheDir
+            .listFiles()
+            ?.filter { it.name.startsWith("psst-upload-") && it.name.endsWith(".partial") }
+            ?.forEach { it.delete() }
         database = AppDatabase.create(this)
         prefs = PrefsManager(this)
     }

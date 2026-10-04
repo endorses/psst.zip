@@ -8,7 +8,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
 import QRCode from "qrcode";
-import { encrypt, encryptManifest, generateKey, exportKey } from "../src/lib/crypto.ts";
+import { encryptFileFrame, newEncryptionId } from "../src/lib/chunked-files.ts";
+import { encryptManifest, generateKey, exportKey } from "../src/lib/crypto.ts";
 
 const base = process.env.PSST_TEST_BASE_URL?.replace(/\/$/, "");
 const nativeBase = process.env.PSST_NATIVE_BASE_URL?.replace(/\/$/, "") ?? base;
@@ -55,7 +56,10 @@ async function create(name, count, { corrupt = false, quota = 0 } = {}) {
     const plaintext = new TextEncoder().encode(
       `psst.zip native interoperability ${name} file ${index}\n`,
     );
-    const encrypted = new Uint8Array(await encrypt(key, plaintext.buffer));
+    const encryption_id = newEncryptionId();
+    const encrypted = new Uint8Array(
+      await encryptFileFrame(key, encryption_id, 0, plaintext.length, plaintext.buffer),
+    );
     if (corrupt && index === count - 1) encrypted[encrypted.length - 1] ^= 1;
     const created = await request(`/transfers/${transfer.id}/files`, {
       method: "POST",
@@ -86,6 +90,9 @@ async function create(name, count, { corrupt = false, quota = 0 } = {}) {
       size: plaintext.length,
       mime_type: "text/plain",
       blob_id: blobId,
+      encoding: "chunked-v1",
+      chunk_size: 4194304,
+      encryption_id,
     });
     const localName = `${name}-expected-${index}.txt`;
     await writeFile(join(output, localName), plaintext);

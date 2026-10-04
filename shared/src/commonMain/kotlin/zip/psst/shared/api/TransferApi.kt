@@ -140,6 +140,56 @@ class TransferApi(
         )
     }
 
+    /** Delivers exact encrypted frames serially; false aborts without reading another frame. */
+    @Throws(Exception::class)
+    suspend fun downloadFileChunks(
+        transferId: String,
+        fileId: String,
+        wireSize: Long,
+        chunkBytes: Int,
+        onChunk: (ByteArray) -> Boolean,
+    ) {
+        require(
+            chunkBytes ==
+                zip.psst.shared.crypto.ChunkedFileCrypto.CHUNK_SIZE +
+                    zip.psst.shared.crypto.ChunkedFileCrypto.FRAME_OVERHEAD
+        )
+        require(
+            wireSize in
+                60..zip.psst.shared.crypto.ChunkedFileCrypto.wireSize(
+                        zip.psst.shared.crypto.ChunkedFileCrypto.MAX_FILE_SIZE
+                    )
+        )
+        httpClient
+            .prepareGet("${config.apiBaseUrl}/transfers/$transferId/files/$fileId") {
+                expectSuccess = false
+            }
+            .execute { response ->
+                require(response.status.value == 200) { "Download failed: ${response.status}" }
+                val declared = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+                require(declared == null || declared == wireSize) {
+                    "The encrypted file length does not match its manifest"
+                }
+                val channel = response.bodyAsChannel()
+                var remaining = wireSize
+                while (remaining > 0) {
+                    val frame = ByteArray(minOf(chunkBytes.toLong(), remaining).toInt())
+                    var filled = 0
+                    while (filled < frame.size) {
+                        val count = channel.readAvailable(frame, filled, frame.size - filled)
+                        require(count >= 0) { "The file download was interrupted" }
+                        filled += count
+                    }
+                    require(onChunk(frame)) { "File processing was stopped" }
+                    remaining -= frame.size
+                }
+                val extra = ByteArray(1)
+                require(channel.readAvailable(extra, 0, 1) == -1) {
+                    "The encrypted file has unexpected trailing data"
+                }
+            }
+    }
+
     private suspend fun downloadBounded(
         url: String,
         maxBytes: Int,

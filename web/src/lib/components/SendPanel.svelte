@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onDestroy, untrack } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { beforeNavigate } from "$app/navigation";
   import { UploadJob, formatSize } from "$lib/upload-job.svelte";
   import Icon from "./Icon.svelte";
   import LinkCard from "./LinkCard.svelte";
-  import { FILE_SIZE_NOTICE } from "$lib/limits";
+  import { fileLimitLabel } from "$lib/limits";
   let {
     accountId,
     slotId,
@@ -23,6 +23,9 @@
     onselection?: (files: File[]) => void;
   } = $props();
   const job = new UploadJob();
+  onMount(() => {
+    void job.refreshLimit();
+  });
   // Initial selection belongs to the account-keyed component; never react to another account.
   job.files = untrack(() => [...initialFiles]);
   $effect(() => onselection(job.files));
@@ -105,7 +108,11 @@
     <span class="muted small">or choose them from your device</span>
     <span class="choose-files" aria-hidden="true">Choose files <Icon name="Arrow" size={17} /></span
     >
-    <span class="muted small file-limit">{FILE_SIZE_NOTICE}</span><input
+    <span class="muted small file-limit"
+      >{job.limit === null
+        ? "Checking server file limit…"
+        : `Up to ${fileLimitLabel(job.limit)} per file.`}</span
+    ><input
       class="file-input"
       aria-label="Choose files"
       type="file"

@@ -7,7 +7,7 @@ export default defineConfig({
   webServer: [
     {
       command: "node tests/browser/server.mjs",
-      url: "http://127.0.0.1:8080/api/v1/slots/invalid",
+      url: `http://127.0.0.1:${process.env.PSST_TEST_BACKEND_PORT || "8080"}/api/v1/slots/invalid`,
       timeout: 60000,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5000 },
     },

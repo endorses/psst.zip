@@ -1,17 +1,13 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
-  import QRCode from "qrcode";
+  import { brandedQr } from "$lib/branded-qr";
   let { url, label = "Share this link" }: { url: string; label?: string } = $props();
   let qr = $state(""),
     message = $state(""),
     field = $state<HTMLInputElement>();
   $effect(() => {
     let alive = true;
-    QRCode.toDataURL(url, {
-      scale: 8,
-      margin: 4,
-      color: { dark: "#172B2A", light: "#FFFFFF" },
-    }).then((value) => {
+    brandedQr(url).then((value) => {
       if (alive) qr = value;
     });
     return () => {

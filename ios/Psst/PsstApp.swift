@@ -9,6 +9,7 @@ struct PsstApp: App {
     @State private var guestTransfer: GuestTransferModel
 
     init() {
+        StreamedFiles.clearAbandonedReceives()
         let store = GuestDownloadStore()
         _guestStore = State(initialValue: store)
         _guestTransfer = State(initialValue: GuestTransferModel(store: store))

@@ -97,6 +97,9 @@ test("LAN HTTP fallback generates 32-byte URL-fragment keys and unique nonces", 
           name: "empty.txt",
           size: 0,
           mime_type: "text/plain",
+          encoding: "chunked-v1" as const,
+          chunk_size: 4194304 as const,
+          encryption_id: "ab".repeat(16),
           blob_id: "12345678-1234-1234-1234-123456789012",
         },
       ],
@@ -158,8 +161,28 @@ test("manifests reject duplicate blob IDs with conflicting file metadata", async
     name: "file.txt",
     size: 1,
     mime_type: "text/plain",
+    encoding: "chunked-v1" as const,
+    chunk_size: 4194304 as const,
+    encryption_id: "ab".repeat(16),
     blob_id: "12345678-1234-1234-1234-123456789012",
   };
   const encrypted = await encryptManifest(key, { files: [file, { ...file, size: 2 }] });
+  await assert.rejects(decryptManifest(key, encrypted), /Invalid file manifest/);
+});
+
+test("manifest rejects reused encryption context across different blobs", async () => {
+  const key = await generateKey();
+  const file = {
+    name: "first",
+    size: 0,
+    mime_type: "text/plain",
+    blob_id: "12345678-1234-1234-1234-123456789012",
+    encoding: "chunked-v1" as const,
+    chunk_size: 4194304 as const,
+    encryption_id: "ab".repeat(16),
+  };
+  const encrypted = await encryptManifest(key, {
+    files: [file, { ...file, name: "second", blob_id: "12345678-1234-1234-1234-123456789013" }],
+  });
   await assert.rejects(decryptManifest(key, encrypted), /Invalid file manifest/);
 });

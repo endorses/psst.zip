@@ -3,6 +3,25 @@ import Shared
 
 enum SendState: Equatable {
     case idle, encrypting, uploading(progress: Double), complete, failed(String)
+    var permitsStart: Bool {
+        switch self { case .idle, .failed: true; default: false }
+    }
+}
+
+/// A fresh server policy replaces the previous attempt's policy, bounded only by processing capability.
+struct UploadSizePolicy {
+    let processingCeiling: Int
+    private(set) var limit: Int
+
+    init(processingCeiling: Int) {
+        self.processingCeiling = processingCeiling
+        limit = processingCeiling
+    }
+
+    mutating func refresh(serverMaximum: Int64) throws {
+        guard let maximum = Int(exactly: serverMaximum), maximum > 0 else { throw AccountError.request }
+        limit = min(processingCeiling, maximum)
+    }
 }
 
 @Observable
@@ -34,7 +53,11 @@ final class SendViewModel {
         return false
     }
 
-    let limit: Int
+    var limit: Int {
+        uploadPolicy.limit
+    }
+
+    private var uploadPolicy: UploadSizePolicy
     private let serverConfig: ServerConfigManager
     private let historyStore: TransferHistoryStore
     private var client: ApiClient?
@@ -48,11 +71,11 @@ final class SendViewModel {
         self.fileURLs = fileURLs
         self.serverConfig = serverConfig
         self.historyStore = historyStore
-        self.limit = limit
+        uploadPolicy = UploadSizePolicy(processingCeiling: limit)
     }
 
     func start() {
-        guard !active, !starting else { return }
+        guard state.permitsStart, !starting else { return }
         starting = true
         job = Task {
             defer { starting = false }
@@ -79,7 +102,7 @@ final class SendViewModel {
     }
 
     func startUpload() async {
-        guard !active else { return }
+        guard state.permitsStart else { return }
         state = .encrypting
         let run = UUID()
         runID = run
@@ -90,6 +113,11 @@ final class SendViewModel {
                 throw AccountError.changed
             }
             origin = session
+            let policy = try ApiClient.companion.anonymous(origin: session.serverURL)
+            defer { policy.close() }
+            let serverMaximum = try await policy.limits.get().maxFileSize
+            try uploadPolicy.refresh(serverMaximum: serverMaximum)
+            try serverConfig.check(session)
             let sizes = try BufferedUpload.sizes(fileURLs, limit: limit)
             if let previous = record {
                 try await historyStore.revoke(previous, session: session)

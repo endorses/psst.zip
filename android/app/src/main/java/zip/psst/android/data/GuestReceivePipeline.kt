@@ -1,11 +1,8 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.FileMetadata
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Decrypted data is authenticated and length checked before the first filesystem write. */
@@ -17,27 +14,13 @@ internal suspend fun receiveGuestFiles(
     alreadySaved: Set<String>,
     onStage: (String, Int, FileMetadata) -> Unit,
     onProgress: (Long, Long?) -> Unit,
-    saveFile: suspend (FileMetadata, ByteArray) -> SavedGuestFile,
+    saveFile: suspend (FileMetadata, FileContent) -> SavedGuestFile,
     checkpoint: (SavedGuestFile) -> Unit,
 ) {
     for ((index, file) in files.withIndex()) {
         if (file.blobId in alreadySaved) continue
         onStage("Downloading", index + 1, file)
-        val encrypted =
-            client.transfers.downloadFileWithProgress(transferId, file.blobId, onProgress)
-        currentCoroutineContext().ensureActive()
-        onStage("Decrypting", index + 1, file)
-        require(encrypted.size >= 28)
-        val plain =
-            CryptoProvider.decrypt(
-                key,
-                encrypted.copyOfRange(0, 12),
-                encrypted.copyOfRange(12, encrypted.size),
-            )
-        require(plain.size.toLong() == file.size) { "Manifest file size mismatch" }
-        currentCoroutineContext().ensureActive()
-        onStage("Saving", index + 1, file)
-        val output = saveFile(file, plain)
+        val output = saveFile(file, downloadedContent(client, transferId, file, key, onProgress))
         withContext(NonCancellable) { checkpoint(output) }
     }
 }

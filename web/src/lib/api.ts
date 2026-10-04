@@ -1,3 +1,4 @@
+import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
 
 /**
@@ -92,7 +93,7 @@ export async function downloadFile(
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   const res = await requestRaw(`/transfers/${transferId}/files/${fileId}`, { signal });
-  return readBounded(res, MAX_BUFFERED_BYTES + 28, onProgress);
+  return readBounded(res, wireSize(MAX_BUFFERED_BYTES), onProgress);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +144,7 @@ export async function createSlotTransfer(slotId: string): Promise<CreateTransfer
 
 async function readBounded(
   response: Response,
-  limit = MAX_BUFFERED_BYTES + 28,
+  limit = wireSize(MAX_BUFFERED_BYTES),
   onProgress?: (bytes: number) => void,
 ): Promise<ArrayBuffer> {
   const reader = response.body?.getReader();
@@ -156,7 +157,7 @@ async function readBounded(
       if (done) break;
       size += value.byteLength;
       onProgress?.(size);
-      if (size > limit) throw new Error("Download exceeds the 25 MiB file limit.");
+      if (size > limit) throw new Error("Download exceeds the supported file size.");
       chunks.push(value);
     }
   } finally {

@@ -9,7 +9,15 @@ class ManifestValidatorTest {
     private val id = "01234567-89ab-cdef-0123-456789abcdef"
 
     private fun entry(name: String = "photo.jpg", size: Long = 12, blobId: String = id) =
-        FileMetadata(name, size, "image/jpeg", blobId)
+        FileMetadata(
+            name,
+            size,
+            "image/jpeg",
+            blobId,
+            "chunked-v1",
+            4194304,
+            blobId.replace("-", ""),
+        )
 
     @Test
     fun validatesEncryptedSizeAndAllowsDuplicateFilenames() {
@@ -19,7 +27,7 @@ class ManifestValidatorTest {
             24L,
             ManifestValidator.validateForTransfer(
                 manifest,
-                Transfer(id, 2, 80, TransferStatus.COMPLETE),
+                Transfer(id, 2, 144, TransferStatus.COMPLETE),
             ),
         )
         assertFailsWith<IllegalArgumentException> {
@@ -31,13 +39,13 @@ class ManifestValidatorTest {
         assertFailsWith<IllegalArgumentException> {
             ManifestValidator.validateForTransfer(
                 manifest,
-                Transfer(id, 1, 80, TransferStatus.COMPLETE),
+                Transfer(id, 1, 144, TransferStatus.COMPLETE),
             )
         }
         assertFailsWith<IllegalArgumentException> {
             ManifestValidator.validateForTransfer(
                 manifest,
-                Transfer(id, 2, 80, TransferStatus.PENDING),
+                Transfer(id, 2, 144, TransferStatus.PENDING),
             )
         }
     }
@@ -58,7 +66,12 @@ class ManifestValidatorTest {
                 ManifestValidator.validate(Manifest(listOf(entry(name))))
             }
         }
-        for (size in listOf(-1L, TransferLimits.MAX_FILE_BYTES.toLong() + 1, Long.MAX_VALUE)) {
+        for (size in
+            listOf(
+                -1L,
+                zip.psst.shared.crypto.ChunkedFileCrypto.MAX_FILE_SIZE + 1,
+                Long.MAX_VALUE,
+            )) {
             assertFailsWith<IllegalArgumentException> {
                 ManifestValidator.validate(Manifest(listOf(entry(size = size))))
             }

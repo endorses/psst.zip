@@ -81,7 +81,7 @@ assert "testMixedValidAndOversizedShareSelectionRejectsAllAndCleansCopies" in re
 assert "testUnknownProviderFailureDoesNotPrepareValidSubset" in read(
     "PsstTests/TransferWorkflowTests.swift"
 )
-assert "testProviderCopyRejectsElevenMiBBeforeCopying" in read(
+assert "testProviderCopyRejectsBeyondStreamingCeilingBeforeCopying" in read(
     "PsstTests/TransferWorkflowTests.swift"
 )
 # Reject accidentally copied tokens in shared ordinary preferences.
@@ -107,14 +107,20 @@ for path in ROOT.rglob("*.json"):
         json.loads(path.read_text())
 # Guest receive source wiring: these assertions do not prove native compilation or runtime behavior.
 assert app["UIFileSharingEnabled"] and app["LSSupportsOpeningDocumentsInPlace"]
-assert "ScanReceiveView().tabItem" in read("Psst/ContentView.swift")
+assert "ScanReceiveView(isSelected: selectedTab == 1 && !settings)" in read("Psst/ContentView.swift")
 assert "guestTransfer.cancel()" in read("Psst/ContentView.swift")
-assert "Received on this device" in read("Psst/Views/HistoryView.swift")
+assert "HistoryEntry.combine" in read("Psst/Views/HistoryView.swift")
+assert "historyOnly" not in read("Psst/Views/ScanReceiveView.swift")
+assert "isActive: visible && isSelected" in read("Psst/Views/ScanReceiveView.swift")
+assert "state.permitsStart" in read("Shared/SendViewModel.swift")
 assert "ApiClient.companion.anonymous" in read(
     "Psst/ViewModels/GuestTransferModel.swift"
 )
 assert "validateForTransfer" in read("Psst/ViewModels/GuestTransferModel.swift")
-assert "downloadFileWithProgress" in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "StreamedFiles.receive" in read("Psst/ViewModels/GuestTransferModel.swift")
+assert "downloadFileChunks" in read("Shared/StreamedFiles.swift")
+assert "createFileUpload" in read("Shared/BufferedUpload.swift")
+assert "limits.get()" in read("Shared/SendViewModel.swift")
 assert "sessionToken" not in read("Psst/ViewModels/GuestTransferModel.swift")
 assert "GuestUploadCleanup" in read("Psst/ViewModels/GuestTransferModel.swift")
 assert "SecretStore.write(key" in read("Psst/Services/GuestDownloadStore.swift")

@@ -1,13 +1,13 @@
-import * as tus from "tus-js-client";
+import { uploadEncryptedFile } from "./stream-upload";
+import { newEncryptionId, wireSize, FILE_CHUNK_SIZE } from "./chunked-files";
 import {
   generateKey,
   exportKey,
   importKey,
-  encrypt,
   encryptManifest,
   type FileManifestEntry,
 } from "./crypto";
-import { assertFileSize } from "./limits";
+import { assertFileSize, loadUploadLimit } from "./limits";
 export function formatSize(bytes: number) {
   if (!bytes) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB"];
@@ -16,6 +16,15 @@ export function formatSize(bytes: number) {
 }
 export class UploadJob {
   files = $state<File[]>([]);
+  limit = $state<number | null>(null);
+  async refreshLimit() {
+    try {
+      this.limit = await loadUploadLimit();
+    } catch (cause) {
+      this.limit = null;
+      this.error = cause instanceof Error ? cause.message : "Could not load the file limit.";
+    }
+  }
   state = $state<"idle" | "preparing" | "uploading" | "stopping" | "done" | "error">("idle");
   error = $state("");
   sent = $state(0);
@@ -24,27 +33,29 @@ export class UploadJob {
   url = $state("");
   transferId = $state("");
   private controller: AbortController | null = null;
-  private upload: tus.Upload | null = null;
   private token = "";
   private run = 0;
   get active() {
     return this.state === "preparing" || this.state === "uploading" || this.state === "stopping";
   }
-  add(files: File[]) {
+  async add(files: File[]) {
     try {
-      files.forEach((f) => assertFileSize(f.size));
+      this.limit = await loadUploadLimit();
+      if (this.active) return;
+      if (this.files.length + files.length > 100)
+        throw new Error("Choose no more than 100 files per transfer.");
+      files.forEach((f) => assertFileSize(f.size, this.limit!));
       this.files = [...this.files, ...files];
       this.error = "";
-    } catch {
-      this.error = "Files must be no larger than 25 MiB. Choose a smaller file.";
+    } catch (cause) {
+      this.error =
+        cause instanceof Error ? cause.message : "Could not check this server’s file limit.";
     }
   }
   async cancel() {
     this.run++;
     this.state = "stopping";
     this.controller?.abort();
-    await this.upload?.abort();
-    this.upload = null;
     await this.cleanup();
     this.state = "idle";
   }
@@ -105,8 +116,12 @@ export class UploadJob {
     this.state = "preparing";
     this.error = "";
     this.sent = 0;
-    this.total = files.reduce((n, f) => n + f.size + 28, 0);
+    this.total = files.reduce((n, f) => n + wireSize(f.size), 0);
     try {
+      if (files.length > 100) throw new Error("Choose no more than 100 files per transfer.");
+      this.limit = await loadUploadLimit(signal);
+      check();
+      files.forEach((file) => assertFileSize(file.size, this.limit!));
       if (options.accountId) {
         const me = await (await request("/auth/me")).json();
         check();
@@ -138,39 +153,30 @@ export class UploadJob {
         check();
         this.state = "preparing";
         this.current = file.name;
-        const plain = await file.arrayBuffer();
-        check();
-        const encrypted = await encrypt(key, plain);
-        check();
+        const encryptionId = newEncryptionId();
         this.state = "uploading";
-        const id = await new Promise<string>((resolve, reject) => {
-          const upload = new tus.Upload(new Blob([encrypted]), {
-            endpoint: `/api/v1/transfers/${created.id}/files`,
-            headers: options.slotId ? { Authorization: `Bearer ${this.token}` } : {},
-            chunkSize: 1024 * 1024,
-            retryDelays: [0, 1000, 3000, 5000],
-            onProgress: (sent) => {
-              if (run === this.run) this.sent = completed + sent;
-            },
-            onError: reject,
-            onSuccess: () => resolve(upload.url?.split("/").pop() ?? ""),
-          });
-          this.upload = upload;
-          signal.addEventListener(
-            "abort",
-            () => reject(new DOMException("Stopped", "AbortError")),
-            { once: true },
-          );
-          upload.start();
+        const id = await uploadEncryptedFile({
+          key,
+          file,
+          encryptionId,
+          endpoint: `/api/v1/transfers/${created.id}/files`,
+          token: options.slotId ? this.token : undefined,
+          signal,
+          onProgress: (bytes) => {
+            if (run === this.run) this.sent = completed + bytes;
+          },
         });
         check();
-        completed += encrypted.byteLength;
+        completed += wireSize(file.size);
         this.sent = completed;
         entries.push({
           name: file.name,
           size: file.size,
           mime_type: file.type || "application/octet-stream",
           blob_id: id,
+          encoding: "chunked-v1",
+          chunk_size: FILE_CHUNK_SIZE,
+          encryption_id: encryptionId,
         });
       }
       const manifest = await encryptManifest(key, { files: entries });
@@ -188,11 +194,11 @@ export class UploadJob {
       this.url = url;
       this.state = "done";
       this.transferId = "";
-      this.upload = null;
     } catch (error) {
       if (run !== this.run) return;
       this.state = "error";
       const safeErrors = [
+        "Choose no more than 100 files per transfer.",
         "This server is busy. Wait a moment, then retry upload.",
         "Sign in again to continue.",
         "This link is no longer available. Ask for a new link.",
@@ -200,7 +206,11 @@ export class UploadJob {
         "Your account changed. Sign in again before sending files.",
       ];
       this.error =
-        error instanceof Error && safeErrors.includes(error.message)
+        error instanceof Error &&
+        (safeErrors.includes(error.message) ||
+          /^Files must be no larger than [0-9.]+ MiB\.$/.test(error.message) ||
+          error.message ===
+            "Could not load this server's file limit. Check your connection and retry.")
           ? error.message
           : "Upload interrupted. Check your connection, then retry upload. You can also remove partial files with Retry cleanup.";
     }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
+import zip.psst.android.data.restorePendingShares
 import zip.psst.android.ui.navigation.PsstNavGraph
 import zip.psst.android.ui.navigation.Routes
 import zip.psst.android.ui.theme.PsstTheme
@@ -29,8 +30,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val app = application as PsstApplication
-        val sharedUris = extractSharedUris(intent)
-        incomingUris.addAll(sharedUris)
+        val restoredUris =
+            savedInstanceState?.getStringArrayList("pending-share-uris")?.map(Uri::parse)
+        incomingUris.addAll(restorePendingShares(restoredUris, extractSharedUris(intent)))
+        clearShareIntent()
 
         setContent {
             val appearance by app.prefs.appearance.collectAsStateWithLifecycle()
@@ -50,20 +53,16 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val uris = incomingUris
 
-                    val startDestination =
-                        when {
-                            !app.prefs.hasServerUrl() -> Routes.SERVER_CONFIG
-                            sharedUris.isNotEmpty() && app.prefs.getSessionToken() == null ->
-                                Routes.SERVER_CONFIG
-                            sharedUris.isNotEmpty() -> Routes.SEND
-                            else -> Routes.HOME
-                        }
+                    val startDestination = Routes.HOME
 
                     PsstNavGraph(
                         navController = navController,
                         startDestination = startDestination,
                         sharedUris = uris.toList(),
-                        onSharedUrisConsumed = { incomingUris.clear() },
+                        onSharedUrisConsumed = {
+                            incomingUris.clear()
+                            clearShareIntent()
+                        },
                     )
                 }
             }
@@ -75,6 +74,27 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         // Keep live jobs and their ViewModels intact when another share intent arrives.
         incomingUris.addAll(extractSharedUris(intent))
+        clearShareIntent()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putStringArrayList(
+            "pending-share-uris",
+            ArrayList(incomingUris.map(Uri::toString)),
+        )
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun clearShareIntent() {
+        // URI permissions remain granted to the activity; the payload must not be delivered twice.
+        setIntent(
+            Intent(intent).apply {
+                removeExtra(Intent.EXTRA_STREAM)
+                clipData = null
+                action = Intent.ACTION_MAIN
+                data = null
+            }
+        )
     }
 
     private fun extractSharedUris(intent: Intent?): List<Uri> {

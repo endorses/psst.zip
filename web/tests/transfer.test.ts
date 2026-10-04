@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { createServer } from "node:net";
 import { Upload } from "tus-js-client";
 import * as api from "../src/lib/api.ts";
+import { encryptFileFrame, decryptFileStream, newEncryptionId } from "../src/lib/chunked-files.ts";
 import * as crypto from "../src/lib/crypto.ts";
 import { assertFileSize, MAX_BUFFERED_BYTES } from "../src/lib/limits.ts";
 
@@ -116,12 +117,19 @@ async function roundTrip(id: string) {
   const files = [];
   for (const text of ['hello "world"\n', ""]) {
     const plaintext = new TextEncoder().encode(text);
-    const blob_id = await upload(id, await crypto.encrypt(key, plaintext.buffer));
+    const encryption_id = newEncryptionId();
+    const blob_id = await upload(
+      id,
+      await encryptFileFrame(key, encryption_id, 0, plaintext.length, plaintext.buffer),
+    );
     files.push({
       name: `file-${files.length}.txt`,
       size: plaintext.length,
       mime_type: "text/plain",
       blob_id,
+      encryption_id,
+      encoding: "chunked-v1" as const,
+      chunk_size: 4194304 as const,
     });
   }
   await api.uploadManifest(id, await crypto.encryptManifest(key, { files }));
@@ -129,7 +137,14 @@ async function roundTrip(id: string) {
   const manifest = await crypto.decryptManifest(restoredKey, await api.downloadManifest(id));
   assert.deepEqual(manifest.files, files);
   for (const [index, file] of manifest.files.entries()) {
-    const decrypted = await crypto.decrypt(restoredKey, await api.downloadFile(id, file.blob_id));
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of decryptFileStream(
+      restoredKey,
+      file,
+      new Blob([await api.downloadFile(id, file.blob_id)]).stream(),
+    ))
+      chunks.push(chunk);
+    const decrypted = Buffer.concat(chunks);
     assert.equal(new TextDecoder().decode(decrypted), index === 0 ? 'hello "world"\n' : "");
   }
 }
@@ -164,6 +179,6 @@ test("AES-GCM rejects a wrong key and modified ciphertext", async () => {
   await assert.rejects(crypto.decrypt(key, encrypted));
 });
 test("buffered clients reject oversized files", () => {
-  assertFileSize(MAX_BUFFERED_BYTES);
-  assert.throws(() => assertFileSize(MAX_BUFFERED_BYTES + 1));
+  assertFileSize(MAX_BUFFERED_BYTES, MAX_BUFFERED_BYTES);
+  assert.throws(() => assertFileSize(MAX_BUFFERED_BYTES + 1, MAX_BUFFERED_BYTES));
 });

@@ -30,7 +30,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 		sseHub:    NewSSEHub(),
 	}
 	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
-	s.tusH = tus.NewHandler(ts, fs, cfg.MaxFileSize)
+	s.tusH = tus.NewHandler(ts, fs, 0)
 	return s
 }
 
@@ -53,6 +53,8 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", s.health)
+		r.Get("/config", s.publicConfig)
+		r.With(s.requireAdmin).Patch("/admin/settings", s.updateSettings)
 		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
