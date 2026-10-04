@@ -1142,7 +1142,7 @@
     border: 0;
     background: transparent;
     color: var(--muted);
-    padding: 0.25rem 0;
+    padding: 0.5rem 0.75rem;
     min-height: 44px;
     font-size: 0.85rem;
   }
@@ -1293,9 +1293,6 @@
     }
     .identity .small {
       font-size: 0.8rem;
-    }
-    .sign-out {
-      padding: 0.4rem;
     }
   }
   @media (max-width: 540px) {
