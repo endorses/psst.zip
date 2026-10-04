@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -101,8 +102,28 @@ func (s *Server) requireLogin(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "sign in required")
 			return
 		}
+		if identity(r).user.MustChangePassword && r.URL.Path != "/api/v1/auth/me" && r.URL.Path != "/api/v1/auth/password" && r.URL.Path != "/api/v1/auth/logout" {
+			accountRestriction(w, "password_change_required")
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+func accountRestriction(w http.ResponseWriter, code string) {
+	message := "Change your temporary password before continuing."
+	if code == "admin_transfer_forbidden" {
+		message = "Administrator accounts manage the server. Use a regular account to transfer files."
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"code": code, "error": message})
+}
+func (s *Server) requireRegularUser(next http.Handler) http.Handler {
+	return s.requireLogin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if identity(r).user.Role != "user" {
+			accountRestriction(w, "admin_transfer_forbidden")
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
 }
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return s.requireLogin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +136,7 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 }
 func (s *Server) owns(r *http.Request, kind, id string) bool {
 	a := identity(r)
-	if a == nil {
+	if a == nil || a.user.MustChangePassword {
 		return false
 	}
 	if a.user.Role == "admin" {
@@ -163,14 +184,24 @@ func (s *Server) requireUpload(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if s.owns(r, "transfer", id) {
-			next.ServeHTTP(w, r)
-			return
-		}
 		token := bearer(r)
 		if len(slots) > 0 && token != "" && len(t.DeleteTokenHash) > 0 && subtle.ConstantTimeCompare(tokenHash(token), t.DeleteTokenHash) == 1 {
 			next.ServeHTTP(w, r)
 			return
+		}
+		if a := identity(r); a != nil {
+			if a.user.MustChangePassword {
+				accountRestriction(w, "password_change_required")
+				return
+			}
+			if a.user.Role != "user" {
+				accountRestriction(w, "admin_transfer_forbidden")
+				return
+			}
+			if s.owns(r, "transfer", id) {
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 		writeError(w, 403, "only the owner or invited uploader may modify this transfer")
 	})
@@ -256,9 +287,9 @@ func (s *Server) authRoutes(r chi.Router) {
 		r.Post("/auth/password", s.changePassword)
 		r.Get("/auth/sessions", s.sessions)
 		r.Delete("/auth/sessions/{sessionID}", s.deleteSession)
-		r.Post("/auth/pairings", s.createPairing)
-		r.Get("/auth/pairings/{pairingID}", s.pairingStatus)
-		r.Delete("/auth/pairings/{pairingID}", s.cancelPairing)
+		r.With(s.requireRegularUser).Post("/auth/pairings", s.createPairing)
+		r.With(s.requireRegularUser).Get("/auth/pairings/{pairingID}", s.pairingStatus)
+		r.With(s.requireRegularUser).Delete("/auth/pairings/{pairingID}", s.cancelPairing)
 		r.Get("/auth/resources", s.resources)
 	})
 	r.Group(func(r chi.Router) {
@@ -453,6 +484,14 @@ func (s *Server) redeemPairing(w http.ResponseWriter, r *http.Request) {
 	session := newSession("", req.DeviceName)
 	u, err := s.queries.RedeemPairing(tokenHash(req.Code), hash, session)
 	if err != nil {
+		if errors.Is(err, database.ErrAdminTransfer) {
+			accountRestriction(w, "admin_transfer_forbidden")
+			return
+		}
+		if errors.Is(err, database.ErrPasswordChangeRequired) {
+			accountRestriction(w, "password_change_required")
+			return
+		}
 		writeError(w, 401, "pairing code is invalid or expired")
 		return
 	}
@@ -489,7 +528,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
-	u := database.User{ID: uuid.NewString(), Username: req.Username, Role: req.Role, PasswordHash: hash}
+	u := database.User{ID: uuid.NewString(), Username: req.Username, Role: req.Role, PasswordHash: hash, MustChangePassword: req.Role == "user"}
 	if err := s.queries.CreateUser(u, false); err != nil {
 		writeError(w, 409, "username already exists or account could not be created")
 		return
@@ -548,12 +587,20 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 403, "current password is incorrect")
 		return
 	}
+	if req.Current == req.Password {
+		writeError(w, 400, "choose a different password")
+		return
+	}
 	hash, err := passwordHash(req.Password)
 	if err != nil {
 		writeError(w, 400, err.Error())
 		return
 	}
-	if err := s.queries.UpdateUser(a.user.ID, nil, hash); err != nil {
+	if err := s.queries.ChangePassword(a.user.ID, a.user.PasswordHash, hash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 401, "account changed; sign in again")
+			return
+		}
 		writeError(w, 500, "could not change password")
 		return
 	}
@@ -565,6 +612,10 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 	transfers := []TransferResponse{}
 	slots := []SlotResponse{}
 	owner := a.user.ID
+	if a.user.Role == "admin" && r.URL.Query().Get("all") != "true" {
+		accountRestriction(w, "admin_transfer_forbidden")
+		return
+	}
 	if r.URL.Query().Get("all") == "true" {
 		if a.user.Role != "admin" {
 			writeError(w, 403, "administrator required")
@@ -597,6 +648,9 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 		if t.DownloadedAt.Valid {
 			item.DownloadedAt = &t.DownloadedAt.Time
 		}
+		if owner == "" {
+			item.OwnerID, _ = s.queries.Owner("transfer", id)
+		}
 		transfers = append(transfers, item)
 	}
 	ids, err = s.queries.OwnedIDs("slot", owner)
@@ -614,14 +668,25 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		infos := []SlotTransferInfo{}
+		var total int64
 		for _, child := range children {
-			count, _, err := s.queries.FileCountAndSize(child.ID)
+			count, size, err := s.queries.FileCountAndSize(child.ID)
 			if err != nil {
 				continue
 			}
+			if size < 0 || total > math.MaxInt64-size {
+				writeError(w, 500, "resource size overflow")
+				return
+			}
+			total += size
 			infos = append(infos, SlotTransferInfo{TransferID: child.ID, Status: child.Status, FileCount: count})
 		}
-		slots = append(slots, SlotResponse{ID: id, Status: slot.Status, Transfers: infos, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt})
+		item := SlotResponse{ID: id, Status: slot.Status, Transfers: infos, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt}
+		if owner == "" {
+			item.OwnerID, _ = s.queries.Owner("slot", id)
+			item.TotalSize = &total
+		}
+		slots = append(slots, item)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, map[string]any{"transfers": transfers, "slots": slots})

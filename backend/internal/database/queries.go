@@ -71,29 +71,43 @@ func (q *Queries) GetTransfer(id string) (*Transfer, error) {
 }
 
 func (q *Queries) CompleteTransfer(id string) error {
-	// Check that all files are fully uploaded.
-	var incomplete int
-	err := q.db.QueryRow(
-		`SELECT COUNT(*) FROM files WHERE transfer_id = ? AND upload_complete = 0`, id,
-	).Scan(&incomplete)
+	tx, err := q.db.Begin()
 	if err != nil {
 		return err
 	}
-	if incomplete > 0 {
-		return fmt.Errorf("transfer has %d incomplete file uploads", incomplete)
-	}
-
-	res, err := q.db.Exec(
-		`UPDATE transfers SET status = 'complete', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'`, id,
-	)
+	defer tx.Rollback()
+	// First write acquires the SQLite writer lock before reading file counts.
+	res, err := tx.Exec(`UPDATE transfers SET status='complete',completed_at=CURRENT_TIMESTAMP
+ WHERE id=? AND status='pending'
+ AND NOT EXISTS(SELECT 1 FROM files WHERE transfer_id=? AND upload_complete=0)`, id, id)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
-		return fmt.Errorf("transfer not found or already complete")
+		return fmt.Errorf("transfer missing, already complete, or has incomplete uploads")
 	}
-	return nil
+	var count int64
+	var received bool
+	if err = tx.QueryRow(`SELECT COUNT(*) FROM files WHERE transfer_id=?`, id).Scan(&count); err != nil {
+		return err
+	}
+	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM slot_transfers WHERE transfer_id=?)`, id).Scan(&received); err != nil {
+		return err
+	}
+	totals := TrafficTotals{FilesUploaded: count}
+	if received {
+		totals.ReceivedFilesUploaded = count
+	} else {
+		totals.StandaloneFilesUploaded = count
+	}
+	if err = addTraffic(tx, time.Now(), totals); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ReserveFileDownload atomically consumes one GET allowance for this file.
@@ -383,15 +397,41 @@ func (q *Queries) TransferSlotIDs(transferID string) ([]string, error) {
 // an HTTP response. File counters only ensure the transfer has been requested;
 // they cannot prove decryption or saving to the recipient's filesystem.
 func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
-	res, err := q.db.Exec(`UPDATE transfers SET downloaded_at = COALESCE(downloaded_at, ?)
- WHERE id = ? AND status = 'complete'
- AND EXISTS (SELECT 1 FROM files WHERE transfer_id = transfers.id)
- AND NOT EXISTS (SELECT 1 FROM files WHERE transfer_id = transfers.id AND download_count <= 0)`, at.UTC(), id)
+	tx, err := q.db.Begin()
 	if err != nil {
 		return false, err
 	}
-	count, err := res.RowsAffected()
-	return count > 0, err
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE transfers SET downloaded_at=?
+ WHERE id=? AND status='complete' AND downloaded_at IS NULL
+ AND EXISTS (SELECT 1 FROM files WHERE transfer_id=transfers.id)
+ AND NOT EXISTS (SELECT 1 FROM files WHERE transfer_id=transfers.id AND download_count<=0)`, at.UTC(), id)
+	if err != nil {
+		return false, err
+	}
+	changed, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if changed > 0 {
+		var count int64
+		if err = tx.QueryRow(`SELECT COUNT(*) FROM files WHERE transfer_id=?`, id).Scan(&count); err != nil {
+			return false, err
+		}
+		if err = addTraffic(tx, at, TrafficTotals{FilesDelivered: count}); err != nil {
+			return false, err
+		}
+	} else {
+		// Receipt retries remain successful but never add to event aggregates twice.
+		var acknowledged bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM transfers WHERE id=? AND status='complete' AND downloaded_at IS NOT NULL)`, id).Scan(&acknowledged); err != nil {
+			return false, err
+		}
+		if !acknowledged {
+			return false, nil
+		}
+	}
+	return true, tx.Commit()
 }
 
 // CreateSlotTransfer is called while holding the slot mutation lock. The

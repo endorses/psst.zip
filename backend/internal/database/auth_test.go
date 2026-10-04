@@ -89,6 +89,10 @@ func TestAuthenticationMigrationPreservesLegacyOwnership(t *testing.T) {
 	if err := q.CreateSession(s, hash[:], u.PasswordHash); err != nil {
 		t.Fatal(err)
 	}
+	// Administrators cannot pair; exercise session cascade with a regular account.
+	if _, err := db.Exec(`UPDATE users SET role='user' WHERE id=?`, u.ID); err != nil {
+		t.Fatal(err)
+	}
 	pairing := sha256.Sum256([]byte("code"))
 	if err := q.CreatePairing(pairing[:], u.ID, s.ID, time.Now().Add(time.Minute)); err != nil {
 		t.Fatal(err)

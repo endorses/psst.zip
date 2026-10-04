@@ -2,7 +2,6 @@ package zip.psst.android.data
 
 import androidx.sqlite.db.SupportSQLiteDatabase
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.api.LinkDeletionException
 import zip.psst.shared.model.Transfer
 import zip.psst.shared.model.TransferStatus
 import io.ktor.client.HttpClient
@@ -23,7 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HistoryDeletionTest {
-    private val access = HistoryAccess("http://original.example:8080", "alice", isAdmin = true)
+    private val access = HistoryAccess("http://original.example:8080", "alice")
 
     private fun row(type: String = "sent", token: String? = "owner-secret") =
         TransferHistoryEntity(
@@ -102,40 +101,22 @@ class HistoryDeletionTest {
     }
 
     @Test
-    fun rejectedLegacyRevocationKeepsRowAndCanRetryWithoutAuthorization() = runTest {
-        for (code in listOf(403, 405, 500)) {
-            val original = row(token = null).copy(accountId = null)
-            val dao = MemoryDao(original)
-            var attempts = 0
-            suspend fun attempt() {
-                val http =
-                    HttpClient(MockEngine) {
-                        engine {
-                            dispatcher = StandardTestDispatcher(testScheduler)
-                            addHandler { request ->
-                                assertNull(request.headers[HttpHeaders.Authorization])
-                                attempts++
-                                respond(
-                                    "",
-                                    HttpStatusCode.fromValue(if (attempts == 1) code else 204),
-                                )
-                            }
-                        }
-                    }
-                revokeHistoryEntry(dao, original.id, { access }) { ApiClient(it, http) }
+    fun administrationOnlyAccountCannotUseLegacyPersonalHistoryRevocation() = runTest {
+        val original = row(token = null).copy(accountId = null)
+        val dao = MemoryDao(original)
+        var requests = 0
+        var denied = false
+        try {
+            revokeHistoryEntry(dao, original.id, { access.copy(isAdmin = true) }) {
+                requests++
+                error("Should be denied before creating a client")
             }
-            var failure: LinkDeletionException? = null
-            try {
-                attempt()
-            } catch (error: LinkDeletionException) {
-                failure = error
-            }
-            assertEquals(code, failure?.statusCode)
-            if (code == 403) assertTrue(failure?.message.orEmpty().contains("older transfer"))
-            assertEquals(original, dao.getById(original.id))
-            attempt()
-            assertNull(dao.getById(original.id))
+        } catch (_: IllegalArgumentException) {
+            denied = true
         }
+        assertTrue(denied)
+        assertEquals(0, requests)
+        assertEquals(original, dao.getById(original.id))
     }
 
     @Test
@@ -278,10 +259,31 @@ class HistoryDeletionTest {
             rows.value = rows.value.map { if (it.id == entity.id) entity else it }
         }
 
+        override suspend fun rename(
+            id: String,
+            serverUrl: String,
+            accountId: String,
+            type: String,
+            title: String?,
+        ) {
+            rows.value =
+                rows.value.map {
+                    if (
+                        it.id == id &&
+                            it.serverUrl == serverUrl &&
+                            it.accountId == accountId &&
+                            it.type == type
+                    )
+                        it.copy(title = title)
+                    else it
+                }
+        }
+
         override suspend fun setTitleIfEmpty(id: String, title: String) {
             rows.value =
                 rows.value.map {
-                    if (it.id == id && it.title == null) it.copy(title = title) else it
+                    if (it.id == id && it.automaticTitle == null) it.copy(automaticTitle = title)
+                    else it
                 }
         }
 

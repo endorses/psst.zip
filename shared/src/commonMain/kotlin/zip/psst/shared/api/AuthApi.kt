@@ -22,6 +22,7 @@ data class AuthUser(
     val username: String,
     val role: String,
     val disabled: Boolean = false,
+    @SerialName("must_change_password") val mustChangePassword: Boolean = false,
 )
 
 @Serializable
@@ -66,11 +67,46 @@ class PairingCode(
     }
 }
 
+@Serializable private data class CurrentUserResponse(val user: AuthUser)
+
 class AuthApi(
     private val client: HttpClient,
     private val config: ServerConfig,
     private val token: String? = null,
 ) {
+    @Throws(Exception::class)
+    suspend fun me(): AuthUser =
+        withTimeout(10_000L) {
+            val response =
+                client.get("${config.apiBaseUrl}/auth/me") {
+                    expectSuccess = false
+                    token?.let { bearerAuth(it) }
+                }
+            response.checkAuthenticatedWrite()
+            response.body<CurrentUserResponse>().user
+        }
+
+    /** Password replacement revokes this session; the caller must sign in again. */
+    @Throws(Exception::class)
+    suspend fun changePassword(currentPassword: String, password: String): Unit =
+        withTimeout(15_000L) {
+            val response =
+                client.post("${config.apiBaseUrl}/auth/password") {
+                    expectSuccess = false
+                    token?.let { bearerAuth(it) }
+                    contentType(ContentType.Application.Json)
+                    setBody(mapOf("current_password" to currentPassword, "password" to password))
+                }
+            if (response.status.value == 401) throw AuthenticationRequiredException()
+            require(response.status.value == 204) {
+                when (response.status.value) {
+                    403 -> "The current password is incorrect."
+                    400 -> "Use a different password containing 12–72 UTF-8 bytes."
+                    else -> "Could not change your password. Try again later."
+                }
+            }
+        }
+
     /** Lists only the authenticated user's resources; never requests administrator-wide history. */
     @Throws(Exception::class)
     suspend fun resources(): AuthResources =
@@ -108,6 +144,7 @@ class AuthApi(
                     contentType(ContentType.Application.Json)
                     setBody(values)
                 }
+            response.checkAccountRestriction()
             check(response.status.value in 200..299) {
                 when (response.status.value) {
                     400,

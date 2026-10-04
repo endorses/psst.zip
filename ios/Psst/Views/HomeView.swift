@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var showing = false
     @State private var error: String?
     @State private var selected: [URL] = []
+    @State private var receiveName = ""
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -21,6 +22,10 @@ struct HomeView: View {
                         .foregroundStyle(PsstTheme.secondary)
                     Text(config.limitDescription + " Files are encrypted automatically.").font(.footnote)
                     if config.isConfigured, !config.needsSignIn {
+                        if receiving {
+                            TextField("Name this receive link (optional)", text: $receiveName)
+                            Text("Names are saved only on this device.").font(.caption).foregroundStyle(PsstTheme.secondary)
+                        }
                         Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
                             if receiving {
                                 createReceive()
@@ -36,8 +41,8 @@ struct HomeView: View {
                             Button("Return to transfer") { showing = true }.frame(minHeight: 44)
                         }
                     } else {
-                        Text("Sign in to continue this task.").font(.headline)
-                        Button("Sign in") { accountSetup = true }.buttonStyle(PrimaryAction())
+                        Text(config.accountMessage ?? "Sign in to continue this task.").font(.headline)
+                        Button(config.requiresPasswordChange ? "Change password" : "Sign in") { accountSetup = true }.buttonStyle(PrimaryAction())
                     }
                     if let error {
                         Text(error).foregroundStyle(PsstTheme.error)
@@ -87,7 +92,7 @@ struct HomeView: View {
     }
 
     private func createReceive() {
-        let vm = ReceiveViewModel(serverConfig: config, historyStore: history)
+        let vm = ReceiveViewModel(serverConfig: config, historyStore: history, localName: receiveName)
         receive = vm
         send = nil
         showing = true

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"strings"
@@ -10,11 +11,12 @@ import (
 )
 
 type User struct {
-	ID           string `json:"id"`
-	Username     string `json:"username"`
-	Role         string `json:"role"`
-	Disabled     bool   `json:"disabled"`
-	PasswordHash []byte `json:"-"`
+	ID                 string `json:"id"`
+	Username           string `json:"username"`
+	Role               string `json:"role"`
+	Disabled           bool   `json:"disabled"`
+	PasswordHash       []byte `json:"-"`
+	MustChangePassword bool   `json:"must_change_password"`
 }
 type Session struct {
 	ID         string    `json:"id"`
@@ -25,6 +27,9 @@ type Session struct {
 	Current    bool      `json:"current"`
 }
 
+var ErrAdminTransfer = errors.New("administrator accounts cannot transfer files")
+var ErrPasswordChangeRequired = errors.New("password change required")
+
 var ErrLastAdmin = errors.New("cannot disable the last enabled administrator")
 
 func (q *Queries) UserCount() (int, error) {
@@ -33,26 +38,26 @@ func (q *Queries) UserCount() (int, error) {
 	return n, err
 }
 func (q *Queries) CreateUser(u User, bootstrap bool) error {
-	query := `INSERT INTO users (id,username,role,password_hash) VALUES (?,?,?,?)`
+	query := `INSERT INTO users (id,username,role,password_hash,must_change_password) VALUES (?,?,?,?,?)`
 	if bootstrap {
-		query = `INSERT INTO users (id,username,role,password_hash) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM users)`
+		query = `INSERT INTO users (id,username,role,password_hash,must_change_password) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM users)`
 	}
-	_, err := q.db.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash)
+	_, err := q.db.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash, u.MustChangePassword && u.Role != "admin")
 	return err
 }
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	u := &User{}
-	err := row.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.PasswordHash)
+	err := row.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.PasswordHash, &u.MustChangePassword)
 	return u, err
 }
 func (q *Queries) UserByName(name string) (*User, error) {
-	return scanUser(q.db.QueryRow(`SELECT id,username,role,disabled,password_hash FROM users WHERE username=? COLLATE NOCASE`, name))
+	return scanUser(q.db.QueryRow(`SELECT id,username,role,disabled,password_hash,must_change_password FROM users WHERE username=? COLLATE NOCASE`, name))
 }
 func (q *Queries) UserByID(id string) (*User, error) {
-	return scanUser(q.db.QueryRow(`SELECT id,username,role,disabled,password_hash FROM users WHERE id=?`, id))
+	return scanUser(q.db.QueryRow(`SELECT id,username,role,disabled,password_hash,must_change_password FROM users WHERE id=?`, id))
 }
 func (q *Queries) Users() ([]User, error) {
-	rows, err := q.db.Query(`SELECT id,username,role,disabled,password_hash FROM users ORDER BY username`)
+	rows, err := q.db.Query(`SELECT id,username,role,disabled,password_hash,must_change_password FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +73,16 @@ func (q *Queries) Users() ([]User, error) {
 	return out, rows.Err()
 }
 func (q *Queries) UpdateUser(id string, disabled *bool, password []byte) error {
+	return q.updateUser(id, disabled, password, nil)
+}
+
+// ChangePassword compares the authenticated hash under the same writer lock as
+// replacement, so a concurrent administrator reset cannot be overwritten.
+func (q *Queries) ChangePassword(id string, expectedHash, password []byte) error {
+	return q.updateUser(id, nil, password, expectedHash)
+}
+
+func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash []byte) error {
 	tx, err := q.db.Begin()
 	if err != nil {
 		return err
@@ -84,6 +99,15 @@ func (q *Queries) UpdateUser(id string, disabled *bool, password []byte) error {
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if expectedHash != nil {
+		var current []byte
+		if err := tx.QueryRow(`SELECT password_hash FROM users WHERE id=? AND disabled=0`, id).Scan(&current); err != nil {
+			return err
+		}
+		if !bytes.Equal(current, expectedHash) {
+			return sql.ErrNoRows
+		}
 	}
 	if disabled != nil {
 		if *disabled {
@@ -104,7 +128,7 @@ func (q *Queries) UpdateUser(id string, disabled *bool, password []byte) error {
 		}
 	}
 	if len(password) > 0 {
-		if _, err := tx.Exec(`UPDATE users SET password_hash=? WHERE id=?`, password, id); err != nil {
+		if _, err := tx.Exec(`UPDATE users SET password_hash=?,must_change_password=CASE WHEN role='user' AND ? THEN 1 ELSE 0 END WHERE id=?`, password, expectedHash == nil, id); err != nil {
 			return err
 		}
 	}
@@ -192,7 +216,7 @@ func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session str
 	}
 	res, err := tx.Exec(`INSERT INTO pairings(id,code_hash,user_id,session_id,expires_at)
  SELECT ?,?,s.user_id,s.id,? FROM sessions s JOIN users u ON u.id=s.user_id
- WHERE s.id=? AND s.user_id=? AND u.disabled=0`, id, hash, expiry.UTC(), session, user)
+ WHERE s.id=? AND s.user_id=? AND u.disabled=0 AND u.role='user' AND u.must_change_password=0`, id, hash, expiry.UTC(), session, user)
 	if err != nil {
 		return err
 	}
@@ -271,9 +295,15 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 	if !time.Now().Before(parentExpiry) {
 		return nil, sql.ErrNoRows
 	}
-	u, err := scanUser(tx.QueryRow(`SELECT id,username,role,disabled,password_hash FROM users WHERE id=? AND disabled=0`, user))
+	u, err := scanUser(tx.QueryRow(`SELECT id,username,role,disabled,password_hash,must_change_password FROM users WHERE id=? AND disabled=0`, user))
 	if err != nil {
 		return nil, err
+	}
+	if u.Role == "admin" {
+		return nil, ErrAdminTransfer
+	}
+	if u.MustChangePassword {
+		return nil, ErrPasswordChangeRequired
 	}
 	_, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, s.ID, u.ID, tokenHash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC())
 	if err != nil {

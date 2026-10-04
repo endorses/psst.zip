@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -28,12 +29,14 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +69,7 @@ import java.util.Locale
 fun HistoryScreen(
     onTransferClick: (TransferHistoryEntity) -> Unit,
     onBack: () -> Unit,
+    onAccount: () -> Unit,
     onDownloadClick: (GuestDownload) -> Unit,
     guest: ScanViewModel,
     initialFilter: String = "all",
@@ -73,6 +77,7 @@ fun HistoryScreen(
 ) {
     val allHistory by viewModel.history.collectAsState()
     val offline by viewModel.offline.collectAsState()
+    val accountIssue by viewModel.accountIssue.collectAsState()
     var filter by remember { mutableStateOf(initialFilter) }
     val downloads by guest.state.collectAsState()
     val history = unifiedHistory(allHistory, downloads.history, filter)
@@ -98,10 +103,63 @@ fun HistoryScreen(
         )
     }
 
+    var renaming by remember { mutableStateOf<TransferHistoryEntity?>(null) }
+    var name by remember { mutableStateOf("") }
+    renaming?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename on this device") },
+            text = {
+                Column {
+                    Text(
+                        "This name is stored only on this device. Clear it to restore the automatic title."
+                    )
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it.take(200) },
+                        label = { Text("Name") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.rename(entry, name)
+                        renaming = null
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
+    }
+
     val deletingIds by viewModel.deletingIds.collectAsState()
     val deletionError by viewModel.deletionError.collectAsState()
     var confirmDeletion by remember { mutableStateOf<TransferHistoryEntity?>(null) }
 
+    LaunchedEffect(allHistory) {
+        if (
+            renaming != null &&
+                allHistory.none {
+                    it.id == renaming?.id &&
+                        it.accountId == renaming?.accountId &&
+                        it.serverUrl == renaming?.serverUrl
+                }
+        )
+            renaming = null
+        if (
+            confirmDeletion != null &&
+                allHistory.none {
+                    it.id == confirmDeletion?.id &&
+                        it.accountId == confirmDeletion?.accountId &&
+                        it.serverUrl == confirmDeletion?.serverUrl
+                }
+        )
+            confirmDeletion = null
+    }
     confirmDeletion?.let { entry ->
         AlertDialog(
             onDismissRequest = { confirmDeletion = null },
@@ -223,6 +281,10 @@ fun HistoryScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            accountIssue?.let { message ->
+                Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onAccount) { Text("Open account settings") }
+            }
             if (offline)
                 Text(
                     stringResource(R.string.offline_retained),
@@ -264,6 +326,10 @@ fun HistoryScreen(
                                     entity = row.value,
                                     onClick = { onTransferClick(row.value) },
                                     onDelete = { confirmDeletion = row.value },
+                                    onRename = {
+                                        renaming = row.value
+                                        name = row.value.title.orEmpty()
+                                    },
                                     isDeleting = row.value.id in deletingIds,
                                 )
                             is HistoryRow.Downloaded ->
@@ -286,6 +352,7 @@ private fun HistoryItem(
     entity: TransferHistoryEntity,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     isDeleting: Boolean,
 ) {
     val revokingLabel = stringResource(R.string.ui_revoking_link)
@@ -310,13 +377,14 @@ private fun HistoryItem(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text =
-                        entity.title
-                            ?: stringResource(
-                                if (entity.type == "sent") R.string.sent else R.string.receive_link
-                            ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    if (entity.type == "sent") "Sent" else "Receive link",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                val fullTitle = historyTitle(entity)
+                Text(
+                    text = compactHistoryTitle(fullTitle),
+                    modifier = Modifier.semantics { contentDescription = fullTitle },
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
@@ -366,20 +434,28 @@ private fun HistoryItem(
 
             Spacer(Modifier.width(8.dp))
 
-            IconButton(onClick = onDelete, enabled = !isDeleting) {
-                if (isDeleting) {
-                    CircularProgressIndicator(
-                        modifier =
-                            Modifier.size(20.dp).semantics { contentDescription = revokingLabel },
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.ui_revoke_link_and_delete_2),
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            Column {
+                IconButton(onClick = onRename, enabled = !isDeleting) {
+                    Icon(Icons.Default.Edit, "Rename on this device", Modifier.size(20.dp))
+                }
+                IconButton(onClick = onDelete, enabled = !isDeleting) {
+                    if (isDeleting) {
+                        CircularProgressIndicator(
+                            modifier =
+                                Modifier.size(20.dp).semantics {
+                                    contentDescription = revokingLabel
+                                },
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription =
+                                stringResource(R.string.ui_revoke_link_and_delete_2),
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -413,7 +489,18 @@ private fun DownloadHistoryItem(
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    record.files.firstOrNull()?.name ?: "Downloaded transfer",
+                    compactHistoryTitle(
+                        automaticHistoryTitle(record.files.firstOrNull()?.name, record.files.size)
+                            ?: "Downloaded transfer"
+                    ),
+                    modifier =
+                        Modifier.semantics {
+                            contentDescription =
+                                automaticHistoryTitle(
+                                    record.files.firstOrNull()?.name,
+                                    record.files.size,
+                                ) ?: "Downloaded transfer"
+                        },
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(

@@ -10,6 +10,11 @@ struct DeviceSession: Codable, Equatable {
     let sessionID: String
     let expiresAt: String
     var role: String? = nil
+    var mustChangePassword: Bool? = nil
+    var canTransfer: Bool {
+        role != "admin" && mustChangePassword != true
+    }
+
     var accountID: String {
         serverURL + "|" + userID
     }
@@ -63,9 +68,12 @@ enum SecretStore {
 }
 
 enum AccountError: LocalizedError {
-    case signIn, changed, address, storage, request, pairing, unavailable
+    case signIn, changed, address, storage, request, pairing, unavailable, administrator, passwordChange, passwordPolicy
     var errorDescription: String? {
         switch self {
+        case .administrator: String(localized: "Administrator accounts manage the server on the website. Sign in with a regular account to transfer files. You can still scan public links without signing in.")
+        case .passwordChange: String(localized: "Replace your temporary password before continuing.")
+        case .passwordPolicy: String(localized: "Check your current password. The new password must differ and contain 12–72 UTF-8 bytes.")
         case .signIn: String(localized: "Sign in again to continue.")
         case .changed: String(localized: "The account changed. Return to your original account to continue.")
         case .address: String(localized: "Enter a server origin such as https://files.example.com, without a path.")
@@ -129,9 +137,20 @@ enum AccountHTTP {
         }
         if response.statusCode == 401 {
             if token != nil {
-                NotificationCenter.default.post(name: .sessionExpired, object: origin)
+                NotificationCenter.default.post(name: .sessionExpired, object: origin, userInfo: ["sessionToken": token!])
             }
             throw AccountError.signIn
+        }
+        if response.statusCode == 403 {
+            struct Failure: Decodable { let code: String? }
+            let code = (try? JSONDecoder().decode(Failure.self, from: data))?.code
+            if code == "password_change_required" || code == "admin_transfer_forbidden" {
+                NotificationCenter.default.post(name: .accountRestricted, object: origin, userInfo: ["code": code!, "sessionToken": token ?? ""])
+                throw code == "password_change_required" ? AccountError.passwordChange : AccountError.administrator
+            }
+        }
+        if path == "auth/password", [400, 403].contains(response.statusCode) {
+            throw AccountError.passwordPolicy
         }
         if response.statusCode == 404 || response.statusCode == 410 {
             throw AccountError.unavailable
@@ -144,5 +163,6 @@ enum AccountHTTP {
 }
 
 extension Notification.Name {
+    static let accountRestricted = Notification.Name("zip.psst.ios.accountRestricted")
     static let sessionExpired = Notification.Name("zip.psst.ios.sessionExpired")
 }

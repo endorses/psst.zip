@@ -7,9 +7,11 @@ final class TransferHistoryStore {
     private(set) var records: [TransferRecord] = []
     private let defaults: UserDefaults
     private let fileURL: URL?
-    init() {
-        defaults = AppConstants.sharedDefaults
-        fileURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json")
+    init(defaults: UserDefaults = AppConstants.sharedDefaults,
+         fileURL: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json"))
+    {
+        self.defaults = defaults
+        self.fileURL = fileURL
         // Preserve the pre-account server for old received records that never stored their own URL.
         if defaults.string(forKey: "legacyHistoryServerURL") == nil,
            defaults.data(forKey: AppConstants.transferHistoryKey) != nil,
@@ -78,13 +80,24 @@ final class TransferHistoryStore {
 
     func update(_ record: TransferRecord) throws {
         try mutate { values in
-            values.removeAll { $0.id == record.id && $0.serverURL == record.serverURL && $0.ownerID == record.ownerID }
-            values.insert(record, at: 0)
+            // A polling refresh or in-flight receive checkpoint must not erase a concurrent rename.
+            let next = record.preservingLocalName(from: values.first(where: { $0.localID == record.localID }))
+            values.removeAll { $0.localID == record.localID }
+            values.insert(next, at: 0)
+        }
+    }
+
+    func rename(_ record: TransferRecord, name: String, session: DeviceSession) throws {
+        guard record.belongs(to: session), session.canTransfer, SecretStore.session?.accountID == session.accountID else { throw AccountError.changed }
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        try mutate { values in
+            guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
+            values[index].customTitle = normalized.isEmpty ? nil : String(normalized.prefix(200))
         }
     }
 
     func remove(_ record: TransferRecord) throws {
-        try mutate { $0.removeAll { $0.vaultID == record.vaultID } }
+        try mutate { $0.removeAll { $0.localID == record.localID } }
         SecretStore.remove(record.vaultID)
     }
 

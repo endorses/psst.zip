@@ -65,13 +65,13 @@ final class TransferWorkflowTests: XCTestCase {
         XCTAssertFalse(identity.mayResume(as: session(user: "bob")))
     }
 
-    func testLegacyVisibilityRequiresAdminOnOriginalServer() {
+    func testLegacyHistoryRemainsHiddenFromMobileAccounts() {
         var old = record()
         old.ownerID = nil
         XCTAssertFalse(old.canManage(as: session()))
         var administrator = session()
         administrator.role = "admin"
-        XCTAssertTrue(old.canManage(as: administrator))
+        XCTAssertFalse(old.canManage(as: administrator))
         var elsewhere = session(host: "https://two.example")
         elsewhere.role = "admin"
         XCTAssertFalse(old.canManage(as: elsewhere))

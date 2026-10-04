@@ -3,6 +3,17 @@
   import { brandedQr } from "$lib/branded-qr";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import PasswordChange from "$lib/components/PasswordChange.svelte";
+  import AdminOverview from "$lib/components/AdminOverview.svelte";
+  import TrafficPanel from "$lib/components/TrafficPanel.svelte";
+  import {
+    loadLabels,
+    saveLabels,
+    labelFor,
+    labelKey,
+    compactTitle,
+    type HistoryLabels,
+  } from "$lib/history-labels";
   import ServerSettings from "$lib/components/ServerSettings.svelte";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
@@ -22,7 +33,18 @@
   } from "$lib/account";
   import { createSlot, getSlotInfo } from "$lib/api";
   import { generateKey, exportKey } from "$lib/crypto";
-  type Tab = "Scan" | "Send" | "Receive" | "History" | "Devices" | "Account" | "Users" | "Settings";
+  type Tab =
+    | "Overview"
+    | "Traffic"
+    | "Server"
+    | "Scan"
+    | "Send"
+    | "Receive"
+    | "History"
+    | "Devices"
+    | "Account"
+    | "Users"
+    | "Settings";
   let receiveUnavailable = $state(false);
   let pendingFiles: File[] = [],
     pendingOwner = "";
@@ -37,11 +59,18 @@
   let epoch = 0,
     polling = false,
     failures = 0;
-  let labels = $state<Record<string, { title: string; size: number }>>({});
+  let labels = $state<HistoryLabels>({});
+  let receiveName = $state(""),
+    renameId = $state(""),
+    renameKind = $state<"transfers" | "slots">("transfers"),
+    renameValue = $state("");
   let pairingId = $state(""),
     pairingStatus = $state("pending"),
     pairedDevice = $state("");
   const destinations = [
+    "Overview",
+    "Traffic",
+    "Server",
     "Scan",
     "Send",
     "Receive",
@@ -51,6 +80,7 @@
     "Account",
     "Users",
   ];
+  const adminDestinations = ["Overview", "Users", "Traffic", "Server"] as const;
   const mainDestinations = ["Send", "Receive", "Scan", "History", "Settings"] as const;
   const settingsDestinations = [
     {
@@ -74,13 +104,17 @@
   }
   function routeTab(): Tab {
     return (destinations.find((v) => v.toLowerCase() === $page.url.searchParams.get("view")) ||
-      "Send") as Tab;
+      (user?.role === "admin" ? "Overview" : "Send")) as Tab;
   }
   $effect(() => {
     const next = routeTab();
     const slot = $page.url.searchParams.get("slot");
     untrack(() => {
-      if (user && (next !== tab || (next === "Receive" && slot && slot !== receiveId)))
+      if (
+        user &&
+        !user.must_change_password &&
+        (next !== tab || (next === "Receive" && slot && slot !== receiveId))
+      )
         void select(next, false);
     });
   });
@@ -107,10 +141,10 @@
     newPassword = $state(""),
     newRole = $state("user"),
     resetId = $state(""),
-    resetPassword = $state("");
-  let currentPassword = $state(""),
-    changedPassword = $state("");
-  let allResources = $state(false);
+    resetPassword = $state(""),
+    resetConfirmation = $state(""),
+    newConfirmation = $state("");
+
   let pendingDelete = $state<{ id: string; kind: "transfers" | "slots" } | null>(null);
   let received = $state<{ id: string; url: string; count: number }[]>([]);
   onMount(() => {
@@ -130,10 +164,25 @@
             error = "Your account changed in another tab. Sign in again.";
             throw new Error("Account changed");
           }
-          if (tab === "History") await refreshHistory(owner);
-          if (tab === "Receive" && receiveId && !receiveUnavailable)
+          if (
+            identity.user.role !== user.role ||
+            identity.user.must_change_password !== user.must_change_password
+          ) {
+            user = identity.user;
+            await select(routeTab(), false);
+          }
+          if (user.must_change_password) {
+            liveMessage = "";
+          }
+          if (!user.must_change_password && tab === "History") await refreshHistory(owner);
+          if (!user.must_change_password && tab === "Receive" && receiveId && !receiveUnavailable)
             await refreshReceived(receiveId, owner);
-          if (tab === "Devices" && pairingId && pairingStatus === "pending") {
+          if (
+            !user.must_change_password &&
+            tab === "Devices" &&
+            pairingId &&
+            pairingStatus === "pending"
+          ) {
             const activePairing = pairingId;
             const result = await request<{ status: string; device_name?: string }>(
               `/auth/pairings/${activePairing}`,
@@ -213,16 +262,10 @@
   function loadAccount() {
     if (!user) return;
     links = loadLinks(user.id);
-    try {
-      labels = JSON.parse(localStorage.getItem(`psst.labels.${user.id}`) || "{}");
-    } catch {
-      labels = {};
-    }
+    labels = loadLabels(user.id);
   }
   async function refreshHistory(owner = epoch) {
-    const result = await request<{ transfers: Resource[]; slots: Resource[] }>(
-      `/auth/resources${allResources ? "?all=true" : ""}`,
-    );
+    const result = await request<{ transfers: Resource[]; slots: Resource[] }>("/auth/resources");
     if (owner !== epoch) return;
     transfers = result.transfers ?? [];
     slots = result.slots ?? [];
@@ -268,9 +311,13 @@
     return err instanceof Error ? err.message : "Something went wrong. Please try again.";
   }
   function clearAccount(preserveSelection = false) {
-    if (preserveSelection && user) {
+    if (preserveSelection && user?.role === "user") {
+      // A restricted login has no SendPanel. Its same-account selection remains in
+      // the pending queue until the required password flow has fully completed.
+      const selection =
+        user.must_change_password && pendingOwner === user.id ? pendingFiles : selectedFiles;
       pendingOwner = user.id;
-      pendingFiles = [...selectedFiles];
+      pendingFiles = [...selection];
     } else {
       pendingOwner = "";
       pendingFiles = [];
@@ -281,15 +328,17 @@
     void cancelPair();
     user = null;
     labels = {};
+    renameId = "";
+    receiveName = "";
     sendActive = false;
     receiveId = "";
     pendingDelete = null;
     liveMessage = "";
     password = "";
-    currentPassword = "";
-    changedPassword = "";
     newPassword = "";
     resetPassword = "";
+    resetConfirmation = "";
+    newConfirmation = "";
     pairingQr = "";
     receiveUrl = "";
     links = {};
@@ -298,8 +347,6 @@
     slots = [];
     sessions = [];
     users = [];
-
-    allResources = false;
   }
   async function act(action: () => Promise<void>) {
     if (busy) return;
@@ -310,6 +357,13 @@
       await action();
     } catch (err) {
       error = message(err);
+      if (
+        err instanceof AccountError &&
+        (err.code === "password_change_required" || err.code === "admin_transfer_forbidden")
+      ) {
+        user = (await request<{ user: User }>("/auth/me")).user;
+        tab = user.must_change_password ? "Account" : "Overview";
+      }
       if (err instanceof AccountError && err.status === 401 && user) {
         clearAccount(true);
         error = "Your session ended. Sign in again.";
@@ -332,9 +386,16 @@
         localStorage.setItem("psst.auth-change", String(Date.now()));
       } catch {}
       epoch++;
-      restoredFiles = pendingOwner === user.id ? pendingFiles : [];
-      pendingFiles = [];
-      pendingOwner = "";
+      if (pendingOwner !== user.id || user.role !== "user") {
+        pendingFiles = [];
+        pendingOwner = "";
+      }
+      restoredFiles = [];
+      if (!user.must_change_password && user.role === "user") {
+        restoredFiles = pendingOwner === user.id ? [...pendingFiles] : [];
+        pendingFiles = [];
+        pendingOwner = "";
+      }
       loadAccount();
     });
     if (user) await select(routeTab(), false);
@@ -342,10 +403,12 @@
   }
   function remember(id: string, url: string, title?: string, size?: number) {
     if (title && user) {
-      labels = { ...labels, [id]: { title, size: size ?? 0 } };
-      try {
-        localStorage.setItem(`psst.labels.${user.id}`, JSON.stringify(labels));
-      } catch {}
+      const key = labelKey("transfers", id);
+      labels = {
+        ...labels,
+        [key]: { ...labelFor(labels, "transfers", id), title, size: size ?? 0 },
+      };
+      saveLabels(user.id, labels);
     }
     links = { ...links, [id]: url };
     if (user) saveLinks(user.id, links);
@@ -360,6 +423,11 @@
         error = "Your account changed. Sign in again.";
         return false;
       }
+      if (identity.user.role !== "user" || identity.user.must_change_password) {
+        user = identity.user;
+        await select(routeTab(), false);
+        return false;
+      }
       return true;
     } catch (err) {
       if (owner === epoch) {
@@ -372,7 +440,19 @@
     }
   }
   async function select(next: Tab, navigate = true) {
-    if (next === "Users" && user?.role !== "admin") next = "Settings";
+    if (!user) return;
+    if (user.must_change_password) {
+      tab = "Account";
+      return;
+    }
+    const allowed =
+      user.role === "admin"
+        ? [...adminDestinations, "Account", "Devices"]
+        : [...mainDestinations, "Account", "Devices"];
+    if (!allowed.includes(next as never)) {
+      next = user.role === "admin" ? "Overview" : "Send";
+      navigate = true;
+    }
     if (tab === "Devices" && next !== "Devices") await cancelPair();
     tab = next;
     if (next === "Receive") {
@@ -413,6 +493,11 @@
       received = [];
       receiveUrl = `${location.origin}/u/${slot.id}#${key}`;
       remember(slot.id, receiveUrl);
+      if (user && receiveName.trim()) {
+        labels = { ...labels, [labelKey("slots", slot.id)]: { custom: receiveName.trim() } };
+        saveLabels(user.id, labels);
+      }
+      receiveName = "";
       await goto(`/?view=receive&slot=${encodeURIComponent(slot.id)}`, {
         keepFocus: true,
         noScroll: true,
@@ -448,6 +533,36 @@
       pendingDelete = null;
       notice = "Link revoked and server files deleted.";
     });
+  }
+  async function changePassword(current: string, replacement: string) {
+    await act(async () => {
+      await request("/auth/password", "POST", { current_password: current, password: replacement });
+      clearAccount(true);
+      try {
+        localStorage.setItem("psst.auth-change", String(Date.now()));
+      } catch {}
+      notice = "Password changed. Sign in with your new password.";
+    });
+  }
+  function historyTitle(item: Resource & { kind: "transfers" | "slots" }) {
+    const label = labelFor(labels, item.kind, item.id);
+    return (
+      label.custom ||
+      label.title ||
+      `${item.kind === "slots" ? "Receive link" : "Sent files"}${item.created_at ? " · " + new Date(item.created_at).toLocaleString() : ""}`
+    );
+  }
+  function rename() {
+    if (!user) return;
+    labels = {
+      ...labels,
+      [labelKey(renameKind, renameId)]: {
+        ...labelFor(labels, renameKind, renameId),
+        custom: renameValue.trim() || undefined,
+      },
+    };
+    saveLabels(user.id, labels);
+    renameId = "";
   }
   async function pair() {
     await act(async () => {
@@ -591,26 +706,45 @@
         {notice}
       </p>{/if}
   </section>
+{:else if user.must_change_password}
+  <section class="panel login">
+    <PasswordChange {busy} requiredChange onchange={changePassword} />
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
+    <button
+      disabled={busy}
+      onclick={() =>
+        act(async () => {
+          await request("/auth/logout", "POST");
+          clearAccount();
+        })}>Sign out</button
+    >
+  </section>
 {:else}
   <div class="workspace">
     <aside class="sidebar">
-      <p class="sidebar-label">Your workspace</p>
-      <nav aria-label="Account navigation">
-        {#each mainDestinations as item}
+      <p class="sidebar-label">{user.role === "admin" ? "Administration" : "Your workspace"}</p>
+      <nav class:admin-nav={user.role === "admin"} aria-label="Account navigation">
+        {#each user.role === "admin" ? adminDestinations : mainDestinations as item}
           <a
             href={destinationUrl(item)}
+            aria-label={item === "Scan"
+              ? "Scan QR code"
+              : item === "Server"
+                ? "Server settings"
+                : item}
             aria-current={tab === item
               ? "page"
-              : item === "Settings" && ["Account", "Devices", "Users"].includes(tab)
+              : item === "Settings" && ["Account", "Devices"].includes(tab)
                 ? "location"
                 : undefined}
             class:active={tab === item ||
-              (item === "Settings" && ["Account", "Devices", "Users"].includes(tab))}
+              (item === "Settings" && ["Account", "Devices"].includes(tab))}
             data-sveltekit-keepfocus
             data-sveltekit-noscroll
           >
-            <Icon name={item === "Scan" ? "QRCode" : item} /><span
-              >{item === "Scan" ? "Scan QR code" : item}</span
+            <Icon name={item === "Scan" ? "QRCode" : item === "Server" ? "Settings" : item} /><span
+              class="nav-label"
+              >{item === "Scan" ? "Scan" : item === "Server" ? "Server settings" : item}</span
             >
           </a>
         {/each}
@@ -620,6 +754,9 @@
         <div class="identity">
           <span class="small muted">Signed in as</span><strong>{user.username}</strong>
         </div>
+        {#if user.role === "admin"}<div class="admin-account">
+            <a href="/?view=account">Account</a><a href="/?view=devices">Sessions</a>
+          </div>{/if}
         <button
           class="sign-out"
           disabled={busy}
@@ -653,17 +790,21 @@
           {liveMessage}
         </p>{/if}
       <section class="workspace-panel">
-        {#key user.id}<div hidden={tab !== "Send"}>
-            <SendPanel
-              accountId={user.id}
-              initialFiles={restoredFiles}
-              onselection={(files) => (selectedFiles = files)}
-              oncreated={remember}
-              onactive={(value) => (sendActive = value)}
-            />
-          </div>{/key}
+        {#if user.role === "user"}{#key user.id}<div hidden={tab !== "Send"}>
+              <SendPanel
+                accountId={user.id}
+                initialFiles={restoredFiles}
+                onselection={(files) => (selectedFiles = files)}
+                oncreated={remember}
+                onactive={(value) => (sendActive = value)}
+              />
+            </div>{/key}{/if}
         {#if tab === "Scan"}<ScanPanel authorize={authorizeScanner} />{/if}
-        {#if tab === "Settings"}<h1>Settings</h1>
+        {#if tab === "Overview"}<AdminOverview />
+        {:else if tab === "Traffic"}<TrafficPanel />
+        {:else if tab === "Server"}<h1>Server settings</h1>
+          <ServerSettings />
+        {:else if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>
           <div class="settings-list">
             {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
@@ -683,7 +824,6 @@
               </a>
             {/each}
           </div>
-          {#if user.role === "admin"}<ServerSettings />{/if}
         {:else if tab === "Receive"}<h1>Receive files</h1>
           <p class="muted">
             Anyone with your receive link can send you encrypted files within the server’s limits.
@@ -701,6 +841,14 @@
                 ? `${received.reduce((n, t) => n + t.count, 0)} files received. Ready to save below.`
                 : "Waiting for files. Arrivals update automatically."}
             </p>{/if}
+          <label
+            >Link name (optional)<input
+              maxlength="200"
+              bind:value={receiveName}
+              placeholder="For example, Wedding photos"
+            /></label
+          >
+          <p class="muted small">The name stays in this browser and can be changed in History.</p>
           <button class="primary" disabled={busy} onclick={createReceive}
             >{receiveUrl
               ? "Create another receive link"
@@ -709,7 +857,7 @@
                 : "Create receive link"}</button
           >
         {:else if tab === "History"}<div class="heading">
-            <h1>{allResources ? "All server resources" : "Your transfers"}</h1>
+            <h1>Your transfers</h1>
             <button disabled={busy} onclick={() => select("History")}
               ><Icon name="Refresh" size={17} />Refresh</button
             >
@@ -720,38 +868,42 @@
               ><option value="slots">Receive links</option></select
             ></label
           >
-          {#if user.role === "admin"}
-            <label class="toggle"
-              ><input
-                type="checkbox"
-                bind:checked={allResources}
-                disabled={busy}
-                onchange={() => select("History")}
-              /> All server resources</label
-            >
-          {/if}
           <p class="muted small">
             Encryption keys stay on the device that created the link. This browser can reopen its
             own links; transfers from other devices can still be revoked.
           </p>
           {#if !transfers.length && !slots.length}<p class="empty">No transfers yet.</p>{/if}
-          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].filter((item) => historyFilter === "all" || item.kind === historyFilter) as item}<article
+          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )]
+            .filter((item) => historyFilter === "all" || item.kind === historyFilter)
+            .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}<article
               class="resource"
               data-resource-id={item.id}
             >
               <div>
-                <strong
-                  >{labels[item.id]?.title ||
-                    (item.kind === "slots" ? "Receive link" : "Sent files")}</strong
+                <span class="type-badge"
+                  ><Icon
+                    name={item.kind === "slots" ? "Receive" : "Send"}
+                    size={15}
+                  />{item.kind === "slots" ? "Receive link" : "Sent"}</span
                 >
+                <strong class="history-title" title={historyTitle(item)}
+                  >{#if compactTitle(historyTitle(item)) !== historyTitle(item)}<span
+                      aria-hidden="true">{compactTitle(historyTitle(item))}</span
+                    ><span class="sr-only">{historyTitle(item)}</span>{:else}{historyTitle(
+                      item,
+                    )}{/if}</strong
+                >
+                {#if item.created_at}<p class="muted small">
+                    Created {new Date(item.created_at).toLocaleString()}
+                  </p>{/if}
                 <p>
                   {item.kind === "slots"
                     ? `${item.transfers?.reduce((n, t) => n + t.file_count, 0) ?? item.file_count ?? 0} files received`
                     : `${item.file_count ?? 0} files · ${status(item)}`}
                 </p>
                 <p class="muted small">
-                  {labels[item.id]
-                    ? formatSize(labels[item.id].size) + " · "
+                  {labelFor(labels, item.kind, item.id).size
+                    ? formatSize(labelFor(labels, item.kind, item.id).size ?? 0) + " · "
                     : item.total_size
                       ? formatSize(item.total_size) + " stored · "
                       : ""}Expires {date(item.expires_at)}
@@ -762,6 +914,13 @@
                   </p>{/if}
               </div>
               <div class="actions">
+                <button
+                  onclick={() => {
+                    renameId = item.id;
+                    renameKind = item.kind;
+                    renameValue = labelFor(labels, item.kind, item.id).custom || "";
+                  }}>Rename</button
+                >
                 {#if links[item.id]}<button onclick={() => copy(links[item.id])}
                     ><Icon name="Copy" size={17} />Copy link</button
                   >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
@@ -776,7 +935,34 @@
                   }}><Icon name="Revoke" size={17} />Revoke</button
                 >
               </div>
+              <details>
+                <summary>Technical details</summary>
+                <p>ID: {item.id}</p>
+              </details>
+              {#if renameId === item.id && renameKind === item.kind}<form
+                  class="rename-form"
+                  onsubmit={(e) => {
+                    e.preventDefault();
+                    rename();
+                  }}
+                >
+                  <label
+                    >Name on this device<input bind:value={renameValue} maxlength="200" /></label
+                  >
+                  <p class="muted small">
+                    Only saved in this browser. Leave empty to restore the automatic title.
+                  </p>
+                  <button class="primary">Save name</button><button
+                    type="button"
+                    onclick={() => (renameId = "")}>Cancel</button
+                  >
+                </form>{/if}
             </article>{/each}
+          {#if ![...transfers.map( (t) => ({ ...t, kind: "transfers" }), ), ...slots.map( (t) => ({ ...t, kind: "slots" }), )].some((item) => historyFilter === "all" || item.kind === historyFilter) && (transfers.length || slots.length)}<p
+              class="empty"
+            >
+              No transfers in this filter.
+            </p>{/if}
           {#if pendingDelete}
             <RevokeDialog
               {busy}
@@ -785,38 +971,41 @@
               onconfirm={revoke}
             />
           {/if}
-        {:else if tab === "Devices"}<a class="back-link" href="/?view=settings"
-            >← Back to Settings</a
+        {:else if tab === "Devices"}<a
+            class="back-link"
+            href={user.role === "admin" ? "/?view=overview" : "/?view=settings"}
+            >← {user.role === "admin" ? "Overview" : "Back to Settings"}</a
           >
-          <h1>Connect mobile app</h1>
-          <p class="muted">
-            In the app’s server settings, choose Scan login QR code. Keep this code private: it
-            signs the scanning device in as you.
-          </p>
-          {#if pairingStatus === "connected"}<p class="notice" role="status">
-              Phone connected: {pairedDevice}
+          {#if user.role === "user"}<h1>Connect mobile app</h1>
+            <p class="muted">
+              In the app’s server settings, choose Scan login QR code. Keep this code private: it
+              signs the scanning device in as you.
             </p>
-          {:else if pairingQr && now < Date.parse(pairingExpires)}<section
-              aria-label="Connect mobile app"
-            >
-              <img class="qr" src={pairingQr} alt="Mobile app login QR code" />
-              <p>
-                Single use · expires in {Math.max(
-                  0,
-                  Math.ceil((Date.parse(pairingExpires) - now) / 1000),
-                )} seconds
+            {#if pairingStatus === "connected"}<p class="notice" role="status">
+                Phone connected: {pairedDevice}
               </p>
-              <button onclick={cancelPair}>Cancel pairing</button>
-            </section>
-          {:else if pairingId}<p class="notice" role="status">
-              This code has expired. Generate a new code.
-            </p>{/if}
-          <button class="primary" disabled={busy} onclick={pair}
-            ><Icon name="QRCode" size={18} />{pairingId
-              ? "Generate new code"
-              : "Show login QR code"}</button
-          >
-          <h2>Connected devices</h2>
+            {:else if pairingQr && now < Date.parse(pairingExpires)}<section
+                aria-label="Connect mobile app"
+              >
+                <img class="qr" src={pairingQr} alt="Mobile app login QR code" />
+                <p>
+                  Single use · expires in {Math.max(
+                    0,
+                    Math.ceil((Date.parse(pairingExpires) - now) / 1000),
+                  )} seconds
+                </p>
+                <button onclick={cancelPair}>Cancel pairing</button>
+              </section>
+            {:else if pairingId}<p class="notice" role="status">
+                This code has expired. Generate a new code.
+              </p>{/if}
+            <button class="primary" disabled={busy} onclick={pair}
+              ><Icon name="QRCode" size={18} />{pairingId
+                ? "Generate new code"
+                : "Show login QR code"}</button
+            >
+          {/if}
+          <h2>{user.role === "admin" ? "Signed-in sessions" : "Connected devices"}</h2>
           <p class="muted">Revoke a session to sign that device out.</p>
           {#each sessions as session}<article class="resource">
               <div>
@@ -838,44 +1027,13 @@
                   })}>Revoke session</button
               >
             </article>{/each}
-        {:else if tab === "Account"}<a class="back-link" href="/?view=settings"
-            >← Back to Settings</a
+        {:else if tab === "Account"}<a
+            class="back-link"
+            href={user.role === "admin" ? "/?view=overview" : "/?view=settings"}
+            >← {user.role === "admin" ? "Overview" : "Back to Settings"}</a
           >
-          <h1>Change password</h1>
-          <p class="muted">Changing your password signs out all devices, including this browser.</p>
-          <form
-            onsubmit={(e) => {
-              e.preventDefault();
-              void act(async () => {
-                await request("/auth/password", "POST", {
-                  current_password: currentPassword,
-                  password: changedPassword,
-                });
-                clearAccount();
-                notice = "Password changed. Sign in with your new password.";
-              });
-            }}
-          >
-            <label
-              >Current password<input
-                type="password"
-                autocomplete="current-password"
-                required
-                bind:value={currentPassword}
-              /></label
-            ><label
-              >New password<input
-                type="password"
-                autocomplete="new-password"
-                minlength="12"
-                required
-                bind:value={changedPassword}
-              /></label
-            >
-            <p class="muted small">Use at least 12 characters (up to 72 UTF-8 bytes).</p>
-            <button class="primary" disabled={busy}>Change password</button>
-          </form>
-        {:else if tab === "Users"}<a class="back-link" href="/?view=settings">← Back to Settings</a>
+          <PasswordChange {busy} onchange={changePassword} />
+        {:else if tab === "Users"}
           <h1>Manage users</h1>
           <p class="muted">
             Only administrators can create accounts. Disabling an account signs out its devices.
@@ -886,7 +1044,9 @@
                 <p class="muted small">
                   {account.role === "admin" ? "Administrator" : "User"} · {account.disabled
                     ? "Disabled"
-                    : "Active"}
+                    : account.must_change_password
+                      ? "Password change required"
+                      : "Active"}
                 </p>
               </div>
               <div class="actions">
@@ -895,6 +1055,7 @@
                   onclick={() => {
                     resetId = account.id;
                     resetPassword = "";
+                    resetConfirmation = "";
                   }}>Reset password</button
                 ><button
                   disabled={busy || account.id === user.id}
@@ -915,12 +1076,16 @@
               onsubmit={(e) => {
                 e.preventDefault();
                 void act(async () => {
+                  if (resetPassword !== resetConfirmation)
+                    throw new Error("The passwords do not match.");
                   await request(`/admin/users/${resetId}`, "PATCH", { password: resetPassword });
                   const self = resetId === user?.id;
                   resetId = "";
                   resetPassword = "";
                   if (self) clearAccount();
-                  else notice = "Password reset. Existing sessions have been revoked.";
+                  else
+                    notice =
+                      "Password reset. Existing sessions have been revoked. Regular users must replace their temporary password at next sign-in.";
                 });
               }}
             >
@@ -932,7 +1097,20 @@
                   required
                   bind:value={resetPassword}
                 /></label
-              ><button class="primary" disabled={busy}>Save new password</button><button
+              ><label
+                >Confirm new password<input
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="12"
+                  required
+                  bind:value={resetConfirmation}
+                /></label
+              >
+              <p class="muted small">
+                Regular users must replace this temporary password at their next sign-in. Existing
+                sessions are revoked.
+              </p>
+              <button class="primary" disabled={busy}>Save new password</button><button
                 type="button"
                 onclick={() => (resetId = "")}>Cancel</button
               >
@@ -942,6 +1120,7 @@
             onsubmit={(e) => {
               e.preventDefault();
               void act(async () => {
+                if (newPassword !== newConfirmation) throw new Error("The passwords do not match.");
                 const result = await request<{ user: User }>("/admin/users", "POST", {
                   username: newUsername,
                   password: newPassword,
@@ -950,6 +1129,7 @@
                 users = [...users, result.user];
                 newUsername = "";
                 newPassword = "";
+                newConfirmation = "";
                 notice = "Account created. Share the credentials privately with its owner.";
               });
             }}
@@ -964,13 +1144,23 @@
                 bind:value={newPassword}
               /></label
             ><label
+              >Confirm temporary password<input
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+                bind:value={newConfirmation}
+              /></label
+            ><label
               >Role<select bind:value={newRole}
                 ><option value="user">User</option><option value="admin">Administrator</option
                 ></select
               ></label
             >
             <p class="muted small">
-              Use at least 12 characters. Users can change their password after signing in.
+              Use at least 12 characters. Regular users must replace this temporary password at
+              first sign-in. Administrators manage the server and cannot create transfers; their
+              accounts are exempt from the first-change requirement.
             </p>
             <button class="primary" disabled={busy}>Create account</button>
           </form>
@@ -1126,6 +1316,8 @@
     font-size: 0.9rem;
   }
   .sign-out {
+    white-space: nowrap;
+    flex-shrink: 0;
     grid-column: 2;
     justify-self: start;
     border: 0;
@@ -1194,7 +1386,44 @@
     font-size: 0.85rem;
     text-decoration: none;
   }
+  .type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--primary);
+    font-size: 0.75rem;
+    font-weight: 650;
+    margin-bottom: 0.4rem;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .history-title {
+    display: block;
+  }
+  .resource details,
+  .rename-form {
+    flex-basis: 100%;
+    font-size: 0.85rem;
+  }
+  .resource details summary {
+    cursor: pointer;
+    color: var(--muted);
+  }
+  .admin-account {
+    display: flex;
+    gap: 1rem;
+    grid-column: 2;
+    font-size: 0.8rem;
+  }
   .resource {
+    flex-wrap: wrap;
     padding: 1rem 0;
     border-bottom: 1px solid var(--divider);
     display: flex;
@@ -1217,12 +1446,6 @@
   }
   .confirm button {
     margin: 0.5rem;
-  }
-  .toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 1rem 0;
   }
   .empty {
     text-align: center;
@@ -1250,13 +1473,13 @@
     }
     nav {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 4.3rem), 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       border-bottom: 1px solid var(--divider);
       gap: 0;
     }
     nav a {
       justify-content: center;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 0.35rem;
       padding: 0.75rem 0.25rem;
       border-radius: 0;
@@ -1284,8 +1507,32 @@
       font-size: 0.8rem;
     }
   }
+  @media (max-width: 760px) {
+    nav.admin-nav {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .account-bar:has(.admin-account) {
+      flex-wrap: wrap;
+    }
+  }
+  @media (max-width: 600px) {
+    nav a {
+      flex-direction: column;
+      gap: 0.5rem;
+      min-height: 72px;
+      font-size: 0.72rem;
+      padding: 0.7rem 0.1rem;
+    }
+    .nav-label {
+      white-space: nowrap;
+    }
+    nav.admin-nav a {
+      font-size: 0.7rem;
+    }
+  }
   @media (max-width: 540px) {
     .resource {
+      flex-wrap: wrap;
       flex-direction: column;
       align-items: stretch;
     }

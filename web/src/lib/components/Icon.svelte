@@ -1,5 +1,7 @@
 <script lang="ts">
   import {
+    LayoutDashboard,
+    ChartNoAxesCombined,
     ArrowDownToLine,
     ArrowRight,
     Copy,
@@ -30,6 +32,8 @@
   } from "@lucide/svelte";
 
   const icons = {
+    Overview: LayoutDashboard,
+    Traffic: ChartNoAxesCombined,
     Send,
     Receive: ArrowDownToLine,
     History,

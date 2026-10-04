@@ -107,7 +107,7 @@ for normal hosting. Authentication is still required in development mode.
 
 Open the public address and sign in. In Android or iOS server settings, enter that same
 address, without `/api/v1`, and your username/password. Alternatively, sign in on
-the website, choose **Connect mobile app**, and scan its QR from the app’s server
+the website using a regular account, choose **Connect mobile app**, and scan its QR from the app’s server
 settings to configure and sign in automatically. Allow the app through any phone
 firewall.
 Generated links then open the download page directly; recipients do not need to
@@ -127,10 +127,28 @@ HTTPS certificate verification remains enabled in all clients.
 
 ## Accounts and connected devices
 
-Admins can create users, disable accounts, reset passwords, and revoke server
-resources. Ordinary users manage their own transfers and receive slots. Password
-resets and disabling an account invalidate its sessions and unused pairing codes.
+Administrators land on **Overview** and manage **Users**, **Traffic** and **Server
+settings**. Admin accounts are administration-only: they cannot create transfers,
+receive links, use the web scanner, or pair a mobile app. Create a separate regular
+account for personal file transfers. Regular users land on **Send** and manage
+their own links and History. Administrators can inspect operational metadata and
+revoke server resources, but cannot access encryption keys or plaintext filenames.
+
+New regular accounts use a temporary password and must replace it on first login.
+An administrator reset reinstates that requirement. Existing accounts migrate
+without a forced reset; administrators are exempt from mandatory first change.
+Password changes require the current password and a different replacement of
+12–72 UTF-8 bytes, with confirmation in the web and mobile forms. Password changes,
+resets and disabling an account revoke its sessions and unused pairing grants;
+sign in again after changing the password. Restricted accounts can only inspect
+their sign-in state, change the password and sign out until replacement succeeds.
 The last enabled administrator cannot be disabled.
+
+The API enforces these rules for existing cookie and app sessions, including
+upload continuation. Older clients may need an update to display the dedicated
+password/role messages. Existing admin-owned public links remain valid until
+expiry or revocation; ownership and keys are not moved. Public-link capabilities
+remain independent of an ambient admin or restricted session.
 
 The website uses an HttpOnly session cookie. Android stores its device session
 encrypted with Android Keystore; iOS uses Keychain, with a shared access group for
@@ -156,10 +174,14 @@ required. Account login and pairing are available in the web UI and both mobile
 apps. See the iOS build and device validation requirements below.
 
 Both mobile apps keep new local history scoped to the signed-in account and server.
-Local history from before accounts existed is visible only to an administrator
-signed in on its original server; this does not assign server ownership to those
-records. Signing out hides account history, and signing into a different account
-does not expose the previous account's links or encryption keys.
+Signing out hides account history, and signing into a different account does not
+expose the previous account's links or encryption keys. Admin accounts no longer
+open personal mobile History; older records are preserved locally without being
+reassigned. Native downloaded files remain available independently of server
+login. Sent and receive-link entries can be renamed locally, and receive-link
+creation offers an optional name. Names apply only on this device/browser and are
+scoped to the account, server, type and resource ID; they are never sent to the
+server. Clearing a custom name restores the filename/type/date fallback.
 
 ## Manual build
 
@@ -312,9 +334,60 @@ the web page provides a retry button, Android retries from saved history, and iO
 keeps a pending queue and retries when the app becomes active. Older clients do not
 send confirmations, so their downloads may remain **Download started**.
 
+## Administration metrics and traffic
+
+**Overview** separates current gauges (enabled regular users, unexpired transfers
+and receive links, and encrypted storage) from recorded file events. Stored bytes
+measure actual tracked blob sizes, including partial uploads, plus encrypted
+manifests; they exclude the SQLite database/WAL, backups, and untracked orphan
+files. Gauges can change while uploads or cleanup run. Operational resource sizes
+are declared encrypted file sizes and may include pending reservations.
+
+A file is counted as uploaded once when its parent transfer finalizes. Standalone
+sends and files submitted through receive links have separate totals. Delivered
+files count once on the first accepted completed-transfer receipt, which is a
+client report, not independent proof of saving. Deleting resources and cleanup do
+not subtract from these durable event counters.
+
+**Traffic** measures application transfer payload bytes, in UTC. Uploaded bytes
+are encrypted manifest/file bodies actually consumed by the application;
+downloaded bytes are encrypted bodies accepted by the HTTP response writer.
+Repeated downloads, retries, and bytes moved before an interrupted/failed request
+count. Declared sizes, GET quotas and receipt counts are not traffic. Requests
+rejected before reading their body contribute zero application payload bytes.
+
+These totals exclude web assets, control/account APIs, HTTP/TLS overhead, proxy
+buffering/discarded bytes and unrelated services, so provider billing may differ.
+The recording-start date is shown explicitly. There is no historical backfill;
+the first billing cycle may be partial. Charts support up to 367 UTC days per
+request; measured lifetime totals retain the entire recorded history.
+
+Traffic deltas flush at 1 MiB, once per second, on day rollover and when each
+request finishes. Graceful shutdown waits for final request flushes before
+closing the database. Abrupt termination can lose the unflushed delta per active
+stream (normally below 1 MiB, plus the current I/O operation). A failed counter
+write permanently marks measurement coverage **degraded** when storage permits,
+also retaining an in-process warning if the database is unavailable. Uncertain
+failed commits are not retried as traffic deltas because that could double-count.
+An unavailable metrics database produces an explicit error rather than zero
+totals. Treat this as a usage monitor, not a provider billing ledger.
+
+Administrators may configure an optional allowance, its start day (1–31), and
+whether it counts outbound downloads or both directions. A day absent in a short
+month becomes that month's last day. Boundaries are UTC, with an exclusive end
+date. Editing these settings never rewrites raw traffic or blocks transfers.
+
+Admin API routes are `GET /api/v1/admin/overview`,
+`GET /api/v1/admin/traffic?from=YYYY-MM-DD&to=YYYY-MM-DD` (inclusive dates), and
+`PATCH /api/v1/admin/traffic/settings`. Settings require all three fields:
+`allowance_bytes` (positive safe integer or null), `cycle_start_day`, and
+`basis` (`outbound` or `combined`). The existing admin-only
+`/api/v1/auth/resources?all=true` supplies operational revocation metadata;
+ordinary History endpoints do not grant admin transfer rights.
+
 ## Configuration
 
-All backend settings are controlled via environment variables.
+Operator settings use environment variables. The administrator can also persist the per-file upload limit and traffic-monitor preferences through the web UI.
 
 | Variable                   | Default              | Description                                                      |
 | -------------------------- | -------------------- | ---------------------------------------------------------------- |
@@ -350,7 +423,7 @@ Existing Docker volumes and database paths retain their names to preserve stored
 
 Accounts authorize creation and management; generated links intentionally grant
 access to their specific transfer or receive slot. Direct file uploads require
-an active owner/admin session. Public slot uploaders receive a private capability
+a fully enabled regular owner session; admin sessions cannot upload. Public slot uploaders receive a private capability
 for uploading only their newly created child transfer. Receive slots enforce
 expiry, transfer-count, and aggregate storage limits on the server.
 
@@ -386,12 +459,15 @@ GNU Affero General Public License, version 3 only (AGPL-3.0-only). See [LICENSE]
 ## Scanning and brand assets
 
 On mobile, opening Scan QR code starts its embedded camera after permission is
-granted. Paste link and Choose QR image remain available without camera access.
+granted. A rear camera is selected automatically, with another camera as fallback
+when needed; mobile scanning has no camera switcher. The torch appears only when
+supported. Camera failures offer retry, and leaving the screen releases capture.
+Paste link and Choose QR image remain available without camera access.
 Scan no longer contains a separate history screen: all records are available from
 History, with All, Sent, Receive links and Downloaded filters. Settings separates
 appearance and account information from the dedicated account-editing flow.
 
-The web scanner is available only after signing in. It decodes locally, asks
+The web scanner is available only to fully enabled regular accounts. It decodes locally, asks
 before opening a transfer on another server, and never redeems mobile pairing
 codes. Webcam access requires HTTPS or the localhost development exception;
 signed-in paste/image decoding remains available on LAN HTTP. Public transfer

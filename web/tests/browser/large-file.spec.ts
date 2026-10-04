@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 
 test("a file over 100 MiB uploads in bounded frames and saves through OPFS with exact bytes", async ({
   page,
-  request,
+  adminRequest: request,
 }, testInfo) => {
   test.setTimeout(120000);
   const size = 101 * 1024 * 1024 + 17,

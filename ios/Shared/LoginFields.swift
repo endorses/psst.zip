@@ -1,5 +1,6 @@
 import Shared
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Also used inside the extension so selected attachments stay available while signing in.
 struct LoginFields: View {
@@ -17,74 +18,104 @@ struct LoginFields: View {
     @State private var error: String?
     @State private var scanning = false
     @State private var scannedCode: String?
+    @State private var choosingImage = false
+    @State private var imageError: String?
+    @State private var pairingText = ""
     @FocusState private var passwordFocused: Bool
     var body: some View {
-        TextField("Server URL", text: $server).keyboardType(.URL).textContentType(.URL)
-            .textInputAutocapitalization(.never).autocorrectionDisabled()
-        if server.lowercased().hasPrefix("http://") {
-            Text("HTTP sends login credentials without transport encryption. Use it only for local development on a trusted network; the server must explicitly allow it.").font(.footnote).foregroundStyle(PsstTheme.warning)
-        }
-        TextField("Username", text: $username).textContentType(.username)
-            .textInputAutocapitalization(.never).autocorrectionDisabled()
-        HStack {
-            Group {
-                if visible {
-                    TextField("Password", text: $password)
-                } else {
-                    SecureField("Password", text: $password)
-                }
-            }.textContentType(.password).focused($passwordFocused).submitLabel(.go).onSubmit { login() }
-            Button { visible.toggle()
-                passwordFocused = true
-            } label: { Image(systemName: visible ? "eye.slash" : "eye").frame(minWidth: 44, minHeight: 44) }
-                .accessibilityLabel(LocalizedStringKey(visible ? "Hide password" : "Show password"))
-        }
-        Button("Sign in") { login() }.disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
-            .buttonStyle(PrimaryAction())
-        Button { scanning = true } label: { Label("Scan server login QR code", systemImage: "qrcode.viewfinder").frame(minHeight: 44) }.disabled(busy)
-        Button("Test connection") {
-            busy = true
-            Task {
-                defer { busy = false }
-                do { try await config.testConnection(server: server); connection = "Connected" }
-                catch { connection = "Could not connect. Check the server address and network." }
+        if config.requiresPasswordChange {
+            PasswordReplacementFields(onBusyChanged: onBusyChanged)
+        } else {
+            if config.passwordChanged {
+                Text("Password changed. Sign in with your new password to continue.").foregroundStyle(PsstTheme.success)
             }
-        }.disabled(busy || server.isEmpty)
-        if let connection {
-            Text(connection).font(.footnote)
-        }
-        if busy {
-            ProgressView("Signing in")
-        }
-        if let error {
-            Text(error).foregroundStyle(PsstTheme.error).accessibilityAddTraits(.isStaticText)
-        }
-        Text("To connect with a QR code, sign in on the website and open Settings → Connected devices.").font(.footnote).foregroundStyle(PsstTheme.secondary)
-            .onAppear { server = config.serverURL }
-            .sheet(isPresented: $scanning, onDismiss: classifyPairing) {
-                NavigationStack {
-                    PairingScanner { raw in scannedCode = raw
-                        scanning = false
+            if let message = config.accountMessage {
+                Text(message).foregroundStyle(PsstTheme.warning)
+            }
+            TextField("Server URL", text: $server).keyboardType(.URL).textContentType(.URL)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+            if server.lowercased().hasPrefix("http://") {
+                Text("HTTP sends login credentials without transport encryption. Use it only for local development on a trusted network; the server must explicitly allow it.").font(.footnote).foregroundStyle(PsstTheme.warning)
+            }
+            TextField("Username", text: $username).textContentType(.username)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+            HStack {
+                Group {
+                    if visible {
+                        TextField("Password", text: $password)
+                    } else {
+                        SecureField("Password", text: $password)
                     }
-                    .navigationTitle("Scan server login QR code")
-                    .toolbar { Button("Cancel") { scanning = false } }
-                }
+                }.textContentType(.password).focused($passwordFocused).submitLabel(.go).onSubmit { login() }
+                Button { visible.toggle()
+                    passwordFocused = true
+                } label: { Image(systemName: visible ? "eye.slash" : "eye").frame(minWidth: 44, minHeight: 44) }
+                    .accessibilityLabel(LocalizedStringKey(visible ? "Hide password" : "Show password"))
             }
-            .onChange(of: busy) { _, value in onBusyChanged(value) }
-            .confirmationDialog("Connect to this server?", isPresented: $confirmPairing, titleVisibility: .visible) {
-                Button("Connect to this server") {
-                    guard let code = scannedCode else { return }
-                    busy = true
-                    Task {
-                        defer { busy = false; scannedCode = nil }
-                        do { try await config.pair(raw: code); password = ""; onSuccess() }
-                        catch { self.error = "This login code is invalid, expired, or already used. Generate a new code on the website." }
+            Button("Sign in") { login() }.disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
+                .buttonStyle(PrimaryAction())
+            Button { scanning = true } label: { Label("Scan server login QR code", systemImage: "qrcode.viewfinder").frame(minHeight: 44) }.disabled(busy)
+            Button("Test connection") {
+                busy = true
+                onBusyChanged(true)
+                Task {
+                    defer { busy = false; onBusyChanged(false) }
+                    do { try await config.testConnection(server: server); connection = "Connected" }
+                    catch { connection = "Could not connect. Check the server address and network." }
+                }
+            }.disabled(busy || server.isEmpty)
+            if let connection {
+                Text(connection).font(.footnote)
+            }
+            if busy {
+                ProgressView("Signing in")
+            }
+            if let error {
+                Text(error).foregroundStyle(PsstTheme.error).accessibilityAddTraits(.isStaticText)
+            }
+            Text("To connect with a QR code, sign in on the website and open Settings → Connected devices.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+                .onAppear { server = config.serverURL; username = config.session?.username ?? "" }
+                .sheet(isPresented: $scanning, onDismiss: classifyPairing) {
+                    NavigationStack {
+                        VStack {
+                            PairingScanner(allowsPaste: true, isActive: !choosingImage) { raw in scannedCode = raw; scanning = false }
+                            HStack {
+                                TextField("Paste server login code", text: $pairingText).textInputAutocapitalization(.never).autocorrectionDisabled()
+                                PasteButton(payloadType: String.self) { values in pairingText = values.first ?? "" }
+                            }.padding(.horizontal)
+                            Button("Use login code") { scannedCode = pairingText; scanning = false }.disabled(pairingText.isEmpty)
+                            Button("Choose QR image") { imageError = nil; choosingImage = true }
+                            if let imageError {
+                                Text(imageError).foregroundStyle(PsstTheme.error)
+                            }
+                        }
+                        .fileImporter(isPresented: $choosingImage, allowedContentTypes: [.image]) { result in
+                            do { scannedCode = try QRImageReader.read(result.get()); scanning = false }
+                            catch { imageError = "Choose an image containing one server login QR code." }
+                        }
+                        .navigationTitle("Scan server login QR code")
+                        .toolbar { Button("Cancel") { scanning = false } }
                     }
                 }
-                Button("Cancel", role: .cancel) { scannedCode = nil }
-            } message: {
-                Text(pairingServer + (config.isConfigured ? "\nThis replaces the current account." : "") + (pairingServer.hasPrefix("http://") ? "\nHTTP sends login credentials without transport encryption. Use only on a trusted development network." : ""))
-            }
+                .confirmationDialog("Connect to this server?", isPresented: $confirmPairing, titleVisibility: .visible) {
+                    Button("Connect to this server") {
+                        guard let code = scannedCode else { return }
+                        busy = true
+                        onBusyChanged(true)
+                        Task {
+                            defer { busy = false; onBusyChanged(false); scannedCode = nil }
+                            do {
+                                try await config.pair(raw: code); password = ""; if !config.requiresPasswordChange {
+                                    onSuccess()
+                                }
+                            } catch { self.error = (error as? AccountError)?.localizedDescription ?? AccountError.pairing.localizedDescription }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) { scannedCode = nil }
+                } message: {
+                    Text(pairingServer + (config.isConfigured ? "\nThis replaces the current account." : "") + (pairingServer.hasPrefix("http://") ? "\nHTTP sends login credentials without transport encryption. Use only on a trusted development network." : ""))
+                }
+        }
     }
 
     private func classifyPairing() {
@@ -99,13 +130,16 @@ struct LoginFields: View {
     private func login() {
         guard !busy, !server.isEmpty, !username.isEmpty, !password.isEmpty else { return }
         busy = true
+        onBusyChanged(true)
         error = nil
         Task {
-            defer { busy = false }
+            defer { busy = false; onBusyChanged(false) }
             do { try await config.login(server: server, username: username, password: password)
                 password = ""
-                onSuccess()
-            } catch { self.error = String(localized: "Sign-in failed. Check your credentials, connection, and server address. HTTPS is required unless development HTTP is enabled.") }
+                if !config.requiresPasswordChange {
+                    onSuccess()
+                }
+            } catch { self.error = (error as? AccountError)?.localizedDescription ?? String(localized: "Sign-in failed. Check your credentials, connection, and server address. HTTPS is required unless development HTTP is enabled.") }
         }
     }
 }

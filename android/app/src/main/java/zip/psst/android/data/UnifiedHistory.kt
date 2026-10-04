@@ -31,3 +31,24 @@ fun unifiedHistory(
             }
         }
         .sortedWith(compareByDescending<HistoryRow> { it.createdAt }.thenBy { it.key })
+
+internal fun automaticHistoryTitle(firstName: String?, count: Int): String? =
+    firstName?.let {
+        if (count > 1) "$it + ${count - 1} ${if (count == 2) "file" else "files"}" else it
+    }
+
+internal fun historyTitle(entry: TransferHistoryEntity): String =
+    entry.title?.takeIf { it.isNotBlank() }
+        ?: automaticHistoryTitle(entry.automaticTitle, entry.fileCount)
+        ?: "${entry.fileCount} ${if (entry.fileCount == 1) "file" else "files"} · ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(entry.createdAt))}"
+
+/** Keep the filename extension/count visible, while accessibility exposes the full original. */
+internal fun compactHistoryTitle(title: String, limit: Int = 64): String {
+    if (title.codePointCount(0, title.length) <= limit) return title
+    val suffixStart =
+        title.lastIndexOf('.').takeIf { it > 0 && title.length - it <= 24 }
+            ?: title.offsetByCodePoints(0, title.codePointCount(0, title.length) - 16)
+    val suffix = title.substring(suffixStart)
+    val prefixLength = (limit - suffix.codePointCount(0, suffix.length) - 1).coerceAtLeast(8)
+    return title.substring(0, title.offsetByCodePoints(0, prefixLength)) + "…" + suffix
+}

@@ -37,7 +37,7 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 	if err := q.SaveManifest("existing-transfer", []byte("opaque manifest")); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CompleteTransfer("existing-transfer"); err != nil {
+	if _, err := legacy.Exec(`UPDATE transfers SET status='complete', completed_at=CURRENT_TIMESTAMP WHERE id='existing-transfer'`); err != nil {
 		t.Fatal(err)
 	}
 	if allowed, err := q.ReserveFileDownload("existing-transfer", "existing-file"); err != nil || !allowed {
@@ -118,7 +118,7 @@ func TestPairingTrackingMigrationPreservesOutstandingGrants(t *testing.T) {
 	}
 	q := NewQueries(legacy)
 	user := User{ID: "owner", Username: "owner", Role: "user", PasswordHash: []byte("hash")}
-	if err := q.CreateUser(user, false); err != nil {
+	if _, err := legacy.Exec(`INSERT INTO users(id,username,role,password_hash) VALUES(?,?,?,?)`, user.ID, user.Username, user.Role, user.PasswordHash); err != nil {
 		t.Fatal(err)
 	}
 	session := Session{ID: "browser", UserID: user.ID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}

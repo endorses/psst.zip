@@ -34,6 +34,7 @@ struct ContentView: View {
         .task(id: scenePhase) {
             if scenePhase == .active {
                 config.reload()
+                await config.refreshAccount()
                 history.reload()
                 await DownloadAcknowledgements.shared.flush()
                 await guests.flushReceipts()

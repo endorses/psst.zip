@@ -9,9 +9,11 @@ import zip.psst.android.data.historyRefreshBatch
 import zip.psst.android.data.refreshHistoryEntry
 import zip.psst.android.data.revokeHistoryEntry
 import zip.psst.android.data.syncAccountHistory
+import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.LinkDeletionException
+import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.model.ServerConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +50,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     val deletionError = _deletionError.asStateFlow()
 
     val offline = MutableStateFlow(false)
+    val accountIssue = MutableStateFlow<String?>(null)
     private var refreshJob: Job? = null
     private val deleteJobs = mutableMapOf<String, Job>()
 
@@ -61,7 +64,23 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 refreshJob?.cancel()
                 deleteJobs.values.toList().forEach { it.cancel() }
                 _deletionError.value = null
+                accountIssue.value = null
             }
+        }
+    }
+
+    fun rename(entry: TransferHistoryEntity, title: String) {
+        val access = app.prefs.historyAccess.value
+        if (!access.permits(entry) || entry.accountId == null) return
+        viewModelScope.launch {
+            if (app.prefs.historyAccess.value == access)
+                dao.rename(
+                    entry.id,
+                    entry.serverUrl,
+                    entry.accountId,
+                    entry.type,
+                    title.trim().take(200).ifEmpty { null },
+                )
         }
     }
 
@@ -78,6 +97,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     var remoteIds = emptySet<String>()
                     try {
                         val resources = client.auth.resources()
+                        accountIssue.value = null
                         remoteIds =
                             resources.transfers.map { it.id }.toSet() +
                                 resources.slots.map { it.id }
@@ -91,6 +111,13 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                                 app.prefs.getSessionToken(access.serverUrl) == token
                         )
                             app.prefs.clearSession()
+                        return@launch
+                    } catch (e: PasswordChangeRequiredException) {
+                        accountIssue.value = e.message
+                        return@launch
+                    } catch (e: AdminTransferForbiddenException) {
+                        if (app.prefs.historyAccess.value == access) app.prefs.clearSession()
+                        accountIssue.value = e.message
                         return@launch
                     } catch (_: Exception) {
                         failed = true

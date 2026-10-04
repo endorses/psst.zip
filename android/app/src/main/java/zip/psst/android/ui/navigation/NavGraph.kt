@@ -26,6 +26,9 @@ import zip.psst.android.ui.screens.ServerConfigScreen
 import zip.psst.android.ui.screens.SettingsScreen
 import zip.psst.android.ui.screens.TransferDetailScreen
 import zip.psst.android.viewmodel.ScanViewModel
+import zip.psst.shared.api.ApiClient
+import zip.psst.shared.model.ServerConfig
+import kotlinx.coroutines.CancellationException
 
 object Routes {
     const val SERVER_CONFIG = "server_config"
@@ -62,13 +65,44 @@ fun PsstNavGraph(
     fun authenticatedRoute(route: String): String {
         intendedRoute = route
         intendedAccess = prefs.historyAccess.value
-        return if (prefs.getSessionToken() != null) route else Routes.SERVER_CONFIG
+        return if (
+            prefs.getSessionToken() != null &&
+                !prefs.historyAccess.value.isAdmin &&
+                !prefs.historyAccess.value.mustChangePassword
+        )
+            route
+        else Routes.SERVER_CONFIG
     }
     fun signInFor(route: String) {
         intendedRoute = route
+        intendedAccess = prefs.historyAccess.value
         navController.navigate(Routes.SERVER_CONFIG)
     }
     val entry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(Unit) {
+        if (prefs.historyAccess.value.isAdmin) {
+            navController.navigate(Routes.SERVER_CONFIG) { launchSingleTop = true }
+        } else {
+            val token = prefs.getSessionToken()
+            if (token != null) {
+                val client = ApiClient(ServerConfig(prefs.getServerUrl()), sessionToken = token)
+                try {
+                    val user = client.auth.me()
+                    if (
+                        prefs.getSessionToken() == token &&
+                            (user.role == "admin" || user.mustChangePassword)
+                    )
+                        navController.navigate(Routes.SERVER_CONFIG) { launchSingleTop = true }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    /* Offline guest access stays available; authenticated writes recheck state. */
+                } finally {
+                    client.close()
+                }
+            }
+        }
+    }
     LaunchedEffect(sharedUris) {
         if (
             sharedUris.isNotEmpty() &&
@@ -84,6 +118,11 @@ fun PsstNavGraph(
     ) {
         composable(Routes.SERVER_CONFIG) {
             ServerConfigScreen(
+                onAccountCleared = {
+                    onSharedUrisConsumed()
+                    intendedRoute = Routes.HOME
+                    navController.popBackStack(Routes.HOME, false)
+                },
                 onBack = { if (!navController.popBackStack()) navController.navigate(Routes.HOME) },
                 onConfigured = {
                     val now = prefs.historyAccess.value
@@ -222,6 +261,7 @@ fun PsstNavGraph(
         listOf(Routes.HISTORY, Routes.DOWNLOADED_HISTORY).forEach { route ->
             composable(route) {
                 HistoryScreen(
+                    onAccount = { signInFor(route) },
                     guest = guestDownloads,
                     initialFilter = if (route == Routes.DOWNLOADED_HISTORY) "downloaded" else "all",
                     onDownloadClick = { record ->

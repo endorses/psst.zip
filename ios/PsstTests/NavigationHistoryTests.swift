@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 @testable import Psst
 import UIKit
@@ -48,6 +49,102 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertFalse(SendState.uploading(progress: 0.5).permitsStart)
         XCTAssertTrue(SendState.idle.permitsStart)
         XCTAssertTrue(SendState.failed("Retry").permitsStart)
+    }
+
+    func testHistoryTitlesKeepUnicodeFilenameAndAdditionalCount() throws {
+        var record = owned("sent")
+        record.title = "夏の写真📷.jpeg"
+        record.fileCount = 4
+        XCTAssertEqual(record.displayTitle, "夏の写真📷.jpeg + 3 files")
+        record.customTitle = "Wedding photos"
+        XCTAssertEqual(record.displayTitle, "Wedding photos")
+        let restored = try JSONDecoder().decode(TransferRecord.self, from: JSONEncoder().encode(record))
+        XCTAssertEqual(restored.displayTitle, "Wedding photos")
+        record.customTitle = nil
+        XCTAssertEqual(record.displayTitle, "夏の写真📷.jpeg + 3 files")
+    }
+
+    func testPollingAndStaleCheckpointPreserveRenameAndClearByTypedAccountIdentity() {
+        var refreshed = owned("same")
+        refreshed.title = "notes.pdf"
+        var named = refreshed
+        named.customTitle = "My documents"
+        XCTAssertEqual(refreshed.preservingLocalName(from: named).displayTitle, "My documents")
+        var stale = named
+        stale.customTitle = "Old name"
+        named.customTitle = nil
+        XCTAssertNil(stale.preservingLocalName(from: named).customTitle)
+        var other = named
+        other.customTitle = "Private"
+        other.ownerID = "another user"
+        XCTAssertNil(refreshed.preservingLocalName(from: other).customTitle)
+        other = owned("same", slot: true)
+        other.customTitle = "A slot with the same ID"
+        XCTAssertNotEqual(other.localID, refreshed.localID)
+        XCTAssertNil(refreshed.preservingLocalName(from: other).customTitle)
+    }
+
+    func testHistoryMigrationPersistenceAndRefreshKeepLocalNameWithoutTypeCollision() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "psst-history-tests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        var original = owned("shared-id")
+        original.title = "report.pdf"
+        original.customTitle = "Private document"
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try defaults.set(encoder.encode([original]), forKey: AppConstants.transferHistoryKey)
+        let file = directory.appendingPathComponent("history.json")
+        let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertEqual(store.visible(for: session).first?.displayTitle, "Private document")
+        try store.update(owned("shared-id"))
+        try store.add(owned("shared-id", slot: true))
+        let relaunched = TransferHistoryStore(defaults: defaults, fileURL: file)
+        XCTAssertEqual(relaunched.visible(for: session).count, 2)
+        XCTAssertEqual(relaunched.records.first(where: { $0.isSlot != true })?.customTitle, "Private document")
+        XCTAssertNil(relaunched.records.first(where: { $0.isSlot == true })?.customTitle)
+        XCTAssertEqual(relaunched.records.first(where: { $0.isSlot != true })?.title, "report.pdf")
+        XCTAssertNil(defaults.data(forKey: AppConstants.transferHistoryKey))
+        let another = DeviceSession(serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other", expiresAt: "later")
+        XCTAssertTrue(relaunched.visible(for: another).isEmpty)
+    }
+
+    func testAdminAndRestrictedSessionsExposeOnlyDeviceDownloads() {
+        for state in ["admin", "restricted"] {
+            var blocked = session
+            blocked.role = state == "admin" ? "admin" : "user"
+            blocked.mustChangePassword = state == "restricted"
+            XCTAssertFalse(blocked.canTransfer)
+            XCTAssertEqual(HistoryEntry.combine(account: [owned("same")], downloads: [local()], session: blocked, filter: .all).count, 1)
+        }
+    }
+
+    func testOldDeviceSessionRemainsDecodableWithoutMandatoryChangeFlag() throws {
+        let json = #"{"serverURL":"https://one.example","userID":"one","username":"name","token":"test","sessionID":"session","expiresAt":"later","role":"user"}"#
+        let stored = try JSONDecoder().decode(DeviceSession.self, from: Data(json.utf8))
+        XCTAssertNil(stored.mustChangePassword)
+        XCTAssertTrue(stored.canTransfer)
+    }
+
+    func testPasswordConfirmationAndBytePolicy() {
+        XCTAssertTrue(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "new secure password", confirmation: "new secure password"))
+        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "temporary password", confirmation: "temporary password"))
+        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "new secure password", confirmation: "new secure password "))
+        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "short", confirmation: "short"))
+        let long = String(repeating: "🔐", count: 19)
+        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: long, confirmation: long))
+    }
+
+    func testCameraSelectionPrefersRearAndKeepsFrontOnlyAndNoCameraCases() {
+        let positions: [AVCaptureDevice.Position] = [.front, .back, .unspecified]
+        XCTAssertEqual(ScannerCameraSelection.ordered(positions, position: { $0 }), [.back, .front, .unspecified])
+        XCTAssertEqual(ScannerCameraSelection.ordered([AVCaptureDevice.Position.front], position: { $0 }), [.front])
+        XCTAssertTrue(ScannerCameraSelection.ordered([AVCaptureDevice.Position](), position: { $0 }).isEmpty)
     }
 
     func testBrandedQRDecodesDownloadUploadAndPairingPayloads() throws {

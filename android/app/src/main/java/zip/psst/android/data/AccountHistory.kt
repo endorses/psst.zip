@@ -75,7 +75,12 @@ internal fun mergeAccountResource(
 ): TransferHistoryEntity? {
     require(incoming.accountId == access.accountId && access.permits(incoming))
     // An ID collision must never adopt a legacy row or another account's key/capability.
-    if (current != null && (current.accountId != access.accountId || !access.permits(current)))
+    if (
+        current != null &&
+            (current.type != incoming.type ||
+                current.accountId != access.accountId ||
+                !access.permits(current))
+    )
         return null
     var updated =
         current?.copy(

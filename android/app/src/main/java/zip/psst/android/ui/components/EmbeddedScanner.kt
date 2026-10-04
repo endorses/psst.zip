@@ -53,24 +53,32 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
     var cameraError by remember { mutableStateOf(false) }
     var processingImage by remember { mutableStateOf(false) }
     val cameraCount = remember { runCatching { Camera.getNumberOfCameras() }.getOrDefault(0) }
-    var cameraId by remember {
-        mutableIntStateOf(
-            (0 until cameraCount).firstOrNull { id ->
-                val info = Camera.CameraInfo()
-                Camera.getCameraInfo(id, info)
-                info.facing == Camera.CameraInfo.CAMERA_FACING_BACK
-            } ?: 0
+    val cameraId = remember {
+        selectScannerCamera(
+            (0 until cameraCount).mapNotNull { id ->
+                runCatching {
+                        val info = Camera.CameraInfo()
+                        Camera.getCameraInfo(id, info)
+                        id to (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK)
+                    }
+                    .getOrNull()
+            }
         )
     }
+    var cameraGeneration by remember { mutableIntStateOf(0) }
+    var torchSupported by remember { mutableStateOf(false) }
     var torch by remember { mutableStateOf(false) }
     val camera =
-        remember(cameraId) {
+        remember(cameraId, cameraGeneration) {
             BarcodeView(context).apply {
                 decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
-                cameraSettings.requestedCameraId = cameraId
+                cameraSettings.requestedCameraId = cameraId ?: -1
             }
         }
     fun stop() {
+        torch = false
+        torchSupported = false
+        camera.setTorch(false)
         camera.stopDecoding()
         camera.pause()
     }
@@ -90,7 +98,15 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
             object : CameraPreview.StateListener {
                 override fun previewSized() {}
 
-                override fun previewStarted() {}
+                override fun previewStarted() {
+                    camera.cameraInstance?.changeCameraParameters { parameters ->
+                        torchSupported =
+                            parameters.supportedFlashModes?.contains(
+                                Camera.Parameters.FLASH_MODE_TORCH
+                            ) == true
+                        parameters
+                    }
+                }
 
                 override fun previewStopped() {}
 
@@ -107,7 +123,8 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
     DisposableEffect(camera, granted, detected, processingImage, cameraError, lifecycle) {
         fun resume() {
             if (
-                granted &&
+                cameraId != null &&
+                    granted &&
                     !detected &&
                     !processingImage &&
                     !cameraError &&
@@ -166,22 +183,22 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
             }
         }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (granted && cameraCount > 0 && !detected && !cameraError && !processingImage) {
-            AndroidView(
-                factory = { camera },
-                modifier =
-                    Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 300.dp).aspectRatio(1.3f),
-            )
+        if (granted && cameraId != null && !detected && !cameraError && !processingImage) {
+            key(cameraGeneration) {
+                AndroidView(
+                    factory = { camera },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .heightIn(min = 180.dp, max = 300.dp)
+                            .aspectRatio(1.3f),
+                )
+            }
             Text(
                 "Point the camera at a psst.zip QR code",
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val info = Camera.CameraInfo().also { Camera.getCameraInfo(cameraId, it) }
-                if (
-                    context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH) &&
-                        info.facing == Camera.CameraInfo.CAMERA_FACING_BACK
-                )
+                if (torchSupported)
                     TextButton(
                         onClick = {
                             torch = !torch
@@ -189,16 +206,6 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                         }
                     ) {
                         Text(if (torch) "Torch off" else "Torch on")
-                    }
-                if (cameraCount > 1)
-                    TextButton(
-                        onClick = {
-                            stop()
-                            torch = false
-                            cameraId = (cameraId + 1) % cameraCount
-                        }
-                    ) {
-                        Text("Switch camera")
                     }
             }
         } else if (processingImage) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -216,16 +223,20 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
             ) {
                 Text("Open app settings")
             }
-        } else if (cameraCount == 0) Text("No camera available. Choose a QR image or paste a link.")
-        else
+        } else if (cameraId == null) Text("No camera available. Choose a QR image or paste a link.")
+        else {
+            if (cameraError) Text("Camera unavailable. Retry, choose a QR image or paste a link.")
             TextButton(
                 onClick = {
+                    stop()
+                    cameraGeneration++
                     cameraError = false
                     detected = false
                 }
             ) {
-                Text("Scan again")
+                Text(if (cameraError) "Retry camera" else "Scan again")
             }
+        }
         OutlinedButton(
             onClick = {
                 stop()
@@ -269,3 +280,7 @@ internal fun decodeQrPixels(width: Int, height: Int, pixels: IntArray): String {
     require(results.size == 1)
     return results.single()
 }
+
+/** Prefer a rear camera, retaining a front-only fallback and an explicit no-camera result. */
+internal fun selectScannerCamera(cameras: List<Pair<Int, Boolean>>): Int? =
+    cameras.firstOrNull { it.second }?.first ?: cameras.firstOrNull()?.first

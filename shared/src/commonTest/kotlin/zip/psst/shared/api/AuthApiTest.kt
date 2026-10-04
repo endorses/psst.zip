@@ -239,4 +239,138 @@ class AuthApiTest {
             client.close()
         }
     }
+
+    @Test
+    fun currentUserCarriesRequiredPasswordStateAndOldResponsesRemainReadable() = runTest {
+        withContext(Dispatchers.Default) {
+            for (flag in listOf("", ",\"must_change_password\":true")) {
+                val client =
+                    HttpClient(
+                        MockEngine { request ->
+                            assertEquals("/api/v1/auth/me", request.url.encodedPath)
+                            assertEquals("Bearer token", request.headers[HttpHeaders.Authorization])
+                            respond(
+                                """{"user":{"id":"u","username":"alice","role":"user"$flag}}""",
+                                HttpStatusCode.OK,
+                                headersOf(HttpHeaders.ContentType, "application/json"),
+                            )
+                        }
+                    ) {
+                        install(ContentNegotiation) { json() }
+                    }
+                try {
+                    val user =
+                        AuthApi(client, ServerConfig("https://files.example.com"), "token").me()
+                    assertEquals(flag.isNotEmpty(), user.mustChangePassword)
+                } finally {
+                    client.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun passwordReplacementUsesCurrentSessionAndKeepsSecretsOutOfErrors() = runTest {
+        withContext(Dispatchers.Default) {
+            for (status in
+                listOf(
+                    HttpStatusCode.NoContent,
+                    HttpStatusCode.Forbidden,
+                    HttpStatusCode.Unauthorized,
+                )) {
+                val client =
+                    HttpClient(
+                        MockEngine { request ->
+                            assertEquals("/api/v1/auth/password", request.url.encodedPath)
+                            assertEquals("Bearer token", request.headers[HttpHeaders.Authorization])
+                            val body = request.body.toByteArray().decodeToString()
+                            assertTrue(body.contains("\"current_password\":\"temporary secret\""))
+                            assertTrue(body.contains("\"password\":\"replacement secret\""))
+                            respond("private server diagnostic", status)
+                        }
+                    ) {
+                        install(ContentNegotiation) { json() }
+                    }
+                try {
+                    val api = AuthApi(client, ServerConfig("https://files.example.com"), "token")
+                    if (status == HttpStatusCode.NoContent)
+                        api.changePassword("temporary secret", "replacement secret")
+                    else {
+                        val failure =
+                            assertFailsWith<IllegalArgumentException> {
+                                api.changePassword("temporary secret", "replacement secret")
+                            }
+                        assertFalse(failure.message.orEmpty().contains("private"))
+                        if (status == HttpStatusCode.Unauthorized)
+                            assertTrue(failure is AuthenticationRequiredException)
+                    }
+                } finally {
+                    client.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun restrictionCodesStayDistinctAcrossOwnerWritesAndPairing() = runTest {
+        withContext(Dispatchers.Default) {
+            for (code in listOf("password_change_required", "admin_transfer_forbidden")) {
+                val client =
+                    HttpClient(
+                        MockEngine {
+                            respond(
+                                """{"code":"$code","error":"private diagnostic"}""",
+                                HttpStatusCode.Forbidden,
+                            )
+                        }
+                    ) {
+                        install(ContentNegotiation) { json() }
+                    }
+                try {
+                    suspend fun verify(action: suspend () -> Unit) {
+                        val failure = assertFailsWith<IllegalArgumentException> { action() }
+                        if (code == "password_change_required")
+                            assertTrue(failure is PasswordChangeRequiredException)
+                        else assertTrue(failure is AdminTransferForbiddenException)
+                        assertFalse(failure.message.orEmpty().contains("private"))
+                    }
+                    verify {
+                        TransferApi(client, ServerConfig("https://files.example.com"), "token")
+                            .create()
+                    }
+                    verify {
+                        AuthApi(client, ServerConfig("https://files.example.com"), "token")
+                            .resources()
+                    }
+                    verify {
+                        AuthApi(client, ServerConfig("https://files.example.com"))
+                            .redeemPairing("code", "phone")
+                    }
+                } finally {
+                    client.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun unknownMalformedAndOversizedRestrictionsUseSafeFallback() = runTest {
+        withContext(Dispatchers.Default) {
+            for (body in
+                listOf("not json", """{"code":"unknown","error":"secret"}""", "x".repeat(5000))) {
+                val client =
+                    HttpClient(MockEngine { respond(body, HttpStatusCode.Forbidden) }) {
+                        install(ContentNegotiation) { json() }
+                    }
+                try {
+                    assertFailsWith<AuthenticationRequiredException> {
+                        TransferApi(client, ServerConfig("https://files.example.com"), "token")
+                            .create()
+                    }
+                } finally {
+                    client.close()
+                }
+            }
+        }
+    }
 }

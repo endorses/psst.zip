@@ -169,7 +169,7 @@ final class SendViewModel {
         } catch {
             // Confirm session validity after an authenticated upload fails without exposing server error bodies.
             if !Task.isCancelled, let origin, SecretStore.session == origin {
-                _ = try? await AccountHTTP.request(server: origin.serverURL, path: "auth/me", token: origin.token)
+                await serverConfig.refreshAccount()
             }
             if var record {
                 record.state = .failed
@@ -196,7 +196,7 @@ final class SendViewModel {
                     return
                 }
             }
-            state = .failed(record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there."))
+            state = .failed(serverConfig.accountMessage ?? (record == nil ? String(localized: "Upload could not start. Sign in or check your connection, then retry.") : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
         }
     }
 }

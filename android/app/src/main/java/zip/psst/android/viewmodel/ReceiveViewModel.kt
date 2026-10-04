@@ -12,8 +12,10 @@ import zip.psst.android.data.receivedSnapshot
 import zip.psst.android.data.retrySavedDownloadAcknowledgements
 import zip.psst.android.data.savedFileCount
 import zip.psst.android.data.savedTransferIds
+import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
+import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.api.SlotEvent
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.EncryptedManifest
@@ -41,6 +43,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 data class ReceiveUiState(
+    val localName: String = "",
     val isCreatingSlot: Boolean = false,
     val slotId: String? = null,
     val encryptionKey: String? = null,
@@ -167,6 +170,29 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     fun reconnect() = setVisible(true)
 
     @OptIn(ExperimentalEncodingApi::class)
+    fun renameLocal(value: String) {
+        val name = value.take(200)
+        _uiState.update { it.copy(localName = name) }
+        val access = app.prefs.historyAccess.value
+        val id = _uiState.value.slotId ?: return
+        viewModelScope.launch {
+            val dao = app.database.transferHistoryDao()
+            val row = dao.getById(id) ?: return@launch
+            if (
+                access == app.prefs.historyAccess.value &&
+                    access.permits(row) &&
+                    row.accountId != null
+            )
+                dao.rename(
+                    row.id,
+                    row.serverUrl,
+                    row.accountId,
+                    row.type,
+                    name.trim().ifEmpty { null },
+                )
+        }
+    }
+
     fun createSlot() {
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
@@ -255,12 +281,21 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update {
                         it.copy(
                             isCreatingSlot = false,
-                            requiresLogin = e is AuthenticationRequiredException,
+                            requiresLogin =
+                                e is AuthenticationRequiredException ||
+                                    e is PasswordChangeRequiredException ||
+                                    e is AdminTransferForbiddenException,
                             error =
-                                app.getString(
-                                    zip.psst.android.R.string
-                                        .ui_could_not_create_a_receive_link_check_your_connection_and_retry
-                                ),
+                                if (
+                                    e is PasswordChangeRequiredException ||
+                                        e is AdminTransferForbiddenException
+                                )
+                                    e.message
+                                else
+                                    app.getString(
+                                        zip.psst.android.R.string
+                                            .ui_could_not_create_a_receive_link_check_your_connection_and_retry
+                                    ),
                         )
                     }
                 }

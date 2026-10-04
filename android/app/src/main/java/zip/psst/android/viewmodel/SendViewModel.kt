@@ -9,8 +9,10 @@ import zip.psst.android.PsstApplication
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.spoolUpload
 import zip.psst.android.data.uploadChunkedFile
+import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
+import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.EncryptedManifest
@@ -75,16 +77,14 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     activeAccess = access
                     uploadJob?.cancel()
                     val previous = _uiState.value
-                    val canKeepSelection =
-                        previous.requiresLogin &&
-                            (access.accountId == null || canResumeSelection(pendingAccess, access))
+                    val recovery = selectionRecovery(previous.requiresLogin, pendingAccess, access)
                     _uiState.value =
-                        if (canKeepSelection)
-                            SendUiState(
-                                files = previous.files,
-                                requiresLogin = access.accountId == null,
-                            )
-                        else SendUiState()
+                        when (recovery) {
+                            SelectionRecovery.DISCARD -> SendUiState()
+                            SelectionRecovery.RESTRICTED ->
+                                SendUiState(files = previous.files, requiresLogin = true)
+                            SelectionRecovery.READY -> SendUiState(files = previous.files)
+                        }
                 }
             }
         }
@@ -223,7 +223,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                 status = "pending",
                                 deletionToken = transfer.deleteToken,
                                 accountId = accountId,
-                                title = files.firstOrNull()?.name,
+                                automaticTitle = files.firstOrNull()?.name,
                             )
                         )
                     _uiState.update { it.copy(transferId = transfer.id) }
@@ -302,7 +302,11 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     app.database.transferHistoryDao().updateStatus(transfer.id, "complete")
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
-                    if (e is AuthenticationRequiredException)
+                    if (
+                        e is AuthenticationRequiredException ||
+                            e is PasswordChangeRequiredException ||
+                            e is AdminTransferForbiddenException
+                    )
                         _uiState.update { it.copy(requiresLogin = true) }
                     if (
                         e is AuthenticationRequiredException &&
@@ -315,8 +319,17 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             isUploading = false,
-                            requiresLogin = e is AuthenticationRequiredException,
-                            error = app.getString(zip.psst.android.R.string.upload_failed),
+                            requiresLogin =
+                                e is AuthenticationRequiredException ||
+                                    e is PasswordChangeRequiredException ||
+                                    e is AdminTransferForbiddenException,
+                            error =
+                                if (
+                                    e is PasswordChangeRequiredException ||
+                                        e is AdminTransferForbiddenException
+                                )
+                                    e.message
+                                else app.getString(zip.psst.android.R.string.upload_failed),
                         )
                     }
                 } finally {
@@ -374,3 +387,24 @@ internal fun canResumeSelection(
     origin.accountId == null ||
         (origin.accountId == current.accountId &&
             origin.serverUrl.trimEnd('/') == current.serverUrl.trimEnd('/'))
+
+/** A restricted temporary session is one step of reauthentication, not its completion. */
+internal enum class SelectionRecovery {
+    DISCARD,
+    RESTRICTED,
+    READY,
+}
+
+internal fun selectionRecovery(
+    pendingLogin: Boolean,
+    origin: zip.psst.android.data.HistoryAccess,
+    current: zip.psst.android.data.HistoryAccess,
+): SelectionRecovery =
+    when {
+        !pendingLogin -> SelectionRecovery.DISCARD
+        current.isAdmin -> SelectionRecovery.DISCARD
+        current.accountId == null -> SelectionRecovery.RESTRICTED
+        !canResumeSelection(origin, current) -> SelectionRecovery.DISCARD
+        current.mustChangePassword -> SelectionRecovery.RESTRICTED
+        else -> SelectionRecovery.READY
+    }

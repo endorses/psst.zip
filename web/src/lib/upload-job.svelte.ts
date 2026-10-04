@@ -101,6 +101,16 @@ export class UploadJob {
       check();
       const res = await fetch(`/api/v1${path}`, { ...init, signal });
       check();
+      if (!res.ok && res.status === 403) {
+        const body = await res
+          .clone()
+          .json()
+          .catch(() => null);
+        if (body?.code === "password_change_required")
+          throw new Error("Change your temporary password before sending files.");
+        if (body?.code === "admin_transfer_forbidden")
+          throw new Error("Administrator accounts cannot transfer files. Use a regular account.");
+      }
       if (!res.ok)
         throw new Error(
           res.status === 429
@@ -125,6 +135,10 @@ export class UploadJob {
       if (options.accountId) {
         const me = await (await request("/auth/me")).json();
         check();
+        if (me.user.must_change_password)
+          throw new Error("Change your temporary password before sending files.");
+        if (me.user.role === "admin")
+          throw new Error("Administrator accounts cannot transfer files. Use a regular account.");
         if (me.user.id !== options.accountId)
           throw Error("Your account changed. Sign in again before sending files.");
       }
@@ -144,7 +158,10 @@ export class UploadJob {
       options.oncreated?.(
         created.id,
         url,
-        files[0].name + (files.length > 1 ? ` + ${files.length - 1}` : ""),
+        files[0].name +
+          (files.length > 1
+            ? ` + ${files.length - 1} ${files.length === 2 ? "file" : "files"}`
+            : ""),
         files.reduce((n, f) => n + f.size, 0),
       );
       const entries: FileManifestEntry[] = [];
@@ -198,6 +215,8 @@ export class UploadJob {
       if (run !== this.run) return;
       this.state = "error";
       const safeErrors = [
+        "Change your temporary password before sending files.",
+        "Administrator accounts cannot transfer files. Use a regular account.",
         "Choose no more than 100 files per transfer.",
         "This server is busy. Wait a moment, then retry upload.",
         "Sign in again to continue.",

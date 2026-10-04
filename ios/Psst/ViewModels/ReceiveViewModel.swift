@@ -38,13 +38,15 @@ final class ReceiveViewModel {
 
     private let serverConfig: ServerConfigManager
     private let historyStore: TransferHistoryStore
+    private let localName: String?
     private var refreshing = false
     private var saveClient: ApiClient?
     private var saveTask: Task<Void, Never>?
-    init(serverConfig: ServerConfigManager, historyStore: TransferHistoryStore, record: TransferRecord? = nil) {
+    init(serverConfig: ServerConfigManager, historyStore: TransferHistoryStore, record: TransferRecord? = nil, localName: String? = nil) {
         self.serverConfig = serverConfig
         self.historyStore = historyStore
         self.record = record
+        self.localName = localName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let record {
             state = .waiting
             receivedFileURLs = (record.savedFiles ?? [:]).values.compactMap { savedURL($0) }
@@ -69,13 +71,13 @@ final class ReceiveViewModel {
             let link = UrlHelper.shared.buildUploadUrl(baseUrl: session.serverURL, slotId: slot.id, key: key)
             let entry = TransferRecord(id: slot.id, direction: .received, state: .inProgress, createdAt: Date(),
                                        expiresAt: ServerTimestamp.parse(slot.expiresAt), fileCount: 0,
-                                       totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
+                                       totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, customTitle: localName?.isEmpty == false ? String(localName!.prefix(200)) : nil, isSlot: true)
             try entry.saveSecrets(link: link, deletionToken: slot.deleteToken)
             try historyStore.add(entry)
             try serverConfig.check(session)
             record = entry
             state = .waiting
-        } catch { state = .failed(String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.")) }
+        } catch { await serverConfig.refreshAccount(); state = .failed(serverConfig.accountMessage ?? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.")) }
     }
 
     func refresh() async -> Bool {

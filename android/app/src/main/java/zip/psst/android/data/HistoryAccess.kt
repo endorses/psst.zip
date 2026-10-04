@@ -5,14 +5,15 @@ data class HistoryAccess(
     val serverUrl: String = "",
     val accountId: String? = null,
     val isAdmin: Boolean = false,
+    val mustChangePassword: Boolean = false,
 ) {
     fun permits(row: TransferHistoryEntity): Boolean {
-        if (accountId.isNullOrBlank()) return false
+        if (accountId.isNullOrBlank() || isAdmin || mustChangePassword) return false
         if (
             row.serverUrl.trim().trimEnd('/').lowercase() !=
                 serverUrl.trim().trimEnd('/').lowercase()
         )
             return false
-        return row.accountId == accountId || (row.accountId == null && isAdmin)
+        return row.accountId == accountId
     }
 }

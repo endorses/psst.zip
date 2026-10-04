@@ -90,6 +90,15 @@ fun ReceiveScreen(
             )
             if (state.isCreatingSlot) CircularProgressIndicator()
             state.uploadUrl?.let { LinkPanel(it) }
+            if (state.slotId != null && existingId == null)
+                OutlinedTextField(
+                    value = state.localName,
+                    onValueChange = viewModel::renameLocal,
+                    label = { Text("Name (optional)") },
+                    supportingText = { Text("Only on this device") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             if (state.connectionError) {
                 Text(
                     stringResource(R.string.offline_retained),

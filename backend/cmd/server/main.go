@@ -58,7 +58,9 @@ func main() {
 	go worker.Run(ctx)
 
 	// Graceful shutdown.
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
@@ -69,11 +71,14 @@ func main() {
 		defer shutdownCancel()
 		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("shutdown error: %v", err)
+			_ = httpSrv.Close()
 		}
+		srv.WaitForRequests()
 	}()
 
 	log.Printf("listening on %s", cfg.ListenAddr)
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
+	<-shutdownDone
 }

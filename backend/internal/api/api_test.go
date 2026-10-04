@@ -29,6 +29,7 @@ type testEnv struct {
 	queries   *database.Queries
 	dataDir   string
 	authToken string
+	userToken string
 }
 
 func setup(t *testing.T) *testEnv { return setupAuthFixture(t, true) }
@@ -67,13 +68,22 @@ func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 	}
 
 	queries := database.NewQueries(db)
-	u := database.User{ID: "fixture-user", Username: "fixture", Role: "admin", PasswordHash: []byte("fixture-hash")}
+	u := database.User{ID: "fixture-user", Username: "fixture", Role: "user", PasswordHash: []byte("fixture-hash")}
 	if err := queries.CreateUser(u, false); err != nil {
 		t.Fatal(err)
 	}
 	token := "fixture-session-token"
 	hash := sha256.Sum256([]byte(token))
 	if err := queries.CreateSession(database.Session{ID: "fixture-session", UserID: u.ID, DeviceName: "Tests", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, hash[:], u.PasswordHash); err != nil {
+		t.Fatal(err)
+	}
+	admin := database.User{ID: "fixture-admin", Username: "administrator", Role: "admin", PasswordHash: []byte("fixture-admin-hash")}
+	if err := queries.CreateUser(admin, false); err != nil {
+		t.Fatal(err)
+	}
+	adminToken := "fixture-admin-token"
+	adminHash := sha256.Sum256([]byte(adminToken))
+	if err := queries.CreateSession(database.Session{ID: "admin-session", UserID: admin.ID, DeviceName: "Admin tests", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, adminHash[:], admin.PasswordHash); err != nil {
 		t.Fatal(err)
 	}
 	srv := api.NewServer(cfg, queries, fs)
@@ -88,7 +98,7 @@ func setupAuthFixture(t *testing.T, authorized bool) *testEnv {
 		db.Close()
 	})
 
-	return &testEnv{server: ts, db: db, queries: queries, dataDir: dir, authToken: token}
+	return &testEnv{server: ts, db: db, queries: queries, dataDir: dir, authToken: adminToken, userToken: token}
 }
 
 func (e *testEnv) url(path string) string {

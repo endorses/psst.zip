@@ -32,11 +32,12 @@ func TestPairingTrackingIssuerIsolationAndCancellation(t *testing.T) {
 		t.Fatal("pairing status exposed credential")
 	}
 	authRequest(t, env, "GET", path, "", nil, 401)
-	for _, token := range []string{other, secondToken, env.authToken} {
+	for _, token := range []string{other, secondToken} {
 		authRequest(t, env, "GET", path, token, nil, 404)
 		authRequest(t, env, "DELETE", path, token, nil, 404)
 		authRequest(t, env, "POST", "/auth/pairings", token, map[string]string{"replace_id": pair["id"].(string)}, 404)
 	}
+	authRequest(t, env, "GET", path, env.authToken, nil, 403)
 	authRequest(t, env, "DELETE", path, owner, nil, 204)
 	authRequest(t, env, "DELETE", path, owner, nil, 204)
 	if got := authRequest(t, env, "GET", path, owner, nil, 200)["status"]; got != "canceled" {

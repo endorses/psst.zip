@@ -25,14 +25,15 @@ class HistoryAccessTest {
         assertFalse(access.permits(own.copy(accountId = "bob")))
         assertFalse(access.permits(own.copy(serverUrl = "https://other.example")))
         assertFalse(HistoryAccess().permits(own))
+        assertFalse(access.copy(mustChangePassword = true).permits(own))
         assertFalse(HistoryAccess("https://files.example", null, true).permits(own))
     }
 
     @Test
-    fun onlySignedInAdminCanSeeUnassignedLegacyRowsOnSameServer() {
+    fun adminCannotSeePersonalOrUnassignedLegacyHistory() {
         val legacy = own.copy(accountId = null)
         assertFalse(HistoryAccess(own.serverUrl, "alice").permits(legacy))
-        assertTrue(HistoryAccess(own.serverUrl, "admin", true).permits(legacy))
+        assertFalse(HistoryAccess(own.serverUrl, "admin", true).permits(legacy))
         assertFalse(HistoryAccess("https://other.example", "admin", true).permits(legacy))
         assertFalse(HistoryAccess(own.serverUrl, "admin", true).permits(own))
     }

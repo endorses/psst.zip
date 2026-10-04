@@ -3,6 +3,7 @@ export interface User {
   username: string;
   role: "admin" | "user";
   disabled: boolean;
+  must_change_password?: boolean;
 }
 export interface Session {
   id: string;
@@ -18,12 +19,15 @@ export interface Resource {
   total_size?: number;
   downloaded_at?: string | null;
   expires_at: string;
+  created_at?: string;
+  owner_id?: string;
   transfers?: { transfer_id: string; status: string; file_count: number }[];
 }
 export class AccountError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -37,9 +41,17 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
+    let code: string | undefined;
     let detail = (await response.text()).slice(0, 300);
     try {
       const parsed: unknown = JSON.parse(detail);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "code" in parsed &&
+        typeof parsed.code === "string"
+      )
+        code = parsed.code;
       if (
         parsed &&
         typeof parsed === "object" &&
@@ -50,7 +62,7 @@ export async function accountRequest<T>(path: string, method = "GET", body?: unk
     } catch {
       /* Plain text errors remain useful. */
     }
-    throw new AccountError(response.status, detail || `Request failed (${response.status})`);
+    throw new AccountError(response.status, detail || `Request failed (${response.status})`, code);
   }
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }

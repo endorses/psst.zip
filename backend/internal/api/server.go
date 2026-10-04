@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"sync"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,11 +16,13 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
-	cfg       config.Config
-	queries   *database.Queries
-	fileStore store.FileStore
-	tusH      *tus.Handler
-	sseHub    *SSEHub
+	requests        sync.WaitGroup
+	trafficDegraded atomic.Bool
+	cfg             config.Config
+	queries         *database.Queries
+	fileStore       store.FileStore
+	tusH            *tus.Handler
+	sseHub          *SSEHub
 }
 
 // NewServer creates a Server with all dependencies wired up.
@@ -37,6 +41,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 // Router builds and returns the chi router with all routes registered.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(s.trackRequests)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
@@ -55,28 +60,31 @@ func (s *Server) Router() http.Handler {
 		r.Get("/health", s.health)
 		r.Get("/config", s.publicConfig)
 		r.With(s.requireAdmin).Patch("/admin/settings", s.updateSettings)
+		r.With(s.requireAdmin).Get("/admin/overview", s.getOverview)
+		r.With(s.requireAdmin).Get("/admin/traffic", s.getTraffic)
+		r.With(s.requireAdmin).Patch("/admin/traffic/settings", s.updateTrafficSettings)
 		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
-		r.With(rateLimitMiddleware(creationRL), s.requireLogin).Post("/transfers", s.createTransfer)
+		r.With(rateLimitMiddleware(creationRL), s.requireRegularUser).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
 		r.With(s.requireUpload).Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
-		r.With(s.requireUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
-		r.Get("/transfers/{transferID}/manifest", s.downloadManifest)
+		r.With(s.requireUpload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
+		r.With(s.measureDownload).Get("/transfers/{transferID}/manifest", s.downloadManifest)
 
 		// Tus file upload endpoints
 		r.Options("/transfers/{transferID}/files", tus.ServeOptions)
 		r.With(s.requireUpload).Post("/transfers/{transferID}/files", s.tusCreate)
 		r.With(s.requireUpload).Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
-		r.With(s.requireUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
+		r.With(s.requireUpload, s.measureUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
 
 		// File download
-		r.Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
+		r.With(s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
-		r.With(rateLimitMiddleware(creationRL), s.requireLogin).Post("/slots", s.createSlot)
+		r.With(rateLimitMiddleware(creationRL), s.requireRegularUser).Post("/slots", s.createSlot)
 		r.Get("/slots/{slotID}", s.getSlot)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.Get("/slots/{slotID}/events", s.slotEvents)

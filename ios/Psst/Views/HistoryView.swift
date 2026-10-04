@@ -15,6 +15,8 @@ struct HistoryView: View {
     @State private var lastUpdated: Date?
     @State private var visible = false
     @State private var busy = false
+    @State private var renaming: TransferRecord?
+    @State private var renameText = ""
     private var records: [HistoryEntry] {
         HistoryEntry.combine(account: history.visible(for: config.session), downloads: guests.records, session: config.session, filter: filter)
     }
@@ -26,7 +28,7 @@ struct HistoryView: View {
                     ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.menu)
                 if history.legacyCount > 0 {
-                    Text("Pre-account history is preserved. Only administrators signed in to its original server can manage it.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+                    Text("Pre-account history is preserved. Manage pre-account server resources from the administrator website.").font(.footnote).foregroundStyle(PsstTheme.secondary)
                 }
                 if stale {
                     Label("Offline — showing last known status", systemImage: "wifi.slash").foregroundStyle(PsstTheme.warning)
@@ -47,9 +49,10 @@ struct HistoryView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Downloaded", systemImage: "arrow.down.doc").font(.caption)
-                                Text(record.files.first?.name ?? "File transfer").font(.headline)
+                                Text((record.files.first?.name ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(.headline).lineLimit(1).truncationMode(.middle)
+                                Text("\(record.files.count) files · " + ByteCountFormatter.string(fromByteCount: record.files.reduce(Int64(0)) { $0 + $1.size }, countStyle: .file)).font(.caption)
                                 Text(record.origin).font(.caption).lineLimit(2)
-                                Text(record.createdAt, style: .date).font(.caption)
+                                Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.complete ? "Saved on this device" : "Partially saved").font(.subheadline)
                             }
                         }.swipeActions {
@@ -63,9 +66,9 @@ struct HistoryView: View {
                                 if record.ownerID == nil {
                                     Text("Legacy item").font(.caption)
                                 }
-                                Text(record.isSlot == true ? "Receive link" : "Sent").font(.caption)
-                                Text(record.displayTitle).font(.headline).lineLimit(2)
-                                Text(record.createdAt, style: .date).font(.caption)
+                                Label(record.isSlot == true ? "Receive link" : "Sent", systemImage: record.isSlot == true ? "tray.and.arrow.down" : "paperplane").font(.caption)
+                                Text(record.displayTitle).font(.headline).lineLimit(1).truncationMode(.middle).accessibilityLabel(record.displayTitle)
+                                Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.summary).font(.subheadline)
                                 Text(record.statusText).font(.caption)
                                 if let expiry = record.expiresAt {
@@ -75,6 +78,10 @@ struct HistoryView: View {
                                 }
                             }.padding(.vertical, 4)
                         }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(busy) }
+                            .contextMenu {
+                                Button("Rename on this device") { renameText = record.customTitle ?? ""; renaming = record }
+                            }
+                            .swipeActions(edge: .leading) { Button("Rename") { renameText = record.customTitle ?? ""; renaming = record } }
                     }
                 }
                 if let error {
@@ -85,6 +92,21 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
+            .alert("Rename on this device", isPresented: Binding(get: { renaming != nil }, set: {
+                if !$0 {
+                    renaming = nil
+                }
+            })) {
+                TextField("Name (optional)", text: $renameText)
+                Button("Save") {
+                    if let record = renaming, let session = config.session {
+                        do { try history.rename(record, name: renameText, session: session) }
+                        catch { self.error = "Could not save the name. Check your account and retry." }
+                    }
+                    renaming = nil
+                }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            } message: { Text("Only this device uses this name. Leave it empty to restore the automatic title.") }
             .confirmationDialog("Remove from history? Saved files remain and the sender’s link keeps working.", isPresented: Binding(get: { removing != nil }, set: {
                 if !$0 {
                     removing = nil
@@ -122,7 +144,8 @@ struct HistoryView: View {
                     do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }
                 }
             }
-            .onChange(of: config.accountID) { _, _ in deleting = nil
+            .onChange(of: config.accountID) { _, _ in renaming = nil
+                deleting = nil
                 failedDeletion = nil
                 error = nil
                 lastUpdated = nil
@@ -132,7 +155,7 @@ struct HistoryView: View {
     }
 
     private func refresh() async -> Bool {
-        guard !busy, let session = config.session else { return true }
+        guard !busy, let session = config.session, session.canTransfer, !config.needsSignIn else { return true }
         busy = true
         defer { busy = false }
         do { try await history.refresh(session: session)
@@ -145,7 +168,7 @@ struct HistoryView: View {
     }
 
     private func revoke(_ record: TransferRecord) {
-        guard !busy, let session = config.session else { return }
+        guard !busy, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
         busy = true
         error = nil
         deleting = nil
@@ -168,7 +191,7 @@ private struct HistoryDetail: View {
     @State private var receive: ReceiveViewModel?
     @State private var stale = false
     var current: TransferRecord {
-        history.visible(for: config.session).first { $0.id == record.id } ?? record
+        history.visible(for: config.session).first { $0.localID == record.localID } ?? record
     }
 
     var body: some View {
@@ -188,6 +211,7 @@ private struct HistoryDetail: View {
                             Text("This device does not have the encryption key. You can manage this item, but open its full link on the device that created it.")
                         }
                         Text(current.summary)
+                        DisclosureGroup("Technical details") { Text(current.id).font(.caption).textSelection(.enabled) }
                         if stale {
                             Text("Offline — showing last known status").foregroundStyle(PsstTheme.warning)
                         }

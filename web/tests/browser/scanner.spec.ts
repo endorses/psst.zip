@@ -185,7 +185,7 @@ test("administrator can change the server file cap; ordinary accounts cannot see
     saved = route.request().postDataJSON().max_file_size;
     await route.fulfill({ json: { max_file_size: saved } });
   });
-  await page.reload();
+  await page.goto("/?view=server");
   await expect(page.getByLabel("Maximum file size (MiB)")).toHaveValue("25");
   await page.getByLabel("Maximum file size (MiB)").fill("512");
   await page.getByRole("button", { name: "Save file limit" }).click();

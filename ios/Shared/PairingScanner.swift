@@ -23,6 +23,13 @@ struct PairingScanner: UIViewControllerRepresentable {
 }
 
 /// Capture lives inside the calling screen. Session work is serialized off the main thread.
+enum ScannerCameraSelection {
+    /// Deterministic rear-first ordering, with front/unspecified fallbacks.
+    static func ordered<T>(_ devices: [T], position: (T) -> AVCaptureDevice.Position) -> [T] {
+        devices.filter { position($0) == .back } + devices.filter { position($0) != .back }
+    }
+}
+
 final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private let capture = AVCaptureSession()
     private let queue = DispatchQueue(label: "zip.psst.ios.camera")
@@ -31,12 +38,15 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     private let allowsPaste: Bool
     private var delivered = false
     private var active = false
-    private var configured = false
     private var permissionPending = false
+    // Capture state is confined to queue; UI ownership remains on main.
+    private var shouldRun = false
+    private var configured = false
     private var camera: AVCaptureDevice?
     private let message = UILabel()
     private let torch = UIButton(type: .system)
-    private let flip = UIButton(type: .system)
+    private let retry = UIButton(type: .system)
+    private var observers: [NSObjectProtocol] = []
     init(allowsPaste: Bool, onCode: @escaping (String) -> Void) {
         self.allowsPaste = allowsPaste; self.onCode = onCode
         super.init(nibName: nil, bundle: nil)
@@ -46,6 +56,8 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     required init?(coder _: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
+
+    deinit { observers.forEach { NotificationCenter.default.removeObserver($0) } }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -57,13 +69,20 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         message.adjustsFontForContentSizeCategory = true
         view.addSubview(message)
         torch.setImage(UIImage(systemName: "flashlight.off.fill"), for: .normal)
-        torch.accessibilityLabel = "Toggle flashlight"
+        torch.accessibilityLabel = "Turn flashlight on"
         torch.addTarget(self, action: #selector(toggleTorch), for: .touchUpInside)
-        flip.setImage(UIImage(systemName: "camera.rotate"), for: .normal)
-        flip.accessibilityLabel = "Switch camera"
-        flip.addTarget(self, action: #selector(switchCamera), for: .touchUpInside)
-        for button in [torch, flip] {
-            button.tintColor = .white; button.backgroundColor = UIColor.black.withAlphaComponent(0.6); button.layer.cornerRadius = 22; button.isHidden = true; view.addSubview(button)
+        retry.setTitle("Retry camera", for: .normal)
+        retry.addTarget(self, action: #selector(retryCamera), for: .touchUpInside)
+        for button in [torch, retry] {
+            button.tintColor = .white; button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+            button.layer.cornerRadius = 22; button.isHidden = true; view.addSubview(button)
+        }
+        for name in [AVCaptureSession.runtimeErrorNotification, AVCaptureSession.wasInterruptedNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: capture, queue: .main) { [weak self] _ in
+                guard let self, active, !self.delivered else { return }
+                queue.async { self.turnTorchOff(); self.capture.stopRunning(); self.configured = false }
+                showError()
+            })
         }
     }
 
@@ -71,11 +90,20 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         loadViewIfNeeded()
         guard value != active else { return }
         active = value
-        if !value {
-            queue.async { [self] in turnTorchOff(); capture.stopRunning() }
-            return
+        queue.async { [self] in
+            shouldRun = value
+            if !value {
+                turnTorchOff(); capture.stopRunning()
+            }
         }
-        guard !delivered else { return }
+        if !value {
+            torch.isHidden = true; retry.isHidden = true; return
+        }
+        requestCamera()
+    }
+
+    private func requestCamera() {
+        guard active, !delivered else { return }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized: start()
         case .notDetermined:
@@ -99,71 +127,89 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
 
     private func start() {
+        retry.isHidden = true
         queue.async { [self] in
+            guard shouldRun else { return }
             if !configured {
-                guard configure(position: .back) else { DispatchQueue.main.async { self.showError() }; return }
+                guard configure() else { DispatchQueue.main.async { self.showError() }; return }
                 configured = true
             }
             capture.startRunning()
-            DispatchQueue.main.async { self.message.text = nil; self.updateControls() }
+            let running = capture.isRunning
+            let hasTorch = camera?.hasTorch == true
+            DispatchQueue.main.async {
+                guard self.active, !self.delivered else { return }
+                if running {
+                    self.message.text = nil; self.torch.isHidden = !hasTorch; self.updateTorch(false)
+                } else {
+                    self.showError()
+                }
+            }
         }
     }
 
-    private func configure(position: AVCaptureDevice.Position) -> Bool {
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position), let input = try? AVCaptureDeviceInput(device: device) else { return false }
+    private func configure() -> Bool {
         capture.beginConfiguration()
         defer { capture.commitConfiguration() }
-        let old = capture.inputs
-        old.forEach { capture.removeInput($0) }
-        guard capture.canAddInput(input) else { for item in old {
-            if capture.canAddInput(item) {
-                capture.addInput(item)
-            }
-        }; return false }
-        capture.addInput(input); camera = device
-        if capture.outputs.isEmpty {
-            let output = AVCaptureMetadataOutput()
-            guard capture.canAddOutput(output) else { return false }
-            capture.addOutput(output)
-            output.setMetadataObjectsDelegate(self, queue: .main)
-            guard output.availableMetadataObjectTypes.contains(.qr) else { return false }
-            output.metadataObjectTypes = [.qr]
+        capture.inputs.forEach { capture.removeInput($0) }
+        capture.outputs.forEach { capture.removeOutput($0) }
+        camera = nil
+        var devices = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera, .builtInTrueDepthCamera], mediaType: .video, position: .unspecified).devices
+        if let fallback = AVCaptureDevice.default(for: .video), !devices.contains(where: { $0.uniqueID == fallback.uniqueID }) {
+            devices.append(fallback)
         }
+        for device in ScannerCameraSelection.ordered(devices, position: { $0.position }) {
+            guard let input = try? AVCaptureDeviceInput(device: device), capture.canAddInput(input) else { continue }
+            capture.addInput(input); camera = device; break
+        }
+        guard camera != nil else { return false }
+        let output = AVCaptureMetadataOutput()
+        guard capture.canAddOutput(output) else { return false }
+        capture.addOutput(output)
+        output.setMetadataObjectsDelegate(self, queue: .main)
+        guard output.availableMetadataObjectTypes.contains(.qr) else { return false }
+        output.metadataObjectTypes = [.qr]
         return true
     }
 
-    private func updateControls() {
-        torch.isHidden = camera?.hasTorch != true
-        flip.isHidden = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) == nil || AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) == nil
+    private func updateTorch(_ enabled: Bool) {
+        torch.setImage(UIImage(systemName: enabled ? "flashlight.on.fill" : "flashlight.off.fill"), for: .normal)
+        torch.accessibilityLabel = enabled ? "Turn flashlight off" : "Turn flashlight on"
     }
 
     @objc private func toggleTorch() {
         queue.async { [self] in
-            guard let camera, camera.hasTorch, (try? camera.lockForConfiguration()) != nil else { return }
+            guard shouldRun, capture.isRunning, let camera, camera.hasTorch, camera.isTorchAvailable,
+                  (try? camera.lockForConfiguration()) != nil else { return }
             camera.torchMode = camera.torchMode == .on ? .off : .on
+            let enabled = camera.torchMode == .on
             camera.unlockForConfiguration()
+            DispatchQueue.main.async { self.updateTorch(enabled) }
         }
     }
 
     private func turnTorchOff() {
         guard let camera, camera.hasTorch, (try? camera.lockForConfiguration()) != nil else { return }
         camera.torchMode = .off; camera.unlockForConfiguration()
+        DispatchQueue.main.async { self.updateTorch(false) }
     }
 
-    @objc private func switchCamera() {
-        queue.async { [self] in
-            turnTorchOff()
-            _ = configure(position: camera?.position == .back ? .front : .back)
-            DispatchQueue.main.async { self.updateControls() }
+    @objc private func retryCamera() {
+        guard active, !delivered else { return }
+        if AVCaptureDevice.authorizationStatus(for: .video) == .denied || AVCaptureDevice.authorizationStatus(for: .video) == .restricted {
+            message.text = "Enable camera access for psst.zip in system Settings, then return here. You can also paste a link or choose a QR image."
+            return
         }
+        queue.async { [self] in turnTorchOff(); capture.stopRunning(); configured = false }
+        requestCamera()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         preview?.frame = view.bounds
-        message.frame = view.bounds.insetBy(dx: 16, dy: 56)
+        message.frame = view.bounds.insetBy(dx: 16, dy: 64)
         torch.frame = CGRect(x: 12, y: 12, width: 44, height: 44)
-        flip.frame = CGRect(x: view.bounds.width - 56, y: 12, width: 44, height: 44)
+        retry.frame = CGRect(x: max(12, (view.bounds.width - 180) / 2), y: view.bounds.height - 56, width: 180, height: 44)
         if let connection = preview?.connection, let orientation = view.window?.windowScene?.interfaceOrientation {
             let angle: CGFloat = switch orientation { case .landscapeLeft: 0; case .landscapeRight: 180; case .portraitUpsideDown: 270; default: 90 }
             if connection.isVideoRotationAngleSupported(angle) {
@@ -173,7 +219,12 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
 
     private func showError() {
-        message.text = allowsPaste ? "Camera unavailable. Enable access in Settings, paste a link, or choose a QR image." : "Camera unavailable. Enable access in Settings, or cancel and sign in manually."
+        guard active, !delivered else { return }
+        message.text = allowsPaste ? "Camera unavailable. Retry, paste a link, or choose a QR image." : "Camera unavailable. Retry, or cancel and sign in manually."
+        torch.isHidden = true
+        let denied = AVCaptureDevice.authorizationStatus(for: .video) == .denied || AVCaptureDevice.authorizationStatus(for: .video) == .restricted
+        retry.setTitle(denied ? "Camera access help" : "Retry camera", for: .normal)
+        retry.isHidden = false
     }
 
     func metadataOutput(_: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from _: AVCaptureConnection) {

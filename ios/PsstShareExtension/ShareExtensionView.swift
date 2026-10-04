@@ -69,6 +69,7 @@ struct ShareExtensionView: View {
             .task {
                 while !Task.isCancelled {
                     viewModel.config.reload()
+                    await viewModel.config.refreshAccount()
                     do { try await Task.sleep(for: .seconds(3)) } catch { return }
                 }
             }

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.api.AuthUser
 import zip.psst.shared.api.PairingCode
 import zip.psst.shared.model.ServerConfig
 import kotlinx.coroutines.CancellationException
@@ -20,6 +21,10 @@ data class ServerConfigUiState(
     val url: String = "",
     val username: String = "",
     val password: String = "",
+    val mustChangePassword: Boolean = false,
+    val newPassword: String = "",
+    val confirmPassword: String = "",
+    val notice: String? = null,
     val signedInUsername: String? = null,
     val isTesting: Boolean = false,
     val testResult: TestResult? = null,
@@ -44,6 +49,65 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     val uiState: StateFlow<ServerConfigUiState> = _uiState.asStateFlow()
     private var operation: Job? = null
     private var version = 0L
+
+    init {
+        refreshAccountState()
+    }
+
+    private fun refreshAccountState() {
+        if (prefs.historyAccess.value.isAdmin) {
+            prefs.clearSession()
+            _uiState.value = _uiState.value.copy(signedInUsername = null, notice = ADMIN_MESSAGE)
+        } else if (prefs.getSessionToken() != null) {
+            runOperation { client ->
+                val user = client.auth.me()
+                acceptUser(user)
+                prefs.setPasswordChangeRequired(user.mustChangePassword)
+            }
+        }
+    }
+
+    private fun acceptUser(user: AuthUser) {
+        if (user.role == "admin") {
+            prefs.clearSession()
+            error(ADMIN_MESSAGE)
+        }
+        _uiState.value =
+            _uiState.value.copy(
+                mustChangePassword = user.mustChangePassword,
+                signedInUsername = user.username,
+                notice =
+                    if (user.mustChangePassword)
+                        "Replace your temporary password before sending files or creating receive links."
+                    else null,
+            )
+    }
+
+    fun onNewPasswordChange(value: String) {
+        _uiState.value = _uiState.value.copy(newPassword = value, testResult = null)
+    }
+
+    fun onConfirmPasswordChange(value: String) {
+        _uiState.value = _uiState.value.copy(confirmPassword = value, testResult = null)
+    }
+
+    fun replacePassword() = runOperation { client ->
+        val state = _uiState.value
+        passwordReplacementError(state.password, state.newPassword, state.confirmPassword)?.let {
+            error(it)
+        }
+        client.auth.changePassword(state.password, state.newPassword)
+        prefs.clearSession()
+        _uiState.value =
+            _uiState.value.copy(
+                mustChangePassword = false,
+                signedInUsername = null,
+                password = "",
+                newPassword = "",
+                confirmPassword = "",
+                notice = "Password changed. Sign in with your new password to continue.",
+            )
+    }
 
     fun scanError(message: String) {
         _uiState.value = _uiState.value.copy(testResult = TestResult.Error(message))
@@ -77,6 +141,10 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                 url = url,
                 isTesting = false,
                 testResult = null,
+                mustChangePassword = false,
+                newPassword = "",
+                confirmPassword = "",
+                notice = null,
                 signedInUsername =
                     prefs.getUsername().takeIf { prefs.getSessionToken(url.trim()) != null },
             )
@@ -101,12 +169,24 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
             }
             client.validateServer()
             val session = client.auth.login(username, password, deviceName())
+            if (session.user.role == "admin") {
+                ApiClient(client.config, sessionToken = session.token).let { authenticated ->
+                    try {
+                        authenticated.auth.logout()
+                    } finally {
+                        authenticated.close()
+                    }
+                }
+                error(ADMIN_MESSAGE)
+            }
+            acceptUser(session.user)
             prefs.saveSession(
                 client.config.normalizedBaseUrl,
                 session.user.username,
                 session.token,
                 session.user.id,
                 session.user.role,
+                session.user.mustChangePassword,
             )
             _uiState.value =
                 _uiState.value.copy(password = "", signedInUsername = session.user.username)
@@ -128,12 +208,24 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
         runOperation(onSaved) { client ->
             client.validateServer()
             val session = client.auth.redeemPairing(pairing.code, deviceName())
+            if (session.user.role == "admin") {
+                ApiClient(client.config, sessionToken = session.token).let { authenticated ->
+                    try {
+                        authenticated.auth.logout()
+                    } finally {
+                        authenticated.close()
+                    }
+                }
+                error(ADMIN_MESSAGE)
+            }
+            acceptUser(session.user)
             prefs.saveSession(
                 client.config.normalizedBaseUrl,
                 session.user.username,
                 session.token,
                 session.user.id,
                 session.user.role,
+                session.user.mustChangePassword,
             )
             _uiState.value =
                 _uiState.value.copy(
@@ -148,11 +240,23 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
         runOperation(onSignedOut) { client ->
             client.auth.logout()
             prefs.clearSession()
-            _uiState.value = _uiState.value.copy(signedInUsername = null, password = "")
+            _uiState.value =
+                _uiState.value.copy(
+                    signedInUsername = null,
+                    password = "",
+                    mustChangePassword = false,
+                    newPassword = "",
+                    confirmPassword = "",
+                )
         }
 
     fun continueSignedIn(onSaved: () -> Unit) {
-        if (prefs.getSessionToken(_uiState.value.url.trim()) != null) onSaved()
+        if (prefs.getSessionToken(_uiState.value.url.trim()) != null)
+            runOperation(onSaved) { client ->
+                val user = client.auth.me()
+                acceptUser(user)
+                prefs.setPasswordChangeRequired(user.mustChangePassword)
+            }
     }
 
     private fun runOperation(onSuccess: (() -> Unit)? = null, action: suspend (ApiClient) -> Unit) {
@@ -170,7 +274,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                     if (version != operationVersion) return@launch
                     _uiState.value =
                         _uiState.value.copy(isTesting = false, testResult = TestResult.Success)
-                    onSuccess?.invoke()
+                    if (!_uiState.value.mustChangePassword) onSuccess?.invoke()
                 } catch (e: CancellationException) {
                     if (e !is TimeoutCancellationException) throw e
                     if (version == operationVersion) {
@@ -198,5 +302,23 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
             }
     }
 
+    private companion object {
+        const val ADMIN_MESSAGE =
+            "Administrator accounts manage the server in the web UI. Sign in with a regular account to transfer files. Guest scanning remains available."
+    }
+
     private fun deviceName(): String = "Android ${Build.MODEL}".take(100)
 }
+
+internal fun passwordReplacementError(
+    current: String,
+    replacement: String,
+    confirmation: String,
+): String? =
+    when {
+        current.isBlank() || replacement.isBlank() ->
+            "Enter your temporary password and a new password"
+        replacement != confirmation -> "Passwords do not match"
+        replacement == current -> "Choose a password different from your temporary password"
+        else -> null // Strength and current-password verification remain server-side.
+    }

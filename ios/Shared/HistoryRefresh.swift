@@ -41,9 +41,9 @@ extension TransferHistoryStore {
             ServerTimestamp.parse(raw)
         }
         for transfer in list.transfers where UUID(uuidString: transfer.id) != nil {
-            var record = old.first { $0.id == transfer.id } ?? TransferRecord(id: transfer.id, direction: .sent, state: .inProgress,
-                                                                              createdAt: date(transfer.created_at) ?? Date(), expiresAt: date(transfer.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
-                                                                              serverURL: session.serverURL, ownerID: session.userID, isSlot: false)
+            var record = old.first { $0.id == transfer.id && $0.isSlot != true } ?? TransferRecord(id: transfer.id, direction: .sent, state: .inProgress,
+                                                                                                   createdAt: date(transfer.created_at) ?? Date(), expiresAt: date(transfer.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
+                                                                                                   serverURL: session.serverURL, ownerID: session.userID, isSlot: false)
             if transfer.status == "expired" {
                 record.state = .expired
             } else if transfer.status == "revoked" {
@@ -61,17 +61,17 @@ extension TransferHistoryStore {
             try update(record)
         }
         for slot in list.slots where UUID(uuidString: slot.id) != nil {
-            var record = old.first { $0.id == slot.id } ?? TransferRecord(id: slot.id, direction: .received, state: .inProgress,
-                                                                          createdAt: date(slot.created_at) ?? Date(), expiresAt: date(slot.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
-                                                                          serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
+            var record = old.first { $0.id == slot.id && $0.isSlot == true } ?? TransferRecord(id: slot.id, direction: .received, state: .inProgress,
+                                                                                               createdAt: date(slot.created_at) ?? Date(), expiresAt: date(slot.expires_at), fileCount: 0, totalSize: 0, shareURL: nil,
+                                                                                               serverURL: session.serverURL, ownerID: session.userID, isSlot: true)
             let complete = slot.transfers.filter { $0.status == "complete" }
             record.fileCount = complete.reduce(0) { $0 + $1.file_count }
             record.state = slot.status == "expired" ? .expired : slot.status == "revoked" ? .revoked : complete.isEmpty ? .inProgress :
                 complete.allSatisfy { (record.savedTransfers ?? []).contains($0.transfer_id) } ? .saved : .complete
             try update(record)
         }
-        let ids = Set(list.transfers.map(\.id) + list.slots.map(\.id))
-        for var record in old where record.ownerID != nil && !ids.contains(record.id) {
+        let ids = Set(list.transfers.map { $0.id + "|transfer" } + list.slots.map { $0.id + "|slot" })
+        for var record in old where record.ownerID != nil && !ids.contains(record.id + (record.isSlot == true ? "|slot" : "|transfer")) {
             record.state = record.isExpired ? .expired : .revoked
             try update(record)
         }

@@ -70,7 +70,7 @@ test("upload byte progress persists through navigation and cancellation removes 
 
 test("logout clears selected private files and local labels never appear in another account", async ({
   page,
-  request,
+  adminRequest: request,
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(file);

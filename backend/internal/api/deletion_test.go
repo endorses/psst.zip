@@ -82,7 +82,7 @@ func alternateServer(t *testing.T, env *testEnv, fs store.FileStore, legacy bool
 		AllowLegacyDeletion:   legacy,
 		AuthAllowInsecureHTTP: true,
 	}
-	server := httptest.NewServer(authenticatedFixture(api.NewServer(cfg, env.queries, fs).Router(), env.authToken))
+	server := httptest.NewServer(authenticatedFixture(api.NewServer(cfg, env.queries, fs).Router(), env.userToken))
 	t.Cleanup(server.Close)
 	result := *env
 	result.server = server

@@ -38,10 +38,22 @@ class PrefsManager(context: Context) {
 
     fun getAccountId(): String? = historyAccess.value.accountId
 
-    fun saveSession(url: String, username: String, token: String, accountId: String, role: String) {
+    fun saveSession(
+        url: String,
+        username: String,
+        token: String,
+        accountId: String,
+        role: String,
+        mustChangePassword: Boolean = false,
+    ) {
         require(accountId.isNotBlank()) { "The server returned an invalid account" }
-        sessions.save(url, username, token, accountId, role)
+        sessions.save(url, username, token, accountId, role, mustChangePassword)
         setServerUrl(url)
+    }
+
+    fun setPasswordChangeRequired(required: Boolean) {
+        sessions.setPasswordChangeRequired(required)
+        _historyAccess.value = readHistoryAccess()
     }
 
     fun clearSession() {
@@ -53,7 +65,12 @@ class PrefsManager(context: Context) {
         val url = getServerUrl()
         if (sessions.accountId().isNullOrBlank() || sessions.token(url) == null)
             return HistoryAccess()
-        return HistoryAccess(url, sessions.accountId(), sessions.isAdmin())
+        return HistoryAccess(
+            url,
+            sessions.accountId(),
+            sessions.isAdmin(),
+            sessions.mustChangePassword(),
+        )
     }
 
     fun getServerUrl(): String = prefs.getString(KEY_SERVER_URL, "") ?: ""

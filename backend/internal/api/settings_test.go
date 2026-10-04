@@ -67,10 +67,10 @@ func TestAdminFileLimitAuthorizationPersistenceAndEnforcement(t *testing.T) {
 func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 	env := setupAuthFixture(t, false)
 	authRequest(t, env, "PATCH", "/admin/settings", env.authToken, map[string]any{"max_file_size": 2 * 1024 * 1024}, 200)
-	id := authRequest(t, env, "POST", "/transfers", env.authToken, nil, 201)["id"].(string)
+	id := authRequest(t, env, "POST", "/transfers", env.userToken, nil, 201)["id"].(string)
 	wire := int64(2*1024*1024 + 60)
 	create, _ := http.NewRequest("POST", env.url("/api/v1/transfers/"+id+"/files"), nil)
-	create.Header.Set("Authorization", "Bearer "+env.authToken)
+	create.Header.Set("Authorization", "Bearer "+env.userToken)
 	create.Header.Set("Tus-Resumable", "1.0.0")
 	create.Header.Set("Upload-Length", strconv.FormatInt(wire, 10))
 	response, err := env.server.Client().Do(create)
@@ -85,7 +85,7 @@ func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 	authRequest(t, env, "PATCH", "/admin/settings", env.authToken, map[string]any{"max_file_size": 1024 * 1024}, 200)
 	body := bytes.Repeat([]byte{0x43}, int(wire))
 	patch, _ := http.NewRequest("PATCH", env.url(location), bytes.NewReader(body))
-	patch.Header.Set("Authorization", "Bearer "+env.authToken)
+	patch.Header.Set("Authorization", "Bearer "+env.userToken)
 	patch.Header.Set("Tus-Resumable", "1.0.0")
 	patch.Header.Set("Upload-Offset", "0")
 	patch.Header.Set("Content-Type", "application/offset+octet-stream")
@@ -97,8 +97,8 @@ func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 	if response.StatusCode != 204 {
 		t.Fatal(response.StatusCode)
 	}
-	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", env.authToken, "encrypted manifest", 204)
-	authRequest(t, env, "POST", "/transfers/"+id+"/complete", env.authToken, nil, 204)
+	authRequest(t, env, "POST", "/transfers/"+id+"/manifest", env.userToken, "encrypted manifest", 204)
+	authRequest(t, env, "POST", "/transfers/"+id+"/complete", env.userToken, nil, 204)
 	response, err = env.server.Client().Get(env.url(location))
 	if err != nil {
 		t.Fatal(err)

@@ -1,18 +1,32 @@
-import { test as base, expect, type Page, type APIResponse } from "@playwright/test";
-export const credentials = {
+import {
+  test as base,
+  expect,
+  type Page,
+  type APIRequestContext,
+  type APIResponse,
+} from "@playwright/test";
+export const adminCredentials = {
   username: process.env.PSST_TEST_USERNAME ?? process.env.PSST_TEST_USERNAME ?? "admin",
   password:
     process.env.PSST_TEST_PASSWORD ?? process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
 };
-export const test = base.extend<{}, { apiToken: string }>({
-  apiToken: [
+export const credentials = { username: "browser-member", password: "Browser-member-final-2026" };
+export const test = base.extend<
+  { adminRequest: APIRequestContext },
+  { apiToken: string; adminToken: string }
+>({
+  adminToken: [
     async ({ playwright }, use) => {
-      const baseURL =
-        process.env.PSST_TEST_BASE_URL ?? process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173";
-      const context = await playwright.request.newContext({ baseURL });
+      const context = await playwright.request.newContext({
+        baseURL: process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173",
+      });
       const response = await retryAuth(() =>
         context.post("/api/v1/auth/login", {
-          data: { ...credentials, session_type: "device", device_name: "Browser test API" },
+          data: {
+            ...adminCredentials,
+            session_type: "device",
+            device_name: "Browser admin fixture",
+          },
         }),
       );
       expect(response.ok(), await response.text()).toBe(true);
@@ -22,6 +36,53 @@ export const test = base.extend<{}, { apiToken: string }>({
     },
     { scope: "worker" },
   ],
+  apiToken: [
+    async ({ playwright, adminToken }, use) => {
+      const baseURL = process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173";
+      const admin = await playwright.request.newContext({
+        baseURL,
+        extraHTTPHeaders: { Authorization: `Bearer ${adminToken}` },
+      });
+      const created = await admin.post("/api/v1/admin/users", {
+        data: {
+          username: credentials.username,
+          password: "Browser-member-temporary-2026",
+          role: "user",
+        },
+      });
+      const context = await playwright.request.newContext({ baseURL });
+      if (created.status() === 201) {
+        const login = await retryAuth(() =>
+          context.post("/api/v1/auth/login", {
+            data: {
+              username: credentials.username,
+              password: "Browser-member-temporary-2026",
+              session_type: "device",
+            },
+          }),
+        );
+        expect(login.ok(), await login.text()).toBe(true);
+        const { token } = await login.json();
+        const changed = await context.post("/api/v1/auth/password", {
+          headers: { Authorization: `Bearer ${token}` },
+          data: {
+            current_password: "Browser-member-temporary-2026",
+            password: credentials.password,
+          },
+        });
+        expect(changed.ok(), await changed.text()).toBe(true);
+      } else expect(created.status()).toBe(409);
+      const login = await retryAuth(() =>
+        context.post("/api/v1/auth/login", { data: { ...credentials, session_type: "device" } }),
+      );
+      expect(login.ok(), await login.text()).toBe(true);
+      const { token } = await login.json();
+      await use(token);
+      await context.dispose();
+      await admin.dispose();
+    },
+    { scope: "worker", auto: true },
+  ],
   request: async ({ playwright, baseURL, apiToken }, use) => {
     const context = await playwright.request.newContext({
       baseURL,
@@ -30,10 +91,18 @@ export const test = base.extend<{}, { apiToken: string }>({
     await use(context);
     await context.dispose();
   },
+  adminRequest: async ({ playwright, baseURL, adminToken }, use) => {
+    const context = await playwright.request.newContext({
+      baseURL,
+      extraHTTPHeaders: { Authorization: `Bearer ${adminToken}` },
+    });
+    await use(context);
+    await context.dispose();
+  },
 });
 // The production limiter permits one authentication attempt every five seconds after
 // its initial burst. Keep it enabled and pace only explicit 429 responses.
-async function authDelay(headers: Record<string, string>) {
+export async function authDelay(headers: Record<string, string>) {
   const value = headers["retry-after"];
   const seconds = value ? Number(value) : NaN;
   const delay = Number.isFinite(seconds)
@@ -67,6 +136,26 @@ export async function authenticate(page: Page, loginCredentials = credentials) {
       break;
     }
     await authDelay(response.headers());
+  }
+  await expect(
+    page
+      .getByRole("navigation", { name: "Account navigation" })
+      .or(page.getByRole("heading", { name: "Choose your own password" })),
+  ).toBeVisible();
+  if (await page.getByRole("heading", { name: "Choose your own password" }).isVisible()) {
+    await page.getByLabel("Current password", { exact: true }).fill(loginCredentials.password);
+    await page
+      .getByLabel("New password", { exact: true })
+      .fill(loginCredentials.password + "-changed");
+    await page
+      .getByLabel("Confirm password", { exact: true })
+      .fill(loginCredentials.password + "-changed");
+    await page.getByRole("button", { name: "Change password", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Sign in to psst.zip" })).toBeVisible();
+    return authenticate(page, {
+      ...loginCredentials,
+      password: loginCredentials.password + "-changed",
+    });
   }
   await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
 }

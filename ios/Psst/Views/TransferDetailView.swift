@@ -31,6 +31,11 @@ struct TransferDetailView: View {
                 }
                 if let vm = receiveViewModel {
                     receiveStatus(vm)
+                    if let record = vm.record {
+                        Text(record.displayTitle).font(.headline)
+                        Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
+                        DisclosureGroup("Technical details") { Text(record.id).font(.caption).textSelection(.enabled) }
+                    }
                     if let url = vm.uploadURL {
                         LinkCard(url: url)
                     }

@@ -212,14 +212,14 @@ func TestAuthAccountManagementResetAndLastAdmin(t *testing.T) {
 	authRequest(t, env, "POST", "/admin/users", env.authToken, map[string]any{"username": "newuser", "password": "short"}, 400)
 	created := authRequest(t, env, "POST", "/admin/users", env.authToken, map[string]any{"username": "newuser", "password": "long enough password"}, 201)
 	encoded, _ := json.Marshal(created)
-	if strings.Contains(string(encoded), "hash") || strings.Contains(string(encoded), "password") {
+	if strings.Contains(string(encoded), "hash") || strings.Contains(string(encoded), "long enough password") {
 		t.Fatal("password leaked")
 	}
 	pair := authRequest(t, env, "POST", "/auth/pairings", user, nil, 201)["code"].(string)
 	authRequest(t, env, "PATCH", "/admin/users/"+u.ID, env.authToken, map[string]string{"password": "new password is long"}, 200)
 	authRequest(t, env, "GET", "/auth/me", user, nil, 401)
 	authRequest(t, env, "POST", "/auth/pairings/redeem", "", map[string]string{"code": pair}, 401)
-	authRequest(t, env, "PATCH", "/admin/users/fixture-user", env.authToken, map[string]bool{"disabled": true}, 409)
+	authRequest(t, env, "PATCH", "/admin/users/fixture-admin", env.authToken, map[string]bool{"disabled": true}, 409)
 }
 func TestAuthPairingExpiryAndSecureDefault(t *testing.T) {
 	env := setupAuthFixture(t, false)
@@ -288,9 +288,9 @@ func TestAuthAdminAllResourcesExplicit(t *testing.T) {
 	env := setupAuthFixture(t, false)
 	_, user := addAccount(t, env, "alice", "user")
 	authRequest(t, env, "POST", "/transfers", user, nil, 201)
-	own := authRequest(t, env, "GET", "/auth/resources", env.authToken, nil, 200)
+	authRequest(t, env, "GET", "/auth/resources", env.authToken, nil, 403)
 	all := authRequest(t, env, "GET", "/auth/resources?all=true", env.authToken, nil, 200)
-	if len(own["transfers"].([]any)) != 0 || len(all["transfers"].([]any)) != 1 {
+	if len(all["transfers"].([]any)) != 1 {
 		t.Fatal("admin listing scope incorrect")
 	}
 	authRequest(t, env, "GET", "/auth/resources?all=true", user, nil, 403)

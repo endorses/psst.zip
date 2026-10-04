@@ -1,4 +1,4 @@
-import { test, expect, signIn, retryAuth } from "./auth-fixture";
+import { test, expect, signIn, authenticate, adminCredentials, retryAuth } from "./auth-fixture";
 
 test("anonymous users cannot create transfers or receive links; public pages need no account", async ({
   playwright,
@@ -15,47 +15,43 @@ test("anonymous users cannot create transfers or receive links; public pages nee
   await anonymous.dispose();
 });
 
-test("admin manages accounts; users cannot administer others and disabled sessions stop working", async ({
+test("admin manages accounts while regular users cannot administer others", async ({
   page,
-  request,
+  adminRequest,
   playwright,
   baseURL,
 }) => {
-  await signIn(page);
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.goto("/");
+  await authenticate(page, adminCredentials);
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Send", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Users", exact: true }).click();
-  const username = `browser-${Date.now()}`;
-  const password = "User-test-password-2026";
+  const username = `browser-${Date.now()}`,
+    password = "User-test-password-2026";
   await page.getByLabel("New username", { exact: true }).fill(username);
   await page.getByLabel("Temporary password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm temporary password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   const row = page.locator("article").filter({ has: page.getByText(username, { exact: true }) });
   await expect(row).toBeVisible();
   const anonymous = await playwright.request.newContext({ baseURL });
   const login = await retryAuth(() =>
-    anonymous.post("/api/v1/auth/login", {
-      data: { username, password, session_type: "device" },
-    }),
+    anonymous.post("/api/v1/auth/login", { data: { username, password, session_type: "device" } }),
   );
   expect(login.status()).toBe(200);
-  const { token } = await login.json();
+  const { token, user } = await login.json();
+  expect(user.must_change_password).toBe(true);
   const member = await playwright.request.newContext({
     baseURL,
     extraHTTPHeaders: { Authorization: `Bearer ${token}` },
   });
   expect((await member.get("/api/v1/admin/users")).status()).toBe(403);
-  const created = await member.post("/api/v1/transfers");
-  expect(created.status()).toBe(201);
-  const transfer = await created.json();
-  const myResources = await (await member.get("/api/v1/auth/resources")).json();
-  expect(myResources.transfers.some((item: { id: string }) => item.id === transfer.id)).toBe(true);
-  const adminResources = await (await request.get("/api/v1/auth/resources")).json();
-  expect(adminResources.transfers.some((item: { id: string }) => item.id === transfer.id)).toBe(
-    false,
-  );
-  expect((await member.get("/api/v1/auth/resources?all=true")).status()).toBe(403);
-  const allResources = await (await request.get("/api/v1/auth/resources?all=true")).json();
-  expect(allResources.transfers.some((item: { id: string }) => item.id === transfer.id)).toBe(true);
+  const denied = await member.post("/api/v1/transfers");
+  expect(denied.status()).toBe(403);
+  expect((await denied.json()).code).toBe("password_change_required");
+  expect((await adminRequest.post("/api/v1/transfers")).status()).toBe(403);
+  expect((await adminRequest.get("/api/v1/auth/resources")).status()).toBe(403);
+  expect((await adminRequest.get("/api/v1/auth/resources?all=true")).ok()).toBe(true);
   await row.getByRole("button", { name: "Disable", exact: true }).click();
   await expect(row.getByRole("button", { name: "Enable", exact: true })).toBeVisible();
   expect((await member.post("/api/v1/transfers")).status()).toBe(401);
@@ -117,7 +113,7 @@ test("receive link survives logout; login QR is issued on demand; history revoke
   const resources = await (await request.get("/api/v1/auth/resources")).json();
   expect(resources.slots.some((slot: { id: string }) => slot.id === id)).toBe(true);
   const rows = page
-    .locator("article")
+    .locator(`article[data-resource-id="${id}"]`)
     .filter({ has: page.getByText("Receive link", { exact: true }) });
   const row = rows
     .filter({ has: page.getByRole("button", { name: "Copy link", exact: true }) })

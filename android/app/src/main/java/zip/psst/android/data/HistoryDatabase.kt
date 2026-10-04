@@ -31,6 +31,7 @@ data class TransferHistoryEntity(
     val deletionToken: String? = null,
     val accountId: String? = null,
     val title: String? = null,
+    val automaticTitle: String? = null,
     @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
@@ -50,8 +51,21 @@ interface TransferHistoryDao {
 
     @Update suspend fun update(entity: TransferHistoryEntity)
 
-    @Query("UPDATE transfer_history SET title = :title WHERE id = :id AND title IS NULL")
+    @Query(
+        "UPDATE transfer_history SET automaticTitle = :title WHERE id = :id AND automaticTitle IS NULL"
+    )
     suspend fun setTitleIfEmpty(id: String, title: String)
+
+    @Query(
+        "UPDATE transfer_history SET title = :title WHERE id = :id AND serverUrl = :serverUrl AND accountId = :accountId AND type = :type"
+    )
+    suspend fun rename(
+        id: String,
+        serverUrl: String,
+        accountId: String,
+        type: String,
+        title: String?,
+    )
 
     @Transaction
     suspend fun mergeAccountResource(
@@ -107,7 +121,7 @@ interface TransferHistoryDao {
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 5, exportSchema = false)
+@Database(entities = [TransferHistoryEntity::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
@@ -148,13 +162,27 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_5_6 =
+            object : Migration(5, 6) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE transfer_history ADD COLUMN automaticTitle TEXT")
+                    db.execSQL("UPDATE transfer_history SET automaticTitle = title")
+                }
+            }
+
         fun create(context: Context): AppDatabase {
             return Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "psst-history.db",
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
         }
     }

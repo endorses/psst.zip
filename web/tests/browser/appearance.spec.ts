@@ -1,4 +1,4 @@
-import { test, expect, credentials } from "./auth-fixture";
+import { test, expect, credentials, authDelay } from "./auth-fixture";
 
 const dark = "rgb(11, 25, 23)";
 const light = "rgb(246, 248, 247)";
@@ -78,6 +78,18 @@ test("password eye stays in the input, toggles by keyboard, and preserves Enter 
   );
   await page.keyboard.press("Space");
   await expect(password).toHaveAttribute("type", "password");
-  await password.press("Enter");
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await password.fill(credentials.password);
+    const result = page.waitForResponse(
+      (r) => r.url().endsWith("/api/v1/auth/login") && r.request().method() === "POST",
+    );
+    await password.press("Enter");
+    const response = await result;
+    if (response.status() !== 429) {
+      expect(response.ok(), await response.text()).toBe(true);
+      break;
+    }
+    await authDelay(await response.allHeaders());
+  }
   await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
 });

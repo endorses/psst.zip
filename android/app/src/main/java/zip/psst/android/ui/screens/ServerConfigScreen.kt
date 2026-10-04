@@ -35,7 +35,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
 import zip.psst.android.ui.components.EmbeddedScanner
+import zip.psst.android.ui.components.accountAutofill
 import zip.psst.android.ui.components.loginAutofill
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
@@ -56,6 +59,7 @@ import zip.psst.shared.api.PairingCode
 fun ServerConfigScreen(
     onConfigured: () -> Unit,
     onBack: () -> Unit = {},
+    onAccountCleared: () -> Unit = onBack,
     viewModel: ServerConfigViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -112,6 +116,54 @@ fun ServerConfigScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            state.notice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            if (state.mustChangePassword) {
+                Text("Change temporary password", style = MaterialTheme.typography.headlineSmall)
+                PasswordEntry(
+                    "Temporary password",
+                    state.password,
+                    viewModel::onPasswordChange,
+                    !state.isTesting,
+                )
+                PasswordEntry(
+                    "New password",
+                    state.newPassword,
+                    viewModel::onNewPasswordChange,
+                    !state.isTesting,
+                )
+                PasswordEntry(
+                    "Confirm password",
+                    state.confirmPassword,
+                    viewModel::onConfirmPasswordChange,
+                    !state.isTesting,
+                )
+                val mismatch =
+                    state.confirmPassword.isNotEmpty() && state.newPassword != state.confirmPassword
+                if (mismatch)
+                    Text("Passwords do not match", color = MaterialTheme.colorScheme.error)
+                Button(
+                    onClick = viewModel::replacePassword,
+                    enabled =
+                        !state.isTesting &&
+                            !mismatch &&
+                            state.password.isNotBlank() &&
+                            state.newPassword.isNotBlank() &&
+                            state.confirmPassword.isNotBlank(),
+                ) {
+                    Text("Change password")
+                }
+                TextButton(
+                    onClick = { viewModel.signOut(onAccountCleared) },
+                    enabled = !state.isTesting,
+                ) {
+                    Text("Use another account")
+                }
+                if (state.isTesting) CircularProgressIndicator()
+                (state.testResult as? TestResult.Error)?.let {
+                    Text(it.message, color = MaterialTheme.colorScheme.error)
+                }
+                return@Column
+            }
             Text(
                 stringResource(R.string.server_intro),
                 style = MaterialTheme.typography.bodyMedium,
@@ -236,4 +288,40 @@ fun ServerConfigScreen(
             Spacer(Modifier.height(12.dp))
         }
     }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun PasswordEntry(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    var visible by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        enabled = enabled,
+        modifier =
+            Modifier.fillMaxWidth()
+                .accountAutofill(
+                    if (label == "Temporary password") AutofillType.Password
+                    else AutofillType.NewPassword,
+                    onChange,
+                ),
+        visualTransformation =
+            if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        trailingIcon = {
+            IconButton(onClick = { visible = !visible }) {
+                Icon(
+                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    if (visible) "Hide password" else "Show password",
+                )
+            }
+        },
+    )
 }

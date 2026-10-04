@@ -18,13 +18,16 @@ struct ServerConfigView: View {
                 if let session = serverConfig.session {
                     LabeledContent("Username", value: session.username)
                     LabeledContent("Server") { Text(session.serverURL).textSelection(.enabled) }
+                    if let message = serverConfig.accountMessage {
+                        Text(message).foregroundStyle(PsstTheme.warning)
+                    }
                     if serverConfig.needsSignIn {
-                        Text("Your session expired. Sign in again.").foregroundStyle(PsstTheme.warning)
+                        Text(serverConfig.passwordChanged ? "Password changed. Sign in with your new password." : "Your session expired. Sign in again.").foregroundStyle(PsstTheme.warning)
                     }
                 } else {
                     Text("Not signed in")
                 }
-                Button(serverConfig.isConfigured ? "Change server or account" : "Sign in") { editing = true }
+                Button(serverConfig.requiresPasswordChange ? "Change password" : serverConfig.isConfigured ? "Change server or account" : "Sign in") { editing = true }
             }
             Section("Connection") {
                 if !serverConfig.serverURL.isEmpty {
@@ -45,7 +48,10 @@ struct ServerConfigView: View {
                     Text(connection).font(.footnote)
                 }
             }
-            if serverConfig.isConfigured {
+            if serverConfig.isConfigured, !serverConfig.needsSignIn {
+                Section("Password") { PasswordReplacementFields() }
+            }
+            if serverConfig.session != nil {
                 Section { LogoutButton() }
             }
         }

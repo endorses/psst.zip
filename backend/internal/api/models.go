@@ -19,6 +19,7 @@ type CreateSlotRequest struct {
 
 // TransferResponse is returned when querying a transfer.
 type TransferResponse struct {
+	OwnerID       string     `json:"owner_id,omitempty"`
 	ID            string     `json:"id"`
 	Status        string     `json:"status"`
 	FileCount     int        `json:"file_count"`
@@ -49,6 +50,8 @@ type FileInfo struct {
 
 // SlotResponse is returned when querying a slot.
 type SlotResponse struct {
+	TotalSize *int64             `json:"total_size,omitempty"`
+	OwnerID   string             `json:"owner_id,omitempty"`
 	ID        string             `json:"id"`
 	Status    string             `json:"status"`
 	Transfers []SlotTransferInfo `json:"transfers"`

@@ -75,6 +75,27 @@ var migrations = []string{
 	`ALTER TABLE pairings ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','connected','canceled'))`,
 	`ALTER TABLE pairings ADD COLUMN device_name TEXT NOT NULL DEFAULT ''`,
 	`CREATE TABLE server_settings (id INTEGER PRIMARY KEY CHECK(id=1), max_file_size INTEGER NOT NULL CHECK(max_file_size>0))`,
+	`ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0`,
+	`CREATE TABLE traffic_state (
+ id INTEGER PRIMARY KEY CHECK(id=1),
+ recording_started_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ degraded INTEGER NOT NULL DEFAULT 0,
+ allowance_bytes INTEGER CHECK(allowance_bytes>0 AND allowance_bytes<=9007199254740991),
+ cycle_start_day INTEGER NOT NULL DEFAULT 1 CHECK(cycle_start_day BETWEEN 1 AND 31),
+ basis TEXT NOT NULL DEFAULT 'outbound' CHECK(basis IN ('outbound','combined'))
+)`,
+	`INSERT INTO traffic_state(id,recording_started_at,updated_at) VALUES
+ (1,strftime('%Y-%m-%dT%H:%M:%SZ','now'),strftime('%Y-%m-%dT%H:%M:%SZ','now'))`,
+	`CREATE TABLE traffic_days (
+ date TEXT PRIMARY KEY,
+ uploaded_bytes INTEGER NOT NULL DEFAULT 0 CHECK(typeof(uploaded_bytes)='integer' AND uploaded_bytes>=0),
+ downloaded_bytes INTEGER NOT NULL DEFAULT 0 CHECK(typeof(downloaded_bytes)='integer' AND downloaded_bytes>=0),
+ files_uploaded INTEGER NOT NULL DEFAULT 0 CHECK(typeof(files_uploaded)='integer' AND files_uploaded>=0),
+ files_delivered INTEGER NOT NULL DEFAULT 0 CHECK(typeof(files_delivered)='integer' AND files_delivered>=0),
+ standalone_files_uploaded INTEGER NOT NULL DEFAULT 0 CHECK(typeof(standalone_files_uploaded)='integer' AND standalone_files_uploaded>=0),
+ received_files_uploaded INTEGER NOT NULL DEFAULT 0 CHECK(typeof(received_files_uploaded)='integer' AND received_files_uploaded>=0)
+)`,
 }
 
 func runMigrations(db *sql.DB) error {
@@ -93,11 +114,19 @@ func runMigrations(db *sql.DB) error {
 			continue
 		}
 
-		if _, err := db.Exec(migrations[i]); err != nil {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin migration %d: %w", i, err)
+		}
+		if _, err = tx.Exec(migrations[i]); err == nil {
+			_, err = tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", i)
+		}
+		if err != nil {
+			tx.Rollback()
 			return fmt.Errorf("run migration %d: %w", i, err)
 		}
-		if _, err := db.Exec("INSERT INTO schema_migrations (version) VALUES (?)", i); err != nil {
-			return fmt.Errorf("record migration %d: %w", i, err)
+		if err = tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %d: %w", i, err)
 		}
 	}
 

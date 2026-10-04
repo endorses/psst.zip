@@ -321,10 +321,31 @@ class HistoryTest {
             rows.value = rows.value.map { if (it.id == entity.id) entity else it }
         }
 
+        override suspend fun rename(
+            id: String,
+            serverUrl: String,
+            accountId: String,
+            type: String,
+            title: String?,
+        ) {
+            rows.value =
+                rows.value.map {
+                    if (
+                        it.id == id &&
+                            it.serverUrl == serverUrl &&
+                            it.accountId == accountId &&
+                            it.type == type
+                    )
+                        it.copy(title = title)
+                    else it
+                }
+        }
+
         override suspend fun setTitleIfEmpty(id: String, title: String) {
             rows.value =
                 rows.value.map {
-                    if (it.id == id && it.title == null) it.copy(title = title) else it
+                    if (it.id == id && it.automaticTitle == null) it.copy(automaticTitle = title)
+                    else it
                 }
         }
 

@@ -34,7 +34,14 @@ class SessionStorage(context: Context) {
             .generateKey()
     }
 
-    fun save(serverUrl: String, username: String, token: String, accountId: String, role: String) {
+    fun save(
+        serverUrl: String,
+        username: String,
+        token: String,
+        accountId: String,
+        role: String,
+        mustChangePassword: Boolean = false,
+    ) {
         val cipher =
             Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         cipher.updateAAD(serverUrl.trimEnd('/').toByteArray())
@@ -46,6 +53,7 @@ class SessionStorage(context: Context) {
                 .putString("username", username)
                 .putString("account_id", accountId)
                 .putString("role", role)
+                .putBoolean("must_change_password", mustChangePassword)
                 .putString("ciphertext", Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
                 .commit()
@@ -80,6 +88,12 @@ class SessionStorage(context: Context) {
     fun accountId(): String? = prefs.getString("account_id", null)
 
     fun isAdmin(): Boolean = prefs.getString("role", null) == "admin"
+
+    fun mustChangePassword(): Boolean = prefs.getBoolean("must_change_password", false)
+
+    fun setPasswordChangeRequired(required: Boolean) {
+        prefs.edit().putBoolean("must_change_password", required).commit()
+    }
 
     fun username(): String = prefs.getString("username", "") ?: ""
 

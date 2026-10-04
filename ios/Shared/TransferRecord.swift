@@ -16,6 +16,7 @@ struct TransferRecord: Identifiable, Codable {
     var serverURL: String? = nil
     var ownerID: String? = nil
     var title: String? = nil
+    var customTitle: String? = nil
     var isSlot: Bool? = nil
     var savedFiles: [String: String]? = nil
     var savedTransfers: [String]? = nil
@@ -40,11 +41,30 @@ struct TransferRecord: Identifiable, Codable {
     }
 
     var displayTitle: String {
-        title ?? (isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files"))
+        if let name = customTitle, !name.isEmpty {
+            return name
+        }
+        if let title, !title.isEmpty {
+            return fileCount > 1 ? title + " + \(fileCount - 1) files" : title
+        }
+        return (isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files")) + " · " + createdAt.formatted(date: .abbreviated, time: .shortened)
     }
 
     var isExpired: Bool {
         expiresAt.map { $0 < Date() } ?? (state == .expired)
+    }
+
+    func preservingLocalName(from existing: TransferRecord?) -> TransferRecord {
+        var refreshed = self
+        if let existing, existing.localID == localID {
+            refreshed.customTitle = existing.customTitle
+            refreshed.title = refreshed.title ?? existing.title
+        }
+        return refreshed
+    }
+
+    var localID: String {
+        vaultID + (isSlot == true ? "|slot" : "|transfer")
     }
 
     var vaultID: String {
@@ -69,7 +89,7 @@ struct TransferRecord: Identifiable, Codable {
     }
 
     func canManage(as session: DeviceSession) -> Bool {
-        belongs(to: session) || (ownerID == nil && session.role == "admin" && serverURL == session.serverURL)
+        session.canTransfer && belongs(to: session)
     }
 }
 

@@ -88,13 +88,17 @@ assert "testProviderCopyRejectsBeyondStreamingCeilingBeforeCopying" in read(
 for path in ROOT.rglob("*.swift"):
     text = path.read_text()
     assert not re.search(
-        r"(?:defaults|sharedDefaults)\.set\([^\n]*(?:token|password)", text, re.I
+        r"(?:defaults|sharedDefaults)\.set\([^\n]*(?:token|password)",
+        text,
+        re.IGNORECASE,
     ), path
     assert not re.search(
         r'(?:Text|Label|navigationTitle)\("(?:Psst|Psst|Secure Transfer)', text
     ), path
     # Balanced delimiters ignoring Swift string literals and comments; catches truncation, not types.
-    cleaned = re.sub(r'//[^\n]*|/\*.*?\*/|#?"(?:\\.|[^"\\])*"#?', "", text, flags=re.S)
+    cleaned = re.sub(
+        r'//[^\n]*|/\*.*?\*/|#?"(?:\\.|[^"\\])*"#?', "", text, flags=re.DOTALL
+    )
     stack = []
     for char in cleaned:
         if char in "({[":
@@ -107,7 +111,9 @@ for path in ROOT.rglob("*.json"):
         json.loads(path.read_text())
 # Guest receive source wiring: these assertions do not prove native compilation or runtime behavior.
 assert app["UIFileSharingEnabled"] and app["LSSupportsOpeningDocumentsInPlace"]
-assert "ScanReceiveView(isSelected: selectedTab == 1 && !settings)" in read("Psst/ContentView.swift")
+assert "ScanReceiveView(isSelected: selectedTab == 1 && !settings)" in read(
+    "Psst/ContentView.swift"
+)
 assert "guestTransfer.cancel()" in read("Psst/ContentView.swift")
 assert "HistoryEntry.combine" in read("Psst/Views/HistoryView.swift")
 assert "historyOnly" not in read("Psst/Views/ScanReceiveView.swift")
@@ -133,4 +139,30 @@ assert "testKillAfterPublicationReconcilesIntentBeforeReceipt" in read(
 assert "testReceiptFailureKeepsSavedStateAndRetriesWithoutFileWorkAfterRemoval" in read(
     "PsstTests/GuestDownloadTests.swift"
 )
+# Administration/UX gates are wiring checks, not proof of native behavior.
+assert '"Switch camera"' not in read("Shared/PairingScanner.swift")
+assert "ScannerCameraSelection.ordered" in read("Shared/PairingScanner.swift")
+assert "runtimeErrorNotification" in read("Shared/PairingScanner.swift")
+assert "retryCamera" in read("Shared/PairingScanner.swift")
+assert "must_change_password" in read("Shared/ServerConfigManager.swift")
+assert 'response.user.role != "admin"' in read("Shared/ServerConfigManager.swift")
+assert "refreshAccount()" in read("Psst/ContentView.swift")
+assert "refreshAccount()" in read("PsstShareExtension/ShareExtensionView.swift")
+assert "PasswordReplacementFields" in read("Shared/LoginFields.swift")
+assert "textContentType(.newPassword)" in read("Shared/PasswordReplacementFields.swift")
+assert "PasswordReplacementPolicy.valid" in read(
+    "Shared/PasswordReplacementFields.swift"
+)
+assert "preservingLocalName" in read("Shared/TransferHistoryStore.swift")
+assert "history.rename" in read("Psst/Views/HistoryView.swift")
+assert "localName: receiveName" in read("Psst/Views/HomeView.swift")
+for name in (
+    "testHistoryMigrationPersistenceAndRefreshKeepLocalNameWithoutTypeCollision",
+    "testHistoryTitlesKeepUnicodeFilenameAndAdditionalCount",
+    "testPollingAndStaleCheckpointPreserveRenameAndClearByTypedAccountIdentity",
+    "testAdminAndRestrictedSessionsExposeOnlyDeviceDownloads",
+    "testPasswordConfirmationAndBytePolicy",
+    "testCameraSelectionPrefersRearAndKeepsFrontOnlyAndNoCameraCases",
+):
+    assert name in read("PsstTests/NavigationHistoryTests.swift")
 print("iOS source/configuration gates passed (not a Swift build).")

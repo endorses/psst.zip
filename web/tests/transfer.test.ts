@@ -75,7 +75,33 @@ before(async () => {
         }),
       });
       assert.equal(login.status, 200);
-      authToken = (await login.json()).token;
+      const adminToken = (await login.json()).token;
+      const temporary = "Temporary-member-password-2026",
+        replacement = "Final-member-password-2026";
+      const created = await realFetch(`${origin}/api/v1/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+        body: JSON.stringify({ username: "member", password: temporary, role: "user" }),
+      });
+      assert.equal(created.status, 201);
+      const memberLogin = async (password: string) =>
+        realFetch(`${origin}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "member", password, session_type: "device" }),
+        });
+      const first = await memberLogin(temporary);
+      assert.equal(first.status, 200);
+      const restricted = (await first.json()).token;
+      const changed = await realFetch(`${origin}/api/v1/auth/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${restricted}` },
+        body: JSON.stringify({ current_password: temporary, password: replacement }),
+      });
+      assert.equal(changed.status, 204);
+      const final = await memberLogin(replacement);
+      assert.equal(final.status, 200);
+      authToken = (await final.json()).token;
       return;
     } catch {
       await new Promise((done) => setTimeout(done, 50));
