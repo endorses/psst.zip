@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -209,6 +208,9 @@ func (s *Server) requireUpload(next http.Handler) http.Handler {
 
 // BootstrapAdmin creates the first administrator only from operator-provided credentials.
 func (s *Server) BootstrapAdmin() error {
+	if _, err := parseTrustedProxies(s.cfg.TrustedProxies); err != nil {
+		return err
+	}
 	if s.cfg.PublicURL != "" {
 		u, err := url.Parse(s.cfg.PublicURL)
 		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
@@ -261,15 +263,11 @@ func authJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 func (s *Server) authRoutes(r chi.Router) {
-	// Do not trust arbitrary forwarded headers for brute-force limiting. Deployments
-	// behind one reverse proxy share a conservative bucket.
+	// Use the same explicit proxy trust boundary as all other request limits.
 	limiter := newRateLimiter(0.2, 10)
 	limited := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip, _, err := net.SplitHostPort(r.RemoteAddr)
-			if err != nil {
-				ip = r.RemoteAddr
-			}
+			ip := s.clientIP(r)
 			if !limiter.allow(ip) {
 				writeError(w, 429, "too many sign-in attempts; try again later")
 				return
@@ -278,13 +276,13 @@ func (s *Server) authRoutes(r chi.Router) {
 		})
 	}
 	r.Get("/auth/status", s.authStatus)
-	r.With(limited).Post("/auth/login", s.login)
+	r.With(limited, s.limitPasswordWork).Post("/auth/login", s.login)
 	r.With(limited).Post("/auth/pairings/redeem", s.redeemPairing)
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireLogin)
 		r.Get("/auth/me", s.me)
 		r.Post("/auth/logout", s.logout)
-		r.Post("/auth/password", s.changePassword)
+		r.With(s.limitPasswordWork).Post("/auth/password", s.changePassword)
 		r.Get("/auth/sessions", s.sessions)
 		r.Delete("/auth/sessions/{sessionID}", s.deleteSession)
 		r.With(s.requireRegularUser).Post("/auth/pairings", s.createPairing)
@@ -295,8 +293,8 @@ func (s *Server) authRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAdmin)
 		r.Get("/admin/users", s.users)
-		r.Post("/admin/users", s.createUser)
-		r.Patch("/admin/users/{userID}", s.updateUser)
+		r.With(s.limitPasswordWork).Post("/admin/users", s.createUser)
+		r.With(s.limitPasswordWork).Patch("/admin/users/{userID}", s.updateUser)
 	})
 }
 func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
@@ -329,6 +327,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.SessionType == "web" && !s.sameOrigin(w, r) {
+		return
+	}
+	// Hash bounded normalized identities rather than retaining raw account names in
+	// the limiter. Every name has the same limiter behavior, including nonexistent ones.
+	account := strings.ToLower(strings.TrimSpace(req.Username))
+	accountHash := sha256.Sum256([]byte(account))
+	if !s.loginAccounts.allow(string(accountHash[:])) {
+		w.Header().Set("Retry-After", "30")
+		writeError(w, http.StatusTooManyRequests, "too many sign-in attempts; try again later")
 		return
 	}
 	user, err := s.queries.UserByName(strings.TrimSpace(req.Username))

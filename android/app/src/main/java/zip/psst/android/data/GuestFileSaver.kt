@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.StatFs
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import zip.psst.shared.model.FileMetadata
@@ -18,6 +19,13 @@ import kotlinx.coroutines.ensureActive
 
 /** Journal before writing; incomplete outputs are removed before retry. */
 class GuestFileSaver(private val context: Context) {
+    fun requireSpace(remainingBytes: Long) {
+        GuestDownloadPreflight.requireSpace(
+            StatFs(Environment.getExternalStorageDirectory().absolutePath).availableBytes,
+            remainingBytes,
+        )
+    }
+
     fun exists(file: SavedGuestFile): Boolean =
         try {
             context.contentResolver.openFileDescriptor(Uri.parse(file.uri), "r")?.use {
@@ -78,7 +86,8 @@ class GuestFileSaver(private val context: Context) {
             val coroutine = currentCoroutineContext()
             content { bytes ->
                 coroutine.ensureActive()
-                require(written + bytes.size <= file.size) { "File size mismatch" }
+                require(bytes.size.toLong() <= file.size - written) { "File size mismatch" }
+                requireSpace(file.size - written)
                 stream.write(bytes)
                 digest.update(bytes)
                 written += bytes.size

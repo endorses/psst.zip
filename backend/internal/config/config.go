@@ -25,6 +25,7 @@ type Config struct {
 	AllowLegacyDeletion bool // ID-only deletion for pre-token links; disabled by default.
 
 	// Security settings
+	TrustedProxies         string  // Explicit comma-separated CIDRs; default trusts no forwarded headers.
 	CORSOrigin             string  // Allowed CORS origin (default "*")
 	RateLimitGlobal        float64 // Global requests per second per IP (default 20)
 	RateLimitCreation      float64 // Creation endpoint requests per second per IP (default 2)
@@ -52,6 +53,7 @@ func Load() Config {
 		CleanupInterval:       envOrDefaultDuration("CLEANUP_INTERVAL", 5*time.Minute),
 
 		AllowLegacyDeletion:    envOrDefaultBool("ALLOW_LEGACY_DELETION", false),
+		TrustedProxies:         os.Getenv("TRUSTED_PROXIES"),
 		CORSOrigin:             envOrDefault("CORS_ORIGIN", "*"),
 		RateLimitGlobal:        envOrDefaultFloat64("RATE_LIMIT_GLOBAL", 20),
 		RateLimitCreation:      envOrDefaultFloat64("RATE_LIMIT_CREATION", 2),

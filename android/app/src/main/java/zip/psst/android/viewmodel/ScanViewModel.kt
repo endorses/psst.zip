@@ -6,8 +6,11 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.data.GuestDownload
+import zip.psst.android.data.GuestDownloadConsent
+import zip.psst.android.data.GuestDownloadPreflight
 import zip.psst.android.data.GuestDownloadStore
 import zip.psst.android.data.GuestFileSaver
+import zip.psst.android.data.InsufficientDownloadSpaceException
 import zip.psst.android.data.acknowledgeSavedDownload
 import zip.psst.android.data.cleanupGuestUpload
 import zip.psst.android.data.receiveGuestFiles
@@ -43,6 +46,7 @@ data class ScanState(
     val maxFileBytes: Long? = null,
     val pendingCleanup: Int = 0,
     val pendingReceipts: Int = 0,
+    val downloadConsent: GuestDownloadConsent? = null,
 )
 
 /** ViewModel retains only in-memory input; secret keys never enter navigation/saved bundles. */
@@ -114,6 +118,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancel() {
         job?.cancel()
+        _state.update { it.copy(downloadConsent = null) }
     }
 
     fun clear() {
@@ -140,6 +145,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     kind = ScanInputKind.DOWNLOAD,
                     record = current,
                     error = null,
+                    downloadConsent = null,
                     stage =
                         if (current.complete) "Saved in Downloads/psst.zip"
                         else "Interrupted — ready to resume",
@@ -169,7 +175,18 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fileExists(file: zip.psst.android.data.SavedGuestFile) = saver.exists(file)
 
-    fun receive(redownloadMissing: Boolean = false) {
+    fun confirmDownload() {
+        val consent = _state.value.downloadConsent ?: return
+        receive(consent.redownloadMissing, consent)
+    }
+
+    fun dismissDownloadConsent() {
+        _state.update { it.copy(downloadConsent = null, stage = "Receiving cancelled") }
+    }
+
+    fun receive(redownloadMissing: Boolean = false) = receive(redownloadMissing, null)
+
+    private fun receive(redownloadMissing: Boolean, approved: GuestDownloadConsent?) {
         if (job?.isActive == true) return
         job =
             viewModelScope.launch(Dispatchers.IO) {
@@ -180,6 +197,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         stage = "Inspecting transfer",
                         bytes = 0,
                         totalBytes = null,
+                        downloadConsent = null,
                     )
                 }
                 var client: ApiClient? = null
@@ -215,7 +233,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         return@launch
                     }
                     val key = store.readKey(record.identity)
-                    if (record.files.isEmpty()) {
+                    run {
                         val transfer = client.transfers.get(record.transferId)
                         require(
                             transfer.id == record.transferId &&
@@ -229,8 +247,30 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     .decodeToString()
                             )
                         ManifestValidator.validateForTransfer(manifest, transfer)
+                        require(record.saved.isEmpty() || record.files == manifest.files) {
+                            "The file list changed after some files were saved"
+                        }
                         record = record.copy(files = manifest.files)
                         store.save(record)
+                    }
+                    val preflight =
+                        GuestDownloadPreflight.inspect(
+                            record.origin,
+                            record.transferId,
+                            record.files,
+                            record.saved.map { it.blobId }.toSet(),
+                            redownloadMissing,
+                        )
+                    saver.requireSpace(preflight.remainingBytes)
+                    if (GuestDownloadPreflight.needsConsent(preflight, approved)) {
+                        _state.update {
+                            it.copy(
+                                record = record,
+                                downloadConsent = preflight,
+                                stage = "Confirm download",
+                            )
+                        }
+                        return@launch
                     }
                     receiveGuestFiles(
                         client,
@@ -255,6 +295,13 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         },
                         saveFile = { file, bytes ->
+                            saver.requireSpace(
+                                record.files
+                                    .filterNot { candidate ->
+                                        record.saved.any { it.blobId == candidate.blobId }
+                                    }
+                                    .sumOf { it.size }
+                            )
                             saver.save(file, bytes) { pending ->
                                 record = record.copy(pending = pending)
                                 store.save(record)
@@ -284,6 +331,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     throw e
+                } catch (e: InsufficientDownloadSpaceException) {
+                    _state.update { it.copy(stage = "More storage needed") }
+                    error(requireNotNull(e.message))
                 } catch (_: Exception) {
                     _state.update { it.copy(stage = "Receiving interrupted") }
                     error(

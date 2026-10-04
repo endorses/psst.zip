@@ -17,6 +17,12 @@ struct GuestDownloadDetail: View {
             Text(current.origin).font(.caption).textSelection(.enabled)
             Text("Downloaded files").font(.title2.bold())
             Text("Files → psst.zip → Received").font(.footnote)
+            if let consent = model.pendingConsent, consent.record.id == current.id {
+                Text("Receive \(consent.manifest.count) files (" + ByteCountFormatter.string(fromByteCount: consent.total, countStyle: .binary) + ")?").font(.headline)
+                Text("This transfer will use device storage and network data. Continue only if you trust the sender.").font(.footnote)
+                Button("Receive files") { model.confirmReceive() }.buttonStyle(PrimaryAction())
+                Button("Cancel") { model.cancel() }
+            }
             if current.receiptPending {
                 Text("Saved. Delivery confirmation will retry when connected.").font(.footnote)
                 Button("Retry confirmation") { Task { await store.flushReceipts() } }
@@ -40,7 +46,7 @@ struct GuestDownloadDetail: View {
                     }
                 }
             }
-            if current.files.isEmpty || current.files.contains(where: { store.url($0) == nil }) {
+            if model.pendingConsent == nil, current.files.isEmpty || current.files.contains(where: { store.url($0) == nil }) {
                 Button(store.requiresRedownloadConsent(current) ? "Download missing files" : "Resume receiving") {
                     if store.requiresRedownloadConsent(current) {
                         redownload = true

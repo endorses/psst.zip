@@ -2,23 +2,24 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/endorses/psst.zip/backend/internal/database"
-	"github.com/endorses/psst.zip/backend/internal/store"
 )
 
 // --- Transfer handlers ---
 
 func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	var req CreateTransferRequest
-	if err := decodeJSON(r, &req); err != nil {
-		req = CreateTransferRequest{}
+	if !decodeCreation(w, r, &req) {
+		return
 	}
 
 	expiry := s.cfg.DefaultExpiry
@@ -94,7 +95,11 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
-	defer s.lockTransfer(id)()
+	unlock, ok := acquireResource(w, r, id, false)
+	if !ok {
+		return
+	}
+	defer unlock()
 	if !isValidUUID(id) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
@@ -118,7 +123,6 @@ func (s *Server) completeTransfer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "transferID")
-	defer s.lockTransfer(id)()
 	if !isValidUUID(id) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
@@ -137,10 +141,27 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "manifest too large")
+		var limit *http.MaxBytesError
+		var timeout net.Error
+		if errors.As(err, &limit) {
+			writeError(w, http.StatusRequestEntityTooLarge, "manifest too large")
+		} else if errors.As(err, &timeout) && timeout.Timeout() {
+			writeError(w, http.StatusRequestTimeout, "manifest upload timed out")
+		} else {
+			writeError(w, http.StatusBadRequest, "could not read manifest")
+		}
 		return
 	}
 	defer r.Body.Close()
+
+	unlock, ok := acquireResource(w, r, id, false)
+	if !ok {
+		return
+	}
+	defer unlock()
+	if s.activeTransfer(w, id, true) == nil {
+		return
+	}
 
 	if err := s.queries.SaveManifest(id, data); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to save manifest")
@@ -241,7 +262,11 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tusCreate(w http.ResponseWriter, r *http.Request) {
 	transferID := chi.URLParam(r, "transferID")
-	defer s.lockTransfer(transferID)()
+	unlock, ok := acquireResource(w, r, transferID, false)
+	if !ok {
+		return
+	}
+	defer unlock()
 	if !isValidUUID(transferID) {
 		writeError(w, http.StatusBadRequest, "invalid transfer ID")
 		return
@@ -277,7 +302,11 @@ func (s *Server) tusHead(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tusPatch(w http.ResponseWriter, r *http.Request) {
 	transferID, fileID := chi.URLParam(r, "transferID"), chi.URLParam(r, "fileID")
-	defer s.lockTransfer(transferID)()
+	unlock, ok := acquireResource(w, r, transferID, false)
+	if !ok {
+		return
+	}
+	defer unlock()
 	if !s.validUpload(w, transferID, fileID, true) {
 		return
 	}
@@ -330,8 +359,8 @@ func (s *Server) downloadableTransfer(w http.ResponseWriter, id string) *databas
 
 func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	var req CreateSlotRequest
-	if err := decodeJSON(r, &req); err != nil {
-		req = CreateSlotRequest{}
+	if !decodeCreation(w, r, &req) {
+		return
 	}
 
 	expiry := s.cfg.DefaultExpiry
@@ -424,7 +453,15 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer store.LockSlot(slotID)()
+	var req CreateTransferRequest
+	if !decodeCreation(w, r, &req) {
+		return
+	}
+	unlock, ok := acquireResource(w, r, slotID, true)
+	if !ok {
+		return
+	}
+	defer unlock()
 	slot, err := s.queries.GetSlot(slotID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "slot not found")
@@ -438,11 +475,6 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 	if !s.slotOwnerActive(w, slotID) {
 		return
 	}
-	var req CreateTransferRequest
-	if err := decodeJSON(r, &req); err != nil {
-		req = CreateTransferRequest{}
-	}
-
 	expiry := s.cfg.DefaultExpiry
 	if req.ExpiresInSeconds > 0 {
 		expiry = time.Duration(req.ExpiresInSeconds) * time.Second

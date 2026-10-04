@@ -43,11 +43,13 @@ func main() {
 	}
 
 	httpSrv := &http.Server{
-		Addr:         cfg.ListenAddr,
-		Handler:      srv.Router(),
-		ReadTimeout:  0, // tus uploads can be large
-		WriteTimeout: 0,
-		IdleTimeout:  120 * time.Second,
+		Addr:              cfg.ListenAddr,
+		Handler:           srv.Router(),
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    32 * 1024,
+		ReadTimeout:       0, // Per-IO deadlines permit large, progressing streams.
+		WriteTimeout:      0,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

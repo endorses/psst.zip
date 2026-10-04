@@ -13,6 +13,7 @@
 
   import { decryptFileStream } from "$lib/chunked-files";
   import { createSaveSink, cleanAbandonedDownloads, LARGE_SAVE_MESSAGE } from "$lib/file-save";
+  import { safeFilename, zipEntryName } from "$lib/filenames";
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
@@ -99,7 +100,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = safeFilename(filename);
     try {
       a.click();
     } finally {
@@ -203,8 +204,7 @@
           downloadBytes = offset;
         }
         signal.throwIfAborted();
-        const name = entry.name.split(/[\\/]/).pop() || "file";
-        zipData[`${i + 1}-${name}`] = plaintext;
+        zipData[zipEntryName(entry.name, i)] = plaintext;
       }
 
       const zipped = zipSync(zipData);

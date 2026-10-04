@@ -56,7 +56,7 @@ func (w *Worker) sweepTransfers() {
 		return
 	}
 	for _, id := range ids {
-		if err := RemoveTransfer(w.queries, w.files, id); err != nil {
+		if err := TryRemoveTransfer(w.queries, w.files, id); err != nil {
 			log.Printf("cleanup: remove expired or revoked transfer %s: %v", id, err)
 		}
 	}
@@ -69,7 +69,7 @@ func (w *Worker) sweepSlots() {
 		return
 	}
 	for _, id := range ids {
-		if err := RemoveSlot(w.queries, w.files, id); err != nil {
+		if err := TryRemoveSlot(w.queries, w.files, id); err != nil {
 			log.Printf("cleanup: delete slot %s: %v", id, err)
 		} else {
 			log.Printf("cleanup: removed expired slot %s", id)
@@ -87,8 +87,12 @@ func (w *Worker) sweepExhaustedPayloads() {
 		return
 	}
 	for _, id := range ids {
-		unlock := store.LockTransfer(id)
-		err := w.files.DeleteAll(id)
+		unlock, err := store.TryLockTransfer(id)
+		if err != nil {
+			log.Printf("cleanup: busy exhausted transfer %s; retry next sweep", id)
+			continue
+		}
+		err = w.files.DeleteAll(id)
 		unlock()
 		if err != nil {
 			log.Printf("cleanup: delete exhausted payloads for transfer %s: %v", id, err)

@@ -45,6 +45,50 @@ class GuestReceivePipelineTest {
     private fun row() = GuestDownload("identity", "https://example.com", "transfer", files = files)
 
     @Test
+    fun actualResponseMustMatchManifestBeforePublicationWithoutAutomaticRetries() = runTest {
+        val encrypted = ChunkedFileCrypto.encrypt(key, encryptionId, 3, 0, plain)
+        for (body in listOf(encrypted.copyOf(encrypted.size - 1), encrypted + byteArrayOf(1))) {
+            var requests = 0
+            var published = 0
+            val client =
+                ApiClient(
+                    ServerConfig("https://external.test"),
+                    HttpClient(
+                        MockEngine {
+                            requests++
+                            assertNull(it.headers[HttpHeaders.Authorization])
+                            respond(body)
+                        }
+                    ),
+                )
+            try {
+                try {
+                    receiveGuestFiles(
+                        client,
+                        "transfer",
+                        listOf(files[0]),
+                        key,
+                        emptySet(),
+                        { _, _, _ -> },
+                        { _, _ -> },
+                        { file, content ->
+                            content {}
+                            published++
+                            saved(file.blobId)
+                        },
+                        { fail("Invalid response must never checkpoint") },
+                    )
+                    fail("Expected exact-length rejection")
+                } catch (_: IllegalArgumentException) {}
+                assertEquals(0, published)
+                assertEquals(1, requests)
+            } finally {
+                client.close()
+            }
+        }
+    }
+
+    @Test
     fun failedSecondFileKeepsFirstCheckpointAndRetrySkipsItsDownload() = runTest {
         val requests = mutableListOf<String>()
         val checkpoints = mutableListOf<SavedGuestFile>()

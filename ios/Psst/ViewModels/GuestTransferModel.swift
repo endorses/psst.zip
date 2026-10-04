@@ -8,6 +8,13 @@ enum GuestNetwork {
     }
 }
 
+struct ReceiveConsent {
+    let record: GuestDownload
+    let manifest: [GuestFile]
+    let total: Int64
+    let allowRedownload: Bool
+}
+
 @Observable
 @MainActor
 final class GuestTransferModel {
@@ -20,6 +27,7 @@ final class GuestTransferModel {
     private(set) var currentID: String?
     private(set) var uploadComplete = false
     private(set) var cleanupPending = false
+    private(set) var pendingConsent: ReceiveConsent?
     private var task: Task<Void, Never>?
     private var client: ApiClient?
     private var run = UUID()
@@ -29,6 +37,7 @@ final class GuestTransferModel {
     }
 
     func cancel() {
+        pendingConsent = nil
         guard active else { return }
         task?.cancel()
         client?.close()
@@ -44,6 +53,7 @@ final class GuestTransferModel {
 
     func resetPresentation() {
         guard !active else { return }
+        pendingConsent = nil
         currentID = nil; uploadComplete = false; cleanupPending = false; error = nil; fileNumber = 0
     }
 
@@ -53,10 +63,21 @@ final class GuestTransferModel {
         error = nil
     }
 
+    func confirmReceive() {
+        guard let consent = pendingConsent, !active else { return }
+        pendingConsent = nil
+        begin(consent.record, allowRedownload: consent.allowRedownload, approved: consent.manifest)
+    }
+
     func resume(_ requested: GuestDownload, allowRedownload: Bool = false) {
+        begin(requested, allowRedownload: allowRedownload, approved: nil)
+    }
+
+    private func begin(_ requested: GuestDownload, allowRedownload: Bool, approved: [GuestFile]?) {
         guard !active else { return }
         let record = store.records.first { $0.id == requested.id } ?? requested
         currentID = record.id
+        pendingConsent = nil
         error = nil
         uploadComplete = false
         guard allowRedownload || !store.requiresRedownloadConsent(record) else {
@@ -71,10 +92,10 @@ final class GuestTransferModel {
         active = true
         let identifier = UUID()
         run = identifier
-        task = Task { await download(record, identifier: identifier, allowRedownload: allowRedownload) }
+        task = Task { await download(record, identifier: identifier, allowRedownload: allowRedownload, approved: approved) }
     }
 
-    private func download(_ original: GuestDownload, identifier: UUID, allowRedownload: Bool) async {
+    private func download(_ original: GuestDownload, identifier: UUID, allowRedownload: Bool, approved: [GuestFile]?) async {
         var record = original
         defer { self.client?.close(); self.client = nil; active = false }
         do {
@@ -83,22 +104,40 @@ final class GuestTransferModel {
             try store.reconcile()
             record = store.records.first { $0.id == original.id } ?? original
             guard let key = SecretStore.read(record.keyReference), key.count == 32 else { throw GuestError.missingKey }
-            if record.files.isEmpty {
-                stage = "Inspecting transfer"
-                let transfer = try await client.transfers.get(transferId: record.transferID)
-                guard transfer.id.lowercased() == record.transferID.lowercased() else { throw GuestError.invalidManifest }
-                guard transfer.status == .complete else { throw GuestError.notReady }
-                try Task.checkCancellation()
-                let encrypted = try await client.transfers.downloadManifest(transferId: record.transferID)
-                stage = "Decrypting file list"
-                let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
-                guard let manifest = ManifestSerializer.decode(json: String(decoding: plain, as: UTF8.self)) else { throw GuestError.invalidManifest }
-                _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: transfer)
-                record.files = try manifest.files.map {
-                    try GuestFile(id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType, encoding: $0.encoding, chunkSize: $0.chunkSize, encryptionID: $0.encryptionId)
-                }
-                try store.update(record)
+            stage = "Inspecting transfer"
+            let transfer = try await client.transfers.get(transferId: record.transferID)
+            guard transfer.id.lowercased() == record.transferID.lowercased() else { throw GuestError.invalidManifest }
+            guard transfer.status == .complete else { throw GuestError.notReady }
+            try Task.checkCancellation()
+            let encrypted = try await client.transfers.downloadManifest(transferId: record.transferID)
+            stage = "Decrypting file list"
+            let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
+            guard let manifest = ManifestSerializer.decode(json: String(decoding: plain, as: UTF8.self)) else { throw GuestError.invalidManifest }
+            _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: transfer)
+            let incoming = try manifest.files.map {
+                try GuestFile(id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType, encoding: $0.encoding, chunkSize: $0.chunkSize, encryptionID: $0.encryptionId)
             }
+            let totalBytes = try ReceiveSafety.total(incoming.map(\.size))
+            if record.files.isEmpty {
+                record.files = incoming
+                try store.update(record)
+            } else {
+                let expected = record.files.map { file in
+                    GuestFile(id: file.id, name: file.name, size: file.size, mime: file.mime, encoding: file.encoding, chunkSize: file.chunkSize, encryptionID: file.encryptionID)
+                }
+                if incoming != expected {
+                    guard !record.files.contains(where: { store.url($0) != nil }) else { throw ReceiveSafetyError.changed }
+                    record.files = incoming
+                    try store.update(record)
+                }
+            }
+            if totalBytes > ReceiveSafety.automaticBytes, approved != incoming {
+                pendingConsent = ReceiveConsent(record: record, manifest: incoming, total: totalBytes, allowRedownload: allowRedownload)
+                stage = "Ready to receive"
+                return
+            }
+            let remaining = try ReceiveSafety.total(record.files.filter { store.url($0) == nil }.map(\.size))
+            try ReceiveSafety.checkSpace(at: store.documents, additional: remaining)
             for index in record.files.indices {
                 try Task.checkCancellation()
                 if store.url(record.files[index]) != nil {
@@ -131,7 +170,7 @@ final class GuestTransferModel {
             await store.flushReceipts()
         } catch {
             stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
-            self.error = (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
+            self.error = (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
         }
     }
 

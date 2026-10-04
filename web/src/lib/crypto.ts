@@ -6,6 +6,7 @@
  */
 
 import { gcm } from "@noble/ciphers/aes.js";
+import { uniqueFilenames } from "./filenames.ts";
 
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
@@ -186,5 +187,9 @@ export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Pr
     )
   )
     throw new Error("Invalid file manifest");
-  return manifest;
+  const names = uniqueFilenames(manifest.files.map((file) => file.name));
+  return {
+    ...manifest,
+    files: manifest.files.map((file, index) => ({ ...file, name: names[index] })),
+  };
 }

@@ -19,6 +19,8 @@ type Server struct {
 	requests        sync.WaitGroup
 	trafficDegraded atomic.Bool
 	cfg             config.Config
+	loginAccounts   *rateLimiter
+	passwordWork    chan struct{}
 	queries         *database.Queries
 	fileStore       store.FileStore
 	tusH            *tus.Handler
@@ -28,10 +30,12 @@ type Server struct {
 // NewServer creates a Server with all dependencies wired up.
 func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Server {
 	s := &Server{
-		cfg:       cfg,
-		queries:   q,
-		fileStore: fs,
-		sseHub:    NewSSEHub(),
+		cfg:           cfg,
+		queries:       q,
+		fileStore:     fs,
+		sseHub:        NewSSEHub(),
+		loginAccounts: newRateLimiter(1.0/30, 10),
+		passwordWork:  make(chan struct{}, 4),
 	}
 	ts := &tusStore{queries: q, maxSlotSize: cfg.MaxSlotSize}
 	s.tusH = tus.NewHandler(ts, fs, 0)
@@ -42,6 +46,7 @@ func NewServer(cfg config.Config, q *database.Queries, fs store.FileStore) *Serv
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(s.trackRequests)
+	r.Use(requestLimits)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
@@ -51,7 +56,7 @@ func (s *Server) Router() http.Handler {
 
 	// Global rate limiter (looser).
 	globalRL := newRateLimiter(s.cfg.RateLimitGlobal, s.cfg.RateLimitBurst)
-	r.Use(rateLimitMiddleware(globalRL))
+	r.Use(rateLimitMiddleware(globalRL, s.clientIP))
 
 	// Stricter rate limiter for creation endpoints.
 	creationRL := newRateLimiter(s.cfg.RateLimitCreation, s.cfg.RateLimitCreationBurst)
@@ -66,7 +71,7 @@ func (s *Server) Router() http.Handler {
 		s.authRoutes(r)
 
 		// Transfer endpoints (send flow)
-		r.With(rateLimitMiddleware(creationRL), s.requireRegularUser).Post("/transfers", s.createTransfer)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/transfers", s.createTransfer)
 		r.Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
 		r.With(s.requireUpload).Post("/transfers/{transferID}/complete", s.completeTransfer)
@@ -84,13 +89,13 @@ func (s *Server) Router() http.Handler {
 		r.With(s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
 
 		// Slot endpoints (receive flow)
-		r.With(rateLimitMiddleware(creationRL), s.requireRegularUser).Post("/slots", s.createSlot)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser).Post("/slots", s.createSlot)
 		r.Get("/slots/{slotID}", s.getSlot)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.Get("/slots/{slotID}/events", s.slotEvents)
 
 		// Slot-scoped transfer creation
-		r.With(rateLimitMiddleware(creationRL)).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
+		r.With(rateLimitMiddleware(creationRL, s.clientIP)).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
 	})
 
 	return r
@@ -121,7 +126,3 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-// lockTransfer serializes mutation of one transfer (including completion) without
-// retaining an unbounded map of mutexes for expired resources.
-func (s *Server) lockTransfer(id string) func() { return store.LockTransfer(id) }

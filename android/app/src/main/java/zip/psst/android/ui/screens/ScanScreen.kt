@@ -310,7 +310,7 @@ fun ScanScreen(
                                 Text("Receive files")
                             }
                             Text(
-                                "Scanning starts receiving automatically. Files are saved in Downloads/psst.zip and never opened automatically.",
+                                "Transfers up to 100 MiB start automatically. Larger transfers ask for confirmation. Files are saved in Downloads/psst.zip and never opened automatically.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -318,6 +318,28 @@ fun ScanScreen(
             }
         }
     }
+    state.downloadConsent
+        ?.takeIf { !state.busy }
+        ?.let { consent ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissDownloadConsent,
+                title = { Text("Download these files?") },
+                text = {
+                    Text(
+                        "${consent.files.size} ${if (consent.files.size == 1) "file" else "files"} from ${consent.origin}\n\n" +
+                            "Total: ${android.text.format.Formatter.formatFileSize(context, consent.totalBytes)}\n" +
+                            "Still to save: ${android.text.format.Formatter.formatFileSize(context, consent.remainingBytes)}\n\n" +
+                            "This transfer exceeds 100 MiB and may use mobile data. Downloads keep at least 256 MiB of storage free."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = viewModel::confirmDownload) { Text("Download") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissDownloadConsent) { Text("Cancel") }
+                },
+            )
+        }
     if (stopConfirmation)
         AlertDialog(
             onDismissRequest = { stopConfirmation = false },

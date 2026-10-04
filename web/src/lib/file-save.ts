@@ -1,5 +1,6 @@
 import type { FileManifestEntry } from "./crypto";
 import { MAX_BUFFERED_BYTES } from "./limits";
+import { safeFilename } from "./filenames";
 export const LARGE_SAVE_MESSAGE =
   "Large files need HTTPS with a browser that supports saving to disk, or the psst.zip mobile app.";
 interface SaveSink {
@@ -7,19 +8,11 @@ interface SaveSink {
   close(): Promise<void>;
   abort(): Promise<void>;
 }
-function filename(name: string): string {
-  return (
-    name
-      .split(/[\\/]/)
-      .pop()
-      ?.replace(/[\x00-\x1f]/g, "_") || "file"
-  );
-}
 function handoff(blob: Blob, name: string, cleanup = async () => {}) {
   const url = URL.createObjectURL(blob),
     anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = filename(name);
+  anchor.download = safeFilename(name);
   anchor.click();
   // Let the download consumer acquire its file-backed Blob before removing it.
   setTimeout(() => {
@@ -41,7 +34,7 @@ export async function createSaveSink(file: FileManifestEntry): Promise<SaveSink>
       },
       async close() {
         if (bytes !== file.size) throw new Error("Incomplete file");
-        handoff(new Blob(chunks, { type: file.mime_type }), file.name);
+        handoff(new Blob(chunks, { type: "application/octet-stream" }), file.name);
         chunks.length = 0;
       },
       async abort() {
@@ -53,7 +46,7 @@ export async function createSaveSink(file: FileManifestEntry): Promise<SaveSink>
     showSaveFilePicker?: (options: { suggestedName: string }) => Promise<FileSystemFileHandle>;
   };
   if (window.isSecureContext && browser.showSaveFilePicker) {
-    const handle = await browser.showSaveFilePicker({ suggestedName: filename(file.name) });
+    const handle = await browser.showSaveFilePicker({ suggestedName: safeFilename(file.name) });
     const writer = await handle.createWritable();
     return {
       write: (chunk) => writer.write(chunk),

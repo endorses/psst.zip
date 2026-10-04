@@ -74,6 +74,7 @@ final class AuthenticatedFileWriter {
             guard failure == nil else { return false }
             do {
                 let plaintext = try ChunkedFileCrypto.shared.decrypt(key: key, id: file.encryptionId, totalSize: file.size, index: next, frame: frame).toData()
+                try ReceiveSafety.checkSpace(at: url.deletingLastPathComponent(), additional: Int64(plaintext.count))
                 try handle.write(contentsOf: plaintext)
                 count += Int64(plaintext.count); next += 1
             } catch { failure = error; return false }
