@@ -107,6 +107,7 @@ var migrations = []string{
 	adminSecurityMigration(),
 	trafficRetentionMigration(),
 	authMetadataMigration(),
+	securityAuditMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

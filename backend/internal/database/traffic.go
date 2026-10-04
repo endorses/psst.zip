@@ -116,9 +116,25 @@ func (q *Queries) SetTrafficSettings(s TrafficSettings, actors ...*AdminActor) e
 		return err
 	}
 	defer tx.Rollback()
+	auditChanged := false
+	if optionalAdminActor(actors) != nil {
+		var previous sql.NullInt64
+		var day int
+		var basis string
+		if err = tx.QueryRow(`SELECT allowance_bytes,cycle_start_day,basis FROM traffic_state WHERE id=1`).Scan(&previous, &day, &basis); err != nil {
+			return err
+		}
+		auditChanged = day != s.CycleStartDay || basis != s.Basis || previous.Valid != (s.AllowanceBytes != nil) || (s.AllowanceBytes != nil && previous.Int64 != *s.AllowanceBytes)
+	}
+
 	_, err = tx.Exec(`UPDATE traffic_state SET allowance_bytes=?,cycle_start_day=?,basis=? WHERE id=1`, s.AllowanceBytes, s.CycleStartDay, s.Basis)
 	if err != nil {
 		return err
+	}
+	if auditChanged {
+		if err = q.auditAdminMutation(tx, actors, "settings.traffic_chart_changed", "server", "", false); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

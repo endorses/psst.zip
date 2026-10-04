@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/endorses/psst.zip/backend/internal/cleanup"
+	"github.com/endorses/psst.zip/backend/internal/database"
 )
 
 const slotDeletedEvent = `{"event":"slot_deleted"}`
@@ -61,10 +62,11 @@ func (s *Server) deleteTransfer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !s.owns(r, "transfer", id) && !s.authorizeDeletion(w, r, transfer.DeleteTokenHash) {
+	owns := s.owns(r, "transfer", id)
+	if !owns && !s.authorizeDeletion(w, r, transfer.DeleteTokenHash) {
 		return
 	}
-	if err := cleanup.RemoveTransferContext(r.Context(), s.queries, s.fileStore, id, adminActor(r)); err != nil {
+	if err := cleanup.RemoveTransferAuditedContext(r.Context(), s.queries, s.fileStore, id, deletionAudit(r, "transfer", id, owns), adminActor(r)); err != nil {
 		if rejectAdminMutation(w, err) {
 			return
 		}
@@ -89,10 +91,11 @@ func (s *Server) deleteSlot(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if !s.owns(r, "slot", id) && !s.authorizeDeletion(w, r, slot.DeleteTokenHash) {
+	owns := s.owns(r, "slot", id)
+	if !owns && !s.authorizeDeletion(w, r, slot.DeleteTokenHash) {
 		return
 	}
-	err = cleanup.RemoveSlotContext(r.Context(), s.queries, s.fileStore, id, adminActor(r))
+	err = cleanup.RemoveSlotAuditedContext(r.Context(), s.queries, s.fileStore, id, deletionAudit(r, "slot", id, owns), adminActor(r))
 	if rejectAdminMutation(w, err) {
 		return
 	}
@@ -104,4 +107,17 @@ func (s *Server) deleteSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func deletionAudit(r *http.Request, kind, id string, owns bool) database.SecurityEvent {
+	event := database.SecurityEvent{Kind: kind + ".revoked", Origin: "capability", TargetType: kind, TargetID: id, Outcome: "succeeded", Count: 1}
+	// An unrelated ambient session does not own a deletion capability.
+	if a := identity(r); owns && a != nil {
+		event.ActorID = a.user.ID
+		event.Origin = "account"
+		if a.user.Role == "admin" {
+			event.Origin = "administrator"
+		}
+	}
+	return event
 }

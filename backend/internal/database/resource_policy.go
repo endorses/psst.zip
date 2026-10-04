@@ -82,9 +82,23 @@ func (q *Queries) SetResourcePolicy(p ResourcePolicy, actors ...*AdminActor) err
 		return err
 	}
 	defer tx.Rollback()
+	auditChanged := false
+	if optionalAdminActor(actors) != nil {
+		previous, readErr := readPolicy(tx)
+		if readErr != nil {
+			return readErr
+		}
+		auditChanged = previous != p
+	}
+
 	_, err = tx.Exec(`UPDATE resource_policy SET server_storage_bytes=?,account_storage_bytes=?,server_files=?,account_files=?,server_transfers=?,account_transfers=?,server_slots=?,account_slots=?,max_retention_seconds=?,pending_upload_seconds=?,reserve_disk_bytes=?,reserve_disk_percent=? WHERE id=1`, p.ServerStorageBytes, p.AccountStorageBytes, p.ServerFiles, p.AccountFiles, p.ServerTransfers, p.AccountTransfers, p.ServerSlots, p.AccountSlots, p.MaxRetentionSeconds, p.PendingUploadSeconds, p.ReserveDiskBytes, p.ReserveDiskPercent)
 	if err != nil {
 		return err
+	}
+	if auditChanged {
+		if err = q.auditAdminMutation(tx, actors, "settings.resource_policy_changed", "server", "", false); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

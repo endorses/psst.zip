@@ -43,7 +43,7 @@ func Run(path, action string, out io.Writer) error {
 		return errors.New("database is not a supported psst.zip server database; no change made")
 	}
 	if action != "incident-status" {
-		if err := q.SetTransfersPaused(action == "pause"); err != nil {
+		if err := q.SetTransfersPausedLocal(action == "pause"); err != nil {
 			return errors.New("could not persist transfer control")
 		}
 	}
@@ -51,5 +51,8 @@ func Run(path, action string, out io.Writer) error {
 	if err != nil {
 		return errors.New("could not read transfer control")
 	}
-	return json.NewEncoder(out).Encode(state)
+	return json.NewEncoder(out).Encode(struct {
+		database.IncidentState
+		AuditDegraded bool `json:"audit_degraded"`
+	}{state, q.SecurityAuditDegraded()})
 }

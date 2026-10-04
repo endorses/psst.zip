@@ -430,7 +430,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	a := identity(r)
-	if err := s.queries.DeleteSession(a.session.ID, a.user.ID); err != nil {
+	if err := s.queries.DeleteAccountSession(a.session.ID, a.user.ID); err != nil {
 		writeError(w, 500, "could not revoke session")
 		return
 	}
@@ -457,7 +457,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 	a := identity(r)
 	id := chi.URLParam(r, "sessionID")
-	if err := s.queries.DeleteSession(id, a.user.ID, adminActor(r)); err != nil {
+	if err := s.queries.DeleteAccountSession(id, a.user.ID, adminActor(r)); err != nil {
 		if adminActor(r) != nil && (errors.Is(err, database.ErrAdminAuthenticationChanged) || errors.Is(err, database.ErrAdminRecentRequired)) {
 			adminSecurityFailure(w, err)
 			return
@@ -549,7 +549,11 @@ func (s *Server) redeemPairing(w http.ResponseWriter, r *http.Request) {
 			accountRestriction(w, "password_change_required")
 			return
 		}
-		writeError(w, 401, "pairing code is invalid or expired")
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, 401, "pairing code is invalid or expired")
+		} else {
+			policyError(w, 503, "authentication_unavailable", "Pairing is temporarily unavailable. Try again shortly.")
+		}
 		return
 	}
 	s.loginResponse(w, r, u, session, token, true)

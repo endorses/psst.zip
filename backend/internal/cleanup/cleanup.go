@@ -41,6 +41,9 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) sweep() {
+	if _, err := w.queries.PruneSecurityEvents(time.Now()); err != nil {
+		log.Printf("cleanup: security activity retention failed")
+	}
 	if err := w.queries.PruneAuthentication(); err != nil {
 		log.Printf("cleanup: expired authentication credentials: %v", err)
 	}

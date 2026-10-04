@@ -17,6 +17,7 @@ import (
 
 // Server holds the HTTP server dependencies.
 type Server struct {
+	authenticationAudit authenticationAuditCounters
 	requests            sync.WaitGroup
 	admission           *streamAdmission
 	applicationRequests chan struct{}
@@ -62,6 +63,7 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(s.trackRequests)
 	r.Use(requestLimits)
+	r.Use(s.observeAuthenticationFailures)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(securityHeadersMiddleware)
@@ -88,6 +90,7 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireAdmin).Post("/admin/users/{userID}/shutdown", s.shutdownAccount)
 		r.With(s.requireAdmin).Patch("/admin/resource-policy", s.updateResourcePolicy)
 		r.With(s.requireRegularUser).Get("/auth/usage", s.accountUsage)
+		r.With(s.requireAdmin).Get("/admin/security-events", s.getSecurityEvents)
 		r.With(s.requireAdmin).Get("/admin/overview", s.getOverview)
 		r.With(s.requireAdmin).Get("/admin/traffic", s.getTraffic)
 		r.With(s.requireAdmin).Patch("/admin/traffic/settings", s.updateTrafficSettings)

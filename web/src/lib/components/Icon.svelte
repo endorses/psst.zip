@@ -34,6 +34,7 @@
   const icons = {
     Overview: LayoutDashboard,
     Traffic: ChartNoAxesCombined,
+    Security: ShieldCheck,
     Send,
     Receive: ArrowDownToLine,
     History,

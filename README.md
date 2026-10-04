@@ -168,6 +168,11 @@ for enrollment, recovery codes, database protection and the explicit
 active sessions and pairing records. Successful sign-in at the session limit
 replaces an older session; legacy excess records are reconciled in bounded batches.
 
+Administrators can review [security activity](docs/security/security-activity.md)
+in the web workspace. The bounded history separates administrative changes,
+link revocations and authentication-failure summaries, without collecting
+credentials, filenames or encryption keys. Recording gaps are surfaced explicitly.
+
 For incidents, administrators can persistently pause payload transfers or shut
 down an account and revoke all its links. These are separate from disabling
 future sign-in. See [incident response and local recovery](docs/security/incident-response.md)

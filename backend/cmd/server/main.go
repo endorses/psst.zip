@@ -87,6 +87,8 @@ func main() {
 	defer cancel()
 
 	go srv.RunIncidentMonitor(ctx)
+	auditDone := make(chan struct{})
+	go func() { defer close(auditDone); srv.RunSecurityAudit(ctx) }()
 
 	// Start cleanup worker.
 	worker := cleanup.NewWorker(queries, fs, cfg.CleanupInterval)
@@ -109,6 +111,18 @@ func main() {
 			_ = httpSrv.Close()
 		}
 		srv.WaitForRequests()
+		// Stop the periodic writer before the final bounded flush. Authentication
+		// counters never delay shutdown indefinitely or gate recovery requests.
+		select {
+		case <-auditDone:
+		case <-time.After(5 * time.Second):
+			log.Print("security audit shutdown timed out; pending summaries may be incomplete")
+		}
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer auditCancel()
+		if err := srv.FlushSecurityAudit(auditCtx); err != nil {
+			log.Print("security audit final flush failed; pending summaries may be incomplete")
+		}
 	}()
 
 	log.Printf("listening on %s", cfg.ListenAddr)

@@ -99,6 +99,15 @@ func (q *Queries) SetTrafficPolicy(p TrafficPolicy, actors ...*AdminActor) error
 		return err
 	}
 	defer tx.Rollback()
+	auditChanged := false
+	if optionalAdminActor(actors) != nil {
+		previous, _, readErr := readTrafficPolicy(tx)
+		if readErr != nil {
+			return readErr
+		}
+		auditChanged = previous != p
+	}
+
 	result, err := tx.Exec(`UPDATE traffic_policy SET policy=?,revision=revision+1,concurrency_initialized=1 WHERE id=1`, string(b))
 	if err != nil {
 		return err
@@ -110,6 +119,11 @@ func (q *Queries) SetTrafficPolicy(p TrafficPolicy, actors ...*AdminActor) error
 	if n != 1 {
 		return ErrTrafficAccounting
 	}
+	if auditChanged {
+		if err = q.auditAdminMutation(tx, actors, "settings.traffic_policy_changed", "server", "", false); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64, actors ...*AdminActor) error {
@@ -118,6 +132,15 @@ func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64, actors ..
 		return err
 	}
 	defer tx.Rollback()
+	auditChanged := false
+	if optionalAdminActor(actors) != nil {
+		var previous sql.NullInt64
+		if err = tx.QueryRow(`SELECT budget FROM traffic_account_policy WHERE owner=?`, owner).Scan(&previous); err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		auditChanged = previous.Valid != (budget != nil) || (budget != nil && previous.Int64 != *budget)
+	}
+
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return err
 	}
@@ -135,6 +158,11 @@ func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64, actors ..
 	_, err = tx.Exec(`INSERT INTO traffic_account_policy(owner,budget) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET budget=excluded.budget,revision=revision+1`, owner, budget)
 	if err != nil {
 		return err
+	}
+	if auditChanged {
+		if err = q.auditAdminMutation(tx, actors, "settings.account_traffic_changed", "user", owner, false); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

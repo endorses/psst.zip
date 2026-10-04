@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,6 +55,7 @@ type Queries struct {
 	db                *sql.DB
 	capacity          capacityConfig
 	incidentNamespace string
+	auditDegraded     atomic.Bool
 }
 
 // NewQueries returns a new Queries instance.
@@ -504,14 +506,38 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 }
 
 func (q *Queries) RevokeTransfer(id string, actors ...*AdminActor) error {
+	return q.revokeTransfer(id, nil, actors)
+}
+func (q *Queries) RevokeTransferAudited(id string, event SecurityEvent, actors ...*AdminActor) error {
+	return q.revokeTransfer(id, &event, actors)
+}
+func (q *Queries) revokeTransfer(id string, event *SecurityEvent, actors []*AdminActor) error {
 	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ?`, id)
+	result, err := tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ? AND status!='revoked'`, id)
 	if err != nil {
 		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		if event != nil {
+			event.Kind = "transfer.revoked"
+			event.TargetType = "transfer"
+			event.TargetID = id
+			event.Outcome = "succeeded"
+			err = q.AppendRecoverySecurityEvent(tx, *event)
+		} else {
+			err = q.auditAdminMutation(tx, actors, "transfer.revoked", "transfer", id, true)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -519,12 +545,19 @@ func (q *Queries) RevokeTransfer(id string, actors ...*AdminActor) error {
 // RevokeSlot closes the slot and every linked transfer atomically before disk
 // cleanup. Retaining these rows on cleanup failure keeps revocation retryable.
 func (q *Queries) RevokeSlot(id string, actors ...*AdminActor) ([]string, error) {
+	return q.revokeSlot(id, nil, actors)
+}
+func (q *Queries) RevokeSlotAudited(id string, event SecurityEvent, actors ...*AdminActor) ([]string, error) {
+	return q.revokeSlot(id, &event, actors)
+}
+func (q *Queries) revokeSlot(id string, event *SecurityEvent, actors []*AdminActor) ([]string, error) {
 	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE slots SET status = 'revoked' WHERE id = ?`, id); err != nil {
+	result, err := tx.Exec(`UPDATE slots SET status = 'revoked' WHERE id = ? AND status!='revoked'`, id)
+	if err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id IN (SELECT transfer_id FROM slot_transfers WHERE slot_id = ?)`, id); err != nil {
@@ -547,6 +580,24 @@ func (q *Queries) RevokeSlot(id string, actors ...*AdminActor) ([]string, error)
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		if event != nil {
+			event.Kind = "slot.revoked"
+			event.TargetType = "slot"
+			event.TargetID = id
+			event.Outcome = "succeeded"
+			err = q.AppendRecoverySecurityEvent(tx, *event)
+		} else {
+			err = q.auditAdminMutation(tx, actors, "slot.revoked", "slot", id, true)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	return ids, tx.Commit()
 }

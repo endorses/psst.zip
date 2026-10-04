@@ -211,6 +211,9 @@ func (q *Queries) CreateAdminSession(s Session, tokenHash, passwordHash []byte, 
 	if _, err = tx.Exec(`UPDATE admin_security SET failures=0,locked_until=0 WHERE user_id=?`, s.UserID); err != nil {
 		return err
 	}
+	if err = q.appendAdministratorProofAudit(tx, s.UserID, "administrator.signed_in", recovery != ""); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 func activeAdminSession(q trafficQuerier, user, session string, now time.Time) (int64, int64, error) {
@@ -263,6 +266,9 @@ func (q *Queries) ReauthenticateAdmin(user, session string, passwordHash []byte,
 		return time.Time{}, err
 	}
 	if _, err = tx.Exec(`UPDATE admin_security SET failures=0,locked_until=0 WHERE user_id=?`, user); err != nil {
+		return time.Time{}, err
+	}
+	if err = q.appendAdministratorProofAudit(tx, user, "administrator.reauthenticated", recovery != ""); err != nil {
 		return time.Time{}, err
 	}
 	return until, tx.Commit()
@@ -429,6 +435,9 @@ func (q *Queries) ConfirmAdminEnrollment(user, session string, passwordHash []by
 	if err = revokeAdminCredentials(tx, user); err != nil {
 		return nil, err
 	}
+	if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: "administrator.factor_enabled", Origin: "administrator", ActorID: user, TargetType: "user", TargetID: user, Outcome: "succeeded"}); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -473,6 +482,13 @@ func (q *Queries) ChangeAdminFactor(user, session string, passwordHash []byte, r
 	if err = revokeAdminCredentials(tx, user); err != nil {
 		return nil, err
 	}
+	kind := "administrator.recovery_rotated"
+	if disable {
+		kind = "administrator.factor_disabled"
+	}
+	if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: kind, Origin: "administrator", ActorID: user, TargetType: "user", TargetID: user, Outcome: "succeeded"}); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -514,7 +530,21 @@ func (q *Queries) ResetAdminFactor(username string) error {
 	if err = revokeAdminCredentials(tx, user); err != nil {
 		return err
 	}
+	if err = q.AppendRecoverySecurityEvent(tx, SecurityEvent{Kind: "administrator.factor_reset", Origin: "local", TargetType: "user", TargetID: user, Outcome: "succeeded"}); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// Proof and local-recovery audit failures must never lock the operator out.
+func (q *Queries) appendAdministratorProofAudit(tx *sql.Tx, user, kind string, recovery bool) error {
+	if err := q.AppendRecoverySecurityEvent(tx, SecurityEvent{Kind: kind, Origin: "administrator", ActorID: user, TargetType: "user", TargetID: user, Outcome: "succeeded"}); err != nil {
+		return err
+	}
+	if recovery {
+		return q.AppendRecoverySecurityEvent(tx, SecurityEvent{Kind: "administrator.recovery_used", Origin: "administrator", ActorID: user, TargetType: "user", TargetID: user, Outcome: "succeeded"})
+	}
+	return nil
 }
 
 // AdminActor binds an HTTP mutation to its currently valid authenticated session.

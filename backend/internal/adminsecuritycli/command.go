@@ -45,6 +45,11 @@ func Run(path string, args []string, out io.Writer) error {
 	if err := q.ResetAdminFactor(args[1]); err != nil {
 		return errors.New("could not reset administrator factor; verify the account and database")
 	}
+	if q.SecurityAuditDegraded() {
+		if _, err := fmt.Fprintln(out, "Security audit is unavailable; this recovery action may not have been recorded."); err != nil {
+			return err
+		}
+	}
 	_, err = fmt.Fprintln(out, "Administrator second factor reset. Existing sessions and recovery codes are invalid. Sign in with the existing password and enroll a new authenticator.")
 	return err
 }

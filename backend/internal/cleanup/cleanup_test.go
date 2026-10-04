@@ -92,3 +92,42 @@ func TestSweepRetainsTrafficTotalsAndContinuesAfterRetentionFailure(t *testing.T
 		t.Fatalf("failed retention blocked file cleanup: %v", err)
 	}
 }
+
+func TestSecurityAuditRetentionFailureDoesNotBlockPayloadCleanup(t *testing.T) {
+	dir := t.TempDir()
+	db, err := database.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := database.NewQueries(db)
+	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.RecordSecurityEvent(database.SecurityEvent{Kind: "transfers.paused", Origin: "local", TargetType: "server", Outcome: "succeeded"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE security_events SET occurred_at='2000-01-01T00:00:00.000000000Z'`); err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(q, files, time.Hour)
+	worker.sweep()
+	var retained int
+	if err := db.QueryRow(`SELECT retained FROM security_audit_buckets WHERE bucket='administration'`).Scan(&retained); err != nil || retained != 0 {
+		t.Fatalf("audit retention was not swept: %d %v", retained, err)
+	}
+	if err := q.CreateTransfer("audit-cleanup", time.Now().Add(-time.Hour), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TABLE security_events`); err != nil {
+		t.Fatal(err)
+	}
+	worker.sweep()
+	if _, err := q.GetTransfer("audit-cleanup"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("audit failure prevented payload cleanup: %v", err)
+	}
+	if !q.SecurityAuditDegraded() {
+		t.Fatal("audit cleanup failure not surfaced")
+	}
+}

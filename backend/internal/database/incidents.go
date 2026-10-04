@@ -36,12 +36,20 @@ func (q *Queries) IncidentState() (IncidentState, error) {
 	return state, err
 }
 func (q *Queries) SetTransfersPaused(paused bool, actors ...*AdminActor) error {
+	return q.setTransfersPaused(paused, false, actors)
+}
+
+// SetTransfersPausedLocal is exclusively for an explicit local operator command.
+func (q *Queries) SetTransfersPausedLocal(paused bool) error {
+	return q.setTransfersPaused(paused, true, nil)
+}
+func (q *Queries) setTransfersPaused(paused, local bool, actors []*AdminActor) error {
 	tx, err := q.beginAdminMutation(actors)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`UPDATE incident_state SET public_transfers_paused=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1`, paused)
+	result, err := tx.Exec(`UPDATE incident_state SET public_transfers_paused=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND public_transfers_paused!=?`, paused, paused)
 	if err != nil {
 		return err
 	}
@@ -49,8 +57,24 @@ func (q *Queries) SetTransfersPaused(paused bool, actors ...*AdminActor) error {
 	if err != nil {
 		return err
 	}
-	if affected != 1 {
-		return sql.ErrNoRows
+	if affected > 0 {
+		kind := "transfers.resumed"
+		if paused {
+			kind = "transfers.paused"
+		}
+		if local {
+			err = q.AppendRecoverySecurityEvent(tx, SecurityEvent{Kind: kind, Origin: "local", TargetType: "server", Outcome: "succeeded"})
+		} else {
+			err = q.auditAdminMutation(tx, actors, kind, "server", "", paused)
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		var stored bool
+		if err = tx.QueryRow(`SELECT public_transfers_paused FROM incident_state WHERE id=1`).Scan(&stored); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -95,6 +119,10 @@ func (q *Queries) ShutdownAccount(id string, actors ...*AdminActor) (AccountShut
 	if role == "admin" && otherAdmins == 0 {
 		return result, ErrLastAdmin
 	}
+	var wasDisabled bool
+	if err := tx.QueryRow(`SELECT disabled FROM users WHERE id=?`, id).Scan(&wasDisabled); err != nil {
+		return result, err
+	}
 	if _, err := tx.Exec(`UPDATE users SET disabled=1 WHERE id=?`, id); err != nil {
 		return result, err
 	}
@@ -130,6 +158,11 @@ func (q *Queries) ShutdownAccount(id string, actors ...*AdminActor) (AccountShut
 	result.User, err = scanUser(tx.QueryRow(`SELECT id,username,role,disabled,password_hash,must_change_password FROM users WHERE id=?`, id))
 	if err != nil {
 		return result, err
+	}
+	if !wasDisabled || result.RevokedSessions+result.RevokedPairings+result.RevokedTransfers+result.RevokedSlots > 0 {
+		if err = q.auditAdminMutation(tx, actors, "account.shutdown", "user", id, true); err != nil {
+			return result, err
+		}
 	}
 	return result, tx.Commit()
 }

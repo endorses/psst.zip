@@ -11,6 +11,7 @@
   import PasswordChange from "$lib/components/PasswordChange.svelte";
   import AdminOverview from "$lib/components/AdminOverview.svelte";
   import TrafficPanel from "$lib/components/TrafficPanel.svelte";
+  import SecurityEvents from "$lib/components/SecurityEvents.svelte";
   import {
     loadLabels,
     saveLabels,
@@ -51,6 +52,7 @@
   type Tab =
     | "Overview"
     | "Traffic"
+    | "Security"
     | "Server"
     | "Scan"
     | "Send"
@@ -88,6 +90,7 @@
   const destinations = [
     "Overview",
     "Traffic",
+    "Security",
     "Server",
     "Scan",
     "Send",
@@ -98,7 +101,7 @@
     "Account",
     "Users",
   ];
-  const adminDestinations = ["Overview", "Users", "Traffic", "Server"] as const;
+  const adminDestinations = ["Overview", "Users", "Traffic", "Security", "Server"] as const;
   const mainDestinations = ["Send", "Receive", "Scan", "History", "Settings"] as const;
   const settingsDestinations = [
     {
@@ -1038,7 +1041,9 @@
               ? "Scan QR code"
               : item === "Server"
                 ? "Server settings"
-                : item}
+                : item === "Security"
+                  ? "Security activity"
+                  : item}
             aria-current={tab === item
               ? "page"
               : item === "Settings" && ["Account", "Devices"].includes(tab)
@@ -1051,7 +1056,13 @@
           >
             <Icon name={item === "Scan" ? "QRCode" : item === "Server" ? "Settings" : item} /><span
               class="nav-label"
-              >{item === "Scan" ? "Scan" : item === "Server" ? "Server settings" : item}</span
+              >{item === "Scan"
+                ? "Scan"
+                : item === "Server"
+                  ? "Server settings"
+                  : item === "Security"
+                    ? "Security activity"
+                    : item}</span
             >
           </a>
         {/each}
@@ -1135,6 +1146,7 @@
         {#if tab === "Scan"}<ScanPanel authorize={authorizeScanner} />{/if}
         {#if tab === "Overview"}<AdminOverview />
         {:else if tab === "Traffic"}<TrafficPanel />
+        {:else if tab === "Security" && user.role === "admin"}{#key user.id}<SecurityEvents />{/key}
         {:else if tab === "Server"}<h1>Server settings</h1>
           <PublicTransferControl />
           <ServerSettings />
@@ -2011,7 +2023,15 @@
       background: var(--elevated);
     }
     nav.admin-nav {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    nav.admin-nav a {
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+    nav.admin-nav .nav-label {
+      white-space: normal;
+      text-align: center;
     }
   }
   @media (max-width: 600px) {

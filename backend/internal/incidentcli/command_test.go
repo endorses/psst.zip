@@ -3,6 +3,7 @@ package incidentcli
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,5 +77,30 @@ func TestIncidentCLIRejectsEmptyAndUnrelatedDatabasesWithoutMutation(t *testing.
 				}
 			}
 		})
+	}
+}
+
+func TestIncidentCLIWithoutAuditStoragePreservesJSONRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.db")
+	db, err := database.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`DROP TABLE security_events`); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"pause", "resume"} {
+		var out bytes.Buffer
+		if err := Run(path, action, &out); err != nil {
+			t.Fatal(err)
+		}
+		var state map[string]any
+		if err := json.Unmarshal(out.Bytes(), &state); err != nil {
+			t.Fatal("recovery output is not JSON", err)
+		}
+		if state["audit_degraded"] != true || state["public_transfers_paused"] != (action == "pause") {
+			t.Fatal(state)
+		}
 	}
 }

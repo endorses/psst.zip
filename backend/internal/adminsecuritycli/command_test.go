@@ -171,3 +171,34 @@ func TestEnrolledDisabledAdministratorResetClearsOnlyCredentialMaterial(t *testi
 		t.Fatal("reset changed transfer pause policy")
 	}
 }
+
+func TestResetWithoutAuditStorageRemainsAvailableAndReportsGap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.db")
+	db, err := database.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	q := database.NewQueries(db)
+	user := database.User{ID: "operator", Username: "operator", Role: "admin", PasswordHash: []byte("preserved-password")}
+	if err := q.CreateUser(user, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE admin_security SET secret='fixture-secret' WHERE user_id='operator'; DROP TABLE security_events`); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := Run(path, []string{"--username", "operator", "--confirm"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("may not have been recorded")) {
+		t.Fatal("audit gap hidden", out.String())
+	}
+	if bytes.Contains(out.Bytes(), []byte("fixture-secret")) || bytes.Contains(out.Bytes(), user.PasswordHash) {
+		t.Fatal("recovery leaked credential")
+	}
+	state, err := q.AdminSecurity(user.ID)
+	if err != nil || state.Secret != "" {
+		t.Fatal("recovery did not complete", err)
+	}
+}

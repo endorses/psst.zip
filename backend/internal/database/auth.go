@@ -61,9 +61,20 @@ func (q *Queries) CreateUser(u User, bootstrap bool, actors ...*AdminActor) erro
 	if bootstrap {
 		query = `INSERT INTO users (id,username,role,password_hash,must_change_password) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM users)`
 	}
-	_, err = tx.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash, u.MustChangePassword && u.Role != "admin")
+	result, err := tx.Exec(query, u.ID, u.Username, u.Role, u.PasswordHash, u.MustChangePassword && u.Role != "admin")
 	if err != nil {
 		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n > 0 && (bootstrap || optionalAdminActor(actors) != nil) {
+		event := SecurityEvent{Kind: "account.created", Origin: "system", TargetType: "user", TargetID: u.ID, Outcome: "succeeded"}
+		if actor := optionalAdminActor(actors); actor != nil {
+			event.Origin, event.ActorID = "administrator", actor.UserID
+		}
+		if err = q.AppendSecurityEvent(tx, event); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -143,7 +154,11 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 			return sql.ErrNoRows
 		}
 	}
+	var previouslyDisabled bool
 	if disabled != nil {
+		if err := tx.QueryRow(`SELECT disabled FROM users WHERE id=?`, id).Scan(&previouslyDisabled); err != nil {
+			return err
+		}
 		if *disabled {
 			var role string
 			var count int
@@ -172,6 +187,42 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 		}
 		for _, table := range []string{"sessions", "pairings"} {
 			if _, err := tx.Exec(`DELETE FROM `+table+` WHERE user_id=?`, id); err != nil {
+				return err
+			}
+		}
+	}
+	// Internal callers do not acquire an administrator identity by omission.
+	origin, actorID := "", ""
+	if actor != nil {
+		origin, actorID = "administrator", actor.UserID
+	} else if expectedHash != nil {
+		origin, actorID = "account", id
+		if adminSession != "" {
+			origin = "administrator"
+		}
+	}
+	if origin != "" {
+		if disabled != nil && *disabled != previouslyDisabled {
+			kind := "account.enabled"
+			if *disabled {
+				kind = "account.disabled"
+			}
+			event := SecurityEvent{Kind: kind, Origin: origin, ActorID: actorID, TargetType: "user", TargetID: id, Outcome: "succeeded"}
+			if *disabled {
+				err = q.AppendRecoverySecurityEvent(tx, event)
+			} else {
+				err = q.AppendSecurityEvent(tx, event)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if len(password) > 0 {
+			kind := "account.password_reset"
+			if expectedHash != nil {
+				kind = "account.password_changed"
+			}
+			if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: kind, Origin: origin, ActorID: actorID, TargetType: "user", TargetID: id, Outcome: "succeeded"}); err != nil {
 				return err
 			}
 		}
@@ -219,6 +270,16 @@ func (q *Queries) Sessions(user string) ([]Session, error) {
 	return list.Sessions, err
 }
 func (q *Queries) DeleteSession(id, user string, actors ...*AdminActor) error {
+	return q.deleteSession(id, user, false, actors)
+}
+
+// DeleteAccountSession identifies an authenticated owner action explicitly;
+// internal DeleteSession callers do not inherit an account audit identity.
+func (q *Queries) DeleteAccountSession(id, user string, actors ...*AdminActor) error {
+	return q.deleteSession(id, user, true, actors)
+}
+
+func (q *Queries) deleteSession(id, user string, accountAction bool, actors []*AdminActor) error {
 	tx, err := q.db.Begin()
 	if err != nil {
 		return err
@@ -227,8 +288,27 @@ func (q *Queries) DeleteSession(id, user string, actors ...*AdminActor) error {
 	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`DELETE FROM sessions WHERE id=? AND user_id=?`, id, user); err != nil {
+	result, err := tx.Exec(`DELETE FROM sessions WHERE id=? AND user_id=?`, id, user)
+	if err != nil {
 		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n > 0 && (accountAction || optionalAdminActor(actors) != nil) {
+		var role string
+		if err = tx.QueryRow(`SELECT role FROM users WHERE id=?`, user).Scan(&role); err != nil {
+			return err
+		}
+		event := SecurityEvent{Kind: "session.revoked", Origin: "account", ActorID: user, TargetType: "session", TargetID: id, Outcome: "succeeded"}
+		if role == "admin" {
+			event.Origin = "administrator"
+		}
+		if actor := optionalAdminActor(actors); actor != nil {
+			event.Origin, event.ActorID = "administrator", actor.UserID
+		}
+		if err = q.AppendRecoverySecurityEvent(tx, event); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -263,8 +343,17 @@ func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session str
 		return err
 	}
 	if replaceID != "" {
+		var previous string
+		if err := tx.QueryRow(`SELECT status FROM pairings WHERE id=? AND user_id=? AND session_id=?`, replaceID, user, session).Scan(&previous); err != nil {
+			return err
+		}
 		if err := cancelPairing(tx, replaceID, user, session); err != nil {
 			return err
+		}
+		if previous == "pending" {
+			if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: "pairing.revoked", Origin: "account", ActorID: user, TargetType: "pairing", TargetID: replaceID, Outcome: "succeeded"}); err != nil {
+				return err
+			}
 		}
 	}
 	full, err := authCountAtLeast(tx, "pairings", user, MaxAuthPairingsPerUser)
@@ -301,6 +390,9 @@ func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session str
 	if !time.Now().Before(parentExpiry) {
 		return sql.ErrNoRows
 	}
+	if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: "pairing.created", Origin: "account", ActorID: user, TargetType: "pairing", TargetID: id, Outcome: "succeeded"}); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -335,8 +427,20 @@ func (q *Queries) CancelPairing(id, user, session string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if _, err = tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, user); err != nil {
+		return err
+	}
+	var previous string
+	if err = tx.QueryRow(`SELECT status FROM pairings WHERE id=? AND user_id=? AND session_id=?`, id, user, session).Scan(&previous); err != nil {
+		return err
+	}
 	if err := cancelPairing(tx, id, user, session); err != nil {
 		return err
+	}
+	if previous == "pending" {
+		if err = q.AppendRecoverySecurityEvent(tx, SecurityEvent{Kind: "pairing.revoked", Origin: "account", ActorID: user, TargetType: "pairing", TargetID: id, Outcome: "succeeded"}); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -346,9 +450,9 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 		return nil, err
 	}
 	defer tx.Rollback()
-	var user, parentSession string
+	var user, parentSession, pairingID string
 	var expiry time.Time
-	err = tx.QueryRow(`UPDATE pairings SET status='connected',device_name=? WHERE code_hash=? AND status='pending' RETURNING user_id,session_id,expires_at`, s.DeviceName, hash).Scan(&user, &parentSession, &expiry)
+	err = tx.QueryRow(`UPDATE pairings SET status='connected',device_name=? WHERE code_hash=? AND status='pending' RETURNING user_id,session_id,expires_at,id`, s.DeviceName, hash).Scan(&user, &parentSession, &expiry, &pairingID)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +481,9 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 	}
 	_, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, s.ID, u.ID, tokenHash, s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC())
 	if err != nil {
+		return nil, err
+	}
+	if err = q.AppendSecurityEvent(tx, SecurityEvent{Kind: "pairing.redeemed", Origin: "account", ActorID: user, TargetType: "pairing", TargetID: pairingID, Outcome: "succeeded"}); err != nil {
 		return nil, err
 	}
 	return u, tx.Commit()
