@@ -396,6 +396,11 @@ enum GuestFiles {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Presentation only; do not rewrite authenticated manifests or persisted resume identity.
+    static func displayName(_ name: String) -> String {
+        (try? filename(name)) ?? "File"
+    }
+
     static func filename(_ name: String) throws -> String {
         try ManifestValidator.shared.safeFilename(name: name)
     }

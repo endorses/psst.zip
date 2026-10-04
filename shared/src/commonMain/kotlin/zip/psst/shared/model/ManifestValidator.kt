@@ -96,6 +96,8 @@ object ManifestValidator {
                     if (
                         it.code < 32 ||
                             it.code in 127..159 ||
+                            it.code == 0x061C ||
+                            it.code in 0x200E..0x200F ||
                             it.code in 0x202A..0x202E ||
                             it.code in 0x2066..0x2069 ||
                             it in ":*?\"<>|"

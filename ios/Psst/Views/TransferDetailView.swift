@@ -40,7 +40,7 @@ struct TransferDetailView: View {
                 if let vm = receiveViewModel {
                     receiveStatus(vm)
                     if let record = vm.record {
-                        Text(record.displayTitle).font(.headline)
+                        Text(record.safeDisplayTitle).font(.headline)
                         if !record.canDecryptInbox {
                             Text("This device has no private receive key. Save the files on the device that created this link. You can still revoke the link from History.").font(
                                 .footnote)
@@ -111,7 +111,7 @@ struct TransferDetailView: View {
                                 Button {
                                     preview = url
                                 } label: {
-                                    Label(url.lastPathComponent, systemImage: "doc").lineLimit(2).frame(minHeight: 44)
+                                    Label(GuestFiles.displayName(url.lastPathComponent), systemImage: "doc").lineLimit(2).frame(minHeight: 44)
                                 }.accessibilityHint("Open file")
                                 Spacer()
                                 ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Export file")

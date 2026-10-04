@@ -43,6 +43,7 @@ async function setup(page: Page) {
       return route.fulfill({
         json: {
           id: transfer,
+          status: "complete",
           file_count: 1,
           total_size: 60,
           expires_at: "2099-01-01T00:00:00Z",

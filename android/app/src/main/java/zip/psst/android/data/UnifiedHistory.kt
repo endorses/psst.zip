@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.shared.model.ManifestValidator
+
 /** A presentation projection only. Account and local stores remain independent. */
 sealed interface HistoryRow {
     val key: String
@@ -32,9 +34,14 @@ fun unifiedHistory(
         }
         .sortedWith(compareByDescending<HistoryRow> { it.createdAt }.thenBy { it.key })
 
+/** Display only: persisted manifest names remain untouched for authentication and resume checks. */
+internal fun receivedFilenameLabel(name: String): String =
+    runCatching { ManifestValidator.safeFilename(name) }.getOrDefault("File")
+
 internal fun automaticHistoryTitle(firstName: String?, count: Int): String? =
     firstName?.let {
-        if (count > 1) "$it + ${count - 1} ${if (count == 2) "file" else "files"}" else it
+        val name = receivedFilenameLabel(it)
+        if (count > 1) "$name + ${count - 1} ${if (count == 2) "file" else "files"}" else name
     }
 
 internal fun historyTitle(entry: TransferHistoryEntity): String =

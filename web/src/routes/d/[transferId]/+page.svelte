@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TrafficLimitError, trafficLimitError, detectTransferStop } from "$lib/traffic-policy";
+  import { TrafficLimitError, detectTransferStop } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
   import { beforeNavigate } from "$app/navigation";
   import { BRAND } from "$lib/brand";
@@ -11,13 +11,13 @@
     getSlotTransferMembership,
     downloadManifest,
     acknowledgeDownload,
+    responseError,
     type TransferInfo,
   } from "$lib/api";
   import { accountRequest, type User } from "$lib/account";
-  import { TransferStateError, transferStateError } from "$lib/incident-state";
+  import { TransferStateError } from "$lib/incident-state";
   import { loadReceiveKey } from "$lib/receive-keys";
   import { decodeReceiveEnvelope, openSubmissionKey } from "$lib/receive-crypto";
-  import { wireSize } from "$lib/chunked-files";
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
   import { zipSync } from "fflate";
 
@@ -26,6 +26,8 @@
   import { decryptFileStream } from "$lib/chunked-files";
   import { createSaveSink, cleanAbandonedDownloads, LARGE_SAVE_MESSAGE } from "$lib/file-save";
   import { safeFilename, zipEntryName } from "$lib/filenames";
+  import { validateDownload } from "$lib/download-validation";
+  import { DESTINATION_SPACE_NOTICE, ReceiveStorageError } from "$lib/recipient-policy";
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
@@ -101,8 +103,8 @@
           if (disposed) return;
           if (membership.recipient_public_key !== (await exportKey(pair.publicKey)))
             throw new Error("This file does not match the expected inbox.");
-          transferInfo = await getTransferInfo(transferId);
-          const encryptedManifestData = await downloadManifest(transferId);
+          transferInfo = await getTransferInfo(transferId, loadController.signal);
+          const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
           const envelope = decodeReceiveEnvelope(new Uint8Array(encryptedManifestData));
           const key = await openSubmissionKey(
             pair.privateKey,
@@ -121,16 +123,11 @@
           pair.privateKey.fill(0);
         }
       } else {
-        transferInfo = await getTransferInfo(transferId);
-        const encryptedManifestData = await downloadManifest(transferId);
+        transferInfo = await getTransferInfo(transferId, loadController.signal);
+        const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
         manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
       }
-      if (
-        transferInfo.file_count !== manifest.files.length ||
-        transferInfo.total_size !==
-          manifest.files.reduce((sum, file) => sum + wireSize(file.size), 0)
-      )
-        throw new Error("Manifest size mismatch");
+      validateDownload(transferInfo, transferId, manifest);
       status = "ready";
     } catch (err) {
       status = "error";
@@ -206,20 +203,11 @@
       const response = await fetch(`/api/v1/transfers/${transferId}/files/${entry.blob_id}`, {
         signal,
         credentials: "same-origin",
+        redirect: "error",
+        cache: "no-store",
       });
       if (!response.ok || !response.body) {
-        const failure = await response.json().catch(() => null);
-        const stopped =
-          trafficLimitError(
-            failure?.code ?? response.headers.get("X-Psst-Error-Code"),
-            failure?.retry_at ?? response.headers.get("X-Psst-Retry-At"),
-          ) ?? transferStateError(failure?.code ?? response.headers.get("X-Psst-Error-Code"));
-        if (stopped) throw stopped;
-        if (failure?.code === "download_limit")
-          throw new Error(
-            "This file's download allowance is exhausted. Ask the sender for a new link.",
-          );
-        throw new Error("Could not download file");
+        throw await responseError(response, signal);
       }
       yield* decryptFileStream(key, entry, response.body, signal);
     } catch (cause) {
@@ -234,7 +222,14 @@
         cause
       );
     } finally {
-      transferInfo = await getTransferInfo(transferId).catch(() => transferInfo);
+      if (!signal.aborted) {
+        transferInfo = await getTransferInfo(transferId, signal)
+          .then((fresh) => {
+            if (manifest) validateDownload(fresh, transferId, manifest);
+            return fresh;
+          })
+          .catch(() => transferInfo);
+      }
     }
   }
 
@@ -246,7 +241,7 @@
     try {
       assertFileSize(entry.size);
       downloadProgress = { ...downloadProgress, [entry.blob_id]: 0 };
-      sink = await createSaveSink(entry);
+      sink = await createSaveSink(entry, signal);
       signal.throwIfAborted();
       let saved = 0;
       for await (const chunk of downloadChunks(entry, signal)) {
@@ -273,6 +268,7 @@
         err instanceof Error &&
         (err instanceof TrafficLimitError ||
           err instanceof TransferStateError ||
+          err instanceof ReceiveStorageError ||
           err.message === LARGE_SAVE_MESSAGE ||
           err.message.includes("download allowance is exhausted"))
           ? err.message
@@ -366,6 +362,7 @@
       {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
       {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
     </p>
+    <p class="muted small">{DESTINATION_SPACE_NOTICE}</p>
     {#if transferInfo?.max_downloads}<p class="muted small">
         Each file permits {transferInfo.max_downloads} download attempts. Interrupted downloads and retries
         count.

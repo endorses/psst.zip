@@ -22,40 +22,69 @@ export type { SlotAvailability } from "./guest-capacity.ts";
 
 const API_BASE = "/api/v1";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
-  if (!res.ok) {
-    const error = await res
-      .clone()
-      .json()
-      .catch(() => null);
-    const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
-    const policyError =
-      trafficLimitError(code, error?.retry_at ?? res.headers.get("X-Psst-Retry-At")) ??
-      transferStateError(code) ??
-      resourceLimitError(code);
-    if (policyError) throw policyError;
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${text}`);
+function controlSignal(signal?: AbortSignal | null): AbortSignal {
+  const timeout = AbortSignal.timeout(10_000);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+/** Read an error only once, with a small bound; never render a raw server body. */
+export async function responseError(res: Response, signal?: AbortSignal | null): Promise<Error> {
+  let value: { code?: unknown; retry_at?: unknown } | null = null;
+  const boundedSignal = controlSignal(signal);
+  try {
+    value = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        await readBounded(res, 4096, undefined, boundedSignal),
+      ),
+    );
+  } catch {
+    boundedSignal.throwIfAborted();
   }
-  return res.json() as Promise<T>;
+  return (
+    trafficLimitError(
+      value?.code ?? res.headers.get("X-Psst-Error-Code"),
+      value?.retry_at ?? res.headers.get("X-Psst-Retry-At"),
+    ) ??
+    transferStateError(value?.code ?? res.headers.get("X-Psst-Error-Code")) ??
+    resourceLimitError(value?.code ?? res.headers.get("X-Psst-Error-Code")) ??
+    new Error(
+      value?.code === "download_limit"
+        ? "download_limit: This file's download allowance is exhausted. Ask the sender for a new link."
+        : value?.code === "receive_file_limit"
+          ? "receive_file_limit: This link cannot accept more files."
+          : `API ${res.status}`,
+    )
+  );
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const signal = controlSignal(init?.signal);
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    ...init,
+    signal,
+  });
+  if (!res.ok) {
+    throw await responseError(res, signal);
+  }
+  return JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(
+      await readBounded(res, 128 * 1024, undefined, signal),
+    ),
+  ) as T;
 }
 
 async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    ...init,
+  });
   if (!res.ok) {
-    const error = await res
-      .clone()
-      .json()
-      .catch(() => null);
-    const code = error?.code ?? res.headers.get("X-Psst-Error-Code");
-    const policyError =
-      trafficLimitError(code, error?.retry_at ?? res.headers.get("X-Psst-Retry-At")) ??
-      transferStateError(code) ??
-      resourceLimitError(code);
-    if (policyError) throw policyError;
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${res.status}: ${text}`);
+    throw await responseError(res, init?.signal);
   }
   return res;
 }
@@ -102,16 +131,26 @@ export async function completeTransfer(transferId: string, token?: string): Prom
 
 export interface TransferInfo {
   id: string;
+  status: string;
   file_count: number;
   total_size: number;
   expires_at: string;
   downloaded_at: string | null;
   max_downloads?: number;
-  files?: { id: string; download_count: number; remaining_downloads: number | null }[];
+  files?: {
+    id: string;
+    size: number;
+    download_count?: number | null;
+    remaining_downloads?: number | null;
+  }[];
 }
 
-export async function getTransferInfo(transferId: string): Promise<TransferInfo> {
-  return request<TransferInfo>(`/transfers/${transferId}`);
+export async function getTransferInfo(
+  transferId: string,
+  signal?: AbortSignal,
+): Promise<TransferInfo> {
+  if (!inboxUUID.test(transferId)) throw new Error("Invalid transfer ID");
+  return request<TransferInfo>(`/transfers/${transferId}`, { signal });
 }
 
 /** Confirm client-side decryption and browser handoff, not a completed disk save. */
@@ -122,15 +161,28 @@ export async function acknowledgeDownload(transferId: string): Promise<void> {
   });
 }
 
-export async function downloadManifest(transferId: string): Promise<ArrayBuffer> {
+export async function downloadManifest(
+  transferId: string,
+  signal?: AbortSignal,
+): Promise<ArrayBuffer> {
+  const boundedSignal = controlSignal(signal);
   try {
-    const res = await requestRaw(`/transfers/${transferId}/manifest`);
-    return await readBounded(res, 1024 * 1024);
+    const res = await requestRaw(`/transfers/${transferId}/manifest`, { signal: boundedSignal });
+    return await readBounded(res, 1024 * 1024, undefined, boundedSignal);
   } catch (cause) {
-    if (cause instanceof TrafficLimitError || cause instanceof TransferStateError) throw cause;
+    if (
+      cause instanceof TrafficLimitError ||
+      cause instanceof TransferStateError ||
+      boundedSignal.aborted
+    )
+      throw cause;
     throw (
-      (await detectTransferStop(`/transfers/${transferId}`, undefined, undefined, "download")) ??
-      cause
+      (await detectTransferStop(
+        `/transfers/${transferId}`,
+        undefined,
+        boundedSignal,
+        "download",
+      )) ?? cause
     );
   }
 }
@@ -299,14 +351,21 @@ async function readBounded(
   response: Response,
   limit = wireSize(MAX_BUFFERED_BYTES),
   onProgress?: (bytes: number) => void,
+  signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Empty response body");
   const chunks: Uint8Array[] = [];
   let size = 0;
+  const cancel = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
   try {
     while (true) {
+      signal?.throwIfAborted();
       const { done, value } = await reader.read();
+      signal?.throwIfAborted();
       if (done) break;
       size += value.byteLength;
       onProgress?.(size);
@@ -314,7 +373,8 @@ async function readBounded(
       chunks.push(value);
     }
   } finally {
-    await reader.cancel();
+    signal?.removeEventListener("abort", cancel);
+    cancel();
     reader.releaseLock();
   }
   const result = new Uint8Array(size);

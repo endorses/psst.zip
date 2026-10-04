@@ -7,6 +7,7 @@
 
 import { gcm } from "@noble/ciphers/aes.js";
 import { uniqueFilenames } from "./filenames.ts";
+import { MAX_RECEIVE_TOTAL_BYTES } from "./recipient-policy.ts";
 
 const ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
@@ -187,6 +188,11 @@ export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Pr
     )
   )
     throw new Error("Invalid file manifest");
+  let total = 0;
+  for (const file of manifest.files) {
+    if (file.size > MAX_RECEIVE_TOTAL_BYTES - total) throw new Error("Invalid file manifest");
+    total += file.size;
+  }
   const names = uniqueFilenames(manifest.files.map((file) => file.name));
   return {
     ...manifest,

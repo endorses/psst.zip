@@ -37,6 +37,17 @@ final class GuestDownloadTests: XCTestCase {
         XCTAssertFalse(restored.receiptPending)
     }
 
+    func testDisplayNamesRemoveDirectionControlsWithoutRewritingStoredNames() {
+        let raw = "photo\u{061C}\u{200E}\u{200F}\u{202E}jpg.exe"
+        var entry = record()
+        entry.files[0].name = raw
+        XCTAssertEqual(GuestFiles.displayName(entry.files[0].name), "photo____jpg.exe")
+        XCTAssertEqual(entry.files[0].name, raw)
+        XCTAssertEqual(GuestFiles.displayName("../unsafe.exe"), "File")
+        XCTAssertEqual(GuestFiles.displayName(""), "File")
+        XCTAssertEqual(GuestFiles.displayName("صورة.jpg"), "صورة.jpg")
+    }
+
     func testOriginIsPartOfLocalIdentity() {
         XCTAssertNotEqual(GuestDownload.identity(origin: "http://one.example", transferID: "same"), GuestDownload.identity(origin: "http://two.example", transferID: "same"))
         XCTAssertEqual(GuestDownload.identity(origin: "http://one.example", transferID: "same"), GuestDownload.identity(origin: "http://one.example", transferID: "same"))

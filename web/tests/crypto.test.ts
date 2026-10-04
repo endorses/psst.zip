@@ -186,3 +186,38 @@ test("manifest rejects reused encryption context across different blobs", async 
   });
   await assert.rejects(decryptManifest(key, encrypted), /Invalid file manifest/);
 });
+
+test("authenticated manifests respect the aggregate 1 TiB recipient ceiling", async () => {
+  const key = await generateKey();
+  const entry = {
+    name: "large.bin",
+    size: 1024 ** 4,
+    mime_type: "application/octet-stream",
+    blob_id: "12345678-1234-1234-1234-123456789012",
+    encoding: "chunked-v1" as const,
+    chunk_size: 4194304 as const,
+    encryption_id: "ab".repeat(16),
+  };
+  assert.equal(
+    (await decryptManifest(key, await encryptManifest(key, { files: [entry] }))).files[0].size,
+    entry.size,
+  );
+  await assert.rejects(
+    decryptManifest(
+      key,
+      await encryptManifest(key, {
+        files: [
+          entry,
+          {
+            ...entry,
+            name: "extra.bin",
+            size: 1,
+            blob_id: "12345678-1234-1234-1234-123456789013",
+            encryption_id: "cd".repeat(16),
+          },
+        ],
+      }),
+    ),
+    /Invalid file manifest/,
+  );
+});

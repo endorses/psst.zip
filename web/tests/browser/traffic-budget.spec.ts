@@ -233,6 +233,7 @@ for (const code of [
       route.fulfill({
         json: {
           id,
+          status: "complete",
           file_count: 2,
           total_size: 2 * wireSize(3),
           expires_at: "2099-01-01T00:00:00Z",

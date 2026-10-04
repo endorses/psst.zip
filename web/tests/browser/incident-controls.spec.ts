@@ -149,10 +149,11 @@ test("a paused public download stays loginless and makes only the user-requested
     route.fulfill({
       json: {
         id,
+        status: "complete",
         file_count: 1,
         total_size: wireSize(3),
         expires_at: "2030-01-01T00:00:00Z",
-        files: [{ id: file, download_count: 0, remaining_downloads: 2 }],
+        files: [{ id: file, size: wireSize(3), download_count: 0, remaining_downloads: 2 }],
         max_downloads: 2,
       },
     }),

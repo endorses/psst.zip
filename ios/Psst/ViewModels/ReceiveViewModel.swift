@@ -411,7 +411,7 @@ final class ReceiveViewModel {
                     } else {
                         try FileManager.default.moveItem(at: temporary, to: destination)
                     }
-                    entry = try historyStore.saveReceivedFile(parent: entry, transferID: transferID, blobID: file.blobId, path: relative, size: file.size, title: file.name)
+                    entry = try historyStore.saveReceivedFile(parent: entry, transferID: transferID, blobID: file.blobId, path: relative, size: file.size, title: basename)
                     record = entry
                     try reloadCheckpoint(entry, transferID: transferID)
                 }

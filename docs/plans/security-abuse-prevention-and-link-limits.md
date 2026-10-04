@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Indexed local history, guest retry queues, inbox checkpoints and streaming recovery of growing legacy collections now have implementation evidence below; oversized-source engine/device verification and native validation remain open. Work still includes complete native/provider protocol validation and deployment/client verification; bounded independent source reviews are recorded below. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
+Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Indexed local history, guest retry queues, inbox checkpoints and streaming recovery of growing legacy collections now have implementation evidence below; oversized-source engine/device verification and native validation remain open. Work still includes complete native/provider protocol validation and deployment/client verification; bounded independent source reviews are recorded below. Bounded account-history queries and explicit server-page navigation now have checkpoint evidence below. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. The recipient checkpoint records bounded browser control reads, manifest/metadata cross-checks, OPFS staging/handoff quota checks and safe mobile display names. Do not treat these intermediate checkpoints as a security-hardened public release.
 
 Protect self-hosted operators and recipients from confidentiality failures, resource exhaustion, unexpected traffic costs, compromised accounts and malicious submissions. Include optional per-link download/receive limits across web, Android and iOS, including sending through the iOS share extension. Preserve straightforward default workflows, public standalone download links, public receive submission, administrator-only management accounts, chunked encryption, configurable maximum file size and delivery acknowledgements. A public receive link grants submission access, not permission to read other submissions.
 
@@ -171,7 +171,12 @@ End-to-end encryption prevents server inspection of honest ciphertext. A custom 
 
 ## 7. Recipient safeguards for hostile links and files
 
-Native scan-to-download currently starts streaming after a manifest is read; the format supports up to 100 files with very large per-file ceilings. A hostile external server is not constrained by the recipient's own configured server upload limit. Web filenames currently retain bidirectional controls that native filename sanitization already strips.
+Recipient policy must apply independently of a scanned server's upload settings.
+The implemented native preflight and browser validation use a 1 TiB aggregate
+ceiling; native receiving above 100 MiB requires consent and storage checks retain
+256 MiB. The recipient checkpoint below records the bounded reads, browser quota
+checks and filename corrections. Unchecked items still require their full
+cross-client/device verification before release.
 
 - [ ] Validate the complete manifest before file retrieval: bound manifest bytes, count, per-file/aggregate size with overflow-safe arithmetic, framing overhead and expected resource IDs. Do not trust declared sizes alone; enforce cumulative actual bytes during download/decryption and reject mismatches before publishing files.
 - [ ] Add total-download preflight, available-device-space checks and a free-space reserve on Android/iOS and applicable browser save paths. Account for temporary copies and ZIP overhead. Use conservative behavior and a clear message where the browser cannot reliably inspect destination free space.
@@ -1178,3 +1183,77 @@ and iOS guest storage/queues still need bounded local reads and writes.
       publicly trusted certificate issuance, provider billing protection or an
       operator's actual backup. The running development instance is unchanged;
       the full plan remains open.
+
+### Recipient validation, cancellation and storage checkpoint, 2026-10-05
+
+- [x] Bound browser transfer metadata to 128 KiB, encrypted manifests to 1 MiB,
+      and error bodies to 4 KiB. Read errors once without copying or rendering raw
+      server text. Apply 10-second control deadlines, redirect rejection and
+      caller cancellation; retain useful known traffic, incident, resource and
+      per-link limit errors. Do not apply this short total deadline to file IO.
+- [x] Validate the browser's complete authenticated file list against transfer
+      identity/status, count, encrypted total and exact per-file ID/size metadata
+      before file retrieval. Validate known policy/counter ranges while keeping
+      absent additive counters unknown. Align the aggregate plaintext ceiling
+      with the native 1 TiB policy instead of permitting 100 separate 1 TiB files.
+- [x] Add conservative OPFS preflight and repeated quota checks. Require valid
+      known origin quota/usage, 256 MiB reserve, remaining staging writes and a
+      full-file handoff copy. Charge staged bytes that estimates may omit.
+      Low/unknown quota refuses before payload retrieval; failed writes cannot
+      publish incomplete data. Document that origin quota is not physical free
+      space in the download folder and give picker/Blob users honest guidance.
+- [x] Enforce exact plaintext length at every save sink. Cancelled downloads skip
+      the final metadata refresh; active refreshes and storage estimates accept
+      cancellation. Recheck cancellation after OPFS close and Blob retrieval so
+      a cancelled commit cannot hand off a file. Abort removes temporary output
+      while preserving verified saved files and independent receipt retries.
+- [x] Resolve all three findings from one bounded read-only delta review:
+      missing optional counters remain unknown, late quota checks retain the
+      entire handoff copy, and cancellation during writer close suppresses
+      handoff and removes committed temporary output. Dedicated regressions
+      cover limited/unlimited absent counters, 192 MiB staged with only 8 MiB
+      remaining, an estimate that still reports zero staged usage, and Cancel
+      while close is pending. No further broad review was opened for this delta.
+- [x] Run final web `npm test`: 91/91 pass without failures or skips. Run
+      `npm run check`: zero errors/warnings; `npm run build`: production static
+      output succeeds (6.23 s). The final focused browser run with
+      `PSST_TEST_BACKEND_PORT=18763 PSST_TEST_BACKEND_URL=http://127.0.0.1:18763 node_modules/.bin/playwright test tests/browser/download-ack.spec.ts tests/browser/large-file.spec.ts`
+      passes 19/19 (28.9 s). It covers hostile metadata/aggregate limits without
+      file requests, stalled-refresh cancellation, quota rejection and a real
+      101 MiB + 17 byte streamed OPFS download with a matching hash. The inspected
+      360 px storage-error screenshot has no horizontal overflow.
+- [x] Run the affected actual-backend/inbox/incident/traffic browser set:
+      `node_modules/.bin/playwright test tests/browser/large-file.spec.ts tests/browser/slot-membership.spec.ts tests/browser/incident-controls.spec.ts tests/browser/traffic-budget.spec.ts tests/browser/receive-confidentiality.spec.ts`
+      with the same isolated backend environment: 20/20 pass (38.9 s).
+      Legitimate two-sender inbox decryption, exact membership, upload-limit
+      changes, traffic interruption and tus resume continue to work. Fixtures
+      now contain the complete-transfer metadata fields already sent by the
+      backend; no production backend contract changed in this checkpoint.
+- [x] Add `docs/security/recipient-safeguards.md`, linked from README, with the
+      numeric profile, actual-byte/framing enforcement, browser quota versus
+      destination-space boundary, temporary-copy requirements, safe naming,
+      explicit Open/Share, retry/receipt semantics and anonymous-origin policy.
+- [x] Extend the shared sanitizer to U+061C/U+200E/U+200F as well as the existing
+      direction/control ranges. Android scan/detail/automatic-history labels and
+      iOS guest/detail/automatic-history/saved-path labels use safe display names,
+      including legacy records. New iOS owner history titles use the actual safe
+      basename. Preserve raw authenticated manifests, consent/resume identity,
+      stored paths and custom link titles; no migration silently rewrites them.
+      Regressions preserve meaningful Arabic names, expose misleading hidden
+      extensions and keep invalid legacy names from crashing presentation.
+- [x] Run final
+      `JAVA_HOME=/opt/android-studio/jbr ./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug --offline --no-daemon`:
+      shared 146/146 and Android 128/128 pass with zero failures/errors/skips;
+      debug APK builds. `python3 ios/scripts/test_guest_store.py` passes 13/13
+      portable storage tests and compiles the new guest display helper, verifying
+      storage compatibility rather than native UI behavior. All seven changed
+      Swift files pass compiler syntax parsing and
+      `python3 ios/scripts/check_sources.py` passes. Added native display/title
+      XCTest cases remain explicitly unrun without macOS; they are not included in the
+      portable 13-test result. Kotlin/Swift/Prettier formatting and diff checks
+      pass; task-specific temporary formatter/harness caches are removed.
+- [ ] Complete native iOS app/share-extension builds and the two new display
+      XCTest cases, physical/older Android, low-storage/background/process-termination
+      flows, public ACME and the remaining full-plan release gates. Browser and
+      JVM/source checks do not prove native runtime behavior; the development
+      deployment is unchanged and the full plan remains open.

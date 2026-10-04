@@ -12,13 +12,16 @@ async function prepareDownload(
     wrongSize?: number;
     failedFile?: number;
     failAcknowledgment?: boolean;
+    metadata?: Record<string, unknown>;
+    size?: number;
+    stallRefresh?: boolean;
   } = {},
 ) {
   const id = randomUUID();
   const key = await generateKey();
   const files = Array.from({ length: options.count ?? 2 }, (_, index) => ({
     name: `file-${index}.txt`,
-    size: 6,
+    size: options.size ?? 6,
     mime_type: "text/plain",
     encoding: "chunked-v1" as const,
     chunk_size: 4194304 as const,
@@ -29,19 +32,31 @@ async function prepareDownload(
   let acknowledgments = 0;
   let blobRequests = 0;
   let downloads = 0;
+  let metadataRequests = 0;
   page.on("download", () => downloads++);
 
   const api = `**/api/v1/transfers/${id}`;
-  await page.route(api, (route) =>
-    route.fulfill({
+  await page.route(api, (route) => {
+    metadataRequests++;
+    if (options.stallRefresh && metadataRequests > 1) return;
+    return route.fulfill({
       json: {
         id,
+        status: "complete",
         file_count: files.length,
-        total_size: files.length * wireSize(6),
+        total_size: files.length * wireSize(options.size ?? 6),
         downloaded_at: null,
+        max_downloads: 0,
+        files: files.map((file) => ({
+          id: file.blob_id,
+          size: wireSize(options.size ?? 6),
+          download_count: 0,
+          remaining_downloads: null,
+        })),
+        ...options.metadata,
       },
-    }),
-  );
+    });
+  });
   await page.route(`${api}/manifest`, async (route) =>
     route.fulfill({ body: Buffer.from(await encryptManifest(key, { files })) }),
   );
@@ -79,8 +94,57 @@ async function prepareDownload(
     acknowledgments: () => acknowledgments,
     blobRequests: () => blobRequests,
     downloads: () => downloads,
+    metadataRequests: () => metadataRequests,
   };
 }
+
+test("insufficient OPFS quota prevents a large file request and explains destination-space limits", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: {
+        estimate: async () => ({ quota: 256 * 1024 * 1024, usage: 0 }),
+        getDirectory: async () => {
+          throw new Error("Preflight must run first");
+        },
+      },
+    });
+  });
+  const transfer = await prepareDownload(page, { count: 1, size: 26 * 1024 * 1024 });
+  await expect(page.getByText(/cannot check free space in your download folder/)).toBeVisible();
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Not enough browser storage");
+  await page.screenshot({ path: testInfo.outputPath("recipient-storage.png"), fullPage: true });
+  expect(transfer.blobRequests()).toBe(0);
+  expect(transfer.downloads()).toBe(0);
+});
+
+test("a valid encrypted manifest above the aggregate ceiling never fetches file bodies", async ({
+  page,
+}) => {
+  const transfer = await prepareDownload(page, { count: 2, size: 1024 ** 4 });
+  await expect(page.getByRole("heading", { name: "Cannot open files" })).toBeVisible();
+  expect(transfer.blobRequests()).toBe(0);
+  expect(transfer.downloads()).toBe(0);
+  expect(transfer.acknowledgments()).toBe(0);
+});
+
+test("Cancel saving does not wait for a stalled post-download metadata refresh", async ({
+  page,
+}) => {
+  const transfer = await prepareDownload(page, { count: 1, stallRefresh: true });
+  await page.getByRole("button", { name: "Save file", exact: true }).click();
+  await expect.poll(transfer.metadataRequests).toBe(2);
+  await page.getByRole("button", { name: "Cancel saving" }).click();
+  await expect(page.getByRole("alert")).toContainText("Saving stopped");
+  await expect(page.getByRole("button", { name: "Save file", exact: true })).toBeEnabled();
+  expect(transfer.downloads()).toBe(0);
+  expect(transfer.acknowledgments()).toBe(0);
+});
 
 async function downloadIndividual(page: Page, index: number) {
   const button = page.locator(".file-list li").nth(index).getByRole("button");
@@ -185,3 +249,28 @@ test("failed browser handoff never acknowledges decrypted files", async ({ page 
   expect(transfer.acknowledgments()).toBe(0);
   expect(transfer.downloads()).toBe(0);
 });
+
+for (const metadata of [
+  { id: "00000000-0000-0000-0000-000000000000" },
+  { status: "pending" },
+  { files: [] },
+  {
+    files: [
+      {
+        id: "00000000-0000-0000-0000-000000000000",
+        size: wireSize(6),
+        download_count: 0,
+        remaining_downloads: null,
+      },
+    ],
+  },
+  { max_downloads: -1 },
+]) {
+  test(`hostile metadata ${JSON.stringify(metadata)} never fetches a file`, async ({ page }) => {
+    const transfer = await prepareDownload(page, { count: 1, metadata });
+    await expect(page.getByRole("heading", { name: "Cannot open files" })).toBeVisible();
+    expect(transfer.blobRequests()).toBe(0);
+    expect(transfer.downloads()).toBe(0);
+    expect(transfer.acknowledgments()).toBe(0);
+  });
+}

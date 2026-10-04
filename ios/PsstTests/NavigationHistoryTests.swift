@@ -67,6 +67,17 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(record.displayTitle, "夏の写真📷.jpeg + 3 files")
     }
 
+    func testLegacyReceivedTitleIsSanitizedOnlyForDisplayAndCustomLabelIsPreserved() {
+        var record = owned("received", slot: true)
+        record.title = "photo\u{061C}\u{200E}\u{200F}\u{202E}jpg.exe"
+        record.fileCount = 2
+        let original = record.title
+        XCTAssertEqual(record.safeDisplayTitle, "photo____jpg.exe + 1 files")
+        XCTAssertEqual(record.title, original)
+        record.customTitle = "My personal label"
+        XCTAssertEqual(record.safeDisplayTitle, "My personal label")
+    }
+
     func testPollingAndStaleCheckpointPreserveRenameAndClearByTypedAccountIdentity() {
         var refreshed = owned("same")
         refreshed.title = "notes.pdf"

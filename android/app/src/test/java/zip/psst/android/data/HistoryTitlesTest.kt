@@ -25,6 +25,20 @@ class HistoryTitlesTest {
     }
 
     @Test
+    fun untrustedManifestNamesAreSafeInHistoryAndDetailsWithoutChangingIdentity() {
+        val raw = "photo\u061C\u200E\u200F\u202Ejpg.exe"
+        val expected = "photo____jpg.exe"
+        assertEquals(expected, receivedFilenameLabel(raw))
+        assertEquals("$expected + 1 file", automaticHistoryTitle(raw, 2))
+        val record = entry.copy(automaticTitle = raw)
+        assertEquals("$expected + 3 files", historyTitle(record))
+        assertEquals(raw, record.automaticTitle)
+        assertEquals("File", receivedFilenameLabel("../unsafe.exe"))
+        assertEquals("File", receivedFilenameLabel(""))
+        assertEquals("صورة.jpg", receivedFilenameLabel("صورة.jpg"))
+    }
+
+    @Test
     fun refreshPreservesCustomAndAutomaticTitles() {
         val access = HistoryAccess(entry.serverUrl, "alice")
         val merged =

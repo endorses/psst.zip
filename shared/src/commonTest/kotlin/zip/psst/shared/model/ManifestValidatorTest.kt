@@ -20,6 +20,18 @@ class ManifestValidatorTest {
         )
 
     @Test
+    fun removesAllHiddenDirectionControlsBeforeDisplayAndSave() {
+        for (control in
+            listOf('\u061C', '\u200E', '\u200F', '\u202A', '\u202E', '\u2066', '\u2069')) {
+            assertEquals(
+                "photo_.jpg.exe",
+                ManifestValidator.safeFilename("photo${control}.jpg.exe"),
+            )
+        }
+        assertEquals("صورة.jpg", ManifestValidator.safeFilename("صورة.jpg"))
+    }
+
+    @Test
     fun perFilePoliciesMustMatchTheAuthenticatedManifest() {
         val manifest = Manifest(listOf(entry()))
         val file = TransferFile(id, 72, 1, 1)

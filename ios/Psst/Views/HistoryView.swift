@@ -107,8 +107,10 @@ struct HistoryView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Downloaded", systemImage: "arrow.down.doc").font(.caption)
-                                Text((record.files.first?.name ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(.headline)
-                                    .lineLimit(1).truncationMode(.middle)
+                                Text((record.files.first.map { GuestFiles.displayName($0.name) } ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(
+                                    .headline
+                                )
+                                .lineLimit(1).truncationMode(.middle)
                                 Text("\(record.files.count) files · " + ByteCountFormatter.string(fromByteCount: record.files.reduce(Int64(0)) { $0 + $1.size }, countStyle: .file))
                                     .font(.caption)
                                 Text(record.origin).font(.caption).lineLimit(2)
@@ -127,7 +129,7 @@ struct HistoryView: View {
                                     Text("Legacy item").font(.caption)
                                 }
                                 Label(record.isSlot == true ? "Receive link" : "Sent", systemImage: record.isSlot == true ? "tray.and.arrow.down" : "paperplane").font(.caption)
-                                Text(record.displayTitle).font(.headline).lineLimit(1).truncationMode(.middle).accessibilityLabel(record.displayTitle)
+                                Text(record.safeDisplayTitle).font(.headline).lineLimit(1).truncationMode(.middle).accessibilityLabel(record.safeDisplayTitle)
                                 Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.summary).font(.subheadline)
                                 Text(record.statusText).font(.caption)
@@ -331,7 +333,7 @@ private struct HistoryDetail: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        Text(current.displayTitle).font(.headline)
+                        Text(current.safeDisplayTitle).font(.headline)
                         Text(current.statusText)
                         if let link = current.fullLink {
                             LinkCard(url: link)
@@ -379,5 +381,15 @@ private struct HistoryDetail: View {
             }
         }
         .onDisappear { receive?.cancelSaving() }
+    }
+}
+
+/// Sanitize remotely supplied automatic names at presentation time, preserving local custom labels.
+extension TransferRecord {
+    var safeDisplayTitle: String {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
+        guard let title, !title.isEmpty else { return displayTitle }
+        let name = GuestFiles.displayName(title)
+        return fileCount > 1 ? name + " + \(fileCount - 1) files" : name
     }
 }

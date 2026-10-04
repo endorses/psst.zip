@@ -80,6 +80,11 @@ actions, neutral surfaces, and dark-on-white QR codes in both themes. Statuses
 also use text, including the distinction between files received by the server,
 files saved locally, and a recipient-confirmed download.
 
+[Recipient safeguards](docs/security/recipient-safeguards.md) document download
+preflight, filename handling, cancellation and storage boundaries. Browser
+storage quota checks do not guarantee free space in the destination folder;
+downloaded files stay inert until the recipient chooses to open them.
+
 ## Architecture
 
 ```

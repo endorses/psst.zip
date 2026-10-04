@@ -44,7 +44,7 @@ struct GuestDownloadDetail: View {
             ForEach(current.files) { file in
                 HStack {
                     VStack(alignment: .leading) {
-                        Text(file.name).lineLimit(2)
+                        Text(GuestFiles.displayName(file.name)).lineLimit(2)
                         if let remaining = current.remainingDownloads?[file.id] {
                             Text(remaining == 0 ? "Download limit reached" : "\(remaining) download attempts remaining").font(.caption).foregroundStyle(PsstTheme.secondary)
                         }
@@ -55,8 +55,8 @@ struct GuestDownloadDetail: View {
                             preview = url
                         } label: {
                             Image(systemName: "doc.viewfinder").frame(minWidth: 44, minHeight: 44)
-                        }.accessibilityLabel("Open " + file.name)
-                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Share " + file.name)
+                        }.accessibilityLabel("Open " + GuestFiles.displayName(file.name))
+                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Share " + GuestFiles.displayName(file.name))
                     } else {
                         Text("Not saved").font(.caption)
                     }

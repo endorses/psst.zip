@@ -27,6 +27,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.data.SavedGuestFile
+import zip.psst.android.data.receivedFilenameLabel
 import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.viewmodel.ScanViewModel
@@ -138,7 +139,7 @@ fun ScanScreen(
                     }
                 else Intent(Intent.ACTION_VIEW).setDataAndType(uri, file.mimeType)
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            intent.clipData = ClipData.newRawUri(file.name, uri)
+            intent.clipData = ClipData.newRawUri(receivedFilenameLabel(file.name), uri)
             context.startActivity(
                 if (share) Intent.createChooser(intent, "Share saved file") else intent
             )
@@ -223,7 +224,7 @@ fun ScanScreen(
                             if (state.fileAttempts.isNotEmpty())
                                 record?.files?.forEach { file ->
                                     Text(
-                                        "${file.name}: ${state.fileAttempts[file.blobId.lowercase()]?.toString() ?: "unknown"} download attempts remaining",
+                                        "${receivedFilenameLabel(file.name)}: ${state.fileAttempts[file.blobId.lowercase()]?.toString() ?: "unknown"} download attempts remaining",
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -237,7 +238,7 @@ fun ScanScreen(
                                         ),
                                 ) {
                                     Column(Modifier.padding(12.dp)) {
-                                        Text(file.name)
+                                        Text(receivedFilenameLabel(file.name))
                                         Row {
                                             TextButton(onClick = { openFile(file, false) }) {
                                                 Text("Open")
