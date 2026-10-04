@@ -6,8 +6,7 @@ Implemented across backend, web, shared client, Android and iOS, and deployed to
 the development server. The bounded closure review is complete with external
 validation deferrals: native iOS builds/XCTest and physical optical/accessibility
 checks remain pending. All discovered implementation issues were fixed and their
-focused checks passed. Unchecked items below retain those external checks and
-the final repository commit step.
+focused checks passed. Unchecked items below retain those external checks.
 
 This plan covers clearer transfer History, simpler mobile scanning, consistent narrow-screen web navigation, administration-only accounts, confirmed/mandatory password changes, persistent traffic accounting and an admin dashboard. It supersedes the earlier idea of giving admins an Overview page alongside Send, Receive and Scan: **administrators manage the service; regular accounts perform authenticated transfers**.
 
@@ -154,7 +153,7 @@ The dashboard uses non-secret operational metadata. Traffic and file-delivery co
 - [x] Run affected Go tests/race checks, shared and Android tests/build, web type-check/build and focused browser checks. Verify the initial-password journey through the actual API and role-specific landing/navigation behavior; mock-only UI checks are insufficient for authorization.
 - [ ] Exercise Android camera selection/recovery and password flows on an emulator where available. Build/test the iOS app and share extension on macOS using `ios/README.md`; run available source/configuration checks here and explicitly retain unrun Xcode/device checks.
 - [ ] Verify actual camera scanning and small-screen/enlarged-text accessibility on physical Android/iOS devices when available. Record unavailable optical, screen-reader and native checks separately from implemented behavior.
-- [ ] Update user/admin documentation and this plan with evidence, format changed files, remove task-owned temporary fixtures/caches, and commit implementation together with verified completion checkboxes. Do not mark external checks passed without running them.
+- [x] Update user/admin documentation and this plan with evidence, format changed files, remove task-owned temporary fixtures/caches, and commit implementation together with verified completion checkboxes. Do not mark external checks passed without running them.
 - [x] Follow the session's deployment authorization when implementation is ready. Preserve configured origins, ports, credentials and data; verify migration, role landing pages, public links and persisted counters after deployment.
 
 ## Completion criteria
@@ -236,3 +235,5 @@ Initialization-error retry is implemented and source-reviewed, but a camera
 initialization failure was not successfully fault-injected; verify that specific
 hardware error/retry path with the remaining device checks. Disposable emulator,
 API/web services and fixtures were stopped and cleaned after verification.
+
+Implementation and plan committed in `45ac65a`; this final documentation update records the verified commit step.
