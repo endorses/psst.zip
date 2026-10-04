@@ -102,6 +102,22 @@ The discovery timestamp records the last completed pass, not worker health or
 proof that storage is currently reconciled. Failed and busy counts are subsets
 of the pending total, not additional resources.
 
+A database-full error can occur after a payload was removed but before its
+metadata deletion commits. The server keeps the file/resource reservation
+charged and retains queued cleanup until a verified retry commits; physical
+absence alone does not authorize a refund. Restore database-volume headroom and
+retry cleanup rather than deleting SQLite files or resetting counters. If the
+database cannot persist an error update, the operation remains pending and its
+failure is logged without private paths. A readable pending status is not proof
+that the next write will succeed.
+
+The SQLite-full regression caps only a disposable database with
+`PRAGMA max_page_count`, makes SQLite itself reject a metadata write during
+cleanup, and verifies conservative reservations, durable failure/retry state,
+restart and eventual reclamation. It does not fill the host volume or establish
+behavior on every filesystem under physical ENOSPC; isolated volume-pressure
+and power-loss checks remain separate verification.
+
 These controls do not establish complete disk/database reconciliation after a
 crash, power loss, external filesystem changes or a restored backup. In
 particular, committed upload offsets are not proof that every physical byte is

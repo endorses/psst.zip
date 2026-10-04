@@ -83,7 +83,7 @@ Evidence: `api/helpers.go` decodes creation JSON without a size limit; slot-chil
 - [ ] Ensure one stalled/busy resource cannot block the whole cleanup sweep. Use bounded work, skip/retry semantics and observable cleanup backlog/oldest-pending age. Cancel expired or revoked in-flight work and reconcile partial disk/database state after crashes.
 - [ ] Limit active uploads, downloads, queued operations and event streams globally, per account, per link and per resolved client address where appropriate. Enforce caps at acquisition, release on every error/cancellation path, bound waiting queues and return useful retry information. Account for HTTP multiplexing rather than counting TCP connections alone.
 - [x] Authenticate inbox event streams, limit their lifetime/idle behavior and share lifecycle polling per inbox instead of per subscriber. Handle slow subscribers with bounded queues and disconnect them when necessary.
-- [ ] Add a bounded global admission guard before expensive authentication/database/body work, alongside endpoint-specific rate limits. Bound limiter cardinality and expire state without creating a memory exhaustion avenue through many client identities.
+- [x] Add a bounded global admission guard before expensive authentication/database/body work, alongside endpoint-specific rate limits. Bound limiter cardinality and expire state without creating a memory exhaustion avenue through many client identities.
 - [ ] Test oversized control bodies, slowly delivered bodies, disconnects, stalled readers, concurrent finalization/deletion, repeated SSE connections and expiry during upload using disposable data and bounded test loads. Verify unrelated transfers, administrative access and cleanup continue functioning; do not run exhaustion tests against the live development service.
 
 ## 3. Operator storage and retention budgets
@@ -147,7 +147,7 @@ off the requirements.
 The current login limiter uses the immediate peer address, so all users behind Caddy share one attempt bucket. The general limiter instead trusts arbitrary `X-Forwarded-For`. These approaches must be replaced by a consistent, tested trust boundary.
 
 - [x] Implement one canonical client-address resolver based on the socket peer and an explicit trusted-proxy allowlist. Parse/normalize the trusted chain consistently, including IPv6; ignore forwarded headers from untrusted peers. Never default to trusting all Internet addresses. Provide tested direct, bundled Caddy and external-proxy configuration examples.
-- [ ] Combine client-address and normalized-account login throttles with a global expensive-password-work concurrency cap. Distinguish login/pairing limits appropriately, keep error messages non-enumerating, and avoid permanent account lockouts or shared proxy buckets that let one attacker deny everyone service. Bound tracking memory and document distributed-attack limits.
+- [x] Combine client-address and normalized-account login throttles with a global expensive-password-work concurrency cap. Distinguish login/pairing limits appropriately, keep error messages non-enumerating, and avoid permanent account lockouts or shared proxy buckets that let one attacker deny everyone service. Bound tracking memory and document distributed-attack limits.
 - [ ] Preserve HttpOnly/Secure/SameSite cookies, same-origin mutation checks, hashed session/pairing secrets, mandatory temporary-password replacement and single-use expiring pairing codes. Add focused regression checks while changing admission/auth ordering.
 - [x] Add administrator second-factor support using maintained implementations, choosing and recording passkeys/WebAuthn or password-plus-TOTP before implementation. Prefer passkeys where deployment/origin compatibility permits; ensure a complete enrollment, verification, recovery and revocation flow rather than an unenforced UI switch. Surface incomplete setup prominently without silently locking existing administrators out during upgrade.
 - [x] Require recent authentication for high-impact actions such as changing authentication factors, operator budgets, emergency-stop policy and broad account revocation. Bound recovery attempts, hash recovery codes, make them single-use, and provide a documented local-operator recovery path that does not depend on an email service.
@@ -1257,3 +1257,48 @@ and iOS guest storage/queues still need bounded local reads and writes.
       flows, public ACME and the remaining full-plan release gates. Browser and
       JVM/source checks do not prove native runtime behavior; the development
       deployment is unchanged and the full plan remains open.
+
+### Layered admission and SQLite-full recovery checkpoint, 2026-10-05
+
+- [x] Resolve two concrete router verification gaps from a bounded read-only
+      mapping of remaining backend requirements. New tests use the production
+      router, real migrated database, actual account/session creation and trusted
+      client-address resolver. Account throttles cannot be reset by case,
+      whitespace or different resolved addresses; separate users can share a NAT
+      within its finite address allowance. Known/unknown failures have the same
+      body and do not issue sessions. Advancing only a depleted bucket's stored
+      clock verifies finite replenishment with the production limiter unchanged.
+- [x] Verify four admitted login bodies saturate the real password-work guard;
+      another request is rejected without a body read or a queued password job.
+      Authenticated administrator policy reads and health still succeed, and
+      subsequent login succeeds after release. This is bounded correctness
+      evidence, not a CPU/RSS/throughput benchmark or a distributed-DDoS guarantee.
+- [x] Verify the global application guard rejects before authentication/database
+      lookup and body reads through the actual router. A poisoned downstream
+      database reference/body would fail if the guard were misplaced. Recovery
+      health remains reachable during application saturation. Real router
+      cancellation, malformed JSON and deliberate panic tests exercise both
+      application and recovery lanes and release all request/password slots;
+      valid creation/login works afterward.
+- [x] Add a real SQLite `SQLITE_FULL` cleanup regression. Cap a disposable
+      database's page count and use a fixture trigger to force page allocation
+      inside its metadata-delete transaction; SQLite itself produces FULL, not
+      a replacement database or injected generic error. After verified physical
+      removal, failed metadata completion retains resource/file reservations,
+      durable failure state and queued work. Restart preserves that state; after
+      restoring page headroom, an explicit retry commits deletion and releases
+      the reservation/queue counters. No host or live volume is filled.
+- [x] Run final focused
+      `GOCACHE=<task-temporary-cache> go test -race ./internal/api ./internal/cleanup -run 'Test(LoginAccountThrottleAcrossResolvedAddresses|LoginThrottleNormalizationAndRecovery|LoginSharedNATAccountsAndNonEnumeratingFailures|LoginFloodPreservesControlResponsiveness|GlobalAdmissionRejectsBeforeAuthenticationAndBody|RequestAdmissionReleasesAfterCancellationAndPanic|CleanupSQLiteFullPreservesReservationsAndRecovers)$' -count=3 -timeout=90s`:
+      both packages pass (API 21.520 s, cleanup 3.879 s), including the two
+      application/recovery subcases. Format the tests with gofmt and document
+      actual throttle/admission defaults and database-full recovery boundaries
+      in administrator-authentication/resource-management guides. Production
+      code is unchanged; the existing implementation protections are verified.
+      Markdown formatting/diff checks pass and the task-specific Go cache is
+      removed.
+- [ ] Complete the separate isolated physical volume-pressure exercise; the
+      page-count test does not prove filesystem ENOSPC/WAL durability. Public ACME
+      and certificate-state restore, native iOS app/share-extension/device gates,
+      physical/older Android and the remaining full-plan requirements stay open.
+      The running development deployment is unchanged.

@@ -73,6 +73,33 @@ initiating session inside the same database transaction as the change. A request
 whose body was delayed until after session revocation cannot then commit a budget,
 pause, user-management or revocation change under that old authorization.
 
+## Sign-in throttling and admission
+
+Login and pairing redemption share a client-address bucket: ten initial attempts,
+then one replenished attempt every five seconds. The address is resolved using
+the explicit trusted-proxy policy; arbitrary forwarded headers are not client
+identities. Password login also has a separate bucket for the trimmed,
+case-insensitive account name: ten initial attempts, then one every thirty
+seconds. The server retains hashes of bounded account identifiers rather than
+raw names. A denial does not permanently lock the account, and changing addresses
+cannot reset its account bucket. Unknown accounts get the same authentication
+failure response as incorrect passwords for existing accounts.
+
+Users sharing a NAT have independent account buckets but share the address
+bucket. A busy shared address may therefore require a short wait. Distributed
+attacks against different accounts still require network/provider defenses;
+application throttles cannot guarantee control of their incoming traffic costs.
+
+At most four password-work requests are admitted concurrently, without a waiting
+queue. A saturated guard rejects before reading the login body and gives retry
+guidance. The broader request guard runs before authentication/database/body
+work. Its default 128 application slots and separate 32 recovery slots prevent
+public payload saturation from consuming every slot needed for sign-in,
+administration, revocation and health. These lanes are bounded too; they are not
+an unlimited bypass for administrative URLs. Errors, cancellation and panic
+release their admission slots. Tests exercise these properties through the
+production router; they do not establish a throughput guarantee for every host.
+
 ## Recover without email
 
 If your authenticator is unavailable, use your password and a saved recovery code
