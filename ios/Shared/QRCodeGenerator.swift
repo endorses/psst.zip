@@ -36,12 +36,12 @@ enum QRCodeGenerator {
             renderer.cgContext.interpolationQuality = .none
             UIImage(cgImage: image).draw(in: CGRect(x: 0, y: 0, width: canvasSize, height: canvasSize))
             // H correction plus a small plate keeps finder and timing patterns readable.
-            if let symbol = UIImage(named: "BrandSymbol") {
+            if let symbol = UIImage(named: "BrandQrIcon") {
                 let edge = CGFloat(modules.width * scale) * 0.15
                 let plate = CGRect(x: (CGFloat(canvasSize) - edge) / 2, y: (CGFloat(canvasSize) - edge) / 2, width: edge, height: edge)
                 UIColor.white.setFill()
                 renderer.cgContext.fill(plate)
-                symbol.draw(in: plate.insetBy(dx: edge * 0.10, dy: edge * 0.10))
+                symbol.draw(in: plate.insetBy(dx: edge * 0.04, dy: edge * 0.04))
             }
         }
     }

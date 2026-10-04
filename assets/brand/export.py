@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fontTools.pens.svgPathPen import SVGPathPen
 from fontTools.pens.transformPen import TransformPen
+from fontTools.svgLib.path import parse_path
 from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import instantiateVariableFont
 from PIL import Image
@@ -123,6 +124,15 @@ def main():
     symbol = body_of(BRAND / "symbol.svg")
     dark_symbol = symbol.replace("#5eead4", "#ecf5f1").replace("#0f766e", "#5eead4")
     write(BRAND / "symbol-dark.svg", svg(dark_symbol))
+    # Fill the QR badge with artwork, without the launcher mask's extra safe area.
+    badge_paths = ['<path fill="#0b1917" d="M0 0H128V128H0Z"/>']
+    for path in ET.fromstring(svg(dark_symbol)).findall(f"{{{SVG_NS}}}path"):
+        pen = SVGPathPen(None)
+        parse_path(path.attrib["d"], TransformPen(pen, (1.1, 0, 0, 1.1, -6.4, -17.3)))
+        badge_paths.append(
+            f'<path fill="{path.attrib["fill"]}" d="{pen.getCommands()}"/>'
+        )
+    write(BRAND / "qr-icon.svg", svg("".join(badge_paths)))
     outlines, width = wordmark()
     for appearance, color in (("light", "#172b2a"), ("dark", "#ecf5f1")):
         content = symbol
@@ -152,6 +162,7 @@ def main():
     for name in (
         "symbol.svg",
         "symbol-monochrome.svg",
+        "qr-icon.svg",
         "logo-light.svg",
         "logo-dark.svg",
     ):
@@ -212,7 +223,13 @@ def main():
     shutil.copytree(
         ios_symbol, extension_assets / "BrandSymbol.imageset", dirs_exist_ok=True
     )
+    for catalog in (ROOT / "ios/Psst/Assets.xcassets", extension_assets):
+        badge = catalog / "BrandQrIcon.imageset"
+        badge.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(BRAND / "qr-icon.svg", badge / "symbol.svg")
+        shutil.copyfile(ios_symbol / "Contents.json", badge / "Contents.json")
     android = ROOT / "android/app/src/main/res"
+    android_vector(BRAND / "qr-icon.svg", android / "drawable/brand_qr_icon.xml")
     android_vector(BRAND / "symbol.svg", android / "drawable/brand_symbol.xml")
     android_vector(
         BRAND / "symbol-dark.svg",

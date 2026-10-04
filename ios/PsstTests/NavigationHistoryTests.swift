@@ -51,7 +51,7 @@ final class NavigationHistoryTests: XCTestCase {
     }
 
     func testBrandedQRDecodesDownloadUploadAndPairingPayloads() throws {
-        XCTAssertNotNil(UIImage(named: "BrandSymbol"))
+        XCTAssertNotNil(UIImage(named: "BrandQrIcon"))
         let key = String(repeating: "A", count: 43)
         let origin = "https://a-long-self-hosted-transfer-server.example:8443"
         let values = [

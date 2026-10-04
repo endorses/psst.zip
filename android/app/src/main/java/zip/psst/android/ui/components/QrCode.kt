@@ -31,7 +31,7 @@ fun QrCodeImage(data: String, modifier: Modifier = Modifier) {
     // Encode at module resolution: ZXing supplies the four-module quiet zone.
     // Rendering at whole physical pixels avoids interpolation and extra bitmap padding.
     val matrix = remember(data) { runCatching { brandedQrMatrix(data) }.getOrNull() } ?: return
-    val symbol = painterResource(R.drawable.brand_symbol)
+    val symbol = painterResource(R.drawable.brand_qr_icon)
     val description = stringResource(R.string.qr_code)
     Canvas(
         modifier.widthIn(max = 400.dp).fillMaxWidth().aspectRatio(1f).semantics {
@@ -60,7 +60,7 @@ fun QrCodeImage(data: String, modifier: Modifier = Modifier) {
             Offset(center - backing / 2, center - backing / 2),
             Size(backing, backing),
         )
-        val symbolSize = backing * 0.84f
+        val symbolSize = backing * 0.92f
         translate(center - symbolSize / 2, center - symbolSize / 2) {
             with(symbol) { draw(Size(symbolSize, symbolSize)) }
         }

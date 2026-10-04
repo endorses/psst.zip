@@ -14,7 +14,7 @@ export async function brandedQr(payload: string): Promise<string> {
   });
   try {
     const logo = new Image();
-    logo.src = "/brand/symbol.svg";
+    logo.src = "/brand/qr-icon.svg";
     await logo.decode();
     const context = canvas.getContext("2d")!;
     // Includes white separation; never cover more than 15% of active QR width.
@@ -22,7 +22,7 @@ export async function brandedQr(payload: string): Promise<string> {
       x = Math.floor((canvas.width - size) / 2);
     context.fillStyle = "#FFFFFF";
     context.fillRect(x, x, size, size);
-    const inset = Math.max(2, Math.round(size * 0.1));
+    const inset = Math.max(2, Math.round(size * 0.04));
     context.drawImage(logo, x + inset, x + inset, size - inset * 2, size - inset * 2);
     return canvas.toDataURL("image/png");
   } catch {

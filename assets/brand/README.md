@@ -16,4 +16,4 @@ uv run --with-requirements assets/brand/requirements.txt python assets/brand/exp
 
 The script uses local masters and the bundled font; it does not download artwork or fonts. It writes outlined/editable lockups, web SVG/PNG/ICO favicons and Apple touch artwork, Android vector/adaptive/themed/legacy icon resources, and the iOS app icon and symbol catalogs for the app and share extension. PNG resizing uses Lanczos. Android adaptive foregrounds include a deliberate safe-zone inset, and iOS app artwork is opaque with square corners for the OS mask.
 
-Inspect exports at their actual sizes, especially 16/32 px favicons and launcher masks. QR code producers use the symbol with a small white backing and high error correction; the artwork must never cover finder patterns or the quiet zone.
+Inspect exports at their actual sizes, especially 16/32 px favicons and launcher masks. QR code producers use `qr-icon.svg`, a dark teal badge with tightly fitted artwork and a narrow white border, inside the existing central backing area and with high error correction; the artwork must never cover finder patterns or the quiet zone.
