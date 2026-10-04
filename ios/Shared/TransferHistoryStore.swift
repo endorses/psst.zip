@@ -7,15 +7,16 @@ final class TransferHistoryStore {
     private(set) var records: [TransferRecord] = []
     private let defaults: UserDefaults
     private let fileURL: URL?
-    init(defaults: UserDefaults = AppConstants.sharedDefaults,
-         fileURL: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json"))
-    {
+    init(
+        defaults: UserDefaults = AppConstants.sharedDefaults,
+        fileURL: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConstants.appGroupIdentifier)?.appendingPathComponent("transferHistory-v2.json")
+    ) {
         self.defaults = defaults
         self.fileURL = fileURL
         // Preserve the pre-account server for old received records that never stored their own URL.
         if defaults.string(forKey: "legacyHistoryServerURL") == nil,
-           defaults.data(forKey: AppConstants.transferHistoryKey) != nil,
-           let original = defaults.string(forKey: AppConstants.serverURLKey)
+            defaults.data(forKey: AppConstants.transferHistoryKey) != nil,
+            let original = defaults.string(forKey: AppConstants.serverURLKey)
         {
             defaults.set(original, forKey: "legacyHistoryServerURL")
         }
@@ -35,11 +36,12 @@ final class TransferHistoryStore {
     }
 
     private func read() throws -> [TransferRecord] {
-        let data: Data? = if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
-            try Data(contentsOf: fileURL)
-        } else {
-            defaults.data(forKey: AppConstants.transferHistoryKey)
-        }
+        let data: Data? =
+            if let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+                try Data(contentsOf: fileURL)
+            } else {
+                defaults.data(forKey: AppConstants.transferHistoryKey)
+            }
         guard let data else { return [] }
         var values = try decoder().decode([TransferRecord].self, from: data)
         for index in values.indices where values[index].ownerID == nil && values[index].serverURL == nil {
@@ -50,7 +52,7 @@ final class TransferHistoryStore {
                 values[index].serverURL = try? AccountHTTP.origin(origin.string ?? "")
             }
             if values[index].serverURL == nil,
-               let original = defaults.string(forKey: "legacyHistoryServerURL")
+                let original = defaults.string(forKey: "legacyHistoryServerURL")
             {
                 values[index].serverURL = try? AccountHTTP.origin(original)
             }
@@ -112,7 +114,7 @@ final class TransferHistoryStore {
         SecretStore.remove(record.vaultID)
     }
 
-    private func mutate(_ change: (inout [TransferRecord]) -> Void) throws {
+    func mutate(_ change: (inout [TransferRecord]) -> Void) throws {
         guard let fileURL else { throw AccountError.storage }
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
@@ -137,8 +139,9 @@ final class TransferHistoryStore {
     func revoke(_ record: TransferRecord, session: DeviceSession) async throws {
         guard record.canManage(as: session), SecretStore.session == session else { throw AccountError.changed }
         let path = (record.isSlot == true ? "slots/" : "transfers/") + record.id
-        _ = try await AccountHTTP.request(server: session.serverURL, path: path, method: "DELETE",
-                                          token: record.capabilities?.deletionToken ?? session.token)
+        _ = try await AccountHTTP.request(
+            server: session.serverURL, path: path, method: "DELETE",
+            token: record.capabilities?.deletionToken ?? session.token)
         guard SecretStore.session == session else { throw AccountError.changed }
         try remove(record)
     }

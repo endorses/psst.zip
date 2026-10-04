@@ -15,6 +15,7 @@ import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -288,8 +289,70 @@ class HistoryTest {
             }
         }
 
+    @Test
+    fun partialAccountPagesNeverRevokeUnloadedRowsAndRejectCredentialChanges() = runTest {
+        val scope = HistoryAccess("https://host", "alice", credentialVersion = 1)
+        val unseen =
+            row("complete")
+                .copy(
+                    id = "unseen",
+                    serverUrl = scope.serverUrl,
+                    accountId = scope.accountId,
+                    encryptionKey = "local-key",
+                    savedFileIdsJson = "[\"child/blob\"]",
+                )
+        val dao = MemoryDao(unseen)
+        val page =
+            zip.psst.shared.api.AuthResources(
+                slots =
+                    listOf(
+                        zip.psst.shared.api.AuthResourceSlot(
+                            "shown",
+                            "waiting",
+                            fileCount = 0,
+                            completedFiles = 0,
+                            totalSize = 0,
+                            summary = zip.psst.shared.model.InboxSummary("ready", 0, 0, 0),
+                        )
+                    ),
+                nextCursor = "later",
+                paginated = true,
+            )
+        syncAccountHistory(dao, page, scope) { scope }
+        assertEquals(unseen, dao.getById("unseen"))
+        assertEquals("", dao.getById("shown")!!.encryptionKey)
+        var canceled = false
+        try {
+            syncAccountHistory(
+                dao,
+                page.copy(slots = listOf(page.slots.single().copy(id = "stale"))),
+                scope,
+            ) {
+                scope.copy(credentialVersion = 2)
+            }
+        } catch (_: kotlinx.coroutines.CancellationException) {
+            canceled = true
+        }
+        assertTrue(canceled)
+        assertEquals(null, dao.getById("stale"))
+        assertEquals(unseen, dao.getById("unseen"))
+    }
+
     private class MemoryDao(initial: TransferHistoryEntity) : TransferHistoryDao {
         private val rows = MutableStateFlow(listOf(initial))
+
+        override fun observePage(
+            ids: List<String>,
+            serverUrl: String,
+            accountId: String,
+        ): Flow<List<TransferHistoryEntity>> =
+            getAll().let { source ->
+                source.map { rows ->
+                    rows.filter {
+                        it.id in ids && it.serverUrl == serverUrl && it.accountId == accountId
+                    }
+                }
+            }
 
         override fun getAll(): Flow<List<TransferHistoryEntity>> = rows
 

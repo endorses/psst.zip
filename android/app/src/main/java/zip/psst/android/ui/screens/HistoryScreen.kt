@@ -28,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -76,12 +77,16 @@ fun HistoryScreen(
     viewModel: HistoryViewModel = viewModel(),
 ) {
     val allHistory by viewModel.history.collectAsState()
+    val pageState by viewModel.pageState.collectAsState()
+    val deviceHistory by viewModel.deviceHistory.collectAsState()
+    val legacyCount by viewModel.legacyCount.collectAsState()
     val offline by viewModel.offline.collectAsState()
     val accountIssue by viewModel.accountIssue.collectAsState()
     val transferIssue by viewModel.transferIssue.collectAsState()
     var filter by remember { mutableStateOf(initialFilter) }
     val downloads by guest.state.collectAsState()
-    val history = unifiedHistory(allHistory, downloads.history, filter)
+    val history =
+        unifiedHistory(allHistory, if (deviceHistory) downloads.history else emptyList(), filter)
     var removal by remember { mutableStateOf<GuestDownload?>(null) }
     removal?.let { record ->
         AlertDialog(
@@ -206,6 +211,9 @@ fun HistoryScreen(
             },
         )
     }
+    LaunchedEffect(initialFilter) {
+        if (initialFilter == "downloaded") viewModel.setDeviceHistory(true)
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -252,6 +260,60 @@ fun HistoryScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             AccountIndicator(Modifier.padding(horizontal = 16.dp))
             Row(
+                Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = !deviceHistory,
+                    onClick = {
+                        viewModel.setDeviceHistory(false)
+                        if (filter == "downloaded") filter = "all"
+                    },
+                    label = { Text("On the server") },
+                )
+                FilterChip(
+                    selected = deviceHistory,
+                    onClick = { viewModel.setDeviceHistory(true) },
+                    label = { Text("On this device") },
+                )
+            }
+            if (!deviceHistory) {
+                Text(
+                    "Page ${pageState.pager.number} · filters apply to this page",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(
+                    Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        onClick = viewModel::firstPage,
+                        enabled = !pageState.loading && pageState.pager.cursor != null,
+                    ) {
+                        Text("First")
+                    }
+                    TextButton(
+                        onClick = viewModel::previousPage,
+                        enabled = !pageState.loading && pageState.pager.previous.isNotEmpty(),
+                    ) {
+                        Text("Previous")
+                    }
+                    TextButton(
+                        onClick = viewModel::nextPage,
+                        enabled = !pageState.loading && pageState.page?.nextCursor != null,
+                    ) {
+                        Text("Next")
+                    }
+                }
+                if (pageState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            } else
+                Text(
+                    "Saved downloads and retained local records. Server status may be out of date.",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            Row(
                 Modifier.fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
@@ -266,11 +328,20 @@ fun HistoryScreen(
                     .forEach { (value, label) ->
                         FilterChip(
                             selected = filter == value,
-                            onClick = { filter = value },
+                            onClick = {
+                                filter = value
+                                if (value == "downloaded") viewModel.setDeviceHistory(true)
+                            },
                             label = { Text(label) },
                         )
                     }
             }
+            if (deviceHistory && legacyCount > 0)
+                Text(
+                    "$legacyCount pre-account records are retained. Manage pre-account server resources from the administrator website.",
+                    Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
             if (downloads.pendingReceipts > 0 && !downloads.busy)
                 TextButton(onClick = guest::retryAllReceipts) {
                     Text("Retry pending receipts (${downloads.pendingReceipts})")
@@ -335,6 +406,29 @@ fun HistoryScreen(
                                         name = row.value.title.orEmpty()
                                     },
                                     isDeleting = row.value.id in deletingIds,
+                                    canManage = row.value.accountId != null,
+                                    serverSize =
+                                        if (deviceHistory) null
+                                        else
+                                            pageState.page?.let { page ->
+                                                page.transfers
+                                                    .firstOrNull { it.id == row.value.id }
+                                                    ?.totalSize
+                                                    ?: page.slots
+                                                        .firstOrNull { it.id == row.value.id }
+                                                        ?.totalSize
+                                            },
+                                    serverCount =
+                                        if (deviceHistory) null
+                                        else
+                                            pageState.page?.let { page ->
+                                                page.transfers
+                                                    .firstOrNull { it.id == row.value.id }
+                                                    ?.fileCount
+                                                    ?: page.slots
+                                                        .firstOrNull { it.id == row.value.id }
+                                                        ?.completedFiles
+                                            },
                                 )
                             is HistoryRow.Downloaded ->
                                 DownloadHistoryItem(
@@ -358,9 +452,12 @@ private fun HistoryItem(
     onDelete: () -> Unit,
     onRename: () -> Unit,
     isDeleting: Boolean,
+    canManage: Boolean = true,
+    serverCount: Long? = null,
+    serverSize: Long? = null,
 ) {
     val revokingLabel = stringResource(R.string.ui_revoking_link)
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Card(onClick = { if (canManage) onClick() }, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -385,7 +482,14 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                val fullTitle = historyTitle(entity)
+                val fullTitle =
+                    if (
+                        serverCount != null &&
+                            entity.title.isNullOrBlank() &&
+                            entity.automaticTitle.isNullOrBlank()
+                    )
+                        "$serverCount files · ${formatTimestamp(entity.createdAt)}"
+                    else historyTitle(entity)
                 Text(
                     text = compactHistoryTitle(fullTitle),
                     modifier = Modifier.semantics { contentDescription = fullTitle },
@@ -393,8 +497,12 @@ private fun HistoryItem(
                 )
                 Text(
                     text =
-                        "${entity.fileCount} file(s)" +
-                            if (entity.totalSize > 0) {
+                        (if (entity.summaryUpdating)
+                            "Counts updating · last known ${entity.fileCount} file(s)"
+                        else "${serverCount ?: entity.fileCount.toLong()} file(s)") +
+                            if (serverSize != null) {
+                                " · ${formatFileSize(serverSize)} encrypted"
+                            } else if (entity.totalSize > 0) {
                                 " - ${formatFileSize(entity.totalSize)}"
                             } else {
                                 ""
@@ -402,6 +510,11 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (!canManage)
+                    Text(
+                        "Pre-account record. Manage server links from the administrator website.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 if (entity.encryptionKey.isBlank())
                     Text(
                         stringResource(R.string.key_on_other_device),
@@ -438,30 +551,31 @@ private fun HistoryItem(
 
             Spacer(Modifier.width(8.dp))
 
-            Column {
-                IconButton(onClick = onRename, enabled = !isDeleting) {
-                    Icon(Icons.Default.Edit, "Rename on this device", Modifier.size(20.dp))
-                }
-                IconButton(onClick = onDelete, enabled = !isDeleting) {
-                    if (isDeleting) {
-                        CircularProgressIndicator(
-                            modifier =
-                                Modifier.size(20.dp).semantics {
-                                    contentDescription = revokingLabel
-                                },
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription =
-                                stringResource(R.string.ui_revoke_link_and_delete_2),
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            if (canManage)
+                Column {
+                    IconButton(onClick = onRename, enabled = !isDeleting) {
+                        Icon(Icons.Default.Edit, "Rename on this device", Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onDelete, enabled = !isDeleting) {
+                        if (isDeleting) {
+                            CircularProgressIndicator(
+                                modifier =
+                                    Modifier.size(20.dp).semantics {
+                                        contentDescription = revokingLabel
+                                    },
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription =
+                                    stringResource(R.string.ui_revoke_link_and_delete_2),
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
-            }
         }
     }
 }

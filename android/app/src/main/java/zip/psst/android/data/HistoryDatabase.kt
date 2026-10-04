@@ -32,6 +32,7 @@ data class TransferHistoryEntity(
     val accountId: String? = null,
     val title: String? = null,
     val automaticTitle: String? = null,
+    @ColumnInfo(defaultValue = "0") val summaryUpdating: Boolean = false,
     @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
@@ -41,6 +42,15 @@ data class TransferHistoryEntity(
 interface TransferHistoryDao {
     @Query("SELECT * FROM transfer_history ORDER BY createdAt DESC")
     fun getAll(): Flow<List<TransferHistoryEntity>>
+
+    @Query(
+        "SELECT * FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC"
+    )
+    fun observePage(
+        ids: List<String>,
+        serverUrl: String,
+        accountId: String,
+    ): Flow<List<TransferHistoryEntity>>
 
     @Insert suspend fun insert(entity: TransferHistoryEntity)
 
@@ -121,11 +131,20 @@ interface TransferHistoryDao {
     suspend fun getById(id: String): TransferHistoryEntity?
 }
 
-@Database(entities = [TransferHistoryEntity::class], version = 6, exportSchema = false)
+@Database(entities = [TransferHistoryEntity::class], version = 7, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
     companion object {
+        val MIGRATION_6_7 =
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE transfer_history ADD COLUMN summaryUpdating INTEGER NOT NULL DEFAULT 0"
+                    )
+                }
+            }
+
         val MIGRATION_1_2 =
             object : Migration(1, 2) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -182,6 +201,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                    MIGRATION_6_7,
                 )
                 .build()
         }

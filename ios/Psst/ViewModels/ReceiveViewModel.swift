@@ -207,7 +207,8 @@ final class ReceiveViewModel {
             try nextWindow.accept(next: status.nextCursor)
             var updated = record
             let total = status.summary?.ready == true ? status.summary?.completedFiles?.int64Value : nil
-            if let total { updated.fileCount = Int(total) }
+            if let total { updated.fileCount = Int(clamping: total) }
+            updated.serverSummaryKnown = status.summary?.ready == true
             updated.receiveProtocol = Int(status.receiveProtocol)
             updated.maxFiles = Int(status.maxFiles)
             updated.reservedFiles = status.reservedFiles
@@ -400,6 +401,7 @@ final class ReceiveViewModel {
                 await DownloadAcknowledgements.shared.flush()
             }
             try serverConfig.check(session)
+            entry.serverSummaryKnown = status.summary?.ready == true
             entry.state = historyState(entry, status: status, window: pageWindow)
             try historyStore.update(entry)
             record = entry

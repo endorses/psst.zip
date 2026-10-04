@@ -20,6 +20,7 @@ data class ReceivedSnapshot(
     val expiresAt: Long? = null,
     val completedFiles: Long? = null,
     val partial: Boolean = false,
+    val summaryObserved: Boolean = false,
 )
 
 internal fun DropSlot.receivedSnapshot() =
@@ -28,6 +29,7 @@ internal fun DropSlot.receivedSnapshot() =
         parseHistoryExpiry(expiresAt),
         summary?.completedFiles,
         partial = paginated,
+        summaryObserved = paginated,
     )
 
 internal fun TransferHistoryEntity.savedTransferIds(): Set<String> =
@@ -75,6 +77,9 @@ internal fun mergeReceivedHistory(
         }
     return current.copy(
         fileCount = count,
+        summaryUpdating =
+            if (snapshot.summaryObserved) snapshot.completedFiles == null
+            else current.summaryUpdating,
         totalSize = maxOf(current.totalSize, children.values.sumOf { it.plaintextSize ?: 0 }),
         status = status,
         receivedTransfersJson = Json.encodeToString(children.toMap()),
@@ -89,6 +94,7 @@ internal fun mergeSentHistory(
 ): TransferHistoryEntity =
     current.copy(
         fileCount = maxOf(current.fileCount, transfer.fileCount),
+        summaryUpdating = false,
         expiresAt = parseHistoryExpiry(transfer.expiresAt) ?: current.expiresAt,
         status = sentHistoryStatus(transfer, current.status),
     )

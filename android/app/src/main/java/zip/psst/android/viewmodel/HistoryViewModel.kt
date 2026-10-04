@@ -4,13 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.data.HistoryAccess
+import zip.psst.android.data.InboxPager
 import zip.psst.android.data.TransferHistoryEntity
-import zip.psst.android.data.historyRefreshBatch
-import zip.psst.android.data.refreshHistoryEntry
 import zip.psst.android.data.revokeHistoryEntry
 import zip.psst.android.data.syncAccountHistory
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
+import zip.psst.shared.api.AuthResources
 import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.LinkDeletionException
 import zip.psst.shared.api.PasswordChangeRequiredException
@@ -24,7 +25,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -33,16 +36,47 @@ import kotlinx.coroutines.withContext
 
 data class HistoryDeletionError(val id: String, val message: String)
 
+data class AccountHistoryPageState(
+    val access: HistoryAccess? = null,
+    val pager: InboxPager = InboxPager(),
+    val page: AuthResources? = null,
+    val loading: Boolean = false,
+)
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as PsstApplication
     private val dao = app.database.transferHistoryDao()
 
+    private val _pageState = MutableStateFlow(AccountHistoryPageState())
+    val pageState = _pageState.asStateFlow()
+    private val _deviceHistory = MutableStateFlow(false)
+    val deviceHistory = _deviceHistory.asStateFlow()
+    val legacyCount = MutableStateFlow(0)
     val history: StateFlow<List<TransferHistoryEntity>> =
-        combine(dao.getAll(), app.prefs.historyAccess) { rows, access ->
-                rows.filter(access::permits)
+        combine(_pageState, app.prefs.historyAccess, _deviceHistory) { page, access, device ->
+                Triple(page, access, device)
             }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+            .flatMapLatest { (state, access, device) ->
+                if (device)
+                    dao.getAll().map { rows ->
+                        legacyCount.value = rows.count { it.accountId == null }
+                        rows.filter(access::permits)
+                    }
+                else {
+                    val ids =
+                        state.page
+                            ?.let {
+                                it.transfers.map { row -> row.id } + it.slots.map { row -> row.id }
+                            }
+                            .orEmpty()
+                    if (state.access != access || access.accountId == null || ids.isEmpty())
+                        flowOf(emptyList())
+                    else dao.observePage(ids, access.serverUrl, access.accountId)
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _deletingIds = MutableStateFlow<Set<String>>(emptySet())
     val deletingIds = _deletingIds.asStateFlow()
@@ -53,6 +87,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     val accountIssue = MutableStateFlow<String?>(null)
     val transferIssue = MutableStateFlow<String?>(null)
     private var refreshJob: Job? = null
+    @Volatile private var revision = 0L
+    private var visible = false
     private val deleteJobs = mutableMapOf<String, Job>()
 
     private var activeAccess = app.prefs.historyAccess.value
@@ -63,10 +99,14 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 if (access == activeAccess) return@collect
                 activeAccess = access
                 refreshJob?.cancel()
+                revision++
+                _pageState.value = AccountHistoryPageState()
+                legacyCount.value = 0
                 deleteJobs.values.toList().forEach { it.cancel() }
                 _deletionError.value = null
                 accountIssue.value = null
                 transferIssue.value = null
+                if (visible && !_deviceHistory.value) startPolling()
             }
         }
     }
@@ -86,90 +126,116 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun refresh() {
-        transferIssue.value = null
+    fun setDeviceHistory(value: Boolean) {
+        _deviceHistory.value = value
+        revision++
         refreshJob?.cancel()
+        _pageState.update { it.copy(loading = false) }
+        if (!value && visible) startPolling()
+    }
+
+    fun firstPage() = navigate(InboxPager())
+
+    fun previousPage() {
+        val pager = _pageState.value.pager
+        if (pager.previous.isNotEmpty()) navigate(pager.back())
+    }
+
+    fun nextPage() {
+        val state = _pageState.value
+        val next = state.page?.nextCursor ?: return
+        try {
+            navigate(state.pager.next(next))
+        } catch (_: IllegalArgumentException) {
+            transferIssue.value =
+                "The server repeated a History page. Return to the first page and retry."
+        }
+    }
+
+    private fun navigate(target: InboxPager) {
+        if (_pageState.value.loading || _deviceHistory.value) return
+        startPolling(target)
+    }
+
+    fun refresh() {
+        visible = true
+        if (!_deviceHistory.value) startPolling()
+    }
+
+    private fun startPolling(firstTarget: InboxPager? = null) {
+        refreshJob?.cancel()
+        val requestRevision = ++revision
         refreshJob =
             viewModelScope.launch(Dispatchers.IO) {
-                var offset = 0
+                var target = firstTarget
                 while (isActive) {
                     val access = app.prefs.historyAccess.value
-                    val token = app.prefs.getSessionToken(access.serverUrl) ?: return@launch
+                    val token = app.prefs.getSessionToken(access.serverUrl)
+                    if (token == null || access.isAdmin || access.mustChangePassword) {
+                        _pageState.update { it.copy(loading = false) }
+                        return@launch
+                    }
+                    val pager = target ?: _pageState.value.pager
+                    fun current() =
+                        revision == requestRevision &&
+                            app.prefs.historyAccess.value == access &&
+                            app.prefs.getSessionToken(access.serverUrl) == token &&
+                            !_deviceHistory.value
+                    if (!current()) return@launch
+                    _pageState.update { it.copy(loading = true) }
                     val client = ApiClient(ServerConfig(access.serverUrl), sessionToken = token)
                     var failed = false
-                    var remoteIds = emptySet<String>()
                     try {
-                        val resources = client.auth.resources()
+                        val page = client.auth.resourcesPage(pager.cursor, 50)
+                        if (!current()) return@launch
+                        require(page.nextCursor == null || page.nextCursor !in pager.previous) {
+                            "The server repeated a History page"
+                        }
+                        syncAccountHistory(dao, page, access) {
+                            if (current()) access else HistoryAccess()
+                        }
+                        if (!current()) return@launch
+                        _pageState.value = AccountHistoryPageState(access, pager, page)
                         accountIssue.value = null
-                        remoteIds =
-                            resources.transfers.map { it.id }.toSet() +
-                                resources.slots.map { it.id }
-                        if (app.prefs.historyAccess.value != access) return@launch
-                        syncAccountHistory(dao, resources, access) { app.prefs.historyAccess.value }
+                        transferIssue.value = null
+                    } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                        if (!isActive || !current()) throw e
+                        failed = true
+                        transferIssue.value =
+                            "History request timed out. The shown records were kept. Retry this page."
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: AuthenticationRequiredException) {
-                        if (
-                            app.prefs.historyAccess.value == access &&
-                                app.prefs.getSessionToken(access.serverUrl) == token
-                        )
-                            app.prefs.clearSession()
+                        if (current()) app.prefs.clearSession()
                         return@launch
-                    } catch (e: PasswordChangeRequiredException) {
-                        accountIssue.value = e.message
-                        return@launch
-                    } catch (e: AdminTransferForbiddenException) {
-                        if (app.prefs.historyAccess.value == access) app.prefs.clearSession()
-                        accountIssue.value = e.message
-                        return@launch
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        if (!current()) return@launch
                         failed = true
+                        if (
+                            e is PasswordChangeRequiredException ||
+                                e is AdminTransferForbiddenException
+                        )
+                            accountIssue.value = e.message
+                        else
+                            transferIssue.value =
+                                "Could not load this History page. The shown records were kept. Retry or return to the first page."
                     } finally {
                         client.close()
+                        if (current()) _pageState.update { it.copy(loading = false) }
                     }
-                    val rows = dao.getAll().first().filter(access::permits)
-                    val batch =
-                        if (failed) emptyList() else historyRefreshBatch(rows, offset, remoteIds)
-                    offset += batch.size
-                    for (row in batch) {
-                        if (app.prefs.historyAccess.value != access) return@launch
-                        try {
-                            refreshHistoryEntry(
-                                dao,
-                                row.id,
-                                reportFailure = true,
-                                contextCurrent = { app.prefs.historyAccess.value == access },
-                                createClient = { config ->
-                                    ApiClient(
-                                        config,
-                                        sessionToken =
-                                            app.prefs.getSessionToken(config.normalizedBaseUrl),
-                                    )
-                                },
-                            )
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: zip.psst.shared.api.TransferPolicyException) {
-                            transferIssue.value = e.message
-                            offline.value = false
-                            return@launch
-                        } catch (e: AuthenticationRequiredException) {
-                            accountIssue.value = e.message
-                            offline.value = false
-                            return@launch
-                        } catch (_: Exception) {
-                            failed = true
-                            break
-                        }
-                    }
+                    if (!current()) return@launch
                     offline.value = failed
+                    target = null
                     delay(if (failed) 15000 else 5000)
                 }
             }
     }
 
     fun stopRefreshing() {
+        visible = false
+        revision++
         refreshJob?.cancel()
+        _pageState.update { it.copy(loading = false) }
     }
 
     fun dismissDeletionError() {
@@ -178,6 +244,9 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     fun delete(id: String) {
         if (id in _deletingIds.value) return
+        revision++
+        refreshJob?.cancel()
+        _pageState.update { it.copy(loading = false) }
         _deletingIds.update { it + id }
         _deletionError.value = null
         deleteJobs[id] =
@@ -206,6 +275,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 } finally {
                     _deletingIds.update { it - id }
                     deleteJobs.remove(id)
+                    if (visible && !_deviceHistory.value) startPolling()
                 }
             }
     }

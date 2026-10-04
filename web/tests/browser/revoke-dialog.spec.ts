@@ -1,3 +1,4 @@
+import { historySlot, historyID, historyPage } from "../history-page-fixture";
 import { test, expect, signIn } from "./auth-fixture";
 
 for (const viewport of [
@@ -9,32 +10,34 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: viewport.width < 500 ? "dark" : "light" });
-    let slots = Array.from({ length: 30 }, (_, index) => ({
-      id: `slot-${index}`,
-      status: "waiting",
-      expires_at: new Date(Date.now() + 86400000).toISOString(),
-      transfers: [],
-    }));
+    let slots = Array.from({ length: 30 }, (_, index) =>
+      historySlot({
+        id: historyID(index),
+        status: "waiting",
+        expires_at: new Date(Date.now() + 86400000).toISOString(),
+        transfers: [],
+      }),
+    );
     await page.route("**/api/v1/auth/resources?*", (route) =>
-      route.fulfill({ json: { transfers: [], slots } }),
+      route.fulfill({ json: historyPage({ slots }) }),
     );
     let deletes = 0;
     let release: () => void = () => {};
     const pending = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/v1/slots/slot-15", async (route) => {
+    await page.route(`**/api/v1/slots/${historyID(15)}`, async (route) => {
       expect(route.request().method()).toBe("DELETE");
       deletes++;
       if (deletes === 1) {
         await pending;
         await route.fulfill({ status: 503, json: { error: "Please retry revocation." } });
       } else {
-        slots = slots.filter((slot) => slot.id !== "slot-15");
+        slots = slots.filter((slot) => slot.id !== historyID(15));
         await route.fulfill({ status: 204 });
       }
     });
     await signIn(page);
     await page.getByRole("link", { name: "History", exact: true }).click();
-    const row = page.locator('[data-resource-id="slot-15"]');
+    const row = page.locator(`[data-resource-id="${historyID(15)}"]`);
     const opener = row.getByRole("button", { name: "Revoke", exact: true });
     await opener.scrollIntoViewIfNeeded();
     await opener.click();

@@ -1,15 +1,18 @@
 import AVFoundation
 import Foundation
-@testable import Psst
 import UIKit
 import Vision
 import XCTest
+
+@testable import Psst
 
 @MainActor
 final class NavigationHistoryTests: XCTestCase {
     private let session = DeviceSession(serverURL: "https://one.example", userID: "user", username: "name", token: "token", sessionID: "session", expiresAt: "later")
     private func owned(_ id: String, slot: Bool = false, date: TimeInterval = 10) -> TransferRecord {
-        TransferRecord(id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date), fileCount: 1, totalSize: 10, serverURL: session.serverURL, ownerID: session.userID, isSlot: slot)
+        TransferRecord(
+            id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date), fileCount: 1, totalSize: 10, serverURL: session.serverURL,
+            ownerID: session.userID, isSlot: slot)
     }
 
     private func local(_ origin: String = "https://one.example", date: TimeInterval = 20) -> GuestDownload {
@@ -135,6 +138,45 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.fileCount, 250)
         XCTAssertEqual(restored.records.first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
         XCTAssertNotNil(restored.records.first(where: { $0.id == "another" }))
+    }
+
+    func testHistoryPageMergePreservesUnloadedRecordsAndConcurrentCheckpoints() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let suite = "history-page-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let file = directory.appendingPathComponent("history.json")
+        let store = TransferHistoryStore(defaults: defaults, fileURL: file)
+        let id = "01234567-89ab-cdef-0123-456789abcdef"
+        var local = owned(id)
+        local.isSlot = true
+        local.fileCount = 3
+        local.shareURL = "https://one.example/u/" + id + "#local-key"
+        try store.add(local)
+        try store.add(owned("unloaded"))
+        let secondWriter = TransferHistoryStore(defaults: defaults, fileURL: file)
+        var updated = local
+        updated.savedFiles = ["child|file": "Received/file"]
+        updated.savedTransfers = ["child"]
+        updated.customTitle = "Concurrent local name"
+        try secondWriter.update(updated)
+        let unknown =
+            #"{"paginated":true,"transfers":[],"slots":[{"id":"01234567-89ab-cdef-0123-456789abcdef","status":"has_uploads","file_count":null,"completed_files":null,"total_size":null,"summary":{"state":"updating","file_count":null,"completed_files":null,"total_size":null}}],"next_cursor":"more"}"#
+        try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(unknown.utf8)), session: session)
+        let merged = try XCTUnwrap(store.records.first { $0.id == id })
+        XCTAssertEqual(merged.fileCount, 3)
+        XCTAssertEqual(merged.serverSummaryKnown, false)
+        XCTAssertEqual(merged.shareURL, local.shareURL)
+        XCTAssertEqual(merged.savedFiles, updated.savedFiles)
+        XCTAssertEqual(merged.savedTransfers, updated.savedTransfers)
+        XCTAssertEqual(merged.customTitle, updated.customTitle)
+        XCTAssertNotEqual(store.records.first { $0.id == "unloaded" }?.state, .revoked)
+        let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(of: "updating", with: "ready")
+        try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(ready.utf8)), session: session)
+        XCTAssertEqual(store.records.first { $0.id == id }?.fileCount, 1)
+        XCTAssertEqual(store.records.first { $0.id == id }?.savedFiles, updated.savedFiles)
     }
 
     func testAdminAndRestrictedSessionsExposeOnlyDeviceDownloads() {

@@ -24,6 +24,7 @@ struct TransferRecord: Identifiable, Codable {
     var maxFiles: Int? = nil
     var reservedFiles: Int64? = nil
     var maxDownloads: Int? = nil
+    var serverSummaryKnown: Bool? = nil
 
     var canDecryptInbox: Bool {
         guard isSlot == true else { return false }
@@ -50,7 +51,11 @@ struct TransferRecord: Identifiable, Codable {
     }
 
     var summary: String {
-        String(format: String(localized: "%lld files · %@"), Int64(fileCount), ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+        if serverSummaryKnown == false { return String(localized: "File count updating") }
+        if serverSummaryKnown != nil && totalSize == 0 {
+            return String(format: String(localized: "%lld files"), Int64(fileCount))
+        }
+        return String(format: String(localized: "%lld files · %@"), Int64(fileCount), ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
     }
 
     var displayTitle: String {
@@ -94,7 +99,8 @@ struct TransferRecord: Identifiable, Codable {
     }
 
     func saveSecrets(link: String?, deletionToken: String?, receivePrivateKey: Data? = nil) throws {
-        try SecretStore.write(JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken, receivePrivateKey: receivePrivateKey ?? capabilities?.receivePrivateKey)), name: vaultID)
+        try SecretStore.write(
+            JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken, receivePrivateKey: receivePrivateKey ?? capabilities?.receivePrivateKey)), name: vaultID)
     }
 
     func belongs(to session: DeviceSession) -> Bool {
@@ -106,7 +112,8 @@ struct TransferRecord: Identifiable, Codable {
     }
 }
 
-struct ResourceSecrets: Codable { let link: String?
+struct ResourceSecrets: Codable {
+    let link: String?
     let deletionToken: String?
     var receivePrivateKey: Data? = nil
 }

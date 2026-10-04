@@ -1,3 +1,4 @@
+import { historyPage, historyTransfer, historyCursor } from "./history-page-fixture.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resourcePolicy, resourceUsage } from "./resource-policy-fixture.ts";
@@ -42,19 +43,21 @@ test("history fetches only the requested bounded page and safely encodes opaque 
   try {
     globalThis.fetch = async (input) => {
       urls.push(String(input));
-      return Response.json({ transfers: [{ id: "first" }], slots: [], next_cursor: "a/+? b" });
+      return Response.json(
+        historyPage({ transfers: [historyTransfer()], next_cursor: historyCursor(1) }),
+      );
     };
     const page = await loadResourcePage();
-    assert.equal(page.next_cursor, "a/+? b");
+    assert.equal(page.next_cursor, historyCursor(1));
     assert.equal(urls.length, 1, "must not eagerly follow next_cursor");
     globalThis.fetch = async (input) => {
       urls.push(String(input));
-      return Response.json({ transfers: [], slots: [], next_cursor: null });
+      return Response.json(historyPage());
     };
     await loadResourcePage(page.next_cursor!, true);
     const request = new URL(urls[1], "https://example.test");
     assert.equal(request.searchParams.get("limit"), "50");
-    assert.equal(request.searchParams.get("after"), "a/+? b");
+    assert.equal(request.searchParams.get("after"), historyCursor(1));
     assert.equal(request.searchParams.get("all"), "true");
     globalThis.fetch = async () =>
       Response.json({ transfers: Array.from({ length: 51 }, () => ({ id: "x" })), slots: [] });

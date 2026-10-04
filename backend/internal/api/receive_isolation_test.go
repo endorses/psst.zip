@@ -229,18 +229,22 @@ func TestPublicAvailabilityHidesActivityAndOwnerCountersFailClosed(t *testing.T)
 		t.Fatal("owner lost actual state", owner)
 	}
 	// An empty inbox now reads maintained totals without scanning payload rows.
-	// Breaking the payload table still tests the separate account-history query.
+	// Account history also reads maintained totals without scanning payload rows.
 	if _, err := env.db.Exec(`DROP TABLE files`); err != nil {
 		t.Fatal(err)
 	}
 	authRequest(t, env, "GET", "/slots/"+slot, env.userToken, nil, 200)
 	authRequest(t, env, "GET", "/slots/"+slot+"/inbox", env.userToken, nil, 200)
-	authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 500)
+	authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 200)
 	// Damage the actual owner-summary dependency, rather than requiring an
 	// unrelated schema probe on each empty page. Neither route may invent zero
 	// totals or serialize partial slot/history data after a failed counter read.
 	if _, err := env.db.Exec(`DROP TABLE admin_resource_totals`); err != nil {
 		t.Fatal(err)
+	}
+	history := authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 503)
+	if len(history) != 1 || history["error"] != "history unavailable" {
+		t.Fatal("failed history counter read disclosed partial metadata", history)
 	}
 	for _, suffix := range []string{"", "/inbox"} {
 		response := authRequest(t, env, "GET", "/slots/"+slot+suffix, env.userToken, nil, 503)

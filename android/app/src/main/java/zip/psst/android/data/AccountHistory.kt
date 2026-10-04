@@ -21,7 +21,8 @@ internal suspend fun syncAccountHistory(
             TransferHistoryEntity(
                 id = transfer.id,
                 type = "sent",
-                fileCount = transfer.fileCount,
+                fileCount = (transfer.fileCount ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                summaryUpdating = transfer.summary?.ready != true,
                 totalSize =
                     0, // Server sizes are encrypted bytes, never present them as plaintext sizes.
                 serverUrl = access.serverUrl,
@@ -51,13 +52,18 @@ internal fun slotHistoryResource(
     slot: AuthResourceSlot,
     access: HistoryAccess,
 ): TransferHistoryEntity {
-    require(slot.fileCount >= 0 && slot.completedFiles in 0..slot.fileCount.toLong()) {
+    require(
+        slot.fileCount == null ||
+            (slot.completedFiles != null &&
+                slot.completedFiles in 0..requireNotNull(slot.fileCount))
+    ) {
         "Invalid inbox summary counts"
     }
     return TransferHistoryEntity(
         id = slot.id,
         type = "received",
-        fileCount = slot.completedFiles.toInt(),
+        fileCount = (slot.completedFiles ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        summaryUpdating = slot.summary?.ready != true,
         totalSize = 0, // Encrypted server bytes cannot be presented as plaintext file sizes.
         serverUrl = access.serverUrl,
         encryptionKey = "",
@@ -85,7 +91,8 @@ internal fun mergeAccountResource(
         return null
     var updated =
         current?.copy(
-            fileCount = maxOf(current.fileCount, incoming.fileCount),
+            fileCount = if (incoming.summaryUpdating) current.fileCount else incoming.fileCount,
+            summaryUpdating = incoming.summaryUpdating,
             expiresAt = incoming.expiresAt ?: current.expiresAt,
             status =
                 if (current.status == "failed" && incoming.status == "pending") "failed"
@@ -95,30 +102,3 @@ internal fun mergeAccountResource(
         updated = mergeReceivedHistory(updated, snapshot)
     return updated
 }
-
-/**
- * One shared budget covers manifest enrichment and verification of IDs absent from a successful
- * listing.
- */
-internal fun historyRefreshBatch(
-    rows: List<TransferHistoryEntity>,
-    offset: Int,
-    remoteIds: Set<String>,
-    limit: Int = 20,
-): List<TransferHistoryEntity> {
-    val eligible =
-        rows.filter {
-            it.status != "unavailable" &&
-                (it.id !in remoteIds ||
-                    (it.type in listOf("receive", "received") && it.encryptionKey.isNotBlank()))
-        }
-    if (eligible.isEmpty()) return emptyList()
-    return List(minOf(limit, eligible.size)) { eligible[(offset + it) % eligible.size] }
-}
-
-internal fun historyManifestBatch(
-    rows: List<TransferHistoryEntity>,
-    offset: Int,
-    limit: Int = 20,
-): List<TransferHistoryEntity> =
-    historyRefreshBatch(rows, offset, rows.map { it.id }.toSet(), limit)

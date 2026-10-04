@@ -181,11 +181,7 @@ func TestResourceHistoryCompactsLargeNestedContents(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	data := rawAuthorized(t, env, "GET", "/auth/resources?limit=100", env.userToken, nil, 200)
-	if len(data) > 4096 {
-		t.Fatalf("history expanded nested contents: %d bytes", len(data))
-	}
-	var response struct {
+	type compactHistory struct {
 		Transfers []struct {
 			Files     []any `json:"files"`
 			FileCount int   `json:"file_count"`
@@ -197,34 +193,60 @@ func TestResourceHistoryCompactsLargeNestedContents(t *testing.T) {
 			Reserved  int   `json:"reserved_files"`
 			Total     int   `json:"total_size"`
 		} `json:"slots"`
+		Paginated  bool    `json:"paginated"`
+		NextCursor *string `json:"next_cursor"`
 	}
-	if err := json.Unmarshal(data, &response); err != nil {
-		t.Fatal(err)
+	// Children consume raw page positions before they are hidden. Walk the
+	// explicit continuation instead of expecting the server to scan past 120
+	// child rows to fill a compact two-resource response in one request.
+	readHistory := func() compactHistory {
+		t.Helper()
+		result := compactHistory{}
+		after := ""
+		for pageIndex := 0; pageIndex < 5; pageIndex++ {
+			data := rawAuthorized(t, env, "GET", "/auth/resources?limit=100&after="+after, env.userToken, nil, 200)
+			if len(data) > 4096 {
+				t.Fatalf("history expanded nested contents: %d bytes", len(data))
+			}
+			var page compactHistory
+			if err := json.Unmarshal(data, &page); err != nil {
+				t.Fatal(err)
+			}
+			if !page.Paginated || len(page.Transfers)+len(page.Slots) > 100 {
+				t.Fatal("unbounded history page", page)
+			}
+			result.Transfers = append(result.Transfers, page.Transfers...)
+			result.Slots = append(result.Slots, page.Slots...)
+			if page.NextCursor == nil {
+				return result
+			}
+			after = *page.NextCursor
+		}
+		t.Fatal("bounded history did not reach its final page")
+		return result
 	}
+	response := readHistory()
 	if len(response.Transfers) != 1 || response.Transfers[0].FileCount != 100 || len(response.Transfers[0].Files) != 0 {
-		t.Fatalf("transfer summary %s", data)
+		t.Fatalf("transfer summary %+v", response)
 	}
 	if len(response.Slots) != 1 || response.Slots[0].FileCount != 120 || response.Slots[0].Completed != 100 || response.Slots[0].Total != 120 || len(response.Slots[0].Transfers) != 0 {
-		t.Fatalf("slot summary %s", data)
+		t.Fatalf("slot summary %+v", response)
 	}
 	if err := env.queries.DeleteTransfer("child-000"); err != nil {
 		t.Fatal(err)
 	}
-	data = rawAuthorized(t, env, "GET", "/auth/resources", env.userToken, nil, 200)
-	if err := json.Unmarshal(data, &response); err != nil {
-		t.Fatal(err)
-	}
+	response = readHistory()
 	if response.Slots[0].FileCount != 119 || response.Slots[0].Completed != 99 || response.Slots[0].Reserved != 120 {
-		t.Fatalf("current and cumulative counters conflated %s", data)
+		t.Fatalf("current and cumulative counters conflated %+v", response)
 	}
 }
 func TestResourceHistoryDoesNotReturnPartialSnapshotOnQueryFailure(t *testing.T) {
 	env := setupAuthFixture(t, false)
 	authRequest(t, env, "POST", "/transfers", env.userToken, nil, 201)
-	if _, err := env.db.Exec(`DROP TABLE files`); err != nil {
+	if _, err := env.db.Exec(`DROP TABLE admin_resource_totals`); err != nil {
 		t.Fatal(err)
 	}
-	response := authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 500)
+	response := authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 503)
 	if response["transfers"] != nil || response["slots"] != nil {
 		t.Fatalf("deceptive partial snapshot %v", response)
 	}

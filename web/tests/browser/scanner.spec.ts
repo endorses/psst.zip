@@ -12,7 +12,7 @@ async function session(page: import("@playwright/test").Page, signedIn = true) {
     }),
   );
   await page.route("**/api/v1/auth/resources?*", (route) =>
-    route.fulfill({ json: { transfers: [], slots: [] } }),
+    route.fulfill({ json: { transfers: [], slots: [], paginated: true, next_cursor: null } }),
   );
   await page.route("**/api/v1/auth/status", (route) =>
     route.fulfill({ json: { setup_required: false } }),

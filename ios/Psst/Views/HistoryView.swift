@@ -11,35 +11,66 @@ struct HistoryView: View {
     @State private var deleting: TransferRecord?
     @State private var failedDeletion: TransferRecord?
     @State private var error: String?
-    @State private var stale = false
-    @State private var lastUpdated: Date?
+    @State private var page = HistoryPageViewModel()
+    @State private var showDevice = false
+    @State private var sessionGeneration = UUID()
     @State private var visible = false
     @State private var busy = false
     @State private var renaming: TransferRecord?
     @State private var renameText = ""
+    private var deviceMode: Bool { showDevice || config.session?.canTransfer != true }
     private var records: [HistoryEntry] {
-        HistoryEntry.combine(account: history.visible(for: config.session), downloads: guests.records, session: config.session, filter: filter)
+        let owned = history.visible(for: config.session)
+        return HistoryEntry.combine(
+            account: deviceMode ? owned : owned.filter { page.contains($0, session: config.session) },
+            downloads: deviceMode ? guests.records : [], session: config.session, filter: filter)
     }
+    private var working: Bool { busy || page.loading }
 
     var body: some View {
         NavigationStack {
             List {
+                if config.session?.canTransfer == true {
+                    Picker("History source", selection: $showDevice) {
+                        Text("Server").tag(false)
+                        Text("On this device").tag(true)
+                    }.pickerStyle(.segmented).disabled(working)
+                }
+                if deviceMode {
+                    Text("Links and files remembered on this device. Open an item to check its current server status.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+                } else {
+                    HStack {
+                        Text("Page \(page.window.number)")
+                        Spacer()
+                        if page.loading { ProgressView() }
+                        Button("Previous") { navigate(.previous) }.disabled(working || !page.window.canGoBack)
+                        Button("Next") { navigate(.next) }.disabled(working || page.window.nextCursor == nil)
+                    }
+                    if page.window.number > 1 { Button("First page") { navigate(.first) }.disabled(working) }
+                    Text("Filters apply to this page.").font(.caption).foregroundStyle(PsstTheme.secondary)
+                }
                 Picker("History filter", selection: $filter) {
                     ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.menu)
                 if history.legacyCount > 0 {
-                    Text("Pre-account history is preserved. Manage pre-account server resources from the administrator website.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+                    Text("Pre-account history is preserved. Manage pre-account server resources from the administrator website.").font(.footnote).foregroundStyle(
+                        PsstTheme.secondary)
                 }
-                if stale {
+                if page.stale && !deviceMode {
                     Label("Offline — showing last known status", systemImage: "wifi.slash").foregroundStyle(PsstTheme.warning)
                 }
-                if let lastUpdated {
-                    HStack { Text("Last updated")
+                if let lastUpdated = page.lastUpdated, !deviceMode {
+                    HStack {
+                        Text("Last updated")
                         Text(lastUpdated, style: .relative)
                     }.font(.caption)
                 }
                 if records.isEmpty {
-                    ContentUnavailableView("No transfers yet", systemImage: "clock", description: Text(filter == .downloaded ? "Files downloaded on this device will appear here, including while signed out." : "No items in this filter yet."))
+                    ContentUnavailableView(
+                        deviceMode ? "No transfers yet" : "No entries on this page", systemImage: "clock",
+                        description: Text(
+                            filter == .downloaded
+                                ? "Files downloaded on this device will appear here, including while signed out." : "Choose another filter or page to see more entries."))
                 }
                 ForEach(records) { entry in
                     switch entry {
@@ -49,8 +80,10 @@ struct HistoryView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Downloaded", systemImage: "arrow.down.doc").font(.caption)
-                                Text((record.files.first?.name ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(.headline).lineLimit(1).truncationMode(.middle)
-                                Text("\(record.files.count) files · " + ByteCountFormatter.string(fromByteCount: record.files.reduce(Int64(0)) { $0 + $1.size }, countStyle: .file)).font(.caption)
+                                Text((record.files.first?.name ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(.headline)
+                                    .lineLimit(1).truncationMode(.middle)
+                                Text("\(record.files.count) files · " + ByteCountFormatter.string(fromByteCount: record.files.reduce(Int64(0)) { $0 + $1.size }, countStyle: .file))
+                                    .font(.caption)
                                 Text(record.origin).font(.caption).lineLimit(2)
                                 Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.complete ? "Saved on this device" : "Partially saved").font(.subheadline)
@@ -72,46 +105,66 @@ struct HistoryView: View {
                                 Text(record.summary).font(.subheadline)
                                 Text(record.statusText).font(.caption)
                                 if let expiry = record.expiresAt {
-                                    HStack { Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
+                                    HStack {
+                                        Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
                                         Text(expiry, style: .relative)
                                     }.font(.caption)
                                 }
                             }.padding(.vertical, 4)
-                        }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(busy) }
+                        }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(working) }
                             .contextMenu {
-                                Button("Rename on this device") { renameText = record.customTitle ?? ""; renaming = record }
+                                Button("Rename on this device") {
+                                    renameText = record.customTitle ?? ""
+                                    renaming = record
+                                }
                             }
-                            .swipeActions(edge: .leading) { Button("Rename") { renameText = record.customTitle ?? ""; renaming = record } }
+                            .swipeActions(edge: .leading) {
+                                Button("Rename") {
+                                    renameText = record.customTitle ?? ""
+                                    renaming = record
+                                }
+                            }
                     }
                 }
                 if let error {
                     Text(error).foregroundStyle(PsstTheme.error)
                     if let failedDeletion {
-                        Button("Retry revocation") { revoke(failedDeletion) }.disabled(busy)
+                        Button("Retry revocation") { revoke(failedDeletion) }.disabled(working)
                     }
                 }
             }
             .navigationTitle("History")
-            .alert("Rename on this device", isPresented: Binding(get: { renaming != nil }, set: {
-                if !$0 {
-                    renaming = nil
-                }
-            })) {
+            .alert(
+                "Rename on this device",
+                isPresented: Binding(
+                    get: { renaming != nil },
+                    set: {
+                        if !$0 {
+                            renaming = nil
+                        }
+                    })
+            ) {
                 TextField("Name (optional)", text: $renameText)
                 Button("Save") {
                     if let record = renaming, let session = config.session {
-                        do { try history.rename(record, name: renameText, session: session) }
-                        catch { self.error = "Could not save the name. Check your account and retry." }
+                        do { try history.rename(record, name: renameText, session: session) } catch { self.error = "Could not save the name. Check your account and retry." }
                     }
                     renaming = nil
                 }
                 Button("Cancel", role: .cancel) { renaming = nil }
-            } message: { Text("Only this device uses this name. Leave it empty to restore the automatic title.") }
-            .confirmationDialog("Remove from history? Saved files remain and the sender’s link keeps working.", isPresented: Binding(get: { removing != nil }, set: {
-                if !$0 {
-                    removing = nil
-                }
-            }), titleVisibility: .visible) {
+            } message: {
+                Text("Only this device uses this name. Leave it empty to restore the automatic title.")
+            }
+            .confirmationDialog(
+                "Remove from history? Saved files remain and the sender’s link keeps working.",
+                isPresented: Binding(
+                    get: { removing != nil },
+                    set: {
+                        if !$0 {
+                            removing = nil
+                        }
+                    }), titleVisibility: .visible
+            ) {
                 Button("Remove from history", role: .destructive) {
                     if let removing {
                         do { try guests.remove(removing) } catch { self.error = "Could not update local history. Free storage and retry." }
@@ -120,23 +173,32 @@ struct HistoryView: View {
                 }
             }
             .refreshable { _ = await refresh() }
-            .toolbar { Button("Refresh") { Task { _ = await refresh() } }.disabled(busy) }
-            .confirmationDialog("Revoke and delete?", isPresented: Binding(get: { deleting != nil }, set: {
-                if !$0 {
-                    deleting = nil
-                }
-            }), titleVisibility: .visible) {
+            .toolbar { Button("Refresh") { Task { _ = await refresh() } }.disabled(working) }
+            .confirmationDialog(
+                "Revoke and delete?",
+                isPresented: Binding(
+                    get: { deleting != nil },
+                    set: {
+                        if !$0 {
+                            deleting = nil
+                        }
+                    }), titleVisibility: .visible
+            ) {
                 if let deleting {
                     Button("Revoke and delete", role: .destructive) { revoke(deleting) }
                 }
                 Button("Cancel", role: .cancel) { deleting = nil }
-            } message: { Text("This disables the link and removes its server files. Receive links stop accepting uploads. Copies already saved by anyone remain.") }
-            .onAppear { visible = true
+            } message: {
+                Text("This disables the link and removes its server files. Receive links stop accepting uploads. Copies already saved by anyone remain.")
+            }
+            .onAppear {
+                visible = true
+                if filter == .downloaded { showDevice = true }
                 history.reload()
             }
             .onDisappear { visible = false }
-            .task(id: "\(visible)-\(scenePhase)-\(config.accountID ?? "")") {
-                guard visible, scenePhase == .active, config.isConfigured else { return }
+            .task(id: "\(visible)-\(scenePhase)-\(sessionGeneration)-\(showDevice)") {
+                guard visible, scenePhase == .active, config.isConfigured, !deviceMode else { return }
                 var delay: UInt64 = 5
                 while !Task.isCancelled, !config.needsSignIn, config.isConfigured {
                     let success = await refresh()
@@ -144,39 +206,55 @@ struct HistoryView: View {
                     do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }
                 }
             }
-            .onChange(of: config.accountID) { _, _ in renaming = nil
+            .onChange(of: config.session) { _, _ in
+                page.invalidate()
+                sessionGeneration = UUID()
+                renaming = nil
                 deleting = nil
                 failedDeletion = nil
                 error = nil
-                lastUpdated = nil
-                stale = false
             }
+            .onChange(of: filter) { _, value in if value == .downloaded { showDevice = true } }
+            .onChange(of: showDevice) { _, value in if !value && filter == .downloaded { filter = .all } }
         }.modifier(PsstStyle())
     }
 
-    private func refresh() async -> Bool {
-        guard !busy, let session = config.session, session.canTransfer, !config.needsSignIn else { return true }
-        busy = true
-        defer { busy = false }
-        do { try await history.refresh(session: session)
-            stale = false
-            lastUpdated = Date()
-            return true
-        } catch { stale = true
-            return false
+    private enum Navigation { case previous, next, first }
+    private func navigate(_ direction: Navigation) {
+        guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
+        Task {
+            switch direction {
+            case .previous: await page.previous(history: history, session: session)
+            case .next: await page.next(history: history, session: session)
+            case .first: await page.first(history: history, session: session)
+            }
         }
     }
 
+    private func refresh() async -> Bool {
+        if deviceMode {
+            history.reload()
+            return true
+        }
+        guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return true }
+        return await page.refresh(history: history, session: session)
+    }
+
     private func revoke(_ record: TransferRecord) {
-        guard !busy, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
+        guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
         busy = true
         error = nil
         deleting = nil
         Task {
             defer { busy = false }
-            do { try await history.revoke(record, session: session)
+            do {
+                try await history.revoke(record, session: session)
+                guard config.session == session, SecretStore.session == session else { return }
                 failedDeletion = nil
-            } catch { failedDeletion = record
+                if !deviceMode { _ = await page.refresh(history: history, session: session) }
+            } catch {
+                guard config.session == session, SecretStore.session == session else { return }
+                failedDeletion = record
                 self.error = String(localized: "Could not revoke this link. Its history entry has been kept. Reconnect or sign in again, then retry.")
             }
         }
@@ -190,6 +268,7 @@ private struct HistoryDetail: View {
     let record: TransferRecord
     @State private var receive: ReceiveViewModel?
     @State private var stale = false
+    @State private var sessionGeneration = UUID()
     var current: TransferRecord {
         history.visible(for: config.session).first { $0.localID == record.localID } ?? record
     }
@@ -227,16 +306,24 @@ private struct HistoryDetail: View {
                 receive = ReceiveViewModel(serverConfig: config, historyStore: history, record: current)
             }
         }
-        .task(id: scenePhase) {
+        .onChange(of: config.session) { _, _ in
+            sessionGeneration = UUID()
+            stale = false
+        }
+        .task(id: "\(scenePhase)-\(sessionGeneration)") {
             guard scenePhase == .active, record.isSlot != true else { return }
             var delay: UInt64 = 5
             while !Task.isCancelled, !config.needsSignIn, let session = config.session,
-                  record.canManage(as: session), current.state != .revoked, !current.isExpired
+                record.canManage(as: session), current.state != .revoked, !current.isExpired
             {
-                do { try await history.refresh(session: session)
+                do {
+                    try await history.refreshSend(record, session: session)
+                    guard config.session == session, SecretStore.session == session, !Task.isCancelled else { return }
                     stale = false
                     delay = 5
-                } catch { stale = true
+                } catch {
+                    guard config.session == session, SecretStore.session == session, !Task.isCancelled else { return }
+                    stale = true
                     delay = min(30, delay * 2)
                 }
                 do { try await Task.sleep(nanoseconds: delay * 1_000_000_000) } catch { return }

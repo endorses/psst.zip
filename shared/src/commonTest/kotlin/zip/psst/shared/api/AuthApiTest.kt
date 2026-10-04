@@ -32,7 +32,7 @@ class AuthApiTest {
                     assertEquals("Bearer device-token", request.headers[HttpHeaders.Authorization])
                     assertNull(request.url.parameters["all"])
                     respond(
-                        """{"transfers":[{"id":"remote","status":"revoked","file_count":2}],"slots":[{"id":"receive","status":"has_uploads","transfers":[{"transfer_id":"child","status":"complete","file_count":3}]}]}""",
+                        """{"paginated":true,"next_cursor":null,"transfers":[{"id":"11111111-1111-1111-1111-111111111111","status":"revoked","file_count":2,"total_size":120,"summary":{"state":"ready","file_count":2,"completed_files":0,"total_size":120}}],"slots":[{"id":"22222222-2222-2222-2222-222222222222","status":"has_uploads","file_count":3,"completed_files":3,"total_size":180,"summary":{"state":"ready","file_count":3,"completed_files":3,"total_size":180},"transfers":[]}]}""",
                         HttpStatusCode.OK,
                         headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
                     )
@@ -44,10 +44,10 @@ class AuthApiTest {
             val resources =
                 withContext(Dispatchers.Default) {
                     AuthApi(client, ServerConfig("https://files.example.com"), "device-token")
-                        .resources()
+                        .resourcesPage(null, 50)
                 }
             assertEquals("revoked", resources.transfers.single().status)
-            assertEquals(3, resources.slots.single().transfers.single().fileCount)
+            assertEquals(3L, resources.slots.single().completedFiles)
         } finally {
             client.close()
         }
@@ -409,7 +409,7 @@ class AuthApiTest {
                     }
                     verify {
                         AuthApi(client, ServerConfig("https://files.example.com"), "token")
-                            .resources()
+                            .resourcesPage(null, 50)
                     }
                     verify {
                         AuthApi(client, ServerConfig("https://files.example.com"))

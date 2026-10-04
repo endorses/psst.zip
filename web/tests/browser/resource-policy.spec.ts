@@ -1,3 +1,4 @@
+import { historyTransfer, historySlot, historyPage, historyCursor } from "../history-page-fixture";
 import {
   adminResource,
   cleanupOverview,
@@ -124,17 +125,18 @@ test("history navigation fetches one bounded page and retains it on a failed nex
       return route.fulfill({ status: 503, json: { error: "Next page unavailable" } });
     return route.fulfill({
       json: {
+        paginated: true,
         transfers: [
-          {
+          historyTransfer({
             id: after ? second : first,
             file_count: 1,
             status: "complete",
             expires_at: "2030-01-01T00:00:00Z",
             created_at: "2026-01-01T00:00:00Z",
-          },
+          }),
         ],
         slots: [],
-        next_cursor: after ? null : "opaque/+ cursor",
+        next_cursor: after ? null : historyCursor(1),
       },
     });
   });
@@ -151,7 +153,7 @@ test("history navigation fetches one bounded page and retains it on a failed nex
   await expect(page.getByRole("button", { name: "Older transfers" })).toBeDisabled();
   await page.getByRole("button", { name: "Newer transfers" }).click();
   await expect(page.locator(`[data-resource-id="${first}"]`)).toBeVisible();
-  expect(calls.filter((cursor) => cursor).every((cursor) => cursor === "opaque/+ cursor")).toBe(
+  expect(calls.filter((cursor) => cursor).every((cursor) => cursor === historyCursor(1))).toBe(
     true,
   );
 });
@@ -230,12 +232,12 @@ for (const role of ["user", "admin"] as const) {
     await page.route("**/api/v1/auth/resources?*", (route) =>
       route.fulfill({
         json: {
+          paginated: true,
           transfers: [],
           next_cursor: null,
           slots: [
-            {
+            historySlot({
               id,
-              owner_id: `policy-${role}`,
               file_count: 154,
               completed_files: 151,
               reserved_files: 200,
@@ -243,13 +245,15 @@ for (const role of ["user", "admin"] as const) {
               transfers: [],
               receive_protocol: 2,
               expires_at: "2030-01-01T00:00:00Z",
-            },
-            {
+            }),
+            historySlot({
               id: unknown,
-              owner_id: `policy-${role}`,
+              file_count: null,
+              completed_files: null,
+              total_size: null,
               transfers: [],
               expires_at: "2030-01-01T00:00:00Z",
-            },
+            }),
           ],
         },
       }),
@@ -296,7 +300,7 @@ for (const role of ["user", "admin"] as const) {
     if (role === "admin") await expect(summary).toContainText("Files received");
     if (role === "user")
       await expect(page.locator(`[data-resource-id="${unknown}"]`)).toContainText(
-        "File count unavailable",
+        "File totals updating",
       );
     expect(detailedRequests).toBe(0);
   });

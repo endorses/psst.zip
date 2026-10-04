@@ -14,9 +14,11 @@ import java.lang.reflect.Proxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -188,6 +190,12 @@ class HistoryDeletionTest {
         assertEquals("ALTER TABLE transfer_history ADD COLUMN accountId TEXT", sql.last())
         assertNull(row().copy(accountId = null).accountId)
         assertNull(row(token = null).deletionToken)
+        AppDatabase.MIGRATION_6_7.migrate(database)
+        assertEquals(
+            "ALTER TABLE transfer_history ADD COLUMN summaryUpdating INTEGER NOT NULL DEFAULT 0",
+            sql.last(),
+        )
+        assertFalse(row().summaryUpdating)
     }
 
     @Test
@@ -246,6 +254,19 @@ class HistoryDeletionTest {
         private val events: MutableList<String> = mutableListOf(),
     ) : TransferHistoryDao {
         private val rows = MutableStateFlow(listOf(initial))
+
+        override fun observePage(
+            ids: List<String>,
+            serverUrl: String,
+            accountId: String,
+        ): Flow<List<TransferHistoryEntity>> =
+            getAll().let { source ->
+                source.map { rows ->
+                    rows.filter {
+                        it.id in ids && it.serverUrl == serverUrl && it.accountId == accountId
+                    }
+                }
+            }
 
         override fun getAll(): Flow<List<TransferHistoryEntity>> = rows
 

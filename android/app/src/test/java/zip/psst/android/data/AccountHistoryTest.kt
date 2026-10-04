@@ -1,6 +1,7 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.AuthResourceSlot
+import zip.psst.shared.model.InboxSummary
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
@@ -24,7 +25,13 @@ class AccountHistoryTest {
     @Test
     fun compactInboxSummaryCountsHundredsOfChildrenWithoutEmptyArraysResettingHistory() {
         val slot =
-            AuthResourceSlot("large-inbox", "has_uploads", fileCount = 350, completedFiles = 250)
+            AuthResourceSlot(
+                "large-inbox",
+                "has_uploads",
+                fileCount = 350,
+                completedFiles = 250,
+                summary = InboxSummary("ready", 250, 350, 0),
+            )
         assertTrue(slot.transfers.isEmpty())
         val summary = slotHistoryResource(slot, access)
         assertEquals(250, summary.fileCount)
@@ -51,24 +58,6 @@ class AccountHistoryTest {
         assertEquals("has_uploads", newUpload.status)
         assertEquals(251, newUpload.fileCount)
         assertEquals(local.savedFileIdsJson, newUpload.savedFileIdsJson)
-    }
-
-    @Test
-    fun absenceVerificationSharesTheManifestBudgetAndDoesNotMutateStatus() {
-        val missingSent = incoming().copy(id = "omitted", type = "sent", status = "complete")
-        val remoteSent = missingSent.copy(id = "present")
-        val localReceives =
-            (0 until 30).map { incoming().copy(id = "receive-$it", encryptionKey = "local-key") }
-        val remoteIds = localReceives.map { it.id }.toSet() + remoteSent.id
-        val rows = listOf(missingSent, remoteSent) + localReceives
-        val first = historyRefreshBatch(rows, 0, remoteIds)
-        val second = historyRefreshBatch(rows, 20, remoteIds)
-        assertEquals(20, first.size)
-        assertEquals(20, second.size)
-        assertTrue(first.any { it.id == missingSent.id })
-        assertFalse((first + second).any { it.id == remoteSent.id })
-        assertEquals("complete", missingSent.status)
-        assertEquals(31, (first + second).map { it.id }.toSet().size)
     }
 
     @Test
@@ -135,16 +124,27 @@ class AccountHistoryTest {
     }
 
     @Test
-    fun manifestRefreshIsBoundedRotatesAndSkipsMissingKeys() {
-        val rows =
-            (0 until 45).map { incoming().copy(id = "row-$it", encryptionKey = "key") } + incoming()
-        val first = historyManifestBatch(rows, 0)
-        val next = historyManifestBatch(rows, 20)
-        val wrap = historyManifestBatch(rows, 40)
-        assertEquals(20, first.size)
-        assertEquals(20, next.size)
-        assertEquals(20, wrap.size)
-        assertEquals(45, (first + next + wrap).map { it.id }.toSet().size)
-        assertFalse((first + next + wrap).any { it.encryptionKey.isBlank() })
+    fun readyCountsReplacePriorCountsAndUpdatingPreservesLocalFacts() {
+        val local =
+            incoming()
+                .copy(
+                    fileCount = 100,
+                    encryptionKey = "key",
+                    savedFileIdsJson = "[\"child/blob\"]",
+                    title = "mine",
+                )
+        val ready = mergeAccountResource(local, incoming().copy(fileCount = 1), access)!!
+        assertEquals(1, ready.fileCount)
+        val updating =
+            mergeAccountResource(
+                ready,
+                incoming().copy(fileCount = 0, summaryUpdating = true),
+                access,
+            )!!
+        assertEquals(1, updating.fileCount)
+        assertTrue(updating.summaryUpdating)
+        assertEquals(local.encryptionKey, updating.encryptionKey)
+        assertEquals(local.savedFileIdsJson, updating.savedFileIdsJson)
+        assertEquals(local.title, updating.title)
     }
 }

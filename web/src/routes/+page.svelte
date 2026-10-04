@@ -28,7 +28,7 @@
   import AccountTraffic from "$lib/components/AccountTraffic.svelte";
   import PublicTransferControl from "$lib/components/PublicTransferControl.svelte";
   import IncidentConfirmDialog from "$lib/components/IncidentConfirmDialog.svelte";
-  import { loadResourcePage, loadUsersPage } from "$lib/resource-history";
+  import { loadResourcePage, loadUsersPage, HISTORY_PREVIOUS_WINDOW } from "$lib/resource-history";
   import { resourceFileCount, receivedFileCount } from "$lib/account";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
@@ -192,7 +192,11 @@
   let historyCursor = $state(""),
     historyNext = $state<string | null>(null),
     historyPrevious = $state<string[]>([]),
-    historyLoading = $state(false);
+    historyLoading = $state(false),
+    historyPage = $state(1),
+    historyError = $state("");
+  let historyGeneration = 0;
+  let historyRequest: AbortController | null = null;
   let receiveUrl = $state(""),
     receiveId = $state("");
   let pairingQr = $state(""),
@@ -238,7 +242,9 @@
           if (user.must_change_password) {
             liveMessage = "";
           }
-          if (!user.must_change_password && tab === "History") await refreshHistory(owner);
+          if (!user.must_change_password && tab === "History" && !historyLoading) {
+            if (!(await refreshHistory(owner))) throw new Error("Could not refresh history");
+          }
           if (
             !user.must_change_password &&
             tab === "Receive" &&
@@ -304,6 +310,8 @@
     window.addEventListener("storage", changed);
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => {
+      historyGeneration++;
+      historyRequest?.abort();
       receiveGeneration++;
       receiveRequest?.abort();
       stopped = true;
@@ -340,40 +348,68 @@
     links = loadLinks(user.id);
     labels = loadLabels(user.id);
   }
-  async function refreshHistory(owner = epoch) {
-    const cursor = historyCursor;
-    const result = await loadResourcePage(cursor);
-    if (owner !== epoch || cursor !== historyCursor) return;
-    transfers = result.transfers ?? [];
-    slots = result.slots ?? [];
-    historyNext = result.next_cursor;
-  }
-  async function turnHistory(direction: "next" | "previous" | "first") {
-    if (historyLoading) return;
-    const owner = epoch;
-    const cursor =
-      direction === "next" ? historyNext : direction === "previous" ? historyPrevious.at(-1) : "";
-    if (cursor == null) return;
+  async function refreshHistory(
+    owner = epoch,
+    cursor = historyCursor,
+    direction?: "next" | "previous" | "first",
+  ) {
+    if (owner !== epoch || tab !== "History") return true;
+    const previousCursor = historyCursor,
+      account = user?.id,
+      generation = ++historyGeneration;
+    historyRequest?.abort();
+    const controller = new AbortController();
+    historyRequest = controller;
+    const current = () =>
+      owner === epoch &&
+      account === user?.id &&
+      tab === "History" &&
+      generation === historyGeneration &&
+      previousCursor === historyCursor;
     historyLoading = true;
-    error = "";
     try {
-      const result = await loadResourcePage(cursor);
-      if (owner !== epoch) return;
-      historyPrevious =
-        direction === "next"
-          ? [...historyPrevious, historyCursor]
-          : direction === "previous"
-            ? historyPrevious.slice(0, -1)
-            : [];
-      historyCursor = cursor;
+      const result = await loadResourcePage(cursor, false, controller.signal);
+      if (!current()) return true;
+      if (
+        direction === "next" &&
+        result.next_cursor &&
+        (result.next_cursor === historyCursor || historyPrevious.includes(result.next_cursor))
+      )
+        throw new Error(
+          "This server returned a repeated history page. Refresh or contact its administrator.",
+        );
+      if (direction) {
+        historyPrevious =
+          direction === "next"
+            ? [...historyPrevious, historyCursor].slice(-HISTORY_PREVIOUS_WINDOW)
+            : direction === "previous"
+              ? historyPrevious.slice(0, -1)
+              : [];
+        historyPage =
+          direction === "next" ? historyPage + 1 : direction === "previous" ? historyPage - 1 : 1;
+        historyCursor = cursor;
+      }
       historyNext = result.next_cursor;
       transfers = result.transfers;
       slots = result.slots;
+      historyError = "";
     } catch (cause) {
-      if (owner === epoch) error = message(cause);
+      if (!current()) return true;
+      if (cause instanceof AccountError && cause.status === 401) {
+        clearAccount(true);
+        error = "Your session ended. Sign in again.";
+      } else historyError = message(cause);
+      return false;
     } finally {
-      if (owner === epoch) historyLoading = false;
+      if (generation === historyGeneration) historyLoading = false;
     }
+    return true;
+  }
+  async function turnHistory(direction: "next" | "previous" | "first") {
+    if (historyLoading) return;
+    const cursor =
+      direction === "next" ? historyNext : direction === "previous" ? historyPrevious.at(-1) : "";
+    if (cursor != null) await refreshHistory(epoch, cursor, direction);
   }
   async function turnUsers(direction: "next" | "previous") {
     const owner = epoch;
@@ -552,6 +588,10 @@
     received = [];
     transfers = [];
     slots = [];
+    historyGeneration++;
+    historyRequest?.abort();
+    historyPage = 1;
+    historyError = "";
     historyCursor = "";
     historyNext = null;
     historyPrevious = [];
@@ -720,6 +760,11 @@
       receiveGeneration++;
       receiveRequest?.abort();
       receiveLoading = false;
+    }
+    if (tab === "History" && next !== "History") {
+      historyGeneration++;
+      historyRequest?.abort();
+      historyLoading = false;
     }
     tab = next;
     if (next === "Receive") {
@@ -1334,8 +1379,13 @@
             Encryption keys stay on the device that created the link. This browser can reopen its
             own links; transfers from other devices can still be revoked.
           </p>
-          {#if !transfers.length && !slots.length}<p class="empty">
-              {historyCursor ? "No transfers on this page." : "No transfers yet."}
+          {#if historyError}<p role="alert">
+              {historyError} The displayed page may be out of date.
+            </p>{/if}
+          {#if !historyLoading && !historyError && !transfers.length && !slots.length}<p
+              class="empty"
+            >
+              {historyCursor || historyNext ? "No transfers on this page." : "No transfers yet."}
             </p>{/if}
           {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )]
             .filter((item) => historyFilter === "all" || item.kind === historyFilter)
@@ -1363,7 +1413,7 @@
                 <p>
                   {(item.kind === "slots" ? receivedFileCount(item) : resourceFileCount(item)) ===
                   null
-                    ? "File count unavailable"
+                    ? "File totals updating"
                     : item.kind === "slots"
                       ? `${receivedFileCount(item)} files received`
                       : `${resourceFileCount(item)} files · ${status(item)}`}
@@ -1440,22 +1490,19 @@
             >
               No transfers in this filter on this page.
             </p>{/if}
-          {#if historyPrevious.length || historyNext}<nav
-              class="history-pages"
-              aria-label="History pages"
-            >
+          {#if historyPage > 1 || historyNext}<nav class="history-pages" aria-label="History pages">
               <button
                 disabled={busy || historyLoading || !historyPrevious.length}
                 onclick={() => turnHistory("previous")}>Newer transfers</button
               >
-              <span class="muted small">Page {historyPrevious.length + 1}</span>
+              <span class="muted small">Page {historyPage}</span>
               <button
                 disabled={busy || historyLoading || !historyNext}
                 onclick={() => turnHistory("next")}>Older transfers</button
               >
-              {#if historyPrevious.length}<button
+              {#if historyPage > 1}<button
                   disabled={busy || historyLoading}
-                  onclick={() => turnHistory("first")}>Newest page</button
+                  onclick={() => turnHistory("first")}>First page</button
                 >{/if}
             </nav>{/if}
           {#if pendingDelete}
