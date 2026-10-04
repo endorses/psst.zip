@@ -125,7 +125,9 @@ def main():
     dark_symbol = symbol.replace("#5eead4", "#ecf5f1").replace("#0f766e", "#5eead4")
     write(BRAND / "symbol-dark.svg", svg(dark_symbol))
     # Fill the QR badge with artwork, without the launcher mask's extra safe area.
-    badge_paths = ['<path fill="#0b1917" d="M0 0H128V128H0Z"/>']
+    badge_paths = [
+        '<path fill="#24554f" d="M24 0H104Q128 0 128 24V104Q128 128 104 128H24Q0 128 0 104V24Q0 0 24 0Z"/>'
+    ]
     for path in ET.fromstring(svg(dark_symbol)).findall(f"{{{SVG_NS}}}path"):
         pen = SVGPathPen(None)
         parse_path(path.attrib["d"], TransformPen(pen, (1.1, 0, 0, 1.1, -6.4, -17.3)))
@@ -154,7 +156,7 @@ def main():
     write(
         BRAND / "app-icon.svg",
         svg(
-            '<path fill="#0b1917" d="M0 0H128V128H0Z"/>'
+            '<path fill="#24554f" d="M0 0H128V128H0Z"/>'
             + f'<g transform="translate(9 2) scale(.86)">{dark_symbol}</g>'
         ),
     )
@@ -259,7 +261,7 @@ def main():
         write(android / "mipmap-anydpi-v33" / f"{name}.xml", adaptive)
     write(
         android / "values/ic_launcher_background.xml",
-        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0b1917</color>\n</resources>\n',
+        '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#24554f</color>\n</resources>\n',
     )
 
 

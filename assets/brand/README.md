@@ -4,7 +4,7 @@ The symbol follows the approved draft: wide, softly curved lips and an upright i
 
 The artwork was redrawn as vector paths from the approved AI-generated concept. It contains no emoji artwork or traced raster pixels and is distributed under the repository's Apache-2.0 license. Nunito at weight 800 provides the wordmark; the unmodified variable font and its SIL Open Font License are in `fonts/`. Source: [Google Fonts / Nunito](https://github.com/google/fonts/tree/main/ofl/nunito). Outlined production exports require no installed font. Editable wordmark SVGs use live text; install the bundled Nunito font before editing them.
 
-The palette is teal `#0f766e`, mint `#5eead4`, deep green `#172b2a` / `#0b1917`, and off-white `#ecf5f1` / `#f6f8f7`. Keep SVG edges flat; do not add gradients, emoji facial details or an exclamation mark to the wordmark.
+The palette is teal `#0f766e`, mint `#5eead4`, deep green `#172b2a` / `#0b1917`, and off-white `#ecf5f1` / `#f6f8f7`. Icon and QR badge backgrounds use the lighter teal `#24554f` so they remain visibly teal. QR badges have rounded corners; app-icon masking remains platform-controlled. Keep SVG edges flat; do not add gradients, emoji facial details or an exclamation mark to the wordmark.
 
 ## Reproducible exports
 
@@ -16,4 +16,4 @@ uv run --with-requirements assets/brand/requirements.txt python assets/brand/exp
 
 The script uses local masters and the bundled font; it does not download artwork or fonts. It writes outlined/editable lockups, web SVG/PNG/ICO favicons and Apple touch artwork, Android vector/adaptive/themed/legacy icon resources, and the iOS app icon and symbol catalogs for the app and share extension. PNG resizing uses Lanczos. Android adaptive foregrounds include a deliberate safe-zone inset, and iOS app artwork is opaque with square corners for the OS mask.
 
-Inspect exports at their actual sizes, especially 16/32 px favicons and launcher masks. QR code producers use `qr-icon.svg`, a dark teal badge with tightly fitted artwork and a narrow white border, inside the existing central backing area and with high error correction; the artwork must never cover finder patterns or the quiet zone.
+Inspect exports at their actual sizes, especially 16/32 px favicons and launcher masks. QR code producers use `qr-icon.svg`, a rounded teal badge with tightly fitted artwork and a narrow white border, inside the existing central backing area and with high error correction; the artwork must never cover finder patterns or the quiet zone.
