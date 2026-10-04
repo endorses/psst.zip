@@ -532,7 +532,6 @@
 {#if loading}<p role="status">Loading your account…</p>
 {:else if !user}
   <section class="panel login">
-    <div class="login-mark"><Icon name="Shield" size={26} /></div>
     <h1>Sign in to {BRAND}</h1>
     <p class="muted login-intro">Your private space to send and receive files.</p>
     {#if setupRequired}<p class="notice">
@@ -991,16 +990,6 @@
     margin: clamp(1rem, 5vh, 3rem) auto;
     padding: clamp(1.5rem, 4vw, 2.5rem);
     border-radius: 20px;
-  }
-  .login-mark {
-    width: 52px;
-    height: 52px;
-    display: grid;
-    place-items: center;
-    border-radius: 15px;
-    background: var(--accent);
-    color: var(--primary);
-    margin-bottom: 1.5rem;
   }
   .login h1 {
     font-size: clamp(1.6rem, 3vw, 1.9rem);
