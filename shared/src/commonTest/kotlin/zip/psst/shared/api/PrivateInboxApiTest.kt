@@ -40,7 +40,7 @@ class PrivateInboxApiTest {
 
     private val slot = "11111111-1111-1111-1111-111111111111"
     private val child = "22222222-2222-2222-2222-222222222222"
-    private val publicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    private val publicKey = "CQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
     @Test
     fun ownerReadsAreAuthenticatedAndPublicAvailabilityContainsNoCredentials() = transportTest {
@@ -66,9 +66,9 @@ class PrivateInboxApiTest {
                                 """{"id":"$slot","available":true,"receive_protocol":2,"recipient_public_key":"$publicKey","remaining_transfers":3,"remaining_bytes":1000,"upload_capacity":{"checked_at":"${kotlin.time.Clock.System.now()}","state":"ready","available_wire_bytes":1000,"available_files":16,"manifest_reserve_bytes":1048576}}""",
                                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
                             )
-                        path.endsWith("/slots/$slot") ->
+                        path.endsWith("/slots/$slot/inbox") ->
                             respond(
-                                """{"id":"$slot","receive_protocol":2}""",
+                                """{"id":"$slot","receive_protocol":2,"recipient_public_key":"$publicKey","max_files":0,"reserved_files":0,"remaining_files":null,"paginated":true,"next_cursor":null,"summary":{"state":"ready","completed_files":0,"file_count":0,"total_size":0},"transfers":[]}""",
                                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
                             )
                         path.endsWith("/transfers/$child") ->

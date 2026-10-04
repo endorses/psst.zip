@@ -131,6 +131,46 @@ fun ReceiveScreen(
                 )
             if (state.isCreatingSlot) CircularProgressIndicator()
             state.uploadUrl?.let { LinkPanel(it) }
+            state.page?.let { page ->
+                val summary = page.summary
+                Text(
+                    if (summary?.ready == true)
+                        "${summary.completedFiles} completed files · ${summary.fileCount} retained file allocations · ${android.text.format.Formatter.formatFileSize(context, summary.totalSize ?: 0)} encrypted"
+                    else "Inbox totals are updating. Shown uploads remain available."
+                )
+                Text("Page ${state.pager.number} · ${page.transfers.size} shown uploads")
+                if (page.transfers.isEmpty()) Text("No available uploads on this page.")
+                page.transfers.forEach { child ->
+                    Text(
+                        "${child.transferId.take(8)} · ${child.fileCount} files · ${child.status.name.lowercase()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                val canNavigate =
+                    !state.isPaging && !state.isDownloading && state.downloadConsent == null
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = viewModel::firstPage,
+                        enabled = canNavigate && state.pager.cursor != null,
+                    ) {
+                        Text("First")
+                    }
+                    TextButton(
+                        onClick = viewModel::previousPage,
+                        enabled = canNavigate && state.pager.previous.isNotEmpty(),
+                    ) {
+                        Text("Previous")
+                    }
+                    TextButton(
+                        onClick = viewModel::nextPage,
+                        enabled = canNavigate && page.nextCursor != null,
+                    ) {
+                        Text("Next")
+                    }
+                }
+                if (state.isPaging) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (state.shownSaved) Text("Shown uploads saved on this device")
+            }
             if (state.slotId != null && existingId == null)
                 OutlinedTextField(
                     value = state.localName,
@@ -180,9 +220,14 @@ fun ReceiveScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 TextButton(onClick = viewModel::cancelDownload) { Text("Cancel") }
-            } else if (state.slotStatus == "has_uploads") {
-                Button(onClick = viewModel::downloadReceivedFiles) {
-                    Text(stringResource(R.string.save_files))
+            } else if (
+                state.page?.completedTransfers?.isNotEmpty() == true &&
+                    !state.shownSaved &&
+                    !state.keyUnavailable &&
+                    state.slotStatus != "unavailable"
+            ) {
+                Button(onClick = viewModel::downloadReceivedFiles, enabled = !state.isPaging) {
+                    Text("Save shown uploads")
                 }
             }
             if (state.downloadComplete || state.savedFileCount > 0) {

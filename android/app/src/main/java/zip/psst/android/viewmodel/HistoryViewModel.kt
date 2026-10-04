@@ -138,6 +138,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                                 dao,
                                 row.id,
                                 reportFailure = true,
+                                contextCurrent = { app.prefs.historyAccess.value == access },
                                 createClient = { config ->
                                     ApiClient(
                                         config,
@@ -145,7 +146,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                                             app.prefs.getSessionToken(config.normalizedBaseUrl),
                                     )
                                 },
-                                privateReceiveKey = zip.psst.android.data.InboxKeyStore(app)::read,
                             )
                         } catch (e: CancellationException) {
                             throw e

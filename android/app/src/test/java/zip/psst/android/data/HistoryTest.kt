@@ -1,7 +1,6 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.ApiClient
-import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.SlotTransfer
 import zip.psst.shared.model.Transfer
@@ -14,7 +13,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
-import kotlin.io.encoding.Base64
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -167,21 +165,10 @@ class HistoryTest {
     }
 
     @Test
-    fun refreshUsesStoredOriginAndEncryptedManifestWithoutDownloadingFiles() = runTest {
-        val key = ByteArray(32) { it.toByte() }
-        val nonce = ByteArray(12) { it.toByte() }
-        val manifest =
-            """{"files":[{"name":"test.txt","size":7,"blob_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","encoding":"chunked-v1","chunk_size":4194304,"encryption_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"""
-                .encodeToByteArray()
-        val encrypted = nonce + CryptoProvider.encrypt(key, nonce, manifest)
-        val dao =
-            MemoryDao(
-                row("has_uploads")
-                    .copy(
-                        encryptionKey =
-                            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
-                    )
-            )
+    fun refreshUsesBoundedMetadataPageWithoutDownloadingManifests() = runTest {
+        val slot = "11111111-1111-1111-1111-111111111111"
+        val child = "22222222-2222-2222-2222-222222222222"
+        val dao = MemoryDao(row("has_uploads").copy(id = slot))
         val paths = mutableListOf<String>()
         val http =
             HttpClient(MockEngine) {
@@ -191,28 +178,24 @@ class HistoryTest {
                         assertEquals(HttpMethod.Get, request.method)
                         assertEquals("original.example", request.url.host)
                         paths += request.url.encodedPath
-                        when (request.url.encodedPath) {
-                            "/api/v1/slots/slot" ->
-                                respond(
-                                    """{"id":"slot","status":"has_uploads","transfers":[{"transfer_id":"a","status":"complete","file_count":1}]}""",
-                                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
-                                )
-                            "/api/v1/transfers/a/manifest" -> respond(encrypted)
-                            else -> error("File blobs must not be downloaded by history")
-                        }
+                        assertEquals("/api/v1/slots/$slot/inbox", request.url.encodedPath)
+                        respond(
+                            """{"id":"$slot","status":"has_uploads","receive_protocol":1,"recipient_public_key":"","max_files":0,"reserved_files":0,"remaining_files":null,"paginated":true,"next_cursor":"later","summary":{"state":"ready","completed_files":400,"file_count":500,"total_size":60000},"transfers":[{"transfer_id":"$child","status":"complete","file_count":1}]}""",
+                            headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                        )
                     }
                 }
                 install(ContentNegotiation) { json() }
             }
         val updated =
-            refreshHistoryEntry(dao, "slot") { config ->
+            refreshHistoryEntry(dao, slot) { config ->
                 assertEquals("http://original.example:8080", config.baseUrl)
                 ApiClient(config, http)
             }!!
-        assertEquals(1, updated.fileCount)
-        assertEquals(7L, updated.totalSize)
+        assertEquals(400, updated.fileCount)
+        assertEquals(0L, updated.totalSize)
         assertEquals("has_uploads", updated.status)
-        assertEquals(2, paths.size)
+        assertEquals(1, paths.size)
     }
 
     @Test

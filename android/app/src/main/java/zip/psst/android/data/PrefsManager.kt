@@ -24,6 +24,7 @@ class PrefsManager(context: Context) {
         _appearance.value = appearance
     }
 
+    private var credentialVersion = 0L
     private val _historyAccess = MutableStateFlow(readHistoryAccess())
     val historyAccess: StateFlow<HistoryAccess> = _historyAccess.asStateFlow()
 
@@ -47,6 +48,7 @@ class PrefsManager(context: Context) {
         mustChangePassword: Boolean = false,
     ) {
         require(accountId.isNotBlank()) { "The server returned an invalid account" }
+        credentialVersion++
         sessions.save(url, username, token, accountId, role, mustChangePassword)
         setServerUrl(url)
     }
@@ -70,6 +72,7 @@ class PrefsManager(context: Context) {
             sessions.accountId(),
             sessions.isAdmin(),
             sessions.mustChangePassword(),
+            credentialVersion,
         )
     }
 

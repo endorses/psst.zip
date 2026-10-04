@@ -128,15 +128,16 @@ func (q *Queries) ResetCounterRebuild(ctx context.Context) error {
 type counterJob struct {
 	kind, id, phase, cursor, child                          string
 	revision, files, children, reserved, occupied, manifest int64
+	fileBytes, uploaded, completed                          int64
 }
 
 func readCounterJob(ctx context.Context, tx *sql.Tx) (counterJob, error) {
 	var j counterJob
-	err := tx.QueryRowContext(ctx, `SELECT kind,resource_id,expected_revision,phase,cursor,child,file_count,child_count,reserved_bytes,occupied_bytes,manifest_bytes FROM counter_rebuild_jobs WHERE next_retry_at<=? ORDER BY next_retry_at,turn,kind,resource_id LIMIT 1`, time.Now().Unix()).Scan(&j.kind, &j.id, &j.revision, &j.phase, &j.cursor, &j.child, &j.files, &j.children, &j.reserved, &j.occupied, &j.manifest)
+	err := tx.QueryRowContext(ctx, `SELECT kind,resource_id,expected_revision,phase,cursor,child,file_count,child_count,reserved_bytes,occupied_bytes,manifest_bytes,total_file_bytes,uploaded_files,completed_files FROM counter_rebuild_jobs WHERE next_retry_at<=? ORDER BY next_retry_at,turn,kind,resource_id LIMIT 1`, time.Now().Unix()).Scan(&j.kind, &j.id, &j.revision, &j.phase, &j.cursor, &j.child, &j.files, &j.children, &j.reserved, &j.occupied, &j.manifest, &j.fileBytes, &j.uploaded, &j.completed)
 	return j, err
 }
 func saveCounterJob(ctx context.Context, tx *sql.Tx, j counterJob, state string, delay int64) error {
-	_, err := tx.ExecContext(ctx, `UPDATE counter_rebuild_jobs SET expected_revision=?,phase=?,cursor=?,child=?,file_count=?,child_count=?,reserved_bytes=?,occupied_bytes=?,manifest_bytes=?,state=?,next_retry_at=?,turn=(SELECT turn FROM counter_rebuild_progress WHERE id=1) WHERE kind=? AND resource_id=?`, j.revision, j.phase, j.cursor, j.child, j.files, j.children, j.reserved, j.occupied, j.manifest, state, time.Now().Unix()+delay, j.kind, j.id)
+	_, err := tx.ExecContext(ctx, `UPDATE counter_rebuild_jobs SET expected_revision=?,phase=?,cursor=?,child=?,file_count=?,child_count=?,reserved_bytes=?,occupied_bytes=?,manifest_bytes=?,total_file_bytes=?,uploaded_files=?,completed_files=?,state=?,next_retry_at=?,turn=(SELECT turn FROM counter_rebuild_progress WHERE id=1) WHERE kind=? AND resource_id=?`, j.revision, j.phase, j.cursor, j.child, j.files, j.children, j.reserved, j.occupied, j.manifest, j.fileBytes, j.uploaded, j.completed, state, time.Now().Unix()+delay, j.kind, j.id)
 	return err
 }
 func enqueueCounterJob(ctx context.Context, tx *sql.Tx, kind, id string) error {
@@ -302,11 +303,11 @@ func addCounter(target *int64, value int64) error {
 	return nil
 }
 func validCounterAccumulators(j counterJob) bool {
-	return j.files >= 0 && j.children >= 0 && j.reserved >= 0 && j.occupied >= 0 && j.manifest >= 0
+	return j.files >= 0 && j.children >= 0 && j.reserved >= 0 && j.occupied >= 0 && j.manifest >= 0 && j.fileBytes >= 0 && j.uploaded >= 0 && j.completed >= 0
 }
 func counterFilePage(ctx context.Context, tx *sql.Tx, j *counterJob, transfer string, budget *int) error {
 	limit := *budget
-	rows, err := tx.QueryContext(ctx, `SELECT id,size,upload_offset,payload_deleted FROM files WHERE transfer_id=? AND id>? ORDER BY id LIMIT ?`, transfer, j.cursor, limit)
+	rows, err := tx.QueryContext(ctx, `SELECT f.id,f.size,f.upload_offset,f.payload_deleted,f.upload_complete,t.status='complete' FROM files f JOIN transfers t ON t.id=f.transfer_id WHERE f.transfer_id=? AND f.id>? ORDER BY f.id LIMIT ?`, transfer, j.cursor, limit)
 	if err != nil {
 		return err
 	}
@@ -314,8 +315,8 @@ func counterFilePage(ctx context.Context, tx *sql.Tx, j *counterJob, transfer st
 	for rows.Next() {
 		var id string
 		var size, offset int64
-		var deleted bool
-		if err = rows.Scan(&id, &size, &offset, &deleted); err != nil {
+		var deleted, uploaded, complete bool
+		if err = rows.Scan(&id, &size, &offset, &deleted, &uploaded, &complete); err != nil {
 			rows.Close()
 			return err
 		}
@@ -328,6 +329,22 @@ func counterFilePage(ctx context.Context, tx *sql.Tx, j *counterJob, transfer st
 		if err = addCounter(&j.files, 1); err != nil {
 			rows.Close()
 			return err
+		}
+		if err = addCounter(&j.fileBytes, size); err != nil {
+			rows.Close()
+			return err
+		}
+		if uploaded {
+			if err = addCounter(&j.uploaded, 1); err != nil {
+				rows.Close()
+				return err
+			}
+			if complete {
+				if err = addCounter(&j.completed, 1); err != nil {
+					rows.Close()
+					return err
+				}
+			}
 		}
 		if !deleted {
 			if err = addCounter(&j.reserved, size); err != nil {
@@ -443,7 +460,7 @@ func publishCounterJob(ctx context.Context, tx *sql.Tx, j counterJob) error {
 	var result sql.Result
 	switch j.kind {
 	case "transfer", "slot":
-		result, err = tx.ExecContext(ctx, `INSERT INTO admin_resource_totals(kind,resource_id,file_count,child_transfer_count,reserved_bytes,occupied_bytes,manifest_bytes) VALUES(?,?,?,?,?,?,?) ON CONFLICT(kind,resource_id) DO UPDATE SET file_count=excluded.file_count,child_transfer_count=excluded.child_transfer_count,reserved_bytes=excluded.reserved_bytes,occupied_bytes=excluded.occupied_bytes,manifest_bytes=excluded.manifest_bytes`, j.kind, j.id, j.files, j.children, j.reserved, j.occupied, j.manifest)
+		result, err = tx.ExecContext(ctx, `INSERT INTO admin_resource_totals(kind,resource_id,file_count,child_transfer_count,reserved_bytes,occupied_bytes,manifest_bytes,total_file_bytes,uploaded_files,completed_files,inbox_known) VALUES(?,?,?,?,?,?,?,?,?,?,1) ON CONFLICT(kind,resource_id) DO UPDATE SET file_count=excluded.file_count,child_transfer_count=excluded.child_transfer_count,reserved_bytes=excluded.reserved_bytes,occupied_bytes=excluded.occupied_bytes,manifest_bytes=excluded.manifest_bytes,total_file_bytes=excluded.total_file_bytes,uploaded_files=excluded.uploaded_files,completed_files=excluded.completed_files,inbox_known=1`, j.kind, j.id, j.files, j.children, j.reserved, j.occupied, j.manifest, j.fileBytes, j.uploaded, j.completed)
 	case "cleanup":
 		result, err = tx.ExecContext(ctx, `INSERT INTO cleanup_progress(id,pending_count,failed_count,busy_count) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET pending_count=excluded.pending_count,failed_count=excluded.failed_count,busy_count=excluded.busy_count`, j.files, j.reserved, j.occupied)
 	case "reconciliation":

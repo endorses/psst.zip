@@ -89,7 +89,7 @@ class IncidentControlTest {
                                     HttpStatusCode.ServiceUnavailable,
                                     headersOf("X-Psst-Error-Code", "public_transfers_paused"),
                                 )
-                            request.url.encodedPath.endsWith("/slots/$id") ->
+                            request.url.encodedPath.endsWith("/slots/$id/inbox") ->
                                 respond("", HttpStatusCode.Unauthorized)
                             else ->
                                 respond(

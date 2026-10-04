@@ -15,12 +15,19 @@ import kotlinx.serialization.json.Json
 @Serializable data class ReceivedChild(val fileCount: Int, val plaintextSize: Long? = null)
 
 /** Only completed, immutable children belong in a history snapshot. */
-data class ReceivedSnapshot(val children: Map<String, ReceivedChild>, val expiresAt: Long? = null)
+data class ReceivedSnapshot(
+    val children: Map<String, ReceivedChild>,
+    val expiresAt: Long? = null,
+    val completedFiles: Long? = null,
+    val partial: Boolean = false,
+)
 
 internal fun DropSlot.receivedSnapshot() =
     ReceivedSnapshot(
         completedTransfers.associate { it.transferId to ReceivedChild(it.fileCount) },
         parseHistoryExpiry(expiresAt),
+        summary?.completedFiles,
+        partial = paginated,
     )
 
 internal fun TransferHistoryEntity.savedTransferIds(): Set<String> =
@@ -49,12 +56,20 @@ internal fun mergeReceivedHistory(
             )
     }
     val savedIds = current.savedTransferIds() + if (saved) snapshot.children.keys else emptySet()
-    val knownCount = children.values.sumOf { it.fileCount }
-    val count = maxOf(current.fileCount, knownCount)
+    val knownCount =
+        children.values.sumOf { it.fileCount.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    val count =
+        if (snapshot.partial) {
+            snapshot.completedFiles?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt()
+                ?: current.fileCount
+        } else maxOf(current.fileCount, knownCount)
     val status =
         when {
+            snapshot.partial && current.status == "complete" ->
+                if (count > 0) "has_uploads" else "waiting"
             children.isEmpty() -> current.status
-            knownCount == count && savedIds.containsAll(children.keys) -> "complete"
+            !snapshot.partial && knownCount == count && savedIds.containsAll(children.keys) ->
+                "complete"
             children.isNotEmpty() || count > 0 -> "has_uploads"
             else -> current.status
         }
@@ -91,7 +106,7 @@ internal suspend fun refreshHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
     reportFailure: Boolean = false,
-    privateReceiveKey: (TransferHistoryEntity) -> ByteArray? = { null },
+    contextCurrent: () -> Boolean = { true },
     onTransfer: (Transfer) -> Unit = {},
     createClient: (ServerConfig) -> ApiClient = { ApiClient(it) },
 ): TransferHistoryEntity? {
@@ -102,53 +117,23 @@ internal suspend fun refreshHistoryEntry(
             try {
                 if (row.type == "sent" || row.type == "send") {
                     val transfer = client.transfers.get(row.id)
+                    if (!contextCurrent()) throw CancellationException("Account changed")
                     dao.mergeSent(row.id, transfer)
                     onTransfer(transfer)
                 } else {
-                    retrySavedDownloadAcknowledgements(row, client)
                     val slot = client.slots.get(row.id)
+                    if (!contextCurrent()) throw CancellationException("Account changed")
                     dao.mergeReceived(row.id, slot.receivedSnapshot())
-                    if (slot.completedTransfers.isNotEmpty() && row.encryptionKey.isNotBlank()) {
-                        val privateKey = privateReceiveKey(row)
-                        if (row.encryptionKey.startsWith("v2.") && privateKey == null)
-                            return@withTimeout
-                        for (transfer in slot.completedTransfers) {
-                            val manifest =
-                                decryptInboxManifest(
-                                        row,
-                                        transfer.transferId,
-                                        client.transfers.downloadManifest(transfer.transferId),
-                                        privateKey,
-                                    )
-                                    .manifest
-                            require(manifest.files.size == transfer.fileCount) {
-                                "Manifest file count mismatch"
-                            }
-                            var size = 0L
-                            for (file in manifest.files) {
-                                require(file.size >= 0 && file.size <= Long.MAX_VALUE - size) {
-                                    "Invalid file size"
-                                }
-                                size += file.size
-                            }
-                            manifest.files.firstOrNull()?.name?.let {
-                                dao.setTitleIfEmpty(row.id, it)
-                            }
-                            dao.mergeReceived(
-                                row.id,
-                                ReceivedSnapshot(
-                                    mapOf(
-                                        transfer.transferId to
-                                            ReceivedChild(transfer.fileCount, size)
-                                    )
-                                ),
-                            )
-                        }
-                    }
+                    retrySavedDownloadAcknowledgements(
+                        row,
+                        client,
+                        slot.completedTransfers.map { it.transferId }.toSet(),
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (error: Exception) {
+                if (!contextCurrent()) throw CancellationException("Account changed")
                 if (
                     error is zip.psst.shared.api.ResourceRevokedException ||
                         (error is io.ktor.client.plugins.ClientRequestException &&

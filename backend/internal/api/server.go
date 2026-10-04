@@ -138,6 +138,7 @@ func (s *Server) Router() http.Handler {
 		// Slot endpoints (receive flow)
 		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/slots", s.createSlot)
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}", s.getSlot)
+		r.With(s.requireInboxOwner).Get("/slots/{slotID}/inbox", s.getInboxPage)
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}/transfers/{transferID}/membership", s.inboxTransferMembership)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
 		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)

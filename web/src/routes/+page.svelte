@@ -46,7 +46,8 @@
     type Session,
     type Resource,
   } from "$lib/account";
-  import { createSlot, getSlotInfo, type SlotInfo } from "$lib/api";
+  import { createSlot, getSlotInbox, type InboxPage } from "$lib/api";
+  import { INBOX_PREVIOUS_WINDOW } from "$lib/inbox-page";
   import { exportKey } from "$lib/crypto";
   import { generateReceiveKeyPair } from "$lib/receive-crypto";
   import { storeReceiveKey, loadReceiveKey, removeReceiveKey } from "$lib/receive-keys";
@@ -66,7 +67,7 @@
     | "Users"
     | "Settings";
   let receiveUnavailable = $state(false);
-  let receiveInfo = $state<SlotInfo | null>(null),
+  let receiveInfo = $state<InboxPage | null>(null),
     maxFiles = $state(0);
   let receiveNeedsKey = $state(false);
   let pendingFiles: File[] = [],
@@ -238,7 +239,13 @@
             liveMessage = "";
           }
           if (!user.must_change_password && tab === "History") await refreshHistory(owner);
-          if (!user.must_change_password && tab === "Receive" && receiveId && !receiveUnavailable)
+          if (
+            !user.must_change_password &&
+            tab === "Receive" &&
+            receiveId &&
+            !receiveUnavailable &&
+            !receiveLoading
+          )
             await refreshReceived(receiveId, owner);
           if (
             !user.must_change_password &&
@@ -297,6 +304,8 @@
     window.addEventListener("storage", changed);
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => {
+      receiveGeneration++;
+      receiveRequest?.abort();
       stopped = true;
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("storage", changed);
@@ -380,33 +389,105 @@
       users = result.users;
     });
   }
-  async function refreshReceived(id: string, owner = epoch) {
-    let slot;
+  let receiveCursor = $state(""),
+    receiveNext = $state<string | null>(null),
+    receivePrevious = $state<string[]>([]),
+    receivePage = $state(1),
+    receiveLoading = $state(false),
+    receiveError = $state("");
+  let receiveGeneration = 0;
+  let receiveRequest: AbortController | null = null;
+  function resetReceive(id: string) {
+    receiveGeneration++;
+    receiveRequest?.abort();
+    receiveId = id;
+    receiveCursor = "";
+    receiveNext = null;
+    receivePrevious = [];
+    receivePage = 1;
+    receiveInfo = null;
+    receiveLoading = false;
+    receiveError = "";
+    received = [];
+    receiveUnavailable = false;
+  }
+  async function refreshReceived(
+    id: string,
+    owner = epoch,
+    cursor = receiveCursor,
+    direction?: "next" | "previous" | "first",
+  ) {
+    if (owner !== epoch || id !== receiveId || tab !== "Receive") return;
+    const originCursor = receiveCursor,
+      account = user?.id;
+    const generation = ++receiveGeneration;
+    receiveRequest?.abort();
+    const controller = new AbortController();
+    receiveRequest = controller;
+    const current = () =>
+      owner === epoch &&
+      account === user?.id &&
+      id === receiveId &&
+      originCursor === receiveCursor &&
+      generation === receiveGeneration &&
+      tab === "Receive";
+    receiveLoading = true;
     try {
-      slot = await getSlotInfo(id);
-    } catch (err) {
-      if (owner === epoch && err instanceof Error && /API (404|410):/.test(err.message)) {
-        receiveUnavailable = true;
-        received = [];
-        return;
+      const slot = await getSlotInbox(id, cursor, controller.signal);
+      if (!current()) return;
+      if (
+        direction === "next" &&
+        slot.next_cursor &&
+        (slot.next_cursor === receiveCursor || receivePrevious.includes(slot.next_cursor))
+      )
+        throw new Error("Repeated inbox page");
+      if (direction) {
+        receivePrevious =
+          direction === "next"
+            ? [...receivePrevious, receiveCursor].slice(-INBOX_PREVIOUS_WINDOW)
+            : direction === "previous"
+              ? receivePrevious.slice(0, -1)
+              : [];
+        receivePage =
+          direction === "next" ? receivePage + 1 : direction === "previous" ? receivePage - 1 : 1;
+        receiveCursor = cursor;
       }
-      throw err;
+      receiveNext = slot.next_cursor;
+      receiveInfo = slot;
+      receiveError = "";
+      const pair = user ? loadReceiveKey(user.id, id) : null;
+      receiveNeedsKey = slot.receive_protocol === 2 ? !pair : !links[id];
+      pair?.privateKey.fill(0);
+      const key = links[id] ? new URL(links[id]).hash : "";
+      received = slot.transfers
+        .filter((t) => t.status === "complete")
+        .map((t) => ({
+          id: t.transfer_id,
+          count: t.file_count,
+          url:
+            slot.receive_protocol === 2
+              ? `${location.origin}/d/${t.transfer_id}?inbox=${encodeURIComponent(id)}`
+              : `${location.origin}/d/${t.transfer_id}${key}`,
+        }));
+    } catch (cause) {
+      if (!current()) return;
+      if (cause instanceof Error && /API (404|410)(?:$|:)/.test(cause.message)) {
+        receiveUnavailable = true;
+        receiveInfo = null;
+        received = [];
+      } else
+        receiveError =
+          "Could not refresh received files. The displayed page may be out of date. Retry to check again.";
+    } finally {
+      if (generation === receiveGeneration) receiveLoading = false;
     }
-    if (owner !== epoch || id !== receiveId) return;
-    receiveInfo = slot;
-    const privateKey = user ? loadReceiveKey(user.id, id) : null;
-    receiveNeedsKey = slot.receive_protocol === 2 ? !privateKey : !links[id];
-    const key = links[id] ? new URL(links[id]).hash : "";
-    received = slot.transfers
-      .filter((t) => t.status === "complete")
-      .map((t) => ({
-        id: t.transfer_id,
-        count: t.file_count,
-        url:
-          slot.receive_protocol === 2
-            ? `${location.origin}/d/${t.transfer_id}?inbox=${encodeURIComponent(id)}`
-            : `${location.origin}/d/${t.transfer_id}${key}`,
-      }));
+  }
+  async function turnReceived(direction: "next" | "previous" | "first") {
+    if (receiveLoading) return;
+    const cursor =
+      direction === "next" ? receiveNext : direction === "previous" ? receivePrevious.at(-1) : "";
+    if (cursor == null) return;
+    await refreshReceived(receiveId, epoch, cursor, direction);
   }
   async function cancelPair() {
     pairingFlow++;
@@ -453,7 +534,7 @@
     renameId = "";
     receiveName = "";
     sendActive = false;
-    receiveId = "";
+    resetReceive("");
     receiveInfo = null;
     receiveNeedsKey = false;
     maxFiles = 0;
@@ -635,11 +716,16 @@
       navigate = true;
     }
     if (tab === "Devices" && next !== "Devices") await cancelPair();
+    if (tab === "Receive" && next !== "Receive") {
+      receiveGeneration++;
+      receiveRequest?.abort();
+      receiveLoading = false;
+    }
     tab = next;
     if (next === "Receive") {
       const id = $page.url.searchParams.get("slot");
       if (id) {
-        receiveId = id;
+        if (receiveId !== id) resetReceive(id);
         receiveUrl = links[id] || "";
         receiveUnavailable = false;
       }
@@ -690,15 +776,13 @@
       } finally {
         pair.privateKey.fill(0);
       }
-      receiveUnavailable = false;
-      receiveId = slot.id;
-      received = [];
+      resetReceive(slot.id);
       receiveUrl = "";
       // Preserve the owner record and local private key on transport failure so
       // History can manage the allocation; never publish an unverified invitation.
-      let accepted: SlotInfo;
+      let accepted: InboxPage;
       try {
-        accepted = await getSlotInfo(slot.id);
+        accepted = await getSlotInbox(slot.id);
       } catch {
         throw new Error(
           "Could not verify the new inbox. It remains in History for inspection or revocation. No receive link was shared.",
@@ -774,15 +858,13 @@
   }
   async function checkReceived(id: string) {
     await act(async () => {
-      receiveId = id;
+      if (receiveId !== id) resetReceive(id);
       receiveUrl = links[id] || "";
       await refreshReceived(id);
-      if (!received.length) notice = "Waiting for files. This view updates automatically.";
     });
   }
   async function openReceive(id: string) {
-    receiveUnavailable = false;
-    receiveId = id;
+    resetReceive(id);
     receiveUrl = links[id] || "";
     received = [];
     await select("Receive");
@@ -1192,14 +1274,10 @@
             </p>{:else if receiveUrl}<LinkCard
               url={receiveUrl}
               label="Receive link — share it with someone to get files."
-            /><button disabled={busy} onclick={() => checkReceived(receiveId)}
+            /><button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
               ><Icon name="Refresh" size={17} />Refresh received files</button
             >
-            <p class="muted small" role="status">
-              {received.length
-                ? `${received.reduce((n, t) => n + t.count, 0)} files received. Ready to save below.`
-                : "Waiting for files. Arrivals update automatically."}
-            </p>{/if}
+          {/if}
           {#if receiveInfo && !receiveUnavailable}
             {#if receiveInfo.receive_protocol !== 2}<p class="notice">
                 This older inbox is read-only. Its original shared link may have allowed other
@@ -1210,7 +1288,9 @@
                 save files. You can still view its status and revoke it.
               </p>{/if}
             <p class="muted small">
-              {receiveInfo.completed_files} completed files · {receiveInfo.reserved_files} file allocations
+              {receiveInfo.summary.state === "ready"
+                ? `${receiveInfo.summary.completed_files} completed files`
+                : "Received file totals are updating"} · {receiveInfo.reserved_files} file allocations
               used{receiveInfo.remaining_files === null
                 ? " · No creator file limit"
                 : ` · ${receiveInfo.remaining_files} allocations remaining`}
@@ -1646,18 +1726,59 @@
             <button class="primary" disabled={busy}>Create account</button>
           </form>
         {/if}
-        {#if (tab === "Receive" || tab === "History") && received.length}<h2>Received files</h2>
-          {#each received as item}{#if !receiveNeedsKey}<a class="received" href={item.url}
-                >{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
-              >{:else}<p>
-                {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating device
-              </p>{/if}{/each}{/if}
+        {#if tab === "Receive" && receiveId && !receiveUnavailable}
+          <section aria-label="Received files" aria-busy={receiveLoading}>
+            <div class="heading">
+              <h2>Received files</h2>
+              <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
+                >Refresh</button
+              >
+            </div>
+            {#if receiveError}<p role="alert">{receiveError}</p>{/if}
+            {#if receiveInfo}
+              {#if !received.length}<p class="muted">
+                  No completed submissions on this page. Arrivals update automatically.
+                </p>{/if}
+              {#each received as item (item.id)}{#if !receiveNeedsKey}<a
+                    class="received"
+                    href={item.url}>{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
+                  >{:else}<p>
+                    {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating device
+                  </p>{/if}{/each}
+              <nav class="inbox-pages" aria-label="Received files pages">
+                <button
+                  disabled={receiveLoading || !receivePrevious.length}
+                  onclick={() => turnReceived("previous")}>Previous</button
+                >
+                <span class="muted small">Page {receivePage}</span>
+                <button
+                  disabled={receiveLoading || receiveNext === null}
+                  onclick={() => turnReceived("next")}>Next</button
+                >
+                {#if receivePage > 1}<button
+                    disabled={receiveLoading}
+                    onclick={() => turnReceived("first")}>First page</button
+                  >{/if}
+              </nav>
+              {#if receivePage > 1 && !receivePrevious.length}<p class="muted small">
+                  Earlier pages are available from First page.
+                </p>{/if}
+            {/if}
+          </section>
+        {/if}
       </section>
     </div>
   </div>
 {/if}
 
 <style>
+  .inbox-pages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1rem;
+  }
   .login {
     max-width: 440px;
     margin: clamp(1rem, 5vh, 3rem) auto;

@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.data.InboxKeyStore
+import zip.psst.android.data.InboxPager
+import zip.psst.android.data.InboxReadIdentity
 import zip.psst.android.data.ReceivedSnapshot
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.decodeInboxKeyMarker
@@ -22,6 +24,7 @@ import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.api.SlotEvent
 import zip.psst.shared.crypto.AndroidReceiveCrypto
+import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.UrlHelper
@@ -45,6 +48,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 data class ReceiveUiState(
+    val page: DropSlot? = null,
+    val pager: InboxPager = InboxPager(),
+    val isPaging: Boolean = false,
+    val shownSaved: Boolean = false,
     val localName: String = "",
     val maxFilesInput: String = "",
     val maxFiles: Int = 0,
@@ -78,12 +85,17 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     private var sseJob: Job? = null
     private var encryptionKeyBytes: ByteArray? = null
     private var slotClient: ApiClient? = null
+    private var slotAccess: zip.psst.android.data.HistoryAccess? = null
     private var pollJob: Job? = null
     private val historyMutex = Mutex()
     private val refreshMutex = Mutex()
     private var visible = true
     private var downloadJob: Job? = null
     private var createJob: Job? = null
+    private var pageJob: Job? = null
+    private var frozenPage: DropSlot? = null
+    private var frozenPager: InboxPager? = null
+    @Volatile private var pageRevision = 0L
     private var activeAccess = app.prefs.historyAccess.value
 
     init {
@@ -95,6 +107,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     pollJob?.cancel()
                     downloadJob?.cancel()
                     createJob?.cancel()
+                    pageJob?.cancel()
+                    pageRevision++
+                    frozenPage = null
+                    frozenPager = null
                     slotClient?.close()
                     encryptionKeyBytes = null
                     _uiState.value =
@@ -113,7 +129,17 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     @OptIn(ExperimentalEncodingApi::class)
     fun openExisting(id: String) {
-        if (_uiState.value.slotId == id) return
+        if (_uiState.value.slotId == id && !_uiState.value.requiresLogin) return
+        createJob?.cancel()
+        sseJob?.cancel()
+        pollJob?.cancel()
+        downloadJob?.cancel()
+        pageJob?.cancel()
+        slotClient?.close()
+        pageRevision++
+        frozenPage = null
+        frozenPager = null
+        _uiState.value = ReceiveUiState()
         createJob =
             viewModelScope.launch(Dispatchers.IO) {
                 val access = app.prefs.historyAccess.value
@@ -141,6 +167,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             sessionToken = requireNotNull(app.prefs.getSessionToken(row.serverUrl)),
                         )
                     slotClient = client
+                    slotAccess = access
+                    ensureActive()
                     val restored = restoreReceiveEntry(row, access, privateAvailable)
                     _uiState.value =
                         restored.copy(
@@ -257,6 +285,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 try {
                     val client = ApiClient(ServerConfig(serverUrl), sessionToken = sessionToken)
                     slotClient = client
+                    slotAccess = access
                     val pair = AndroidReceiveCrypto.generateKeyPair()
                     val key = pair.publicKey
                     val publicKey =
@@ -399,43 +428,112 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             }
     }
 
-    private suspend fun refreshSlot(client: ApiClient, slotId: String) {
-        if (!refreshMutex.tryLock()) return
+    fun firstPage() = navigatePage(InboxPager())
+
+    fun previousPage() {
+        val pager = _uiState.value.pager
+        if (pager.previous.isNotEmpty()) navigatePage(pager.back())
+    }
+
+    fun nextPage() {
+        val state = _uiState.value
+        val next = state.page?.nextCursor ?: return
         try {
+            navigatePage(state.pager.next(next))
+        } catch (e: IllegalArgumentException) {
+            _uiState.update { it.copy(error = e.message) }
+        }
+    }
+
+    private fun navigatePage(target: InboxPager) {
+        val state = _uiState.value
+        val id = state.slotId ?: return
+        val client = slotClient ?: return
+        if (state.isDownloading || state.downloadConsent != null || state.isPaging) return
+        pageRevision++
+        _uiState.update { it.copy(isPaging = true, error = null) }
+        pageJob = viewModelScope.launch(Dispatchers.IO) { refreshSlot(client, id, target, true) }
+    }
+
+    private suspend fun refreshSlot(
+        client: ApiClient,
+        slotId: String,
+        target: InboxPager = _uiState.value.pager,
+        navigation: Boolean = false,
+    ) {
+        val initial = _uiState.value
+        if (
+            initial.isDownloading ||
+                initial.downloadConsent != null ||
+                (!navigation && initial.isPaging)
+        )
+            return
+        val request = InboxReadIdentity(app.prefs.historyAccess.value, slotId, initial.pager)
+        if (slotAccess != request.access || client !== slotClient) return
+        val revision = pageRevision
+        fun current(): Boolean =
+            pageRevision == revision &&
+                request.accepts(
+                    app.prefs.historyAccess.value,
+                    _uiState.value.slotId,
+                    _uiState.value.pager,
+                )
+        if (navigation) refreshMutex.lock() else if (!refreshMutex.tryLock()) return
+        try {
+            if (!current()) return
             val visibleRow = app.database.transferHistoryDao().getById(slotId) ?: return
-            if (!app.prefs.historyAccess.value.permits(visibleRow)) return
-            retrySavedDownloadAcknowledgements(visibleRow, client)
-            val slot = client.slots.get(slotId)
-            if (!app.prefs.historyAccess.value.permits(visibleRow)) return
+            if (!request.access.permits(visibleRow)) return
+            val slot = client.slots.getPage(slotId, target.cursor, 50)
+            if (
+                !current() || _uiState.value.isDownloading || _uiState.value.downloadConsent != null
+            )
+                return
+            require(slot.nextCursor == null || slot.nextCursor !in target.previous) {
+                "The server repeated an inbox page. Return to the first page."
+            }
             val snapshot = slot.receivedSnapshot()
             historyMutex.withLock {
+                if (!current()) return@withLock
                 val row = app.database.transferHistoryDao().mergeReceived(slotId, snapshot)
-                if (row != null) {
+                if (row != null && current()) {
                     _uiState.update {
-                        if (it.slotId == slotId)
-                            it.copy(
-                                connectionError = false,
-                                slotStatus = row.status,
-                                downloadComplete = row.status == "complete",
-                                maxFiles = slot.maxFiles,
-                                remainingFiles = slot.remainingFiles,
-                                reservedFiles = slot.reservedFiles,
-                            )
-                        else it
+                        it.copy(
+                            page = slot,
+                            pager = target,
+                            isPaging = false,
+                            connectionError = false,
+                            error = null,
+                            slotStatus = row.status,
+                            downloadComplete = false,
+                            shownSaved =
+                                slot.completedTransfers.isNotEmpty() &&
+                                    slot.completedTransfers.all { child ->
+                                        child.transferId in row.savedTransferIds()
+                                    },
+                            savedFileCount = row.savedFileCount(),
+                            maxFiles = slot.maxFiles,
+                            remainingFiles = slot.remainingFiles,
+                            reservedFiles = slot.reservedFiles,
+                        )
                     }
                 }
             }
+            if (pageRevision == revision && app.prefs.historyAccess.value == request.access)
+                retrySavedDownloadAcknowledgements(
+                    visibleRow,
+                    client,
+                    slot.completedTransfers.map { it.transferId }.toSet(),
+                )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            if (!current()) return
             if (e is AuthenticationRequiredException) {
                 sseJob?.cancel()
                 pollJob?.cancel()
                 _uiState.update {
                     it.copy(requiresLogin = true, error = e.message, connectionError = false)
                 }
-                return
-            }
-            if (
+            } else if (
                 e is zip.psst.shared.api.ResourceRevokedException ||
                     (e is io.ktor.client.plugins.ClientRequestException &&
                         e.response.status.value in listOf(404, 410))
@@ -443,14 +541,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 app.database.transferHistoryDao().updateStatus(slotId, "unavailable")
                 sseJob?.cancel()
                 pollJob?.cancel()
-                _uiState.update {
-                    if (it.slotId == slotId)
-                        it.copy(slotStatus = "unavailable", connectionError = false)
-                    else it
-                }
+                _uiState.update { it.copy(slotStatus = "unavailable", connectionError = false) }
             } else _uiState.update { it.copy(connectionError = true) }
         } finally {
             refreshMutex.unlock()
+            if (current()) _uiState.update { it.copy(isPaging = false) }
         }
     }
 
@@ -463,13 +558,33 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun cancelDownload() {
         downloadJob?.cancel()
+        frozenPage = null
+        frozenPager = null
         _uiState.update { it.copy(downloadConsent = null) }
     }
 
     private fun downloadReceivedFiles(approved: zip.psst.android.data.InboxDownloadConsent?) {
         val slotId = _uiState.value.slotId ?: return
         if (encryptionKeyBytes == null || _uiState.value.keyUnavailable) return
-        if (_uiState.value.isDownloading) return
+        if (_uiState.value.isDownloading || _uiState.value.isPaging) return
+        val shown = if (approved != null) frozenPage else _uiState.value.page
+        val selectedPage = shown ?: return
+        val selectedPager = if (approved != null) frozenPager ?: return else _uiState.value.pager
+        if (selectedPager != _uiState.value.pager) return
+        frozenPage = selectedPage
+        frozenPager = selectedPager
+        val request = InboxReadIdentity(app.prefs.historyAccess.value, slotId, selectedPager)
+        val token = app.prefs.getSessionToken(request.access.serverUrl) ?: return
+        fun checkCurrent() {
+            if (
+                !request.accepts(
+                    app.prefs.historyAccess.value,
+                    _uiState.value.slotId,
+                    _uiState.value.pager,
+                ) || app.prefs.getSessionToken(request.access.serverUrl) != token
+            )
+                throw CancellationException("Your account or inbox page changed")
+        }
 
         _uiState.update {
             it.copy(
@@ -482,7 +597,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
         downloadJob =
             viewModelScope.launch(Dispatchers.IO) {
-                val access = app.prefs.historyAccess.value
+                val access = request.access
                 val dao = app.database.transferHistoryDao()
                 val row = dao.getById(slotId)
                 if (row == null || !access.permits(row)) {
@@ -503,19 +618,28 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         sessionToken = requireNotNull(app.prefs.getSessionToken(row.serverUrl)),
                     )
                 try {
-                    val slot = client.slots.get(slotId)
-                    check(app.prefs.historyAccess.value == access)
+                    checkCurrent()
+                    val slot = client.slots.getPage(slotId, selectedPager.cursor, 50)
+                    checkCurrent()
+                    val selected = zip.psst.android.data.shownInboxTransfers(selectedPage, slot)
+                    require(
+                        if (row.encryptionKey.startsWith("v2."))
+                            slot.receiveProtocol == 2 &&
+                                slot.recipientPublicKey == row.encryptionKey.removePrefix("v2.")
+                        else slot.receiveProtocol == 1
+                    ) {
+                        "The inbox receive key does not match this device."
+                    }
                     val latest = dao.mergeReceived(slotId, slot.receivedSnapshot()) ?: row
-                    val transfers =
-                        slot.completedTransfers.filter {
-                            it.transferId !in latest.savedTransferIds()
-                        }
+                    checkCurrent()
+                    val transfers = selected.filter { it.transferId !in latest.savedTransferIds() }
                     require(transfers.isNotEmpty()) { "No new completed uploads to save" }
                     val received = mutableListOf<Pair<String, FileMetadata>>()
                     val childKeys = mutableMapOf<String, ByteArray>()
                     val fingerprints = mutableMapOf<String, String>()
                     val privateKey = inboxKeys.read(row)
                     for (transfer in transfers) {
+                        checkCurrent()
                         val manifestBytes = client.transfers.downloadManifest(transfer.transferId)
                         val decoded =
                             decryptInboxManifest(
@@ -541,7 +665,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         received += manifest.files.map { transfer.transferId to it }
                     }
                     ensureActive()
-                    check(app.prefs.historyAccess.value == access)
+                    checkCurrent()
                     _uiState.update { it.copy(receivedFiles = received.map { it.second }) }
 
                     val context = getApplication<PsstApplication>()
@@ -564,6 +688,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         )
                     val saver = zip.psst.android.data.GuestFileSaver(context)
                     saver.requireSpace(preflight.remainingBytes)
+                    checkCurrent()
                     if (
                         zip.psst.android.data.InboxDownloadPreflight.needsConsent(
                             preflight,
@@ -576,7 +701,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     var remainingBytes = preflight.remainingBytes
                     var savedFiles = 0
                     for (transfer in transfers) {
-                        check(app.prefs.historyAccess.value == access) { "Your account changed" }
+                        checkCurrent()
                         receiveAndSaveChild(
                             client = client,
                             transferId = transfer.transferId,
@@ -586,17 +711,19 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     .map { it.second },
                             key = requireNotNull(childKeys[transfer.transferId]),
                             saveFile = { fileMeta, plaintext ->
-                                check(app.prefs.historyAccess.value == access) {
-                                    "Your account changed"
-                                }
+                                checkCurrent()
                                 saver.requireSpace(remainingBytes)
                                 saver.save(fileMeta, plaintext) {}
                             },
                             recordSaved = { child ->
+                                checkCurrent()
                                 historyMutex.withLock {
                                     dao.mergeReceived(
                                         slotId,
-                                        ReceivedSnapshot(mapOf(transfer.transferId to child)),
+                                        ReceivedSnapshot(
+                                            mapOf(transfer.transferId to child),
+                                            partial = true,
+                                        ),
                                         saved = true,
                                     )
                                 }
@@ -627,6 +754,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     _uiState.update { it.copy(savedFileCount = savedCount) }
                             },
                             onFileSaved = {
+                                checkCurrent()
                                 savedFiles++
                                 _uiState.update {
                                     it.copy(
@@ -639,24 +767,33 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     }
 
                     historyMutex.withLock {
+                        checkCurrent()
                         val updated = dao.getById(slotId)
+                        checkCurrent()
                         _uiState.update {
                             if (it.slotId == slotId)
                                 it.copy(
                                     isDownloading = false,
                                     downloadProgress = 1f,
                                     slotStatus = updated?.status ?: "has_uploads",
-                                    downloadComplete = updated?.status == "complete",
+                                    downloadComplete = false,
+                                    shownSaved =
+                                        selectedPage.completedTransfers.all { child ->
+                                            child.transferId in
+                                                (updated?.savedTransferIds() ?: emptySet())
+                                        },
                                 )
                             else it
                         }
                     }
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
+                    checkCurrent()
                     val trafficError =
                         zip.psst.android.data.classifyTrafficFailure(e) {
                             client.slots.trafficStatus(slotId, "download")
                         }
+                    checkCurrent()
                     _uiState.update {
                         it.copy(
                             isDownloading = false,
@@ -680,7 +817,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 } finally {
                     client.close()
                     _uiState.update {
-                        if (it.slotId == slotId) it.copy(isDownloading = false) else it
+                        if (request.accepts(app.prefs.historyAccess.value, it.slotId, it.pager))
+                            it.copy(isDownloading = false)
+                        else it
                     }
                 }
             }
@@ -693,5 +832,6 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         slotClient?.close()
         downloadJob?.cancel()
         createJob?.cancel()
+        pageJob?.cancel()
     }
 }

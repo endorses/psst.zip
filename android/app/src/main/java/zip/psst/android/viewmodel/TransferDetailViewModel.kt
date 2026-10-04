@@ -129,6 +129,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                                 dao,
                                 row.id,
                                 reportFailure = true,
+                                contextCurrent = { app.prefs.historyAccess.value == access },
                                 createClient = { config ->
                                     zip.psst.shared.api.ApiClient(
                                         config,
@@ -147,7 +148,6 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                                                     },
                                             )
                                 },
-                                privateReceiveKey = zip.psst.android.data.InboxKeyStore(app)::read,
                             ) ?: return@launch
                         if (app.prefs.historyAccess.value != access || !access.permits(refreshed))
                             return@launch

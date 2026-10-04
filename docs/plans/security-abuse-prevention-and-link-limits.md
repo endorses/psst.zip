@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Work still includes remaining query bounds and cross-client pagination, independent protocol review, and deployment/client verification. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
+Implementation in progress. Committed checkpoints now include private receive inboxes, optional link limits, storage/traffic budgets, incident controls and administrator TOTP/recent authentication. Evidence and remaining validation gaps are recorded below; unchecked requirements remain open. Work still includes account-history query bounds and cross-client history pagination, independent protocol review, and deployment/client verification. Bounded owner-inbox paging is implemented across the browser, Android and iOS; its checkpoint evidence is recorded below. Reconciliation, public effective-capacity integration and cold-restore exercises have committed checkpoint evidence below. Do not treat these intermediate checkpoints as a security-hardened public release.
 
 Protect self-hosted operators and recipients from confidentiality failures, resource exhaustion, unexpected traffic costs, compromised accounts and malicious submissions. Include optional per-link download/receive limits across web, Android and iOS, including sending through the iOS share extension. Preserve straightforward default workflows, public standalone download links, public receive submission, administrator-only management accounts, chunked encryption, configurable maximum file size and delivery acknowledgements. A public receive link grants submission access, not permission to read other submissions.
 
@@ -755,9 +755,101 @@ preparation. Native iOS/device verification remains separate from implementation
       are removed; the live development deployment remains unchanged. This
       checkpoint changes shared server enforcement and browser lookup behavior;
       it does not claim new Android/iOS build or device validation.
-- [ ] Implement bounded owner-inbox pages and summaries across backend, browser,
+- [x] Implement bounded owner-inbox pages and summaries across backend, browser,
       Android and iOS. Preserve explicit page navigation and scope saving to
-      loaded submissions without falsely marking an entire inbox saved. Bound
-      account-history query work and native refreshes without treating unloaded
-      records as revoked. These remain required; the exact membership endpoint
-      and transfer metadata ceiling do not complete the broader list-query gate.
+      loaded submissions without falsely marking an entire inbox saved. The
+      following checkpoint records implementation and available verification;
+      native iOS build/device checks remain pending.
+- [ ] Bound account-history query work, local history storage reads and native
+      refreshes without treating unloaded records as revoked. Inbox pagination,
+      exact membership lookup and transfer metadata ceilings do not complete
+      this broader list-query gate.
+
+### Bounded owner-inbox pagination, 2026-10-04
+
+- [x] Add an owner-only inbox page endpoint with default 50 and maximum 100 raw
+      memberships per page, a slot-bound opaque cursor and an explicit null
+      continuation at the end. Apply lifecycle filtering after the bounded seek,
+      preserve continuation through empty filtered pages and read policy, child
+      metadata and summaries in one deadline-bound snapshot. Each child uses the
+      bounded 101-file probe; unsupported historical oversized children fail
+      explicitly. Authorization remains mandatory for every page.
+- [x] Maintain retained inbox file/byte/completion summaries incrementally.
+      Historical totals are explicitly unknown until the bounded worker rebuilds
+      them. Migration does not backfill the canonical file table; completion and
+      status mutations invalidate staged scans. Test old-schema migration,
+      restart, concurrent mutation, deletion/cascade and healthy idle behavior.
+      Cumulative receive allowances remain independent of these retained totals.
+- [x] Keep legacy complete-inbox reads bounded: at most 100 raw memberships,
+      otherwise HTTP 409 `inbox_pagination_required`. Unknown legacy summaries
+      return 503 `inbox_summary_updating`. Document the coordinated server/client
+      upgrade and summary semantics in `docs/security/inbox-pagination.md`.
+- [x] Implement explicit Previous/Next/First page navigation in web, Android and
+      iOS. Poll only the displayed page, retain the last page on failure, and
+      reject late responses after inbox/account/session/page changes. Bound the
+      previous-cursor window to 100 without imposing a forward-navigation cap.
+      Display whole-inbox totals separately from the files shown on the page.
+- [x] Freeze mobile save consent to the displayed submissions, page and session.
+      Later arrivals cannot expand an approved download. Preserve per-file
+      checkpoints and receipts; partial/unknown pages cannot mark an entire
+      inbox saved. Remove automatic inbox manifest enrichment from Android
+      history refresh. Ready summary counts replace stale local counts, while
+      unknown summaries retain the last known count without fabricating zero.
+- [x] Verify 146 shared and 108 Android unit tests and assemble the debug APK.
+      Five portable Swift pagination/consent tests, all Swift syntax parsing and
+      the iOS source gate pass. These checks do not constitute an Xcode build or
+      device test; both remain pending on macOS/supported devices.
+- [x] Verify all 71 web Node tests, eight focused browser regressions, Svelte
+      checks (zero errors/warnings), and the production build. Browser exercises
+      include a real 101-submission inbox with 50/50/1 pages and byte-verified
+      save from page three, empty filtered continuation, failed navigation,
+      current-page polling and rejection of obsolete inbox responses.
+- [x] Run full backend race regressions: API 238.496 s, database 290.441 s
+      and reconciliation 75.477 s, all passing. Update the former empty-inbox
+      payload-table failure fixture to target maintained summary storage; both
+      legacy and paginated endpoints also reject unavailable canonical metadata
+      on populated pages. Neither failure returns partial owner data. Formatting
+      and diff checks pass. Dedicated test cache and disposable servers are
+      cleaned. The live development deployment remains unchanged; independent
+      protocol review and the remaining plan release gates are still open.
+
+### Remaining account-history pagination and local storage work
+
+The account endpoint currently limits returned IDs but filters receive children
+before its limit and computes canonical file/inbox aggregates for each result.
+Native refreshes drain every remote page. Android reads the complete Room history
+before account filtering; iOS reads and rewrites one shared JSON history file.
+These paths remain outside the completed owner-inbox checkpoint.
+
+- [ ] Seek a bounded number of raw account-resource candidates using indexed
+      ordering before filtering child transfers. Advance through filtered-only
+      pages without scanning ahead to fill them. Use account-bound versioned
+      cursors and one deadline-bound snapshot; verify query work against large
+      populations of receive children and unrelated accounts.
+- [ ] Replace per-resource canonical COUNT/SUM scans with maintained summaries.
+      Return explicit updating/null counters for historical unknown data, with
+      strict page identities and required pagination fields. Preserve account
+      scoping and administrative metadata restrictions.
+- [ ] Make shared, Android and iOS history fetch exactly one visible page at a
+      time. Provide explicit navigation with a bounded cursor back-stack and
+      First page. Poll only that page and reject stale account/session/page
+      responses; retain the last successful page on failure.
+- [ ] Merge returned records additively by account/server/resource identity.
+      Preserve encryption keys, deletion capabilities, local names, saved-file
+      checkpoints and receipts. Remove iOS absent-snapshot revocation inference;
+      unloaded records are not revoked. Exact resource checks or successful
+      explicit revocation may establish unavailability. Refresh a sent detail
+      through its exact resource endpoint rather than a complete history scan.
+- [ ] Use bounded account-scoped Room queries on Android and indexed/per-record
+      shared history storage on iOS. Preserve existing local history and keys
+      during migration and coordinate main-app/share-extension writes. Do not
+      disguise truncation or destructive pruning as pagination. Include locally
+      downloaded guest files and legacy history in the browsing/storage design.
+- [ ] Tighten web history page validation and response-byte bounds, preserve its
+      explicit navigation and cap the previous-cursor stack. Display unknown
+      summary counts without fabricating zero. Account for whole-map local link
+      storage separately from bounded remote metadata loading.
+- [ ] Verify large histories, filtered empty pages, repeated/malformed cursors,
+      credential changes, concurrent saving/renaming, missing keys, local-only
+      records and migration/restart. Record supported-platform native build and
+      device gates separately from portable tests and syntax checks.

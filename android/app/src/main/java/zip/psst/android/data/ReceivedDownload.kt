@@ -55,8 +55,12 @@ internal suspend fun acknowledgeSavedDownload(client: ApiClient, transferId: Str
 internal suspend fun retrySavedDownloadAcknowledgements(
     row: TransferHistoryEntity,
     client: ApiClient,
+    eligible: Set<String>? = null,
 ) {
     withTimeoutOrNull(2_500L) {
-        for (id in row.savedTransferIds()) acknowledgeSavedDownload(client, id)
+        for (id in
+            row.savedTransferIds()
+                .filter { eligible == null || it in eligible }
+                .take(100)) acknowledgeSavedDownload(client, id)
     }
 }

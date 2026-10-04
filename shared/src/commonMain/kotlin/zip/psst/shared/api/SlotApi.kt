@@ -9,6 +9,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
@@ -18,7 +19,9 @@ import io.ktor.http.contentType
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 private data class CreateReceiveRequest(
@@ -128,18 +131,24 @@ class SlotApi(
         deleteLink(httpClient, "${config.apiBaseUrl}/slots/$slotId", deleteToken ?: sessionToken)
     }
 
-    /** Get drop slot status including list of uploaded files. */
+    /** Fetch only the first bounded inbox page. No implicit traversal or legacy fallback. */
+    @Throws(Exception::class) suspend fun get(slotId: String): DropSlot = getPage(slotId, null, 50)
+
     @Throws(Exception::class)
-    suspend fun get(slotId: String): DropSlot {
-        val response =
-            httpClient.get("${config.apiBaseUrl}/slots/$slotId") {
-                expectSuccess = false
-                sessionToken?.let { bearerAuth(it) }
-            }
-        if (response.status.value == 401 && sessionToken != null)
-            throw AuthenticationRequiredException()
-        return response.readControlJson<DropSlot>().also { require(it.id == slotId) }
-    }
+    suspend fun getPage(slotId: String, after: String?, limit: Int): DropSlot =
+        withTimeout(10_000L) {
+            require(UrlHelper.isResourceId(slotId) && limit in 1..100 && validInboxCursor(after))
+            val response =
+                httpClient.get("${config.apiBaseUrl}/slots/$slotId/inbox") {
+                    expectSuccess = false
+                    parameter("limit", limit)
+                    after?.let { parameter("after", it) }
+                    sessionToken?.let { bearerAuth(it) }
+                }
+            if (response.status.value == 401 && sessionToken != null)
+                throw AuthenticationRequiredException()
+            decodeInboxPage(response.readControlJson<JsonObject>(), slotId, after, limit)
+        }
 
     /**
      * Subscribe to real-time upload notifications via Server-Sent Events. Returns a Flow that emits

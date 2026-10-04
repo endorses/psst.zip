@@ -22,12 +22,27 @@ data class DropSlot(
     @SerialName("reserved_files") val reservedFiles: Long = 0,
     @SerialName("completed_files") val completedFiles: Long = 0,
     @SerialName("remaining_files") val remainingFiles: Long? = null,
+    val paginated: Boolean = false,
+    @SerialName("next_cursor") val nextCursor: String? = null,
+    val summary: InboxSummary? = null,
 ) {
     val fileCount: Int
         get() = completedTransfers.sumOf { it.fileCount }
 
     val completedTransfers: List<SlotTransfer>
         get() = transfers.filter { it.status == TransferStatus.COMPLETE }
+}
+
+/** Canonical retained-row totals; updating means every total is unknown. */
+@Serializable
+data class InboxSummary(
+    val state: String,
+    @SerialName("completed_files") val completedFiles: Long?,
+    @SerialName("file_count") val fileCount: Long?,
+    @SerialName("total_size") val totalSize: Long?,
+) {
+    val ready: Boolean
+        get() = state == "ready"
 }
 
 @Serializable

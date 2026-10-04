@@ -114,6 +114,7 @@ var migrations = []string{
 	reconciliationMigration(),
 	counterRebuildMigration(),
 	orphanMigration(),
+	inboxTotalsMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

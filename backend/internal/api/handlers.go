@@ -507,57 +507,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSlot(w http.ResponseWriter, r *http.Request) {
-	slotID := chi.URLParam(r, "slotID")
-	if !isValidUUID(slotID) {
-		writeError(w, http.StatusBadRequest, "invalid slot ID")
-		return
-	}
-
-	slot, err := s.queries.GetSlot(slotID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			writeError(w, http.StatusNotFound, "slot not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-
-	if slot.Status == "revoked" {
-		incidentFailure(w, database.ErrResourceRevoked)
-		return
-	}
-	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired or revoked")
-		return
-	}
-	transfers, _ := s.queries.ListSlotTransfers(slotID)
-
-	infos := make([]SlotTransferInfo, 0, len(transfers))
-	for _, t := range transfers {
-		if t.Status == "revoked" || !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
-			continue
-		}
-		fc, _, _ := s.queries.FileCountAndSize(t.ID)
-		infos = append(infos, SlotTransferInfo{
-			TransferID: t.ID,
-			Status:     t.Status,
-			FileCount:  fc,
-		})
-	}
-
-	response := SlotResponse{
-		ID:        slot.ID,
-		Status:    slot.Status,
-		Transfers: infos,
-		ExpiresAt: slot.ExpiresAt,
-		CreatedAt: slot.CreatedAt,
-	}
-	if err := s.slotPolicy(&response, slot); err != nil {
-		writeError(w, 500, "could not read inbox counters")
-		return
-	}
-	writeJSON(w, http.StatusOK, response)
+	s.readInbox(w, r, true)
 }
 
 func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {

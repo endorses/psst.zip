@@ -6,6 +6,7 @@ data class HistoryAccess(
     val accountId: String? = null,
     val isAdmin: Boolean = false,
     val mustChangePassword: Boolean = false,
+    val credentialVersion: Long = 0,
 ) {
     fun permits(row: TransferHistoryEntity): Boolean {
         if (accountId.isNullOrBlank() || isAdmin || mustChangePassword) return false

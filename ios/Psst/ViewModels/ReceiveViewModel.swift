@@ -2,12 +2,19 @@ import CryptoKit
 import Foundation
 import Shared
 
-enum ReceiveState: Equatable { case idle, creating, waiting, downloading(progress: Double), decrypting, complete, failed(String) }
+enum ReceiveState: Equatable {
+    case idle, creating, waiting
+    case downloading(progress: Double)
+    case decrypting, complete
+    case failed(String)
+}
 
 struct InboxSaveConsent {
     let total: Int64
     let fileCount: Int
     let fingerprints: [String: Data]
+    let scope: InboxSaveScope
+    let session: DeviceSession
 }
 
 @Observable
@@ -21,6 +28,17 @@ final class ReceiveViewModel {
     private(set) var pendingConsent: InboxSaveConsent?
     private(set) var lastUpdated: Date?
     private(set) var receivedFileURLs: [URL] = []
+    private(set) var pageWindow = InboxPageWindow()
+    private(set) var totalReceivedFiles: Int64?
+    private(set) var refreshing = false
+    private var pageID = UUID()
+    private var loadedSession: DeviceSession?
+    private var refreshID = UUID()
+    var pageFileCount: Int { arrivals.reduce(0) { $0 + Int($1.fileCount) } }
+    var canBrowse: Bool { !isSaving && !refreshing && pendingConsent == nil && loadedSession == serverConfig.session && !serverConfig.needsSignIn }
+    var canGoNext: Bool { canBrowse && pageWindow.nextCursor != nil }
+    var canGoPrevious: Bool { canBrowse && pageWindow.canGoBack }
+
     var uploadURL: String? {
         record?.receiveProtocol == 2 ? record?.fullLink : nil
     }
@@ -30,8 +48,11 @@ final class ReceiveViewModel {
     }
 
     var canSave: Bool {
-        guard let record, !record.isExpired, record.state != .revoked, record.canDecryptInbox else { return false }
-        return arrivals.contains { !(record.savedTransfers ?? []).contains($0.transferId) }
+        guard let record, let session = serverConfig.session, record.belongs(to: session),
+            loadedSession == session, !serverConfig.needsSignIn, pageWindow.loaded,
+            !record.isExpired, record.state != .revoked, record.canDecryptInbox
+        else { return false }
+        return arrivals.contains { !isSaved($0, in: record) }
     }
 
     var isSaving: Bool {
@@ -48,7 +69,6 @@ final class ReceiveViewModel {
     private let historyStore: TransferHistoryStore
     private let localName: String?
     private let maxFiles: Int32
-    private var refreshing = false
     private var saveClient: ApiClient?
     private var saveTask: Task<Void, Never>?
     init(serverConfig: ServerConfigManager, historyStore: TransferHistoryStore, record: TransferRecord? = nil, localName: String? = nil, maxFiles: Int32 = 0) {
@@ -77,19 +97,22 @@ final class ReceiveViewModel {
             let client = serverConfig.makeApiClient(session: session)
             defer { client.close() }
             let keys = ReceiveCrypto.generateKeyPair()
-            let publicKey = keys.publicKey.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+            let publicKey = keys.publicKey.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(
+                of: "=", with: "")
             let slot = try await client.slots.create(recipientPublicKey: publicKey, maxFiles: maxFiles)
             guard UUID(uuidString: slot.id) != nil else { throw AccountError.request }
             let link = UrlHelper.shared.buildReceiveUrl(baseUrl: session.serverURL, slotId: slot.id, publicKey: keys.publicKey.toKotlinByteArray())
-            var entry = TransferRecord(id: slot.id, direction: .received, state: .inProgress, createdAt: Date(),
-                                       expiresAt: ServerTimestamp.parse(slot.expiresAt), fileCount: 0,
-                                       totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, customTitle: localName?.isEmpty == false ? String(localName!.prefix(200)) : nil, isSlot: true, receiveProtocol: 0, maxFiles: Int(maxFiles), reservedFiles: 0)
+            var entry = TransferRecord(
+                id: slot.id, direction: .received, state: .inProgress, createdAt: Date(),
+                expiresAt: ServerTimestamp.parse(slot.expiresAt), fileCount: 0,
+                totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, customTitle: localName?.isEmpty == false ? String(localName!.prefix(200)) : nil,
+                isSlot: true, receiveProtocol: 0, maxFiles: Int(maxFiles), reservedFiles: 0)
             allocation = (session.serverURL, slot.id, slot.deleteToken ?? session.token, entry.vaultID)
             record = entry
             try entry.saveSecrets(link: link, deletionToken: slot.deleteToken, receivePrivateKey: keys.privateKey)
             try historyStore.add(entry)
             record = entry
-            let confirmed = try await client.slots.get(slotId: slot.id)
+            let confirmed = try await client.slots.getPage(slotId: slot.id, after: nil, limit: 50)
             guard confirmed.receiveProtocol == 2, confirmed.recipientPublicKey == publicKey, confirmed.maxFiles == maxFiles else {
                 try await historyStore.revoke(entry, session: session)
                 record = nil
@@ -122,68 +145,111 @@ final class ReceiveViewModel {
                 }
             }
             await serverConfig.refreshAccount()
-            state = .failed(TransferIncident.from(error)?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage ?? (record == nil ? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.") : String(localized: "Receive link creation stopped. Its record remains in History so you can revoke it.")))
+            state = .failed(
+                TransferIncident.from(error)?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage
+                    ?? (record == nil
+                        ? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.")
+                        : String(localized: "Receive link creation stopped. Its record remains in History so you can revoke it.")))
         }
     }
 
-    func refresh() async -> Bool {
-        guard let record, !isSaving, !refreshing else { return true }
+    private func isSaved(_ transfer: SlotTransfer, in entry: TransferRecord) -> Bool {
+        guard (entry.savedTransfers ?? []).contains(transfer.transferId) else { return false }
+        let prefix = transfer.transferId + "/"
+        let count = (entry.savedFiles ?? [:]).filter { $0.key.hasPrefix(prefix) && savedURL($0.value) != nil }.count
+        return count == Int(transfer.fileCount)
+    }
+
+    private func historyState(_ entry: TransferRecord, status: DropSlot, window: InboxPageWindow) -> TransferState {
+        let complete = status.completedTransfers.filter { $0.fileCount > 0 }
+        let visible = Dictionary(uniqueKeysWithValues: complete.map { ($0.transferId, Int($0.fileCount)) })
+        let saved = Set(complete.filter { isSaved($0, in: entry) }.map(\.transferId))
+        let total = status.summary?.ready == true ? status.summary?.completedFiles?.int64Value : nil
+        if InboxSaveScope.coversInbox(cursor: window.cursor, next: status.nextCursor, total: total, visible: visible, saved: saved) { return .saved }
+        return (total ?? Int64(entry.fileCount)) == 0 && complete.isEmpty ? .inProgress : .complete
+    }
+
+    func refresh() async -> Bool { await loadPage(pageWindow) }
+
+    func nextPage() async {
+        guard canGoNext, let next = try? pageWindow.forward() else { return }
+        _ = await loadPage(next)
+    }
+
+    func previousPage() async {
+        guard canGoPrevious, let previous = try? pageWindow.backward() else { return }
+        _ = await loadPage(previous)
+    }
+
+    func firstPage() async {
+        guard canBrowse else { return }
+        _ = await loadPage(InboxPageWindow())
+    }
+
+    private func loadPage(_ target: InboxPageWindow) async -> Bool {
+        guard let record, !isSaving, !refreshing, pendingConsent == nil else { return true }
+        guard let session = try? serverConfig.requireSession(), record.belongs(to: session) else { return false }
+        let requestID = UUID()
+        refreshID = requestID
         refreshing = true
-        defer { refreshing = false }
+        defer { if refreshID == requestID { refreshing = false } }
+        func current() -> Bool {
+            refreshID == requestID && self.record?.localID == record.localID && JobIdentity(session: session).accepts(SecretStore.session, cancelled: Task.isCancelled)
+                && serverConfig.session == session
+        }
         do {
-            let session = try serverConfig.requireSession()
-            guard record.belongs(to: session) else { throw AccountError.changed }
             let client = serverConfig.makeApiClient(session: session)
             defer { client.close() }
-            let status = try await client.slots.get(slotId: record.id)
+            let status = try await client.slots.getPage(slotId: record.id, after: target.cursor, limit: 50)
             try serverConfig.check(session)
-            arrivals = status.completedTransfers
+            guard current() else { return false }
+            var nextWindow = target
+            try nextWindow.accept(next: status.nextCursor)
             var updated = record
-            updated.fileCount = Int(status.fileCount)
+            let total = status.summary?.ready == true ? status.summary?.completedFiles?.int64Value : nil
+            if let total { updated.fileCount = Int(total) }
             updated.receiveProtocol = Int(status.receiveProtocol)
             updated.maxFiles = Int(status.maxFiles)
             updated.reservedFiles = status.reservedFiles
-            updated.state = updated.fileCount == 0 ? .inProgress : (canSave ? .complete : .saved)
+            updated.state = historyState(updated, status: status, window: nextWindow)
             try historyStore.update(updated)
             self.record = updated
+            if pageWindow.cursor != nextWindow.cursor { savingError = nil }
+            pageWindow = nextWindow
+            pageID = UUID()
+            loadedSession = session
+            totalReceivedFiles = total
+            arrivals = status.completedTransfers.filter { $0.fileCount > 0 }
+            if state == .complete { state = .waiting }
             lastUpdated = Date()
             connectionError = nil
             return true
-        } catch AccountError.unavailable, TransferIncident.revoked {
-            var updated = record
-            updated.state = updated.isExpired ? .expired : .revoked
-            try? historyStore.update(updated)
-            self.record = updated
-            connectionError = String(localized: "This link expired or was revoked.")
-            return false
         } catch {
-            if let incident = TransferIncident.from(error) {
-                if incident == .revoked {
-                    var updated = record
-                    updated.state = .revoked
-                    try? historyStore.update(updated)
-                    self.record = updated
+            guard current() else { return false }
+            var unavailable = false
+            if let accountError = error as? AccountError {
+                switch accountError {
+                case .unavailable: unavailable = true
+                default: break
                 }
-                connectionError = incident.localizedDescription
-                return false
             }
-            // Ktor errors cross the Swift bridge without AccountError status mapping.
-            // Confirm only failed reads through the native HTTP status mapper, using
-            // the current matching account; ordinary polling remains one request.
-            if !Task.isCancelled, let session = serverConfig.session, record.belongs(to: session) {
+            var incident = TransferIncident.from(error)
+            // Use only a bounded first-page request to map bridged Ktor failures.
+            // Do not reintroduce the legacy full-inbox lookup on error paths.
+            if incident == nil, !unavailable {
                 do {
-                    _ = try await AccountHTTP.request(server: session.serverURL, path: "slots/" + record.id, token: session.token)
-                } catch AccountError.unavailable, TransferIncident.revoked {
-                    var updated = record
-                    updated.state = updated.isExpired ? .expired : .revoked
-                    try? historyStore.update(updated)
-                    self.record = updated
-                    connectionError = String(localized: "This link expired or was revoked.")
-                    return false
-                } catch { /* Preserve the last known record on authentication/network failure. */ }
+                    _ = try await AccountHTTP.request(server: session.serverURL, path: "slots/" + record.id + "/inbox?limit=1", token: session.token)
+                } catch AccountError.unavailable { unavailable = true } catch { incident = TransferIncident.from(error) }
             }
-            if !Task.isCancelled {
-                connectionError = String(localized: "Offline — reconnect to update arrivals.")
+            guard current() else { return false }
+            if unavailable || incident == .revoked {
+                var updated = record
+                updated.state = updated.isExpired ? .expired : .revoked
+                try? historyStore.update(updated)
+                self.record = updated
+                connectionError = String(localized: "This link expired or was revoked.")
+            } else {
+                connectionError = incident?.localizedDescription ?? String(localized: "Could not update this page. Your last loaded page is still available. Reconnect to retry.")
             }
             return false
         }
@@ -195,7 +261,8 @@ final class ReceiveViewModel {
         while !Task.isCancelled {
             let ok = await refresh()
             guard let session = serverConfig.session, record?.belongs(to: session) == true,
-                  !serverConfig.needsSignIn else { return }
+                !serverConfig.needsSignIn
+            else { return }
             if record?.state == .revoked || record?.isExpired == true {
                 return
             }
@@ -205,16 +272,25 @@ final class ReceiveViewModel {
     }
 
     func save() {
-        guard !isSaving, canSave else { return }
+        guard !isSaving, !refreshing, pendingConsent == nil, canSave, let record, let session = loadedSession else { return }
+        let scope = InboxSaveScope(
+            pageID: pageID, cursor: pageWindow.cursor,
+            transferIDs: Set(arrivals.filter { !isSaved($0, in: record) }.map(\.transferId)))
         state = .decrypting
-        saveTask = Task { await saveFiles() }
+        saveTask = Task { await saveFiles(scope: scope, session: session) }
     }
 
     func confirmSaving() {
-        guard let consent = pendingConsent, !isSaving else { return }
+        guard let consent = pendingConsent, !isSaving,
+            consent.session == serverConfig.session,
+            consent.scope.accepts(pageID: pageID, cursor: pageWindow.cursor, available: Set(arrivals.map(\.transferId)))
+        else {
+            pendingConsent = nil
+            return
+        }
         pendingConsent = nil
         state = .decrypting
-        saveTask = Task { await saveFiles(approved: consent.fingerprints) }
+        saveTask = Task { await saveFiles(scope: consent.scope, session: consent.session, approved: consent.fingerprints) }
     }
 
     func cancelSaving() {
@@ -223,25 +299,29 @@ final class ReceiveViewModel {
         saveClient?.close()
     }
 
-    func saveFiles(approved: [String: Data]? = nil) async {
+    private func saveFiles(scope: InboxSaveScope, session: DeviceSession, approved: [String: Data]? = nil) async {
         guard var entry = record else { return }
         var checkpoint = ReceiveCheckpoint(record: entry, fileExists: { self.savedURL($0) != nil })
         savingError = nil
         pendingConsent = nil
         do {
-            let session = try serverConfig.requireSession()
+            try serverConfig.check(session)
+            guard scope.accepts(pageID: pageID, cursor: pageWindow.cursor, available: Set(arrivals.map(\.transferId))) else { throw AccountError.changed }
             guard entry.belongs(to: session), entry.canDecryptInbox,
-                  let fragment = URLComponents(string: entry.fullLink ?? "")?.fragment else { throw AccountError.changed }
+                let fragment = URLComponents(string: entry.fullLink ?? "")?.fragment
+            else { throw AccountError.changed }
             let modern = fragment.hasPrefix("v2.")
             guard let linkKey = Self.decodeKey(modern ? String(fragment.dropFirst(3)) : fragment) else { throw AccountError.request }
             let privateKey = entry.capabilities?.receivePrivateKey
             let client = serverConfig.makeApiClient(session: session)
             saveClient = client
-            defer { client.close()
+            defer {
+                client.close()
                 saveClient = nil
             }
-            let status = try await client.slots.get(slotId: entry.id)
+            let status = try await client.slots.getPage(slotId: entry.id, after: scope.cursor, limit: 50)
             try serverConfig.check(session)
+            guard scope.accepts(pageID: pageID, cursor: pageWindow.cursor, available: Set(status.completedTransfers.map(\.transferId))) else { throw AccountError.changed }
             let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let relativeDirectory = "Received/" + session.userID + "/" + entry.id
             let directory = documents.appendingPathComponent(relativeDirectory)
@@ -249,7 +329,7 @@ final class ReceiveViewModel {
             var prepared: [(id: String, key: KotlinByteArray, manifest: Manifest)] = []
             var fingerprints: [String: Data] = [:]
             var remainingSizes: [Int64] = []
-            for transfer in status.completedTransfers where !(entry.savedTransfers ?? []).contains(transfer.transferId) {
+            for transfer in status.completedTransfers where scope.transferIDs.contains(transfer.transferId) && !isSaved(transfer, in: entry) {
                 state = .decrypting
                 let bytes = try await client.transfers.downloadManifest(transferId: transfer.transferId)
                 try serverConfig.check(session)
@@ -257,9 +337,11 @@ final class ReceiveViewModel {
                 let key: KotlinByteArray
                 if modern {
                     guard status.receiveProtocol == 2, Self.decodeKey(status.recipientPublicKey) == linkKey,
-                          let privateKey else { throw ReceiveCryptoError.invalidKey }
+                        let privateKey
+                    else { throw ReceiveCryptoError.invalidKey }
                     let envelope = try ReceiveCrypto.decodeEnvelope(bytes.toData())
-                    key = try ReceiveCrypto.openSubmissionKey(envelope.wrappedKey, privateKey: privateKey, publicKey: linkKey, slotID: entry.id, transferID: transfer.transferId).toKotlinByteArray()
+                    key = try ReceiveCrypto.openSubmissionKey(envelope.wrappedKey, privateKey: privateKey, publicKey: linkKey, slotID: entry.id, transferID: transfer.transferId)
+                        .toKotlinByteArray()
                     encryptedManifest = envelope.encryptedManifest
                 } else {
                     guard status.receiveProtocol == 1 else { throw ReceiveCryptoError.invalidEnvelope }
@@ -267,22 +349,26 @@ final class ReceiveViewModel {
                     encryptedManifest = bytes.toData()
                 }
                 guard let manifest = try ManifestSerializer.decode(json: String(decoding: decrypt(encryptedManifest.toKotlinByteArray(), key: key), as: UTF8.self)),
-                      !manifest.files.isEmpty, manifest.files.count == Int(transfer.fileCount) else { throw AccountError.request }
+                    !manifest.files.isEmpty, manifest.files.count == Int(transfer.fileCount)
+                else { throw AccountError.request }
                 let metadata = try await client.transfers.get(transferId: transfer.transferId)
                 _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: metadata)
                 fingerprints[transfer.transferId] = Data(SHA256.hash(data: bytes.toData()))
                 remainingSizes.append(contentsOf: manifest.files.filter { checkpoint.needsFile(transferID: transfer.transferId, blobID: $0.blobId) }.map(\.size))
                 prepared.append((transfer.transferId, key, manifest))
             }
+            try serverConfig.check(session)
             let remaining = try ReceiveSafety.total(remainingSizes)
             if remaining > ReceiveSafety.automaticBytes, approved != fingerprints {
-                pendingConsent = InboxSaveConsent(total: remaining, fileCount: remainingSizes.count, fingerprints: fingerprints)
+                pendingConsent = InboxSaveConsent(total: remaining, fileCount: remainingSizes.count, fingerprints: fingerprints, scope: scope, session: session)
                 state = .waiting
                 return
             }
             try ReceiveSafety.checkSpace(at: directory, additional: remaining)
             for preparedTransfer in prepared {
-                let transferID = preparedTransfer.id, key = preparedTransfer.key, manifest = preparedTransfer.manifest
+                let transferID = preparedTransfer.id
+                let key = preparedTransfer.key
+                let manifest = preparedTransfer.manifest
                 for (index, file) in manifest.files.enumerated() {
                     try serverConfig.check(session)
                     if !checkpoint.needsFile(transferID: transferID, blobID: file.blobId) {
@@ -313,18 +399,22 @@ final class ReceiveViewModel {
                 DownloadAcknowledgements.shared.enqueue(serverURL: session.serverURL, transferID: transferID, ownerID: session.userID)
                 await DownloadAcknowledgements.shared.flush()
             }
-            entry.state = .saved
+            try serverConfig.check(session)
+            entry.state = historyState(entry, status: status, window: pageWindow)
             try historyStore.update(entry)
             record = entry
             state = .complete
         } catch {
             state = .waiting
+            guard JobIdentity(session: session).accepts(SecretStore.session, cancelled: Task.isCancelled) && serverConfig.session == session else { return }
             var incident = TransferIncident.from(error)
             if incident == nil, let session = serverConfig.session, entry.belongs(to: session) {
-                incident = await TransferTrafficRecovery.inspect(error, server: session.serverURL,
-                                                                 resource: .slot, id: entry.id,
-                                                                 direction: .download, token: session.token)
+                incident = await TransferTrafficRecovery.inspect(
+                    error, server: session.serverURL,
+                    resource: .slot, id: entry.id,
+                    direction: .download, token: session.token)
             }
+            guard JobIdentity(session: session).accepts(SecretStore.session, cancelled: Task.isCancelled) && serverConfig.session == session else { return }
             savingError = incident?.localizedDescription ?? String(localized: "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.")
         }
     }

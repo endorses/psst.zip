@@ -6,6 +6,14 @@ import { resourceLimitError } from "./resource-policy.ts";
 import { TransferStateError, transferStateError } from "./incident-state.ts";
 import { validateSlotAvailability, type SlotAvailability } from "./guest-capacity.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
+import {
+  INBOX_PAGE_SIZE,
+  inboxUUID,
+  validInboxCursor,
+  validateInboxPage,
+  type InboxPage,
+} from "./inbox-page.ts";
+export type { InboxPage } from "./inbox-page.ts";
 export type { SlotAvailability } from "./guest-capacity.ts";
 
 /**
@@ -187,6 +195,35 @@ export async function getSlotAvailability(
 
 export async function getSlotInfo(slotId: string): Promise<SlotInfo> {
   return request<SlotInfo>(`/slots/${slotId}`);
+}
+
+/** Read one owner-only inbox page. Never fall back to an unbounded legacy listing. */
+export async function getSlotInbox(
+  slotId: string,
+  after = "",
+  signal?: AbortSignal,
+): Promise<InboxPage> {
+  if (!inboxUUID.test(slotId) || (after && !validInboxCursor(after)))
+    throw new Error("Invalid inbox page");
+  const query = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
+  if (after) query.set("after", after);
+  const timeout = AbortSignal.timeout(10_000);
+  const response = await fetch(`${API_BASE}/slots/${slotId}/inbox?${query}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    redirect: "error",
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`API ${response.status}`);
+  }
+  const bytes = await readBounded(response, 32 * 1024);
+  return validateInboxPage(
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+    slotId,
+    after,
+  );
 }
 
 export interface SlotTransferMembership {
