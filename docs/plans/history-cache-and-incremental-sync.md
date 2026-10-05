@@ -303,3 +303,22 @@ harnesses were cleaned up. Operator data was not used for migration tests.
       scenarios documented separately. The actual Room/ViewModel emulator tests
       and real two-client web flow passed; these additional native flows are not
       claimed as tested.
+
+## Follow-up: retain cached presentation between History visits
+
+The first hydration follow-up suppressed an incorrect empty-state label but did
+not retain presentation when Android popped the History destination. The disk
+cache existed, yet each visit recreated its model and briefly showed a blank list.
+
+- [x] Scope Android history models to the app navigation owner, prewarm bounded
+      Room metadata without HTTP, retain local private-row projection and preserve
+      the selected source/filter/page on repeat entry. Keep HTTP polling tied to
+      the active, resumed History screen.
+- [x] Retain the iOS history model in ContentView and restore the SQLite page
+      synchronously before scheduling HTTP, preserving account/session isolation.
+- [x] Rebuild Android app/test APKs; verify 156 unit tests, the bilingual resource
+      audit and four clean-storage emulator lifecycle tests, including actual
+      Home → History → Back-arrow → History navigation and rendered cached rows.
+- [x] Verify 28 portable Swift sync/model tests plus source and bilingual catalog
+      gates. Native Xcode and SwiftUI navigation checks remain pending as already
+      recorded in the iOS verification notes.

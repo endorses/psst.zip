@@ -33,6 +33,52 @@ import XCTest
             record.customTitle = "Retained device label"
             try history.mutate(ids: [record.localID]) { $0 = [record] }
         }
+        func testHistoryEntryRestoresRowsSynchronouslyWithoutStartingHTTP() async throws {
+            let history = try store()
+            let session = DeviceSession()
+            SecretStore.session = session
+            try history.cacheServerPage(
+                snapshot(), session: session, kind: nil, after: nil, expected: nil)
+            AccountHTTP.handler = { _ in
+                XCTFail("Entering history must not need HTTP to display known rows")
+                throw URLError(.notConnectedToInternet)
+            }
+            let model = HistoryPageViewModel()
+            model.restoreCachedPage(history: history, session: session, filter: .all)
+            XCTAssertEqual(model.records.first?.sharedTitle, "Original")
+            XCTAssertTrue(model.hasLoadedPage(for: session))
+            XCTAssertFalse(model.loading)
+            // Leaving and returning preserves presentation without an asynchronous task.
+            model.cancel()
+            XCTAssertEqual(model.records.count, 1)
+            model.restoreCachedPage(history: history, session: session, filter: .all)
+            XCTAssertEqual(model.records.count, 1)
+            // Disk metadata also restores a reconstructed presentation immediately.
+            let rebuilt = HistoryPageViewModel()
+            rebuilt.restoreCachedPage(history: history, session: session, filter: .all)
+            XCTAssertEqual(rebuilt.records.first?.sharedTitle, "Original")
+        }
+
+        func testSynchronousHistoryEntryNeverRestoresAnotherOrRejectedAccount() async throws {
+            let history = try store()
+            let session = DeviceSession()
+            SecretStore.session = session
+            try history.cacheServerPage(
+                snapshot(), session: session, kind: nil, after: nil, expected: nil)
+            let model = HistoryPageViewModel()
+            model.restoreCachedPage(history: history, session: session, filter: .all)
+            var other = session
+            other.userID = "77777777-7777-4777-8777-777777777777"
+            SecretStore.session = other
+            model.restoreCachedPage(history: history, session: other, filter: .all)
+            XCTAssertTrue(model.records.isEmpty)
+            XCTAssertFalse(model.hasLoadedPage(for: other))
+            SecretStore.session = nil
+            model.restoreCachedPage(history: history, session: session, filter: .all)
+            XCTAssertTrue(model.records.isEmpty)
+            XCTAssertNil(model.loadedSession)
+        }
+
         func testCachedPageAppearsBeforePendingNetworkAndCancellationRejectsLateReply() async throws {
             let history = try store()
             let session = DeviceSession()

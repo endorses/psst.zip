@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var settings = false
     @State private var selectedTab = 0
     @State private var historyFilter = HistoryFilter.all
+    @State private var historyPage = HistoryPageViewModel()
     var body: some View {
         Group {
             if history.isReady, guests.isReady {
@@ -31,6 +32,8 @@ struct ContentView: View {
     private func prepareHistory() async {
         await history.finishMigration()
         await guests.finishMigration()
+        historyPage.restoreCachedPage(
+            history: history, session: config.session, filter: historyFilter)
     }
 
     private var workspace: some View {
@@ -42,7 +45,8 @@ struct ContentView: View {
             }
             .tabItem { Label(L10n.text("Scan"), systemImage: "qrcode.viewfinder") }.tag(1)
             HomeView(receiving: true).tabItem { Label(L10n.text("Receive"), systemImage: "square.and.arrow.down") }.tag(2)
-            HistoryView(filter: $historyFilter, onSend: { selectedTab = 0 }).tabItem { Label(L10n.text("History"), systemImage: "clock") }.tag(3)
+            HistoryView(filter: $historyFilter, onSend: { selectedTab = 0 }, page: historyPage)
+                .tabItem { Label(L10n.text("History"), systemImage: "clock") }.tag(3)
         }
         .modifier(PsstStyle())
         .safeAreaInset(edge: .top) {

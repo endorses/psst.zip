@@ -245,10 +245,7 @@ fun HistoryScreen(
             },
         )
     }
-    LaunchedEffect(initialFilter) {
-        viewModel.setFilter(initialFilter)
-        if (initialFilter == "downloaded") viewModel.setDeviceHistory(true)
-    }
+    LaunchedEffect(initialFilter) { viewModel.initializeSource(initialFilter) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, viewModel) {
         val observer = LifecycleEventObserver { _, event ->

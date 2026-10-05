@@ -188,6 +188,17 @@ assert "guard !working" in manual_refresh
 assert "if hasLoadedHistory, records.isEmpty" in history_view
 assert "devicePage.loaded && devicePage.session == config.session" in history_view
 assert "page.hasLoadedPage(for: config.session)" in history_view
+assert "@State private var historyPage = HistoryPageViewModel()" in read(
+    "Psst/ContentView.swift"
+)
+assert "page: historyPage" in read("Psst/ContentView.swift")
+assert "@State private var page = HistoryPageViewModel()" not in history_view
+history_appearance = history_view[
+    history_view.index(".onAppear {") : history_view.index(".onDisappear {")
+]
+assert history_appearance.index("page.restoreCachedPage(") < history_appearance.index(
+    "page.resumeRoutine()"
+)
 for path in (
     "Psst/Views/ScanReceiveView.swift",
     "Psst/Views/TransferDetailView.swift",

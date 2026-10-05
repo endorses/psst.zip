@@ -159,3 +159,27 @@ supersedes the earlier four-scenario run.
 Apple-platform builds and device validation are tracked separately in
 [history-sync-ios.md](history-sync-ios.md). No iOS build or physical-device flow
 is implied by these Android/JVM results.
+
+## Retained history presentation correction
+
+The earlier hydration fix hid the false empty-state message but still recreated
+the screen-owned ViewModel after popping History. A persisted disk cache alone
+did not prevent the blank presentation on every visit. The navigation graph now
+owns separate server/download history models. Server presentation prewarms from
+Room before History opens, keeps its private-row projection active locally, and
+retains rows, source, filter and page between visits. No HTTP request is made by
+prewarming; polling still requires the History screen to be visible and resumed.
+Account changes clear presentation and reject late reads from the previous scope.
+
+The lifecycle fixture now launches the production MainActivity and exercises
+Home → History → Back → History, checking that the same app-owned model remains
+populated and its row is rendered on each entry. It also verifies cache hydration
+without HTTP, cached presentation while a reply is blocked, quiet polling, and
+no history polling for eleven seconds after leaving the screen.
+
+- [x] Android unit suite: 156 tests passed; debug app and test APKs rebuilt.
+- [x] English/German resource audit passed with the existing inventory.
+- [x] Final emulator lifecycle suite: four tests passed in 32.198 seconds on
+      disposable API 36.1 storage. Actual Home → History → Back-arrow → History
+      navigation retained and rendered the cached row; cooldown, corruption
+      recovery/private-key retention and bounded older-page coverage also passed.

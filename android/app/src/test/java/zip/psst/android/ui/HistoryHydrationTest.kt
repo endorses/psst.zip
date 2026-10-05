@@ -14,7 +14,7 @@ class HistoryHydrationTest {
 
     @Test
     fun coldAndWarmOpenNeverClaimEmptyWhileCacheOrRowsAreHydrating() {
-        // A fresh navigation entry always begins with no disk answer, including a warm reopen.
+        // If no prewarmed page exists yet, unresolved local reads must not claim emptiness.
         repeat(2) {
             assertFalse(AccountHistoryPageState().isKnownEmptyFor(access))
             assertFalse(AccountHistoryPageState(access, loading = true).isKnownEmptyFor(access))

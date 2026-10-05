@@ -75,6 +75,18 @@ final class HistoryPageViewModel {
     func hasLoadedPage(for session: DeviceSession?) -> Bool {
         session != nil && loadedSession == session
     }
+    /// Restore presentation before scheduling HTTP, including when a view is rebuilt.
+    func restoreCachedPage(
+        history: TransferHistoryStore, session: DeviceSession?, filter: HistoryFilter
+    ) {
+        guard let session, session.canTransfer, SecretStore.session == session else {
+            invalidate()
+            return
+        }
+        if let loadedSession, loadedSession != session { invalidate() }
+        setFilter(filter)
+        showCache(history: history, session: session, target: window)
+    }
     func refreshLocal(history: TransferHistoryStore, session: DeviceSession?) {
         guard let session, loadedSession == session else { return }
         showCache(history: history, session: session, target: window)

@@ -44,7 +44,7 @@ class HistorySyncLifecycleDeviceTest {
                         }
                     socket.use {
                         val input = it.getInputStream().bufferedReader()
-                        val path = input.readLine()!!.split(' ')[1]
+                        val path = input.readLine()?.split(' ')?.getOrNull(1) ?: return@use
                         while (input.readLine()?.takeIf { line -> line.isNotEmpty() } != null) {}
                         var limited = false
                         val body =
@@ -61,12 +61,16 @@ class HistorySyncLifecycleDeviceTest {
                         val status =
                             if (limited) "429 Too Many Requests\r\nRetry-After: 6" else "200 OK"
                         val bytes = body.toByteArray()
-                        it.getOutputStream()
-                            .write(
-                                "HTTP/1.1 $status\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
-                                    .toByteArray()
-                            )
-                        it.getOutputStream().write(bytes)
+                        try {
+                            it.getOutputStream()
+                                .write(
+                                    "HTTP/1.1 $status\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                                        .toByteArray()
+                                )
+                            it.getOutputStream().write(bytes)
+                        } catch (_: java.io.IOException) {
+                            // Leaving History can cancel a response while this fixture writes it.
+                        }
                     }
                 }
             }
@@ -84,7 +88,6 @@ class HistorySyncLifecycleDeviceTest {
         lateinit var model: HistoryViewModel
         instrumentation.runOnMainSync {
             model = HistoryViewModel(app)
-            assertFalse(model.pageState.value.isKnownEmptyFor(access))
             model.refresh()
         }
         fun await(condition: () -> Boolean) {
@@ -146,13 +149,15 @@ class HistorySyncLifecycleDeviceTest {
                     thread(isDaemon = true) {
                         socket.use {
                             val input = it.getInputStream().bufferedReader()
-                            val path = input.readLine()?.split(' ')?.getOrNull(1).orEmpty()
+                            val path = input.readLine()?.split(' ')?.getOrNull(1) ?: return@use
                             while (
                                 input.readLine()?.takeIf { line -> line.isNotEmpty() } != null
                             ) {}
                             val body =
                                 if (path.startsWith("/api/v1/config")) {
                                     """{"max_file_size":26214400,"max_file_size_ceiling":10737418240,"history_sync_version":1}"""
+                                } else if (path.startsWith("/api/v1/auth/me")) {
+                                    """{"id":"fixture-account","username":"fixture","role":"user","must_change_password":false}"""
                                 } else {
                                     check(path.startsWith("/api/v1/auth/history/changes"))
                                     val count = requests.incrementAndGet()
@@ -162,12 +167,17 @@ class HistorySyncLifecycleDeviceTest {
                                     """{"version":1,"generation":"$generation","changes":[],"next_cursor":"current","has_more":false}"""
                                 }
                             val bytes = body.toByteArray()
-                            it.getOutputStream()
-                                .write(
-                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
-                                        .toByteArray()
-                                )
-                            it.getOutputStream().write(bytes)
+                            try {
+                                it.getOutputStream()
+                                    .write(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                                            .toByteArray()
+                                    )
+                                it.getOutputStream().write(bytes)
+                            } catch (_: java.io.IOException) {
+                                // Leaving History can cancel a response while this fixture writes
+                                // it.
+                            }
                         }
                     }
                 }
@@ -189,6 +199,7 @@ class HistorySyncLifecycleDeviceTest {
                                 totalSize = 1,
                                 summary = InboxSummary("ready", 1, 1, 1),
                                 createdAt = "2026-10-05T00:00:00Z",
+                                title = "Cached navigation entry",
                             )
                         ),
                     paginated = true,
@@ -200,10 +211,7 @@ class HistorySyncLifecycleDeviceTest {
                 null,
             )
         lateinit var model: HistoryViewModel
-        instrumentation.runOnMainSync {
-            model = HistoryViewModel(app)
-            model.refresh()
-        }
+        instrumentation.runOnMainSync { model = HistoryViewModel(app) }
         val collection = launch(Dispatchers.Default) { model.history.collect {} }
         fun await(timeout: Long = 5000, condition: () -> Boolean) {
             val until = System.currentTimeMillis() + timeout
@@ -211,6 +219,14 @@ class HistorySyncLifecycleDeviceTest {
             assertTrue("Timed out waiting for history state", condition())
         }
         try {
+            // The app-owned model prewarms from disk before entering History, without HTTP.
+            await { model.history.value.size == 1 }
+            assertEquals(0, requests.get())
+            instrumentation.runOnMainSync {
+                model.initializeSource("all")
+                model.refresh()
+                assertEquals(1, model.history.value.size)
+            }
             await { requests.get() == 1 }
             assertNotNull(
                 "Cached page must be visible while first response is blocked",
@@ -250,13 +266,108 @@ class HistorySyncLifecycleDeviceTest {
                     "Warm reopen is unresolved until the Room page arrives",
                     model.pageState.value.isKnownEmptyFor(access),
                 )
-                model.refresh()
             }
-            await { requests.get() == stopped + 1 }
+            await { model.history.value.size == 1 }
+            assertEquals("Disk prewarming must not start HTTP", stopped, requests.get())
             assertNotNull(model.pageState.value.page)
             assertFalse(model.pageState.value.isKnownEmptyFor(access))
-            // No private-enrichment subscriber exists for this new model yet.
-            assertTrue(model.history.value.isEmpty())
+            instrumentation.runOnMainSync {
+                model.initializeSource("all")
+                model.refresh()
+                assertEquals(1, model.history.value.size)
+                model.stopRefreshing()
+                model.initializeSource("all")
+                model.refresh()
+                assertEquals(
+                    "Reopening must retain visible cached rows",
+                    1,
+                    model.history.value.size,
+                )
+            }
+            await { requests.get() == stopped + 1 }
+            instrumentation.runOnMainSync { model.stopRefreshing() }
+            val activity =
+                instrumentation.startActivitySync(
+                    android.content
+                        .Intent(
+                            instrumentation.targetContext,
+                            zip.psst.android.MainActivity::class.java,
+                        )
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                ) as zip.psst.android.MainActivity
+            try {
+                lateinit var retained: HistoryViewModel
+                instrumentation.runOnMainSync {
+                    retained =
+                        androidx.lifecycle
+                            .ViewModelProvider(activity)[
+                                "serverHistory", HistoryViewModel::class.java]
+                }
+                await { retained.history.value.size == 1 }
+                fun labelNodes(
+                    label: String
+                ): List<android.view.accessibility.AccessibilityNodeInfo> {
+                    val found = mutableListOf<android.view.accessibility.AccessibilityNodeInfo>()
+                    fun visit(node: android.view.accessibility.AccessibilityNodeInfo) {
+                        if (
+                            node.text?.toString()?.contains(label) == true ||
+                                node.contentDescription?.toString()?.contains(label) == true
+                        )
+                            found.add(node)
+                        for (index in 0 until node.childCount) node.getChild(index)?.let(::visit)
+                    }
+                    instrumentation.uiAutomation.rootInActiveWindow?.let(::visit)
+                    return found
+                }
+                fun clickLabel(label: String): Boolean {
+                    val nodes = labelNodes(label)
+                    for (node in nodes) {
+                        if (
+                            node.text?.toString()?.startsWith(label) != true &&
+                                node.contentDescription?.toString()?.startsWith(label) != true
+                        )
+                            continue
+                        var clickable: android.view.accessibility.AccessibilityNodeInfo? = node
+                        while (clickable != null) {
+                            if (
+                                clickable.isClickable &&
+                                    clickable.performAction(
+                                        android.view.accessibility.AccessibilityNodeInfo
+                                            .ACTION_CLICK
+                                    )
+                            )
+                                return true
+                            clickable = clickable.parent
+                        }
+                    }
+                    return false
+                }
+                repeat(2) {
+                    await { clickLabel("History") }
+                    instrumentation.waitForIdleSync()
+                    instrumentation.runOnMainSync {
+                        assertSame(
+                            retained,
+                            androidx.lifecycle
+                                .ViewModelProvider(activity)[
+                                    "serverHistory", HistoryViewModel::class.java],
+                        )
+                        assertEquals(
+                            "Actual navigation must keep populated presentation",
+                            1,
+                            retained.history.value.size,
+                        )
+                    }
+                    // Accessibility follows the navigation animation; row state was already
+                    // populated before that animation and before any HTTP reply.
+                    await { labelNodes("Cached navigation entry").isNotEmpty() }
+                    await { clickLabel("Back") }
+                    instrumentation.waitForIdleSync()
+                    assertEquals(1, retained.history.value.size)
+                }
+            } finally {
+                instrumentation.runOnMainSync { activity.finish() }
+            }
         } finally {
             instrumentation.runOnMainSync { model.stopRefreshing() }
             gate.countDown()
@@ -288,7 +399,7 @@ class HistorySyncLifecycleDeviceTest {
                         }
                     socket.use {
                         val input = it.getInputStream().bufferedReader()
-                        val path = input.readLine()!!.split(' ')[1]
+                        val path = input.readLine()?.split(' ')?.getOrNull(1) ?: return@use
                         while (input.readLine()?.takeIf { line -> line.isNotEmpty() } != null) {}
                         val body =
                             when {
@@ -302,12 +413,16 @@ class HistorySyncLifecycleDeviceTest {
                                     """{"version":1,"generation":"$generation","changes":[],"next_cursor":"current","has_more":false}"""
                             }
                         val bytes = body.toByteArray()
-                        it.getOutputStream()
-                            .write(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
-                                    .toByteArray()
-                            )
-                        it.getOutputStream().write(bytes)
+                        try {
+                            it.getOutputStream()
+                                .write(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                                        .toByteArray()
+                                )
+                            it.getOutputStream().write(bytes)
+                        } catch (_: java.io.IOException) {
+                            // Leaving History can cancel a response while this fixture writes it.
+                        }
                     }
                 }
             }
@@ -414,7 +529,7 @@ class HistorySyncLifecycleDeviceTest {
                         }
                     socket.use {
                         val input = it.getInputStream().bufferedReader()
-                        val path = input.readLine()!!.split(' ')[1]
+                        val path = input.readLine()?.split(' ')?.getOrNull(1) ?: return@use
                         while (input.readLine()?.takeIf { line -> line.isNotEmpty() } != null) {}
                         val body =
                             when {
@@ -433,12 +548,16 @@ class HistorySyncLifecycleDeviceTest {
                                     """{"version":1,"generation":"$generation","changes":[],"next_cursor":"current","has_more":false}"""
                             }
                         val bytes = body.toByteArray()
-                        it.getOutputStream()
-                            .write(
-                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
-                                    .toByteArray()
-                            )
-                        it.getOutputStream().write(bytes)
+                        try {
+                            it.getOutputStream()
+                                .write(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+                                        .toByteArray()
+                                )
+                            it.getOutputStream().write(bytes)
+                        } catch (_: java.io.IOException) {
+                            // Leaving History can cancel a response while this fixture writes it.
+                        }
                     }
                 }
             }

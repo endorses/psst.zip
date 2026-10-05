@@ -26,6 +26,7 @@ import zip.psst.android.ui.screens.ServerConfigScreen
 import zip.psst.android.ui.screens.SettingsScreen
 import zip.psst.android.ui.screens.TrafficUsageScreen
 import zip.psst.android.ui.screens.TransferDetailScreen
+import zip.psst.android.viewmodel.HistoryViewModel
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.ServerConfig
@@ -59,6 +60,10 @@ fun PsstNavGraph(
     modifier: Modifier = Modifier,
 ) {
     val guestDownloads: ScanViewModel = viewModel()
+    // Keep hydrated presentation across popped History destinations. Disk reads and
+    // private-row enrichment start here; HTTP remains tied to HistoryScreen visibility.
+    val serverHistory: HistoryViewModel = viewModel(key = "serverHistory")
+    val downloadedHistory: HistoryViewModel = viewModel(key = "downloadedHistory")
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
     var intendedRoute by remember {
         mutableStateOf(if (sharedUris.isNotEmpty()) Routes.SEND else Routes.HOME)
@@ -271,6 +276,9 @@ fun PsstNavGraph(
                 HistoryScreen(
                     onAccount = { signInFor(route) },
                     guest = guestDownloads,
+                    viewModel =
+                        if (route == Routes.DOWNLOADED_HISTORY) downloadedHistory
+                        else serverHistory,
                     initialFilter = if (route == Routes.DOWNLOADED_HISTORY) "downloaded" else "all",
                     onDownloadClick = { record ->
                         if (guestDownloads.open(record))

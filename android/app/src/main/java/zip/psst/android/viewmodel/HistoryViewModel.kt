@@ -99,6 +99,15 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private var deviceJob: Job? = null
     private var deviceRevision = 0L
 
+    private var initializedSource = false
+
+    fun initializeSource(initialFilter: String) {
+        if (initializedSource) return
+        initializedSource = true
+        setFilter(initialFilter)
+        if (initialFilter == "downloaded") setDeviceHistory(true)
+    }
+
     fun setFilter(value: String) {
         if (filter.value == value) return
         filter.value = value
@@ -267,7 +276,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                         }
                 }
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _deletingIds = MutableStateFlow<Set<String>>(emptySet())
     val deletingIds = _deletingIds.asStateFlow()
@@ -284,7 +293,33 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     private var activeAccess = app.prefs.historyAccess.value
 
+    private fun warmCachedPage() {
+        val access = app.prefs.historyAccess.value
+        if (access.accountId.isNullOrBlank() || access.isAdmin || access.mustChangePassword) return
+        val requestRevision = revision
+        viewModelScope.launch(Dispatchers.IO) {
+            val cached =
+                try {
+                    syncCache.cachedPage(access, "", null)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null // Foreground synchronization handles unavailable or corrupt disk cache.
+                } ?: return@launch
+            if (
+                revision == requestRevision &&
+                    app.prefs.historyAccess.value == access &&
+                    !_deviceHistory.value &&
+                    filter.value == "all" &&
+                    _pageState.value.page == null
+            ) {
+                _pageState.value = AccountHistoryPageState(access, page = cached)
+            }
+        }
+    }
+
     init {
+        warmCachedPage()
         viewModelScope.launch {
             HistoryNotifications.changes.collect { mutation ->
                 if (
@@ -314,7 +349,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 _deletionError.value = null
                 accountIssue.value = null
                 transferIssue.value = null
-                if (visible && !_deviceHistory.value) startPolling()
+                if (visible && !_deviceHistory.value) startPolling() else warmCachedPage()
             }
         }
     }
@@ -357,6 +392,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setDeviceHistory(value: Boolean) {
+        if (_deviceHistory.value == value) return
         _deviceHistory.value = value
         revision++
         refreshJob?.cancel()

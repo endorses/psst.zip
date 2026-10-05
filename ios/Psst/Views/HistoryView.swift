@@ -12,7 +12,7 @@ struct HistoryView: View {
     @State private var deleting: TransferRecord?
     @State private var failedDeletion: TransferRecord?
     @State private var error: String?
-    @State private var page = HistoryPageViewModel()
+    var page: HistoryPageViewModel
     @State private var devicePage = MergedDeviceHistoryViewModel()
     @State private var showDevice = false
     @State private var sessionGeneration = UUID()
@@ -256,6 +256,10 @@ struct HistoryView: View {
             }
             .onAppear {
                 visible = true
+                if !deviceMode {
+                    page.restoreCachedPage(
+                        history: history, session: config.session, filter: filter)
+                }
                 page.resumeRoutine()
                 if filter == .downloaded {
                     showDevice = true

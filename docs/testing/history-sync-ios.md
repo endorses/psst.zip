@@ -126,3 +126,16 @@ Remove the two task-owned derived-data directories after recording the results.
 
 No CI access or new CI setup is needed. These remaining Apple-platform checks
 must stay pending until actually run.
+
+## Retained history presentation correction
+
+ContentView now owns HistoryPageViewModel so navigating away does not discard
+its rows. Startup prepares the bounded SQLite page after local-store preparation,
+and HistoryView restores cached presentation synchronously before scheduling
+HTTP. Account/session guards prevent restoring another account's rows.
+
+- [x] Portable Swift sync/model harness: 28 tests passed, including synchronous
+      cache restoration with no HTTP, retained rows on repeat entry and rejected
+      account/session cases.
+- [x] iOS source gates and English/German catalog checks passed.
+- [ ] Native Xcode build and SwiftUI tab/navigation validation on macOS.
