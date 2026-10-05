@@ -37,6 +37,7 @@ internal suspend fun syncAccountHistory(
                 accountId = access.accountId,
                 createdAt = parseHistoryExpiry(transfer.createdAt) ?: System.currentTimeMillis(),
                 expiresAt = parseHistoryExpiry(transfer.expiresAt),
+                maxDownloads = transfer.maxDownloads,
             ),
             access,
         )
@@ -71,6 +72,8 @@ internal fun slotHistoryResource(
         accountId = access.accountId,
         createdAt = parseHistoryExpiry(slot.createdAt) ?: System.currentTimeMillis(),
         expiresAt = parseHistoryExpiry(slot.expiresAt),
+        maxFiles = slot.maxFiles,
+        reservedFiles = slot.reservedFiles,
     )
 }
 
@@ -93,6 +96,11 @@ internal fun mergeAccountResource(
             fileCount = if (incoming.summaryUpdating) current.fileCount else incoming.fileCount,
             summaryUpdating = incoming.summaryUpdating,
             expiresAt = incoming.expiresAt ?: current.expiresAt,
+            maxDownloads = incoming.maxDownloads ?: current.maxDownloads,
+            maxFiles = incoming.maxFiles ?: current.maxFiles,
+            reservedFiles =
+                incoming.reservedFiles?.let { maxOf(current.reservedFiles ?: 0, it) }
+                    ?: current.reservedFiles,
             status =
                 if (current.status == "failed" && incoming.status == "pending") "failed"
                 else incoming.status,

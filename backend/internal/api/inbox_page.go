@@ -67,7 +67,7 @@ func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, legacy bool) 
 		return
 	}
 	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, 410, "slot expired or revoked")
+		policyError(w, 410, "link_expired", "receive link expired")
 		return
 	}
 	infos := make([]SlotTransferInfo, 0, len(page.Transfers))

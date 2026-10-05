@@ -3,6 +3,8 @@ package zip.psst.android.data
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ManifestValidator
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 /** Refresh only advisory metadata after attempts; never consume another file GET. */
@@ -18,6 +20,10 @@ internal suspend fun refreshGuestDownloadAttempts(
             if (transfer.maxDownloads == 0) emptyMap()
             else transfer.files.associate { it.id.lowercase() to it.remainingDownloads }
         }
+    } catch (_: TimeoutCancellationException) {
+        record.files.associate { it.blobId.lowercase() to null }
+    } catch (error: CancellationException) {
+        throw error
     } catch (_: Exception) {
         // Offline/revoked metadata must not leave stale allowances displayed.
         record.files.associate { it.blobId.lowercase() to null }

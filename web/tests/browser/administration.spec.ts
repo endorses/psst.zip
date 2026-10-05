@@ -239,6 +239,7 @@ test("same-account selected files and download policy survive reset and password
     mimeType: "text/plain",
     buffer: Buffer.from("private pending bytes"),
   });
+  await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("8");
   let uploads = 0;
@@ -282,6 +283,7 @@ test("same-account selected files and download policy survive reset and password
     mimeType: "text/plain",
     buffer: Buffer.from("a genuinely new selection"),
   });
+  await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).not.toBeChecked();
   expect(uploads).toBe(0);
 });

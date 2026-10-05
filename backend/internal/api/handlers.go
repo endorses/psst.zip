@@ -82,7 +82,7 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
-		writeError(w, http.StatusGone, "transfer expired or revoked")
+		policyError(w, http.StatusGone, "link_expired", "transfer expired")
 		return
 	}
 	files, totalSize, err := s.filePolicy(ctx, t)
@@ -439,7 +439,7 @@ func (s *Server) activeTransfer(w http.ResponseWriter, id string, mutable bool) 
 		return nil
 	}
 	if !time.Now().Before(t.ExpiresAt) || (t.Status == "pending" && t.PendingExpiresAt.Valid && !time.Now().Before(t.PendingExpiresAt.Time)) {
-		writeError(w, http.StatusGone, "transfer expired or revoked")
+		policyError(w, http.StatusGone, "link_expired", "transfer expired")
 		return nil
 	}
 	if mutable && t.Status != "pending" {
@@ -548,7 +548,7 @@ func (s *Server) createSlotTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired or revoked")
+		policyError(w, http.StatusGone, "link_expired", "receive link expired")
 		return
 	}
 	if slot.ReceiveProtocol != 2 {

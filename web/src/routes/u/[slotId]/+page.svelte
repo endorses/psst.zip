@@ -42,7 +42,14 @@
         return;
       }
       if (!availability.available) {
-        error = "This receive link cannot accept more files. Ask its owner for a new link.";
+        error =
+          availability.remaining_files === 0
+            ? "This link cannot accept more files. Its file allowance is exhausted. Ask its owner for a new link."
+            : availability.remaining_bytes === 0
+              ? "This receive link's byte allowance is exhausted. Ask its owner for a new link."
+              : availability.remaining_transfers === 0
+                ? "This receive link's upload batch allowance is exhausted. Ask its owner for a new link."
+                : "This receive link cannot accept uploads under the server's current limits. Ask its owner for help.";
         return;
       }
       ready = true;

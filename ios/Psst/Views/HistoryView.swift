@@ -20,14 +20,21 @@ struct HistoryView: View {
     @State private var busy = false
     @State private var renaming: TransferRecord?
     @State private var renameText = ""
-    private var deviceMode: Bool { showDevice || config.session?.canTransfer != true }
+    private var deviceMode: Bool {
+        showDevice || config.session?.canTransfer != true
+    }
+
     private var records: [HistoryEntry] {
         let owned = deviceMode ? (devicePage.session == config.session ? devicePage.records : []) : (page.loadedSession == config.session ? page.records : [])
         return HistoryEntry.combine(
             account: owned,
-            downloads: deviceMode ? guestPage.records : [], session: config.session, filter: filter)
+            downloads: deviceMode ? guestPage.records : [], session: config.session, filter: filter
+        )
     }
-    private var working: Bool { busy || page.loading }
+
+    private var working: Bool {
+        busy || page.loading
+    }
 
     var body: some View {
         NavigationStack {
@@ -48,9 +55,15 @@ struct HistoryView: View {
                             Button("Next") { navigateLocal(back: false) }.disabled(working || devicePage.next == nil)
                         }
                         if devicePage.number > 1 {
-                            Button("First links page") { if let session = config.session { devicePage.first(history: history, session: session) } }.disabled(working)
+                            Button("First links page") {
+                                if let session = config.session {
+                                    devicePage.first(history: history, session: session)
+                                }
+                            }.disabled(working)
                         }
-                        if let error = devicePage.error { Text(error).foregroundStyle(PsstTheme.error) }
+                        if let error = devicePage.error {
+                            Text(error).foregroundStyle(PsstTheme.error)
+                        }
                     }
                     if filter == .all || filter == .downloaded {
                         HStack {
@@ -59,8 +72,12 @@ struct HistoryView: View {
                             Button("Previous") { guestPage.backward(store: guests) }.disabled(working || !guestPage.canGoBack)
                             Button("Next") { guestPage.forward(store: guests) }.disabled(working || guestPage.next == nil)
                         }
-                        if guestPage.number > 1 { Button("First downloads page") { guestPage.first(store: guests) }.disabled(working) }
-                        if let error = guestPage.error ?? guests.error { Text(error).foregroundStyle(PsstTheme.error) }
+                        if guestPage.number > 1 {
+                            Button("First downloads page") { guestPage.first(store: guests) }.disabled(working)
+                        }
+                        if let error = guestPage.error ?? guests.error {
+                            Text(error).foregroundStyle(PsstTheme.error)
+                        }
                         if guests.hasPendingReceipts {
                             Button("Retry delivery confirmations") { Task { await guests.flushReceipts() } }.disabled(working)
                         }
@@ -69,11 +86,15 @@ struct HistoryView: View {
                     HStack {
                         Text("Page \(page.window.number)")
                         Spacer()
-                        if page.loading { ProgressView() }
+                        if page.loading {
+                            ProgressView()
+                        }
                         Button("Previous") { navigate(.previous) }.disabled(working || !page.window.canGoBack)
                         Button("Next") { navigate(.next) }.disabled(working || page.window.nextCursor == nil)
                     }
-                    if page.window.number > 1 { Button("First page") { navigate(.first) }.disabled(working) }
+                    if page.window.number > 1 {
+                        Button("First page") { navigate(.first) }.disabled(working)
+                    }
                     Text("Filters apply to this page.").font(.caption).foregroundStyle(PsstTheme.secondary)
                 }
                 Picker("History filter", selection: $filter) {
@@ -81,9 +102,10 @@ struct HistoryView: View {
                 }.pickerStyle(.menu)
                 if history.hasLegacyRecords {
                     Text("Pre-account history is preserved. Manage pre-account server resources from the administrator website.").font(.footnote).foregroundStyle(
-                        PsstTheme.secondary)
+                        PsstTheme.secondary
+                    )
                 }
-                if page.stale && !deviceMode {
+                if page.stale, !deviceMode {
                     Label("Offline — showing last known status", systemImage: "wifi.slash").foregroundStyle(PsstTheme.warning)
                 }
                 if let lastUpdated = page.lastUpdated, !deviceMode {
@@ -97,7 +119,9 @@ struct HistoryView: View {
                         deviceMode ? "No transfers yet" : "No entries on this page", systemImage: "clock",
                         description: Text(
                             filter == .downloaded
-                                ? "Files downloaded on this device will appear here, including while signed out." : "Choose another filter or page to see more entries."))
+                                ? "Files downloaded on this device will appear here, including while signed out." : "Choose another filter or page to see more entries."
+                        )
+                    )
                 }
                 ForEach(records) { entry in
                     switch entry {
@@ -133,6 +157,9 @@ struct HistoryView: View {
                                 Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.summary).font(.subheadline)
                                 Text(record.statusText).font(.caption)
+                                if let policy = record.linkPolicySummary {
+                                    Text(policy).font(.caption).foregroundStyle(PsstTheme.secondary)
+                                }
                                 if let expiry = record.expiresAt {
                                     HStack {
                                         Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
@@ -171,7 +198,8 @@ struct HistoryView: View {
                         if !$0 {
                             renaming = nil
                         }
-                    })
+                    }
+                )
             ) {
                 TextField("Name (optional)", text: $renameText)
                 Button("Save") {
@@ -192,7 +220,8 @@ struct HistoryView: View {
                         if !$0 {
                             removing = nil
                         }
-                    }), titleVisibility: .visible
+                    }
+                ), titleVisibility: .visible
             ) {
                 Button("Remove from history", role: .destructive) {
                     if let removing {
@@ -211,7 +240,8 @@ struct HistoryView: View {
                         if !$0 {
                             deleting = nil
                         }
-                    }), titleVisibility: .visible
+                    }
+                ), titleVisibility: .visible
             ) {
                 if let deleting {
                     Button("Revoke and delete", role: .destructive) { revoke(deleting) }
@@ -222,7 +252,9 @@ struct HistoryView: View {
             }
             .onAppear {
                 visible = true
-                if filter == .downloaded { showDevice = true }
+                if filter == .downloaded {
+                    showDevice = true
+                }
                 history.reload()
                 reloadLocal()
             }
@@ -247,16 +279,28 @@ struct HistoryView: View {
                 error = nil
             }
             .onChange(of: filter) { _, value in
-                if value == .downloaded { showDevice = true }
+                if value == .downloaded {
+                    showDevice = true
+                }
                 reloadLocal()
             }
             .onChange(of: showDevice) { _, value in
-                if !value && filter == .downloaded { filter = .all }
+                if !value, filter == .downloaded {
+                    filter = .all
+                }
                 reloadLocal()
             }
-            .onChange(of: guests.revision) { _, _ in if deviceMode { guestPage.refresh(store: guests) } }
+            .onChange(of: guests.revision) {
+                _, _ in if deviceMode {
+                    guestPage.refresh(store: guests)
+                }
+            }
             .onChange(of: history.revision) { _, _ in
-                if deviceMode { reloadLocal() } else { page.refreshLocal(history: history, session: config.session) }
+                if deviceMode {
+                    reloadLocal()
+                } else {
+                    page.refreshLocal(history: history, session: config.session)
+                }
             }
         }.modifier(PsstStyle())
     }
@@ -265,10 +309,16 @@ struct HistoryView: View {
         guestPage.refresh(store: guests)
         devicePage.refresh(history: history, session: config.session, filter: filter)
     }
+
     private func navigateLocal(back: Bool) {
         guard !working, let session = config.session else { return }
-        if back { devicePage.backward(history: history, session: session) } else { devicePage.forward(history: history, session: session) }
+        if back {
+            devicePage.backward(history: history, session: session)
+        } else {
+            devicePage.forward(history: history, session: session)
+        }
     }
+
     private enum Navigation { case previous, next, first }
     private func navigate(_ direction: Navigation) {
         guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return }
@@ -302,7 +352,9 @@ struct HistoryView: View {
                 try await history.revoke(record, session: session)
                 guard config.session == session, SecretStore.session == session else { return }
                 failedDeletion = nil
-                if !deviceMode { _ = await page.refresh(history: history, session: session) }
+                if !deviceMode {
+                    _ = await page.refresh(history: history, session: session)
+                }
             } catch {
                 guard config.session == session, SecretStore.session == session else { return }
                 failedDeletion = record
@@ -365,7 +417,7 @@ private struct HistoryDetail: View {
             guard scenePhase == .active, record.isSlot != true else { return }
             var delay: UInt64 = 5
             while !Task.isCancelled, !config.needsSignIn, let session = config.session,
-                record.canManage(as: session), current.state != .revoked, !current.isExpired
+                  record.canManage(as: session), current.state != .revoked, !current.isExpired
             {
                 do {
                     try await history.refreshSend(record, session: session)
@@ -387,7 +439,9 @@ private struct HistoryDetail: View {
 /// Sanitize remotely supplied automatic names at presentation time, preserving local custom labels.
 extension TransferRecord {
     var safeDisplayTitle: String {
-        if let customTitle, !customTitle.isEmpty { return customTitle }
+        if let customTitle, !customTitle.isEmpty {
+            return customTitle
+        }
         guard let title, !title.isEmpty else { return displayTitle }
         let name = GuestFiles.displayName(title)
         return fileCount > 1 ? name + " + \(fileCount - 1) files" : name

@@ -53,11 +53,33 @@ struct TransferRecord: Identifiable, Codable {
     }
 
     var summary: String {
-        if serverSummaryKnown == false { return String(localized: "File count updating") }
-        if serverSummaryKnown != nil && totalSize == 0 {
+        if serverSummaryKnown == false {
+            return String(localized: "File count updating")
+        }
+        if serverSummaryKnown != nil, totalSize == 0 {
             return String(format: String(localized: "%lld files"), Int64(fileCount))
         }
         return String(format: String(localized: "%lld files · %@"), Int64(fileCount), ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+    }
+
+    var linkPolicySummary: String? {
+        if isSlot == true {
+            guard let maxFiles else { return nil }
+            if maxFiles > 0 {
+                guard let reservedFiles else {
+                    return String(format: String(localized: "Maximum %lld files · Allowance use updating"), Int64(maxFiles))
+                }
+                return String(format: String(localized: "%lld of %lld file allowances used"), reservedFiles, Int64(maxFiles))
+            }
+            if let reservedFiles {
+                return String(format: String(localized: "%lld file allowances used · No optional file-count limit"), reservedFiles)
+            }
+            return String(localized: "No optional file-count limit")
+        }
+        guard let maxDownloads else { return nil }
+        return maxDownloads > 0
+            ? String(format: String(localized: "%lld download attempts per file"), Int64(maxDownloads))
+            : String(localized: "No optional download limit")
     }
 
     var displayTitle: String {
@@ -102,7 +124,8 @@ struct TransferRecord: Identifiable, Codable {
 
     func saveSecrets(link: String?, deletionToken: String?, receivePrivateKey: Data? = nil) throws {
         try SecretStore.write(
-            JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken, receivePrivateKey: receivePrivateKey ?? capabilities?.receivePrivateKey)), name: vaultID)
+            JSONEncoder().encode(ResourceSecrets(link: link, deletionToken: deletionToken, receivePrivateKey: receivePrivateKey ?? capabilities?.receivePrivateKey)), name: vaultID
+        )
     }
 
     func belongs(to session: DeviceSession) -> Bool {

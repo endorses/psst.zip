@@ -43,6 +43,13 @@ browsing nor normal background retries need to load and sort the full directory.
 Older unowned account records retain their isolation and are reported as preserved
 legacy history; signing into a different account does not adopt their keys.
 
+Room schema 10 adds nullable download caps, receive caps and cumulative receive
+allowances through the additive 9→10 migration. Earlier migrations and inbox
+checkpoints remain intact. Bounded History projections retain these scalar facts
+without loading file/key maps. Missing policy fields remain unknown; zero means
+no optional creator cap. Completed files and consumed receive allowances are
+shown separately because unfinished uploads consume allowances too.
+
 ## iOS account history
 
 The main app and share extension share a SQLite account-history database in a

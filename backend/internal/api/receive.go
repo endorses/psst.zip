@@ -27,8 +27,8 @@ func validTransferPolicy(w http.ResponseWriter, req CreateTransferRequest) bool 
 	return true
 }
 func validSlotPolicy(w http.ResponseWriter, req *CreateSlotRequest) bool {
-	if req.MaxFiles < 0 || int64(req.MaxFiles) > math.MaxInt32 {
-		policyError(w, 400, "invalid_link_policy", "max_files must be an integer between 0 and 2147483647")
+	if req.MaxFiles < 0 || int64(req.MaxFiles) > math.MaxInt32 || req.ExpiresInSeconds < 0 || int64(req.ExpiresInSeconds) > math.MaxInt64/int64(time.Second) {
+		policyError(w, 400, "invalid_link_policy", "limits must be nonnegative integers within the supported range")
 		return false
 	}
 	if req.ReceiveProtocol == 0 {
@@ -113,7 +113,7 @@ func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !time.Now().Before(slot.ExpiresAt) {
-		policyError(w, 410, "link_unavailable", "receive link expired or revoked")
+		policyError(w, 410, "link_expired", "receive link expired")
 		return
 	}
 	if snapshot.LegacyOwner {

@@ -16,7 +16,7 @@ struct ResourceList: Decodable, Sendable {
             switch state {
             case "ready":
                 guard let completed_files, let file_count, let total_size,
-                    completed_files >= 0, file_count >= completed_files, total_size >= 0
+                      completed_files >= 0, file_count >= completed_files, total_size >= 0
                 else { throw HistorySnapshot.Failure.invalidPage }
             case "updating":
                 guard completed_files == nil, file_count == nil, total_size == nil else { throw HistorySnapshot.Failure.invalidPage }
@@ -50,9 +50,9 @@ struct ResourceList: Decodable, Sendable {
             max_downloads = try f.decodeIfPresent(Int.self, forKey: .max_downloads)
             summary = try f.decode(Summary.self, forKey: .summary)
             guard UUID(uuidString: id) != nil, ["pending", "complete", "expired", "revoked"].contains(status),
-                file_count == summary.file_count, total_size == summary.total_size,
-                (download_count ?? 0) >= 0, (max_downloads ?? 0) >= 0,
-                [expires_at, created_at, downloaded_at].allSatisfy({ $0 == nil || $0!.utf8.count <= 64 })
+                  file_count == summary.file_count, total_size == summary.total_size,
+                  (download_count ?? 0) >= 0, (0 ... 2_147_483_647).contains(max_downloads ?? 0),
+                  [expires_at, created_at, downloaded_at].allSatisfy({ $0 == nil || $0!.utf8.count <= 64 })
             else { throw HistorySnapshot.Failure.invalidPage }
         }
     }
@@ -72,6 +72,7 @@ struct ResourceList: Decodable, Sendable {
         enum CodingKeys: String, CodingKey {
             case id, status, expires_at, created_at, file_count, completed_files, total_size, receive_protocol, max_files, reserved_files, summary
         }
+
         init(from decoder: Decoder) throws {
             let f = try decoder.container(keyedBy: CodingKeys.self)
             id = try f.decode(String.self, forKey: .id)
@@ -86,9 +87,10 @@ struct ResourceList: Decodable, Sendable {
             reserved_files = try f.decodeIfPresent(Int64.self, forKey: .reserved_files)
             summary = try f.decode(Summary.self, forKey: .summary)
             guard UUID(uuidString: id) != nil, ["waiting", "has_uploads", "expired", "revoked"].contains(status),
-                file_count == summary.file_count, completed_files == summary.completed_files, total_size == summary.total_size,
-                (max_files ?? 0) >= 0, (reserved_files ?? 0) >= 0,
-                [expires_at, created_at].allSatisfy({ $0 == nil || $0!.utf8.count <= 64 })
+                  file_count == summary.file_count, completed_files == summary.completed_files, total_size == summary.total_size,
+                  (0 ... 2_147_483_647).contains(max_files ?? 0), (reserved_files ?? 0) >= 0,
+                  max_files == nil || max_files == 0 || reserved_files == nil || reserved_files! <= Int64(max_files!),
+                  [expires_at, created_at].allSatisfy({ $0 == nil || $0!.utf8.count <= 64 })
             else { throw HistorySnapshot.Failure.invalidPage }
         }
     }
@@ -106,7 +108,9 @@ struct ResourceList: Decodable, Sendable {
         guard Set(transfers.map(\.id)).count == transfers.count, Set(slots.map(\.id)).count == slots.count else { throw HistorySnapshot.Failure.invalidPage }
     }
 
-    var identities: Set<String> { Set(transfers.map { $0.id + "|transfer" } + slots.map { $0.id + "|slot" }) }
+    var identities: Set<String> {
+        Set(transfers.map { $0.id + "|transfer" } + slots.map { $0.id + "|slot" })
+    }
 }
 
 enum HistorySnapshot {
@@ -116,22 +120,26 @@ enum HistorySnapshot {
     static func validCursor(_ cursor: String?) -> Bool {
         guard let cursor else { return true }
         return !cursor.isEmpty && cursor.utf8.count <= 512
-            && cursor.utf8.allSatisfy { (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }
+            && cursor.utf8.allSatisfy { (65 ... 90).contains($0) || (97 ... 122).contains($0) || (48 ... 57).contains($0) || $0 == 45 || $0 == 95 }
     }
 
     /// One page only. A continuation on an empty filtered page requires explicit navigation.
     static func load(after: String? = nil, limit: Int = 50, fetch: @escaping @Sendable (String) async throws -> Data) async throws -> ResourceList {
-        guard (1...100).contains(limit), validCursor(after) else { throw Failure.invalidPage }
+        guard (1 ... 100).contains(limit), validCursor(after) else { throw Failure.invalidPage }
         return try await withThrowingTaskGroup(of: ResourceList.self) { group in
             group.addTask {
                 var path = "auth/resources?limit=\(limit)"
-                if let after { path += "&after=" + after }
+                if let after {
+                    path += "&after=" + after
+                }
                 let data = try await fetch(path)
                 try Task.checkCancellation()
                 guard data.count <= maximumBytes else { throw Failure.tooLarge }
                 let page = try JSONDecoder().decode(ResourceList.self, from: data)
                 guard page.transfers.count + page.slots.count <= limit, validCursor(page.next_cursor) else { throw Failure.invalidPage }
-                if let next = page.next_cursor, next == after { throw Failure.repeatedCursor }
+                if let next = page.next_cursor, next == after {
+                    throw Failure.repeatedCursor
+                }
                 return page
             }
             group.addTask {

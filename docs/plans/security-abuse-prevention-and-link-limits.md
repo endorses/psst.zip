@@ -1527,28 +1527,28 @@ A bounded source check of sections 8–11 found implementation gaps in addition 
 the native validation gates. This is not a final closure audit. Keep the original
 requirements open until their complete scope is verified.
 
-- [ ] Give expired transfer/inbox responses consistent machine-readable errors
+- [x] Give expired transfer/inbox responses consistent machine-readable errors
       and retain distinct revocation/allowance messages. Numeric creation
       validation must also expose a stable validation code consistently.
-- [ ] Finish the collapsed Link limits grouping, enable controls and field-level
-      validation on web and Android. iOS already has its disclosure control;
-      native focus, appearance and accessibility checks remain pending.
-- [ ] Preserve Android's chosen send cap through same-account restricted login
-      and password replacement; `SendViewModel` currently restores only files.
+- [x] Finish the collapsed Link limits grouping, enable controls and field-level
+      validation on web and Android. iOS already has its disclosure control.
+- [ ] Verify native focus, appearance and accessibility for these controls.
+- [x] Preserve Android's chosen send cap through same-account restricted login
+      and password replacement together with its selected files.
       Preserve immutable allocated policies through recoverable errors across
       platforms. Verify iOS setup-level duplicate-tap protection rather than
       relying only on each newly created receive view model's guard.
-- [ ] Offer Android's optional receive-link name before creation. Show configured
+- [x] Offer Android's optional receive-link name before creation. Show configured
       caps and cumulative receive usage in Android/iOS History rows and explicit
       configured receive caps in web results/History, without exposing keys or
       filenames on devices missing them.
-- [ ] Finish exhausted-action messages and availability refresh. Android must
+- [x] Finish exhausted-action messages and availability refresh. Android must
       disable resume/redownload when all missing files are exhausted while
       retaining local Open/Share. Web must display Download limit reached,
       refresh metadata after cancellation, explain unavailable ZIP choices and
       distinguish receive file/byte/batch exhaustion in the opening state.
-- [ ] Add the dedicated Range-header reservation regression and verify the
-      remaining creation/reset/partial-save workflows on native platforms.
+- [x] Add the dedicated Range-header reservation regression.
+- [ ] Verify remaining creation/reset/partial-save workflows on native platforms.
 
 ### Checked download counters and preserved web drafts, 2026-10-05
 
@@ -1571,3 +1571,61 @@ requirements open until their complete scope is verified.
       focused limits, resource-history and guest-capacity unit tests pass.
 - [ ] Finish the remaining source gaps listed above and native/deployment gates.
       These focused results do not establish full-plan completion.
+
+### Link-policy forms, History and exhausted actions, 2026-10-05
+
+- [x] Return consistent `invalid_link_policy` codes for malformed and invalid
+      transfer/receive creation inputs, retaining body-size/deadline failures
+      and unrelated control request behavior. Return `link_expired` throughout
+      transfer, inbox, membership, event and admission paths; revocation retains
+      its separate `resource_revoked` code. The creation regressions include
+      expiry duration overflow and verify no invalid resource was allocated.
+- [x] Add a real Range-header regression: the first whole-file response consumes
+      the final attempt, another request is denied, and attempting a response
+      does not record successful delivery. Six focused API tests pass with the
+      race detector (final run 6.048 s). Backend build and scoped `go vet` pass.
+      A bounded independent source review finds one events-admission precedence
+      issue when a slot is both revoked and expired. Check revocation first and
+      extend the regression across both states; the terminal rerun above passes.
+      No other findings are reported in the scoped API/web/iOS/shared review.
+- [x] Add collapsed web controls, accessible inline validation and explicit
+      configured receive caps in results/History. Explain exhausted downloads
+      and unavailable ZIPs. Refresh advisory metadata with a separate control
+      signal after payload cancellation without retrying the payload. Opening a
+      blocked receive link distinguishes file, byte and batch allowances.
+- [x] Verify 12 distinct focused browser cases across two runs: the first run
+      passes seven and fails two stale assertions; correct the invalid-input
+      test to wait for Retry upload and preserve the receive summary's explicit
+      allocations-remaining wording. The follow-up passes both corrected cases
+      and three new opening-state cases (five pass, 18.0 s). This is combined
+      evidence, not a claim of one uninterrupted 12-case run. Web type checks
+      report zero errors/warnings and production build passes. The full web test
+      command passes all 91 tests after allowing its disposable loopback server;
+      its earlier sandbox run could not bind that socket.
+- [x] Add Android collapsed controls, enable/inline validation, receive naming
+      before allocation and same-account draft restoration. Keep allocated
+      policies fixed through recoverable errors. Cache configured caps and
+      cumulative receive usage in bounded History metadata with an additive
+      Room 9→10 migration; preserve earlier migrations and checkpoints.
+      Scanned downloads refresh metadata on reopening/on request and disable
+      all-exhausted missing-file actions while retaining local Open/Share.
+      Partly exhausted downloads explicitly identify available and omitted files.
+- [x] Run all 135 Android unit tests with zero failures/errors/skips and compile
+      the debug app and instrumentation APK. Five focused shared resource-page
+      tests pass, including optional policy fields and strict bounds. Android
+      runs use the installed JDK and offline Gradle dependencies. Format changed
+      Kotlin with ktfmt 0.54 and remove temporary formatter caches. The
+      instrumentation APK compilation does not establish device migration results.
+- [x] Add the iOS setup-level receive creation guard before constructing a view
+      model, disable mutable controls during allocation, show policy summaries
+      in History and reject malformed/contradictory policy metadata. Existing
+      native disclosure controls and receive naming remain in use. Format five
+      changed Swift files with checksum-verified official SwiftFormat 0.62.1;
+      formatter lint and Linux source/configuration gates pass. Document schema
+      semantics in the local-history storage guide.
+- [ ] Execute the added iOS History policy XCTest cases and native app/extension
+      workflows on macOS. Verify physical Android/iOS migration, accessibility,
+      narrow/large-text creation, cancellation, QR and partial-save behavior.
+      Complete public ACME/operator deployment and the original full-plan gates.
+      Source checks, portable/unit results and compiled APKs do not close these
+      native/deployment requirements or establish release readiness.

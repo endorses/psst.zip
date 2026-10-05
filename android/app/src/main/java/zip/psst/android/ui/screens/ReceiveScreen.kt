@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
 import zip.psst.android.ui.components.AccountIndicator
+import zip.psst.android.ui.components.LinkLimits
 import zip.psst.android.ui.components.LinkPanel
 import zip.psst.android.viewmodel.ReceiveRetry
 import zip.psst.android.viewmodel.ReceiveViewModel
@@ -89,22 +90,33 @@ fun ReceiveScreen(
             if (state.slotId == null && existingId == null && !state.isCreatingSlot) {
                 Text("Create a private inbox link for others to send files to you.")
                 OutlinedTextField(
-                    value = state.maxFilesInput,
-                    onValueChange = viewModel::setMaxFiles,
-                    label = { Text("Maximum files (optional)") },
-                    supportingText = {
-                        Text(
-                            "Empty means unlimited. Unfinished uploads use an allowance too; deleting files does not restore it."
-                        )
-                    },
-                    keyboardOptions =
-                        androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                        ),
+                    value = state.localName,
+                    onValueChange = viewModel::renameLocal,
+                    label = { Text("Name (optional)") },
+                    supportingText = { Text("Only on this device") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = viewModel::createSlot) { Text("Create receive link") }
+                LinkLimits(
+                    enabled = state.fileLimitEnabled,
+                    value = state.maxFilesInput,
+                    editable = !state.linkPolicyLocked,
+                    label = "Maximum files accepted",
+                    help =
+                        "Incomplete uploads use an allowance too; deleting files does not restore it. Existing server restrictions still apply.",
+                    onEnabledChange = viewModel::setFileLimitEnabled,
+                    onValueChange = viewModel::setMaxFiles,
+                )
+                Button(
+                    onClick = viewModel::createSlot,
+                    enabled =
+                        zip.psst.android.data.linkLimitError(
+                            state.fileLimitEnabled,
+                            state.maxFilesInput,
+                        ) == null,
+                ) {
+                    Text("Create receive link")
+                }
             }
             if (state.legacyReadOnly)
                 Text(

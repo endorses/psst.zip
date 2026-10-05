@@ -23,6 +23,9 @@ data class TransferHistoryMetadata(
     val checkpointKnownFiles: Long,
     val checkpointKnownBytes: Long,
     val checkpointSavedFiles: Long,
+    val maxDownloads: Int?,
+    val maxFiles: Int?,
+    val reservedFiles: Long?,
 )
 
 internal fun TransferHistoryEntity.metadata() =
@@ -48,10 +51,13 @@ internal fun TransferHistoryEntity.metadata() =
         checkpointKnownFiles,
         checkpointKnownBytes,
         checkpointSavedFiles,
+        maxDownloads,
+        maxFiles,
+        reservedFiles,
     )
 
 internal const val HISTORY_METADATA_PROJECTION =
-    "id, type, fileCount, totalSize, serverUrl, encryptionKey, status, createdAt, expiresAt, deletionToken, accountId, title, automaticTitle, originScope, summaryUpdating, checkpointState, checkpointColumn, checkpointOffset, checkpointKnownFiles, checkpointKnownBytes, checkpointSavedFiles, '[]' AS savedFileIdsJson, '{}' AS receivedTransfersJson, '[]' AS savedTransferIdsJson"
+    "id, type, fileCount, totalSize, serverUrl, encryptionKey, status, createdAt, expiresAt, deletionToken, accountId, title, automaticTitle, originScope, summaryUpdating, checkpointState, checkpointColumn, checkpointOffset, checkpointKnownFiles, checkpointKnownBytes, checkpointSavedFiles, maxDownloads, maxFiles, reservedFiles, '[]' AS savedFileIdsJson, '{}' AS receivedTransfersJson, '[]' AS savedTransferIdsJson"
 
 internal val INBOX_CHECKPOINT_SCHEMA =
     listOf(
@@ -67,4 +73,11 @@ internal val INBOX_CHECKPOINT_SCHEMA =
         "CREATE INDEX index_inbox_child_checkpoint_slotId ON inbox_child_checkpoint(slotId)",
         "CREATE TABLE inbox_file_checkpoint (scope TEXT NOT NULL,slotId TEXT NOT NULL,childId TEXT NOT NULL,blobId TEXT NOT NULL,uri TEXT,PRIMARY KEY(scope,slotId,childId,blobId),FOREIGN KEY(slotId) REFERENCES transfer_history(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
         "CREATE INDEX index_inbox_file_checkpoint_slotId ON inbox_file_checkpoint(slotId)",
+    )
+
+internal val HISTORY_LINK_POLICY_SCHEMA =
+    listOf(
+        "ALTER TABLE transfer_history ADD COLUMN maxDownloads INTEGER",
+        "ALTER TABLE transfer_history ADD COLUMN maxFiles INTEGER",
+        "ALTER TABLE transfer_history ADD COLUMN reservedFiles INTEGER",
     )

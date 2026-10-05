@@ -58,7 +58,11 @@ class StorageMigrationDeviceTest {
 
     private fun room() =
         Room.databaseBuilder(context, AppDatabase::class.java, roomName)
-            .addMigrations(AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
+            .addMigrations(
+                AppDatabase.MIGRATION_7_8,
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10,
+            )
             .build()
 
     private suspend fun withRoom(block: suspend (AppDatabase) -> Unit) {
@@ -112,7 +116,7 @@ class StorageMigrationDeviceTest {
             val dao = db.transferHistoryDao()
             val upgraded =
                 requireNotNull(dao.getById(slot)) // Room validates the actual 7→8→9 schema.
-            assertEquals(9, db.openHelper.writableDatabase.version)
+            assertEquals(10, db.openHelper.writableDatabase.version)
             assertEquals("pending", upgraded.checkpointState)
             assertEquals("{}", upgraded.receivedTransfersJson)
             assertEquals(marker, upgraded.encryptionKey)

@@ -68,6 +68,35 @@ class ResourcePaginationTest {
     }
 
     @Test
+    fun compactHistoryCarriesOptionalCapsAndCumulativeReceiveUsage() {
+        val policyRow = row.replaceFirst("{", "{\"max_files\":500,\"reserved_files\":400,")
+        val slot = decode(page(policyRow)).slots.single()
+        assertEquals(500, slot.maxFiles)
+        assertEquals(400L, slot.reservedFiles)
+        assertNull(decode(page()).slots.single().maxFiles)
+        val unlimited = decode(page(policyRow.replace("500", "0"))).slots.single()
+        assertEquals(0, unlimited.maxFiles)
+        assertEquals(400L, unlimited.reservedFiles)
+        val transferRow =
+            row.replaceFirst("{", "{\"max_downloads\":2,").replace("has_uploads", "complete")
+        val transferPage =
+            """{"paginated":true,"transfers":[$transferRow],"slots":[],"next_cursor":null}"""
+        assertEquals(2, decode(transferPage).transfers.single().maxDownloads)
+        for (bad in listOf("-1", "null", "2.5", "\"2\"", "2147483648")) {
+            assertFails {
+                decode(transferPage.replace("\"max_downloads\":2", "\"max_downloads\":$bad"))
+            }
+            assertFails {
+                decode(page(policyRow.replace("\"max_files\":500", "\"max_files\":$bad")))
+            }
+        }
+        for (bad in
+            listOf("-1", "null", "400.5", "\"400\"", "501", "9223372036854775808")) assertFails {
+            decode(page(policyRow.replace("\"reserved_files\":400", "\"reserved_files\":$bad")))
+        }
+    }
+
+    @Test
     fun pagesAreExplicitAndFailedNavigationDoesNotConsumeVisibleSnapshot() = transportTest {
         var calls = 0
         val http =

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/endorses/psst.zip/backend/internal/database"
 )
 
 const (
@@ -169,8 +170,12 @@ func (s *Server) slotEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "slot not found")
 		return
 	}
-	if slot.Status == "revoked" || !time.Now().Before(slot.ExpiresAt) {
-		writeError(w, http.StatusGone, "slot expired or revoked")
+	if slot.Status == "revoked" {
+		incidentFailure(w, database.ErrResourceRevoked)
+		return
+	}
+	if !time.Now().Before(slot.ExpiresAt) {
+		policyError(w, http.StatusGone, "link_expired", "receive link expired")
 		return
 	}
 

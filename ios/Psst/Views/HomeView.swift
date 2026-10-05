@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var receiveName = ""
     @State private var limitEnabled = false
     @State private var limitValue = "1"
+    @State private var creatingReceive = false
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -25,17 +26,17 @@ struct HomeView: View {
                     Text(config.limitDescription + " Files are encrypted automatically.").font(.footnote)
                     if config.isConfigured, !config.needsSignIn {
                         if receiving {
-                            TextField("Name this receive link (optional)", text: $receiveName)
+                            TextField("Name this receive link (optional)", text: $receiveName).disabled(creatingReceive)
                             Text("Names are saved only on this device.").font(.caption).foregroundStyle(PsstTheme.secondary)
                         }
-                        LinkLimitControl(receiving: receiving, enabled: $limitEnabled, value: $limitValue)
+                        LinkLimitControl(receiving: receiving, enabled: $limitEnabled, value: $limitValue).disabled(creatingReceive)
                         Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
                             if receiving {
                                 createReceive()
                             } else {
                                 picking = true
                             }
-                        }.buttonStyle(PrimaryAction()).disabled(LinkLimit.parse(limitValue, enabled: limitEnabled) == nil)
+                        }.buttonStyle(PrimaryAction()).disabled(creatingReceive || LinkLimit.parse(limitValue, enabled: limitEnabled) == nil)
                         if !selected.isEmpty, send == nil {
                             Text(String(format: String(localized: "%lld files selected"), Int64(selected.count)))
                             Button("Send files") { startSend() }.buttonStyle(PrimaryAction())
@@ -100,7 +101,8 @@ struct HomeView: View {
     }
 
     private func createReceive() {
-        guard let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
+        guard !creatingReceive, let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
+        creatingReceive = true
         let vm = ReceiveViewModel(serverConfig: config, historyStore: history, localName: receiveName, maxFiles: limit)
         limitEnabled = false
         limitValue = "1"
@@ -108,6 +110,9 @@ struct HomeView: View {
         receive = vm
         send = nil
         showing = true
-        Task { await vm.createDropSlot() }
+        Task {
+            defer { creatingReceive = false }
+            await vm.createDropSlot()
+        }
     }
 }

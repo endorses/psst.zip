@@ -598,6 +598,13 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                zip.psst.android.data.historyLinkPolicyLabel(entity)?.let { policy ->
+                    Text(
+                        policy,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (!canManage)
                     Text(
                         "Pre-account record. Manage server links from the administrator website.",

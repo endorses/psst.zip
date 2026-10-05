@@ -55,6 +55,8 @@ data class SendUiState(
     val maxFileBytes: Long? = null,
     val completionConsumed: Boolean = false,
     val maxDownloadsInput: String = "",
+    val downloadLimitEnabled: Boolean = false,
+    val linkPolicyLocked: Boolean = false,
 ) {
     fun pendingCompletion(): Pair<String, String>? =
         if (isUploading || completionConsumed) null
@@ -63,8 +65,13 @@ data class SendUiState(
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
     fun setMaxDownloads(value: String) {
-        if (!_uiState.value.isUploading)
-            _uiState.update { it.copy(maxDownloadsInput = value.take(10), error = null) }
+        if (!_uiState.value.isUploading && !_uiState.value.linkPolicyLocked)
+            _uiState.update { it.copy(maxDownloadsInput = value.take(11), error = null) }
+    }
+
+    fun setDownloadLimitEnabled(enabled: Boolean) {
+        if (!_uiState.value.isUploading && !_uiState.value.linkPolicyLocked)
+            _uiState.update { it.copy(downloadLimitEnabled = enabled, error = null) }
     }
 
     private val app = application as PsstApplication
@@ -83,13 +90,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     uploadJob?.cancel()
                     val previous = _uiState.value
                     val recovery = selectionRecovery(previous.requiresLogin, pendingAccess, access)
-                    _uiState.value =
-                        when (recovery) {
-                            SelectionRecovery.DISCARD -> SendUiState()
-                            SelectionRecovery.RESTRICTED ->
-                                SendUiState(files = previous.files, requiresLogin = true)
-                            SelectionRecovery.READY -> SendUiState(files = previous.files)
-                        }
+                    _uiState.value = restoreSendDraft(previous, recovery)
                 }
             }
         }
@@ -148,7 +149,10 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isUploading) return
         val selectedLimit =
             try {
-                zip.psst.android.data.optionalLinkLimit(_uiState.value.maxDownloadsInput)
+                zip.psst.android.data.selectedLinkLimit(
+                    _uiState.value.downloadLimitEnabled,
+                    _uiState.value.maxDownloadsInput,
+                )
             } catch (e: IllegalArgumentException) {
                 _uiState.update { it.copy(error = e.message) }
                 return
@@ -220,6 +224,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     val transfer = client.transfers.create(maxDownloads)
                     createdTransferId = transfer.id
                     deletionToken = transfer.deleteToken
+                    if (app.prefs.historyAccess.value == access)
+                        _uiState.update { it.copy(linkPolicyLocked = true) }
                     ensureActive()
                     check(app.prefs.historyAccess.value == access)
                     // Retain the owner capability even if uploading is interrupted.
@@ -237,6 +243,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                 deletionToken = transfer.deleteToken,
                                 accountId = accountId,
                                 automaticTitle = files.firstOrNull()?.name,
+                                maxDownloads = maxDownloads,
                             )
                         )
                     _uiState.update { it.copy(transferId = transfer.id) }
@@ -417,9 +424,9 @@ internal fun canResumeSelection(
     origin: zip.psst.android.data.HistoryAccess,
     current: zip.psst.android.data.HistoryAccess,
 ): Boolean =
-    origin.accountId == null ||
-        (origin.accountId == current.accountId &&
-            origin.serverUrl.trimEnd('/') == current.serverUrl.trimEnd('/'))
+    (origin.serverUrl.isBlank() ||
+        origin.serverUrl.trimEnd('/') == current.serverUrl.trimEnd('/')) &&
+        (origin.accountId == null || origin.accountId == current.accountId)
 
 /** A restricted temporary session is one step of reauthentication, not its completion. */
 internal enum class SelectionRecovery {
@@ -441,3 +448,15 @@ internal fun selectionRecovery(
         current.mustChangePassword -> SelectionRecovery.RESTRICTED
         else -> SelectionRecovery.READY
     }
+
+/** Retain the selected protection together with files, never old completion/navigation state. */
+internal fun restoreSendDraft(previous: SendUiState, recovery: SelectionRecovery): SendUiState =
+    if (recovery == SelectionRecovery.DISCARD) SendUiState()
+    else
+        SendUiState(
+            files = previous.files,
+            maxDownloadsInput = previous.maxDownloadsInput,
+            downloadLimitEnabled = previous.downloadLimitEnabled,
+            linkPolicyLocked = previous.linkPolicyLocked,
+            requiresLogin = recovery == SelectionRecovery.RESTRICTED,
+        )

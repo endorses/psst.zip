@@ -222,8 +222,10 @@
         cause
       );
     } finally {
-      if (!signal.aborted) {
-        transferInfo = await getTransferInfo(transferId, signal)
+      // The aborted payload signal must not abort the control refresh: even
+      // an interrupted response consumes a download attempt. Never retry data.
+      if (!disposed) {
+        transferInfo = await getTransferInfo(transferId, loadController.signal)
           .then((fresh) => {
             if (manifest) validateDownload(fresh, transferId, manifest);
             return fresh;
@@ -273,7 +275,7 @@
           err.message.includes("download allowance is exhausted"))
           ? err.message
           : err instanceof DOMException && err.name === "AbortError"
-            ? "Saving stopped. You can retry the same files."
+            ? "Saving stopped. Started downloads still count toward the limit. Retry only files with attempts remaining."
             : "Could not save files. Check your connection and try Save files again.";
       const { [entry.blob_id]: _, ...rest } = downloadProgress;
       downloadProgress = rest;
@@ -322,7 +324,7 @@
           err.message.includes("download allowance is exhausted"))
           ? err.message
           : err instanceof DOMException && err.name === "AbortError"
-            ? "Saving stopped. You can retry the same files."
+            ? "Saving stopped. Started downloads still count toward the limit. Retry only files with attempts remaining."
             : "Could not save files. Check your connection and try Save files again.";
     }
   }
@@ -381,8 +383,12 @@
             {#if transferInfo?.files?.find((file) => file.id === entry.blob_id)?.remaining_downloads != null}<span
                 class="muted small"
               >
-                · {transferInfo.files.find((file) => file.id === entry.blob_id)
-                  ?.remaining_downloads} attempts remaining</span
+                {#if transferInfo.files.find((file) => file.id === entry.blob_id)?.remaining_downloads === 0}
+                  Download limit reached
+                {:else}
+                  · {transferInfo.files.find((file) => file.id === entry.blob_id)
+                    ?.remaining_downloads} attempts remaining
+                {/if}</span
               >{/if}
           </div>
           <button
@@ -405,7 +411,12 @@
 
     {#if manifest.files.length > 1}
       <p class="muted small">
-        ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
+        {#if transferInfo?.files?.some((file) => file.remaining_downloads === 0)}
+          ZIP is unavailable because one or more files reached their download limit. Save the
+          available files individually.
+        {:else}
+          ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
+        {/if}
       </p>
       <button
         class="primary"

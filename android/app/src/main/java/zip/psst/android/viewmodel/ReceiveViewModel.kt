@@ -12,11 +12,11 @@ import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.checkpointScope
 import zip.psst.android.data.decodeInboxKeyMarker
 import zip.psst.android.data.decryptInboxManifest
-import zip.psst.android.data.optionalLinkLimit
 import zip.psst.android.data.parseHistoryExpiry
 import zip.psst.android.data.receiveAndSaveChild
 import zip.psst.android.data.receivedSnapshot
 import zip.psst.android.data.retrySavedDownloadAcknowledgements
+import zip.psst.android.data.selectedLinkLimit
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
@@ -52,6 +52,8 @@ data class ReceiveUiState(
     val shownSaved: Boolean = false,
     val localName: String = "",
     val maxFilesInput: String = "",
+    val fileLimitEnabled: Boolean = false,
+    val linkPolicyLocked: Boolean = false,
     val maxFiles: Int = 0,
     val remainingFiles: Long? = null,
     val reservedFiles: Long = 0,
@@ -96,6 +98,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     private var frozenPager: InboxPager? = null
     @Volatile private var pageRevision = 0L
     private var activeAccess = app.prefs.historyAccess.value
+    private var pendingAccess = activeAccess
 
     init {
         viewModelScope.launch {
@@ -112,15 +115,20 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     frozenPager = null
                     slotClient?.close()
                     encryptionKeyBytes = null
+                    val previous = _uiState.value
+                    val recovery = selectionRecovery(previous.requiresLogin, pendingAccess, access)
                     _uiState.value =
-                        ReceiveUiState(
-                            error =
-                                app.getString(
-                                    zip.psst.android.R.string
-                                        .ui_your_account_changed_create_a_new_receive_link_to_continue
-                                ),
-                            requiresLogin = access.accountId == null,
-                        )
+                        if (previous.slotId == null && recovery != SelectionRecovery.DISCARD)
+                            restoreReceiveDraft(previous, recovery)
+                        else
+                            ReceiveUiState(
+                                error =
+                                    app.getString(
+                                        zip.psst.android.R.string
+                                            .ui_your_account_changed_create_a_new_receive_link_to_continue
+                                    ),
+                                requiresLogin = access.accountId == null,
+                            )
                 }
             }
         }
@@ -263,16 +271,34 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setMaxFiles(value: String) {
-        if (_uiState.value.slotId == null && !_uiState.value.isCreatingSlot)
-            _uiState.update { it.copy(maxFilesInput = value.take(10), error = null) }
+        if (
+            _uiState.value.slotId == null &&
+                !_uiState.value.isCreatingSlot &&
+                !_uiState.value.linkPolicyLocked
+        )
+            _uiState.update { it.copy(maxFilesInput = value.take(11), error = null) }
+    }
+
+    fun setFileLimitEnabled(enabled: Boolean) {
+        if (
+            _uiState.value.slotId == null &&
+                !_uiState.value.isCreatingSlot &&
+                !_uiState.value.linkPolicyLocked
+        )
+            _uiState.update { it.copy(fileLimitEnabled = enabled, error = null) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun createSlot() {
-        if (createJob?.isActive == true || _uiState.value.slotId != null) return
+        if (
+            createJob?.isActive == true ||
+                _uiState.value.isCreatingSlot ||
+                _uiState.value.slotId != null
+        )
+            return
         val limit =
             try {
-                optionalLinkLimit(_uiState.value.maxFilesInput)
+                selectedLinkLimit(_uiState.value.fileLimitEnabled, _uiState.value.maxFilesInput)
             } catch (e: IllegalArgumentException) {
                 _uiState.update { it.copy(error = e.message) }
                 return
@@ -303,12 +329,14 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
+        val localName = _uiState.value.localName.trim().ifEmpty { null }
         sseJob?.cancel()
         pollJob?.cancel()
         slotClient?.close()
         _uiState.update { it.copy(isCreatingSlot = true, error = null, maxFiles = limit) }
 
         val access = app.prefs.historyAccess.value
+        pendingAccess = access
         createJob =
             viewModelScope.launch(Dispatchers.IO) {
                 var allocation: TransferHistoryEntity? = null
@@ -322,6 +350,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val publicKey =
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
                     val slot = client.slots.create(publicKey, limit)
+                    if (app.prefs.historyAccess.value == access)
+                        _uiState.update { it.copy(linkPolicyLocked = true) }
                     allocation =
                         TransferHistoryEntity(
                             slot.id,
@@ -334,6 +364,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             deletionToken = slot.deleteToken,
                             accountId = accountId,
                             expiresAt = parseHistoryExpiry(slot.expiresAt),
+                            title = localName,
+                            maxFiles = limit,
+                            reservedFiles = 0,
                         )
                     withContext(NonCancellable) {
                         app.database.transferHistoryDao().insert(requireNotNull(allocation))
@@ -366,6 +399,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     expiresAt = parseHistoryExpiry(slot.expiresAt),
                                     deletionToken = slot.deleteToken,
                                     accountId = accountId,
+                                    title = localName,
+                                    maxFiles = limit,
+                                    reservedFiles = 0,
                                 )
                             )
                     }
@@ -402,6 +438,12 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             }
                         }
                     if (e is CancellationException) throw e
+                    if (
+                        e is AuthenticationRequiredException ||
+                            e is PasswordChangeRequiredException ||
+                            e is AdminTransferForbiddenException
+                    )
+                        _uiState.update { it.copy(requiresLogin = true) }
                     if (
                         e is AuthenticationRequiredException &&
                             app.prefs.getSessionToken(serverUrl) == sessionToken
@@ -912,3 +954,18 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         pageJob?.cancel()
     }
 }
+
+/** New-inbox setup follows the same account-bound recovery rules as the send draft. */
+internal fun restoreReceiveDraft(
+    previous: ReceiveUiState,
+    recovery: SelectionRecovery,
+): ReceiveUiState =
+    if (recovery == SelectionRecovery.DISCARD) ReceiveUiState()
+    else
+        ReceiveUiState(
+            localName = previous.localName,
+            maxFilesInput = previous.maxFilesInput,
+            fileLimitEnabled = previous.fileLimitEnabled,
+            linkPolicyLocked = previous.linkPolicyLocked,
+            requiresLogin = recovery == SelectionRecovery.RESTRICTED,
+        )

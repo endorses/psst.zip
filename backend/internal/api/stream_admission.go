@@ -143,6 +143,10 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 				writeError(w, 404, "slot not found")
 				return
 			}
+			if resource.Status == "revoked" {
+				incidentFailure(w, database.ErrResourceRevoked)
+				return
+			}
 			expires = resource.ExpiresAt
 			owner, err = s.queries.Owner("slot", slot)
 			if err != nil {
@@ -192,7 +196,7 @@ func (s *Server) admitStream(next http.Handler, events bool) http.Handler {
 			}
 		}
 		if !time.Now().Before(expires) {
-			writeError(w, 410, "link expired")
+			policyError(w, 410, "link_expired", "link expired")
 			return
 		}
 		if owner == "" {

@@ -78,7 +78,12 @@ func decodeCreation(w http.ResponseWriter, r *http.Request, v any) bool {
 		} else if errors.As(err, &timeout) && timeout.Timeout() {
 			writeError(w, http.StatusRequestTimeout, "request body timed out")
 		} else {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			switch v.(type) {
+			case *CreateTransferRequest, *CreateSlotRequest:
+				policyError(w, http.StatusBadRequest, "invalid_link_policy", "invalid creation request: use supported fields and integer limits")
+			default:
+				writeError(w, http.StatusBadRequest, "invalid request body")
+			}
 		}
 		return false
 	}

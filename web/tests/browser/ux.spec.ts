@@ -317,6 +317,7 @@ test("receive cap rejects oversized batches and a device without its private key
 }) => {
   await signIn(page);
   await page.getByRole("link", { name: "Receive", exact: true }).click();
+  await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit files accepted" }).check();
   await page.getByRole("spinbutton", { name: "Limit files accepted" }).fill("1");
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();

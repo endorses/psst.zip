@@ -19,6 +19,8 @@ data class ReceivedSnapshot(
     val completedFiles: Long? = null,
     val partial: Boolean = false,
     val summaryObserved: Boolean = false,
+    val maxFiles: Int? = null,
+    val reservedFiles: Long? = null,
 )
 
 internal fun DropSlot.receivedSnapshot() =
@@ -28,6 +30,8 @@ internal fun DropSlot.receivedSnapshot() =
         summary?.completedFiles,
         partial = paginated,
         summaryObserved = paginated,
+        maxFiles = maxFiles,
+        reservedFiles = reservedFiles,
     )
 
 internal fun mergeSentHistory(
@@ -39,6 +43,7 @@ internal fun mergeSentHistory(
         summaryUpdating = false,
         expiresAt = parseHistoryExpiry(transfer.expiresAt) ?: current.expiresAt,
         status = sentHistoryStatus(transfer, current.status),
+        maxDownloads = transfer.maxDownloads,
     )
 
 internal fun sentHistoryStatus(transfer: Transfer, previousStatus: String? = null): String =

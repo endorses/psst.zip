@@ -1435,10 +1435,9 @@
             <p class="muted small">
               {receiveInfo.summary.state === "ready"
                 ? `${receiveInfo.summary.completed_files} completed files`
-                : "Received file totals are updating"} · {receiveInfo.reserved_files} file allocations
-              used{receiveInfo.remaining_files === null
-                ? " · No creator file limit"
-                : ` · ${receiveInfo.remaining_files} allocations remaining`}
+                : "Received file totals are updating"} · {receiveInfo.remaining_files === null
+                ? `${receiveInfo.reserved_files} file allocations used · No creator file limit`
+                : `${receiveInfo.reserved_files} of ${receiveInfo.max_files} allowances used · ${receiveInfo.remaining_files} allocations remaining`}
             </p>
           {/if}
           <label
@@ -1519,9 +1518,9 @@
                       : `${resourceFileCount(item)} files · ${status(item)}`}
                 </p>
                 {#if item.kind === "slots" && item.receive_protocol === 2}<p class="muted small">
-                    {item.reserved_files ?? 0} file allocations used{item.remaining_files == null
-                      ? " · no file-count limit"
-                      : ` · ${item.remaining_files} remaining`}
+                    {item.remaining_files == null
+                      ? `${item.reserved_files ?? 0} file allocations used · No creator file limit`
+                      : `${item.reserved_files ?? 0} of ${item.max_files} allowances used · ${item.remaining_files} allocations remaining`}
                   </p>{:else if item.kind === "transfers" && item.max_downloads}<p
                     class="muted small"
                   >

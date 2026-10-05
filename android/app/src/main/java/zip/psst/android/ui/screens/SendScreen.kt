@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
 import zip.psst.android.ui.components.AccountIndicator
+import zip.psst.android.ui.components.LinkLimits
 import zip.psst.android.viewmodel.SendViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,19 +150,14 @@ fun SendScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AccountIndicator()
             if (!state.isUploading)
-                androidx.compose.material3.OutlinedTextField(
+                LinkLimits(
+                    enabled = state.downloadLimitEnabled,
                     value = state.maxDownloadsInput,
+                    editable = !state.linkPolicyLocked,
+                    label = "Maximum downloads per file",
+                    help = "Each started download counts, including interrupted downloads.",
+                    onEnabledChange = viewModel::setDownloadLimitEnabled,
                     onValueChange = viewModel::setMaxDownloads,
-                    label = { Text("Downloads per file (optional)") },
-                    supportingText = {
-                        Text("Empty means unlimited. Interrupted downloads and retries count too.")
-                    },
-                    keyboardOptions =
-                        androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                        ),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             Text(
                 state.maxFileBytes?.let {
@@ -328,7 +324,12 @@ fun SendScreen(
 
                 Button(
                     onClick = { viewModel.startUpload() },
-                    enabled = state.files.isNotEmpty(),
+                    enabled =
+                        state.files.isNotEmpty() &&
+                            zip.psst.android.data.linkLimitError(
+                                state.downloadLimitEnabled,
+                                state.maxDownloadsInput,
+                            ) == null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.send_files))

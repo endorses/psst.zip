@@ -61,7 +61,17 @@ internal fun decodeResourcePage(body: JsonObject, after: String?, limit: Int): A
             require(row.number("file_count") == files && row.number("total_size") == size) {
                 "Conflicting resource summary"
             }
+            val capName = if (kind == "slot") "max_files" else "max_downloads"
+            if (row.containsKey(capName)) {
+                val cap = requireNotNull(row.number(capName)) { "Missing link limit" }
+                require(cap <= Int.MAX_VALUE) { "Invalid link limit" }
+            }
             if (kind == "slot") {
+                if (row.containsKey("reserved_files")) {
+                    val used = requireNotNull(row.number("reserved_files"))
+                    val cap = row.takeIf { it.containsKey("max_files") }?.number("max_files")
+                    require(cap == null || cap == 0L || used <= cap) { "Invalid receive allowance" }
+                }
                 require(row.number("completed_files") == completed)
                 val children = row["transfers"]
                 require(children == null || (children is JsonArray && children.isEmpty())) {

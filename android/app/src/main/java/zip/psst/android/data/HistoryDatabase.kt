@@ -44,6 +44,9 @@ data class TransferHistoryEntity(
     @ColumnInfo(defaultValue = "0") val checkpointKnownFiles: Long = 0,
     @ColumnInfo(defaultValue = "0") val checkpointKnownBytes: Long = 0,
     @ColumnInfo(defaultValue = "0") val checkpointSavedFiles: Long = 0,
+    val maxDownloads: Int? = null,
+    val maxFiles: Int? = null,
+    val reservedFiles: Long? = null,
     @ColumnInfo(defaultValue = "'[]'") val savedFileIdsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val receivedTransfersJson: String = "{}",
     @ColumnInfo(defaultValue = "'[]'") val savedTransferIdsJson: String = "[]",
@@ -219,6 +222,10 @@ interface TransferHistoryDao : InboxCheckpointQueries {
                     else row.summaryUpdating,
                 totalSize = maxOf(row.totalSize, row.checkpointKnownBytes),
                 expiresAt = snapshot.expiresAt ?: row.expiresAt,
+                maxFiles = snapshot.maxFiles ?: row.maxFiles,
+                reservedFiles =
+                    snapshot.reservedFiles?.let { maxOf(row.reservedFiles ?: 0, it) }
+                        ?: row.reservedFiles,
                 status =
                     when {
                         count > 0 || snapshot.children.isNotEmpty() -> "has_uploads"
@@ -262,13 +269,20 @@ interface TransferHistoryDao : InboxCheckpointQueries {
             InboxFileCheckpoint::class,
             InboxLegacyCheckpoint::class,
         ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
     companion object {
+        val MIGRATION_9_10 =
+            object : Migration(9, 10) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    HISTORY_LINK_POLICY_SCHEMA.forEach(db::execSQL)
+                }
+            }
+
         val MIGRATION_8_9 =
             object : Migration(8, 9) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -353,6 +367,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
+                    MIGRATION_9_10,
                 )
                 .build()
         }

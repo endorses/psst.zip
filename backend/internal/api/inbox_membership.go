@@ -45,7 +45,7 @@ func (s *Server) inboxTransferMembership(w http.ResponseWriter, r *http.Request)
 	now := time.Now()
 	if !now.Before(entry.SlotExpiresAt) || !now.Before(entry.TransferExpiresAt) ||
 		(entry.TransferStatus == "pending" && entry.PendingExpiresAt.Valid && !now.Before(entry.PendingExpiresAt.Time)) {
-		writeError(w, http.StatusGone, "inbox submission expired or revoked")
+		policyError(w, http.StatusGone, "link_expired", "inbox submission expired")
 		return
 	}
 	parents, err := s.queries.TransferSlotIDsContext(ctx, transferID)

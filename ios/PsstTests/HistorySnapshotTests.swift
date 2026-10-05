@@ -1,7 +1,6 @@
 import Foundation
-import XCTest
-
 @testable import Psst
+import XCTest
 
 final class HistorySnapshotTests: XCTestCase {
     private let slot =
@@ -33,14 +32,16 @@ final class HistorySnapshotTests: XCTestCase {
         XCTAssertEqual(ready.slots.first?.completed_files, 125)
         let unknownData = page(
             slot.replacingOccurrences(of: "130", with: "null").replacingOccurrences(of: "125", with: "null").replacingOccurrences(of: "999", with: "null").replacingOccurrences(
-                of: "ready", with: "updating"))
+                of: "ready", with: "updating"
+            )
+        )
         let unknown = try await HistorySnapshot.load { _ in unknownData }
         XCTAssertNil(unknown.slots.first?.completed_files)
         XCTAssertEqual(unknown.slots.first?.summary.state, "updating")
     }
 
-    func testRejectsMissingFieldsContradictoryCountersAndDuplicateIdentities() async {
-        let valid = String(data: page(slot), encoding: .utf8)!
+    func testRejectsMissingFieldsContradictoryCountersAndDuplicateIdentities() async throws {
+        let valid = try XCTUnwrap(String(data: page(slot), encoding: .utf8))
         let invalid = [
             valid.replacingOccurrences(of: "\"paginated\":true,", with: ""),
             valid.replacingOccurrences(of: ",\"next_cursor\":null", with: ""),
@@ -86,5 +87,32 @@ final class HistorySnapshotTests: XCTestCase {
             _ = try await HistorySnapshot.load(after: "older") { _ in throw URLError(.notConnectedToInternet) }
             XCTFail("Failed request returned history")
         } catch let error as URLError { XCTAssertEqual(error.code, .notConnectedToInternet) } catch { XCTFail("Unexpected error: \(error)") }
+    }
+
+    func testHistoryPolicyDistinguishesAllocationsFromCompletedFiles() {
+        var record = TransferRecord(id: "test", direction: .received, state: .complete, createdAt: Date(), fileCount: 2, totalSize: 0, shareURL: nil, isSlot: true)
+        XCTAssertNil(record.linkPolicySummary)
+        record.maxFiles = 5
+        XCTAssertEqual(record.linkPolicySummary, "Maximum 5 files · Allowance use updating")
+        record.reservedFiles = 4
+        XCTAssertEqual(record.linkPolicySummary, "4 of 5 file allowances used")
+        XCTAssertEqual(record.fileCount, 2)
+        record.maxFiles = 0
+        XCTAssertEqual(record.linkPolicySummary, "4 file allowances used · No optional file-count limit")
+        record.isSlot = false
+        record.maxDownloads = 3
+        XCTAssertEqual(record.linkPolicySummary, "3 download attempts per file")
+        record.maxDownloads = 0
+        XCTAssertEqual(record.linkPolicySummary, "No optional download limit")
+    }
+
+    func testRejectsInvalidPolicyBoundsAndContradictoryAllowances() async {
+        for fields in ["\"max_files\":2147483648", "\"max_files\":-1", "\"reserved_files\":-1", "\"max_files\":1,\"reserved_files\":2"] {
+            let data = page(slot.replacingOccurrences(of: "\"summary\":", with: fields + ",\"summary\":"))
+            do {
+                _ = try await HistorySnapshot.load { _ in data }
+                XCTFail("Accepted invalid policy")
+            } catch {}
+        }
     }
 }

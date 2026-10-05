@@ -61,6 +61,7 @@ data class ScanState(
     val uploadCapacity: UploadCapacity? = null,
     val uploadCapacityMessage: String = "Checking receive capacity…",
     val fileAttempts: Map<String, Long?> = emptyMap(),
+    val refreshingAvailability: Boolean = false,
 )
 
 data class GuestHistoryState(
@@ -82,6 +83,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private var rawPairing: String? = null
     private var job: Job? = null
     private var capacityExpiry: Job? = null
+    private var availabilityJob: Job? = null
+    @Volatile private var availabilityRevision = 0L
 
     private val _historyPage = MutableStateFlow(GuestHistoryState())
     val historyPage = _historyPage.asStateFlow()
@@ -148,6 +151,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun classify(raw: String): Boolean {
         if (job?.isActive == true) return false
+        stopAvailabilityRefresh()
         val reportReference = AbuseReportReference.fromRawLink(raw)
         return try {
             val parsed = requireNotNull(ScanInputClassifier.classify(raw))
@@ -201,6 +205,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clear() {
+        stopAvailabilityRefresh()
         if (job?.isActive == true) return
         input = null
         rawPairing = null
@@ -214,6 +219,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun open(record: GuestDownload): Boolean {
         if (job?.isActive == true) return false
+        stopAvailabilityRefresh()
         input = null
         try {
             var current = store.read(record.identity)
@@ -228,6 +234,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             current.transferId,
                         ),
                     kind = ScanInputKind.DOWNLOAD,
+                    fileAttempts =
+                        current.files.associate { file -> file.blobId.lowercase() to null },
+                    refreshingAvailability = false,
                     record = current,
                     error = null,
                     downloadConsent = null,
@@ -236,6 +245,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         else "Interrupted — ready to resume",
                 )
             }
+            refreshDownloadAvailability()
             if (current.receiptPending) retryReceipt()
             return true
         } catch (_: Exception) {
@@ -260,6 +270,55 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fileExists(file: zip.psst.android.data.SavedGuestFile) = saver.exists(file)
 
+    internal fun downloadAvailability(): zip.psst.android.data.GuestDownloadAvailability? =
+        _state.value.record?.let {
+            zip.psst.android.data.guestDownloadAvailability(
+                it,
+                _state.value.fileAttempts,
+                saver::exists,
+            )
+        }
+
+    private fun stopAvailabilityRefresh() {
+        availabilityRevision++
+        availabilityJob?.cancel()
+        availabilityJob = null
+        _state.update { it.copy(refreshingAvailability = false) }
+    }
+
+    /** Advisory metadata refresh never opens payload URLs or repeats a download. */
+    fun refreshDownloadAvailability() {
+        if (_state.value.busy || availabilityJob?.isActive == true) return
+        val record = _state.value.record ?: return
+        if (record.files.isEmpty()) return
+        val revision = ++availabilityRevision
+        _state.update { it.copy(refreshingAvailability = true) }
+        availabilityJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val attempts = zip.psst.android.data.refreshGuestDownloadAttempts(record)
+                    _state.update {
+                        if (
+                            availabilityRevision == revision &&
+                                it.record?.identity == record.identity &&
+                                it.record.files == record.files
+                        )
+                            it.copy(fileAttempts = attempts, refreshingAvailability = false)
+                        else it
+                    }
+                } finally {
+                    _state.update {
+                        if (
+                            availabilityRevision == revision &&
+                                it.record?.identity == record.identity
+                        )
+                            it.copy(refreshingAvailability = false)
+                        else it
+                    }
+                }
+            }
+    }
+
     fun confirmDownload() {
         val consent = _state.value.downloadConsent ?: return
         receive(consent.redownloadMissing, consent)
@@ -273,6 +332,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun receive(redownloadMissing: Boolean, approved: GuestDownloadConsent?) {
         if (job?.isActive == true) return
+        stopAvailabilityRefresh()
         job =
             viewModelScope.launch(Dispatchers.IO) {
                 _state.update {

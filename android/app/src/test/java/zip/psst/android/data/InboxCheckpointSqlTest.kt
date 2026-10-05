@@ -32,6 +32,12 @@ class InboxCheckpointSqlTest {
                 original,
             )
             INBOX_CHECKPOINT_SCHEMA.forEach { db.exec(it) }
+            HISTORY_LINK_POLICY_SCHEMA.forEach { db.exec(it) }
+            assertNull(db.value("SELECT maxFiles FROM transfer_history"))
+            assertNull(db.value("SELECT reservedFiles FROM transfer_history"))
+            assertEquals(original, db.value("SELECT receivedTransfersJson FROM transfer_history"))
+            assertEquals("secret", db.value("SELECT encryptionKey FROM transfer_history"))
+            db.exec("UPDATE transfer_history SET maxFiles=5,reservedFiles=3,maxDownloads=2")
             val archive =
                 "INSERT OR IGNORE INTO inbox_legacy_checkpoint SELECT 'scope',id,receivedTransfersJson,savedFileIdsJson,savedTransferIdsJson FROM transfer_history WHERE id='slot'"
             val clear =
@@ -61,6 +67,9 @@ class InboxCheckpointSqlTest {
                     assertEquals("[]", r.getString("savedFileIdsJson"))
                     assertEquals("{}", r.getString("receivedTransfersJson"))
                     assertEquals("pending", r.getString("checkpointState"))
+                    assertEquals(5, r.getInt("maxFiles"))
+                    assertEquals(3L, r.getLong("reservedFiles"))
+                    assertEquals(2, r.getInt("maxDownloads"))
                 }
             }
             assertEquals(

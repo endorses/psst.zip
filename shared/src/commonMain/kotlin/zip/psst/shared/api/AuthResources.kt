@@ -24,6 +24,7 @@ data class AuthResourceTransfer(
     @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("download_count") val downloadCount: Int = 0,
     @SerialName("downloaded_at") val downloadedAt: String? = null,
+    @SerialName("max_downloads") val maxDownloads: Int? = null,
 )
 
 @Serializable
@@ -37,6 +38,8 @@ data class AuthResourceSlot(
     @SerialName("completed_files") val completedFiles: Long? = null,
     @SerialName("total_size") val totalSize: Long? = null,
     val summary: InboxSummary? = null,
+    @SerialName("max_files") val maxFiles: Int? = null,
+    @SerialName("reserved_files") val reservedFiles: Long? = null,
 )
 
 @Serializable

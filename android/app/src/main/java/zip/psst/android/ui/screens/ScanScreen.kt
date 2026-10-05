@@ -27,6 +27,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.data.SavedGuestFile
+import zip.psst.android.data.compactHistoryTitle
 import zip.psst.android.data.receivedFilenameLabel
 import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.EmbeddedScanner
@@ -213,6 +214,7 @@ fun ScanScreen(
                     when (state.kind) {
                         ScanInputKind.DOWNLOAD -> {
                             val record = state.record
+                            val availability = viewModel.downloadAvailability()
                             Text(
                                 if (record?.complete == true && !viewModel.missingFiles())
                                     "${record.saved.size} ${if (record.saved.size == 1) "file" else "files"} saved"
@@ -224,7 +226,15 @@ fun ScanScreen(
                             if (state.fileAttempts.isNotEmpty())
                                 record?.files?.forEach { file ->
                                     Text(
-                                        "${receivedFilenameLabel(file.name)}: ${state.fileAttempts[file.blobId.lowercase()]?.toString() ?: "unknown"} download attempts remaining",
+                                        "${receivedFilenameLabel(file.name)}: " +
+                                            when (
+                                                val attempts =
+                                                    state.fileAttempts[file.blobId.lowercase()]
+                                            ) {
+                                                0L -> "Download limit reached"
+                                                null -> "Availability unknown"
+                                                else -> "$attempts download attempts remaining"
+                                            },
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -250,12 +260,43 @@ fun ScanScreen(
                                     }
                                 }
                             }
+                            if (availability?.allMissingExhausted == true)
+                                Text(
+                                    "Download limit reached. Saved local copies can still be opened or shared."
+                                )
+                            else if (availability?.partiallyExhausted == true)
+                                Text(
+                                    "${availability.exhausted} missing files have reached their download limit. Only available files will be downloaded; you will confirm the available-file download first."
+                                )
+                            val canDownload =
+                                availability?.allMissingExhausted != true &&
+                                    !state.refreshingAvailability
                             if (viewModel.missingFiles())
-                                Button(onClick = { receive(true) }) {
-                                    Text("Redownload missing files")
+                                Button(onClick = { receive(true) }, enabled = canDownload) {
+                                    Text(
+                                        if (availability?.partiallyExhausted == true)
+                                            "Redownload available missing files"
+                                        else "Redownload missing files"
+                                    )
                                 }
                             else if (record?.complete != true)
-                                Button(onClick = { receive() }) { Text("Resume receiving") }
+                                Button(onClick = { receive() }, enabled = canDownload) {
+                                    Text(
+                                        if (availability?.partiallyExhausted == true)
+                                            "Download available files"
+                                        else "Resume receiving"
+                                    )
+                                }
+                            if (record?.files?.isNotEmpty() == true)
+                                TextButton(
+                                    onClick = viewModel::refreshDownloadAvailability,
+                                    enabled = !state.refreshingAvailability,
+                                ) {
+                                    Text(
+                                        if (state.refreshingAvailability) "Checking availability…"
+                                        else "Refresh availability"
+                                    )
+                                }
                             if (record?.receiptPending == true) {
                                 Text("Files are saved. The sender’s delivery receipt is pending.")
                                 TextButton(onClick = viewModel::retryReceipt) {
@@ -364,9 +405,17 @@ fun ScanScreen(
                                 "This transfer exceeds 100 MiB and may use mobile data. "
                             else "") +
                             (if (consent.skippedBlobIds.isNotEmpty())
-                                "${consent.skippedBlobIds.size} files have no download attempts left and will be skipped. "
+                                "${consent.skippedBlobIds.size} files have no download attempts left and will be skipped: " +
+                                    consent.files
+                                        .filter { it.blobId in consent.skippedBlobIds }
+                                        .joinToString(", ") {
+                                            compactHistoryTitle(receivedFilenameLabel(it.name), 48)
+                                        } +
+                                    ". "
                             else "") +
-                            "Downloads keep at least 256 MiB of storage free."
+                            "Downloads keep at least 256 MiB of storage free.",
+                        modifier =
+                            Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()),
                     )
                 },
                 confirmButton = {
