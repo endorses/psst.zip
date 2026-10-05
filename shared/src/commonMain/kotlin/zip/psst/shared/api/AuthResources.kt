@@ -11,12 +11,17 @@ data class AuthResources(
     val slots: List<AuthResourceSlot> = emptyList(),
     @SerialName("next_cursor") val nextCursor: String? = null,
     val paginated: Boolean = false,
+    @SerialName("sync_cursor") val syncCursor: String? = null,
+    val generation: String? = null,
 )
 
 @Serializable
 data class AuthResourceTransfer(
     val id: String,
     val status: String,
+    val revision: Long = 0,
+    @SerialName("history_after") val historyAfter: String? = null,
+    @SerialName("history_after_kind") val historyAfterKind: String? = null,
     @SerialName("file_count") val fileCount: Long? = null,
     @SerialName("total_size") val totalSize: Long? = null,
     val summary: InboxSummary? = null,
@@ -33,6 +38,9 @@ data class AuthResourceTransfer(
 data class AuthResourceSlot(
     val id: String,
     val status: String,
+    val revision: Long = 0,
+    @SerialName("history_after") val historyAfter: String? = null,
+    @SerialName("history_after_kind") val historyAfterKind: String? = null,
     val transfers: List<AuthResourceChild> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,

@@ -238,6 +238,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                             zip.psst.shared.model.LinkTitle.normalize(_uiState.value.sharedTitle),
                         )
                     createdTransferId = transfer.id
+                    zip.psst.android.data.HistoryNotifications.changed(serverUrl, accountId)
                     deletionToken = transfer.deleteToken
                     if (app.prefs.historyAccess.value == access)
                         _uiState.update { it.copy(linkPolicyLocked = true) }
@@ -341,6 +342,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     app.database.transferHistoryDao().updateStatus(transfer.id, "complete")
+                    zip.psst.android.data.HistoryNotifications.changed(serverUrl, accountId)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     val trafficError =

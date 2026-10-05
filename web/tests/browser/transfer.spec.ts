@@ -110,7 +110,7 @@ test("per-file download limit is fixed at creation and exhausted controls reflec
   expect((await created).request().postDataJSON().max_downloads).toBe(1);
   await expect(page.getByRole("heading", { name: "Ready to share" })).toBeVisible();
   await page.goto(await page.getByLabel("Full link").inputValue());
-  await expect(page.getByText("· 1 attempts remaining", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("· 1 attempt remaining", { exact: true }).first()).toBeVisible();
   const saved = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save file", exact: true }).first().click();
   await saved;

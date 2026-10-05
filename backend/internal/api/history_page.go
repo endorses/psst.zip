@@ -13,16 +13,22 @@ import (
 
 type historyTransferResponse struct {
 	TransferResponse
-	FileCount *int64                `json:"file_count"`
-	TotalSize *int64                `json:"total_size"`
-	Summary   database.InboxSummary `json:"summary"`
+	HistoryAfter     string                `json:"history_after"`
+	HistoryAfterKind string                `json:"history_after_kind"`
+	Revision         int64                 `json:"revision"`
+	FileCount        *int64                `json:"file_count"`
+	TotalSize        *int64                `json:"total_size"`
+	Summary          database.InboxSummary `json:"summary"`
 }
 type historySlotResponse struct {
 	SlotResponse
-	FileCount      *int64                `json:"file_count"`
-	TotalSize      *int64                `json:"total_size"`
-	CompletedFiles *int64                `json:"completed_files"`
-	Summary        database.InboxSummary `json:"summary"`
+	HistoryAfter     string                `json:"history_after"`
+	HistoryAfterKind string                `json:"history_after_kind"`
+	Revision         int64                 `json:"revision"`
+	FileCount        *int64                `json:"file_count"`
+	TotalSize        *int64                `json:"total_size"`
+	CompletedFiles   *int64                `json:"completed_files"`
+	Summary          database.InboxSummary `json:"summary"`
 }
 
 func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +49,7 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	page, err := s.queries.AccountHistoryPage(ctx, a.user.ID, query.all, query.limit, query.after, query.kind)
+	page, err := s.queries.AccountHistoryPageForSession(ctx, a.user.ID, a.session.ID, query.all, query.limit, query.after, query.kind)
 	if err != nil {
 		switch {
 		case errors.Is(err, database.ErrInvalidPage):
@@ -62,22 +68,15 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 		if query.all {
 			owner = resource.OwnerID
 		}
-		if t := resource.Transfer; t != nil {
-			item := TransferResponse{ID: t.ID, Status: transferPublicStatus(t), Title: t.Title, InactiveReason: transferInactiveReason(t), HasManifest: resource.HasManifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt, OwnerID: owner, Files: []FileInfo{}}
-			if t.CompletedAt.Valid {
-				item.CompletedAt = &t.CompletedAt.Time
-			}
-			if t.DownloadedAt.Valid {
-				item.DownloadedAt = &t.DownloadedAt.Time
-			}
-			transfers = append(transfers, historyTransferResponse{TransferResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, Summary: resource.Summary})
+		item := historyResponse(resource, owner)
+		if t, ok := item.(historyTransferResponse); ok {
+			transfers = append(transfers, t)
 		} else {
-			slot := resource.Slot
-			item := SlotResponse{ID: slot.ID, Status: slot.Status, Title: slot.Title, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt, OwnerID: owner, Transfers: []SlotTransferInfo{}, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, ReservedFiles: slot.ReservedFiles, RemainingFiles: remainingFiles(slot)}
-			slots = append(slots, historySlotResponse{SlotResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, CompletedFiles: resource.Summary.CompletedFiles, Summary: resource.Summary})
+			slots = append(slots, item.(historySlotResponse))
 		}
+
 	}
-	writeJSON(w, 200, map[string]any{"paginated": true, "transfers": transfers, "slots": slots, "next_cursor": page.NextCursor})
+	writeJSON(w, 200, map[string]any{"paginated": true, "transfers": transfers, "slots": slots, "next_cursor": page.NextCursor, "sync_cursor": page.SyncCursor, "generation": page.Generation})
 }
 
 type historyQuery struct {
@@ -120,4 +119,21 @@ func httpParseHistoryQuery(r *http.Request) (historyQuery, error) {
 		}
 	}
 	return out, nil
+}
+
+func historyResponse(resource database.HistoryResource, owner string) any {
+	if t := resource.Transfer; t != nil {
+		item := TransferResponse{ID: t.ID, Status: transferPublicStatus(t), Title: t.Title, InactiveReason: transferInactiveReason(t), HasManifest: resource.HasManifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt, OwnerID: owner, Files: []FileInfo{}}
+		if t.CompletedAt.Valid {
+			item.CompletedAt = &t.CompletedAt.Time
+		}
+		if t.DownloadedAt.Valid {
+			item.DownloadedAt = &t.DownloadedAt.Time
+		}
+		return historyTransferResponse{HistoryAfter: resource.HistoryAfter, HistoryAfterKind: resource.HistoryAfterKind, Revision: resource.Revision, TransferResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, Summary: resource.Summary}
+	} else {
+		slot := resource.Slot
+		item := SlotResponse{ID: slot.ID, Status: slot.Status, Title: slot.Title, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt, OwnerID: owner, Transfers: []SlotTransferInfo{}, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, ReservedFiles: slot.ReservedFiles, RemainingFiles: remainingFiles(slot)}
+		return historySlotResponse{HistoryAfter: resource.HistoryAfter, HistoryAfterKind: resource.HistoryAfterKind, Revision: resource.Revision, SlotResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, CompletedFiles: resource.Summary.CompletedFiles, Summary: resource.Summary}
+	}
 }

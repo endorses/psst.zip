@@ -56,6 +56,8 @@ targets:
     platform: iOS
     sources:
       - path: PsstTests
+      - path: ../docs/testing/fixtures/history-sync-v1.json
+        buildPhase: resources
       - path: ../docs/security/fixtures/hpke-receive-v2.json
         buildPhase: resources
     dependencies:

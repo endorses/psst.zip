@@ -30,6 +30,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_pages.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_sync.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_abuse_report.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_guest_store.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_receive_checkpoints.py
@@ -195,14 +196,26 @@ Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile
 
 ## Bounded account history
 
-History collects at most 100 pages of 100 compact summaries, with a 1 MiB body
-bound and 30-second aggregate deadline. A later-page failure, repeated cursor,
-oversized response or page ceiling preserves the previous local history. Only a
-complete snapshot can reconcile missing server records. Compact inbox counts use
-current completed files and never interpret an empty child list as zero or infer
-that every current child is saved. Local saved paths remain available; detailed
-inbox refresh determines exact saved status. Updates commit in one coordinated
-batch, preserving local names and records from other contexts.
+History presents a cached, scoped 50-record window before network work. Servers
+advertising `history_sync_version: 1` return bounded incremental metadata changes;
+older servers retain bounded snapshot refresh. One owned request runs at a time.
+Only visible foreground server History polls, ten seconds after success, with
+10/20/40/60-second failure backoff and longer `Retry-After` values honored.
+Navigation, backgrounding and account changes cancel the request itself.
+
+Server summaries, cursor/coverage and removal revisions share an atomic SQLite
+transaction. They are separate from private keys, saved paths and receipt queues.
+The cache bounds summaries/removals to 2,000 per account and 10,000 globally,
+with 500 stored scopes and bounded page coverage. Disposable corruption/reset
+rebootstraps one newest snapshot; older pages revalidate on demand. Newest-page
+changes use server-issued last-row anchors so new arrivals do not cause pagination
+gaps. An explicit page fetch cannot advance the feed cursor past unseen changes.
+
+Compact inbox counts use completed files. Empty child lists do not imply zero,
+and local saved checkpoints remain independent of remote status/removal. The
+share extension writes shared local history but never starts a history poller.
+See [iOS sync verification](../docs/testing/history-sync-ios.md) for executed
+portable tests and pending Apple app, extension and device checks.
 
 - [x] The portable Swift harness passes eleven crypto/safety/history tests, including four pagination cases. Swift syntax, formatting and source gates pass.
 - [ ] Run `NavigationHistoryTests.testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames` and the complete XCTest suite on macOS/iOS. The added coordinated-persistence test has not run in Linux.

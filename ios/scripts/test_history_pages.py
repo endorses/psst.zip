@@ -19,7 +19,7 @@ def main():
         tests = work / "Tests" / "HistoryPageHarnessTests"
         sources.mkdir(parents=True)
         tests.mkdir(parents=True)
-        for name in ("HistorySnapshot", "InboxPageWindow"):
+        for name in ("HistorySnapshot", "InboxPageWindow", "HistorySync"):
             shutil.copy2(ROOT / f"Shared/{name}.swift", sources)
             (tests / f"{name}Tests.swift").write_text(
                 (ROOT / f"PsstTests/{name}Tests.swift")
@@ -48,11 +48,12 @@ enum SecretStore {
             .read_text()
             .replace("@testable import Psst", "@testable import HistoryPageHarness")
         )
+        shutil.copy2(ROOT.parent / "docs/testing/fixtures/history-sync-v1.json", tests)
         (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
 let package = Package(name: "HistoryPageHarness", targets: [
     .target(name: "HistoryPageHarness"),
-    .testTarget(name: "HistoryPageHarnessTests", dependencies: ["HistoryPageHarness"])
+    .testTarget(name: "HistoryPageHarnessTests", dependencies: ["HistoryPageHarness"], resources: [.copy("history-sync-v1.json")])
 ])
 """)
         add_localization(

@@ -45,9 +45,13 @@ final class HistoryRecordDatabase: @unchecked Sendable {
 
     init(url: URL) throws {
         guard url.isFileURL else { throw Failure.invalidRecord }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var handle: OpaquePointer?
-        let result = sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW, nil)
+        let result = sqlite3_open_v2(
+            url.path, &handle,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX | SQLITE_OPEN_NOFOLLOW, nil
+        )
         guard result == SQLITE_OK, let handle else {
             if let handle { sqlite3_close_v2(handle) }
             throw Failure.sqlite(result)
@@ -60,7 +64,7 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             // Installed below after table creation for all supported versions.
             try transaction { database in
                 let version = try database.integer("PRAGMA user_version")
-                guard (0...2).contains(version) else { throw Failure.unsupportedSchema }
+                guard (0...4).contains(version) else { throw Failure.unsupportedSchema }
                 if version == 0 {
                     try database.execute(
                         """
@@ -85,8 +89,31 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                         PRAGMA user_version=1;
                         """)
                 }
-                if version < 2 { try database.execute("ALTER TABLE migrations ADD COLUMN stream_state TEXT NOT NULL DEFAULT ''; PRAGMA user_version=2;") }
-                try database.execute("CREATE INDEX IF NOT EXISTS records_kind_identity ON records(kind,id);")
+                if version < 2 {
+                    try database.execute(
+                        "ALTER TABLE migrations ADD COLUMN stream_state TEXT NOT NULL DEFAULT ''; PRAGMA user_version=2;"
+                    )
+                }
+                if version < 3 {
+                    try database.execute(
+                        """
+                        CREATE TABLE server_history(scope TEXT NOT NULL, identity TEXT NOT NULL, kind TEXT NOT NULL,
+                            generation TEXT NOT NULL, revision INTEGER NOT NULL, created REAL NOT NULL, body BLOB,
+                            PRIMARY KEY(scope,identity));
+                        CREATE INDEX server_history_page ON server_history(scope,kind,created DESC,identity);
+                        CREATE TABLE history_sync(scope TEXT PRIMARY KEY NOT NULL, generation TEXT NOT NULL, cursor TEXT NOT NULL);
+                        CREATE TABLE history_coverage(scope TEXT NOT NULL, page TEXT NOT NULL, body BLOB NOT NULL,
+                            PRIMARY KEY(scope,page));
+                        PRAGMA user_version=3;
+                        """)
+                }
+                if version < 4 {
+                    try database.execute(
+                        "DROP INDEX server_history_page; CREATE INDEX server_history_page ON server_history(scope,kind,created DESC,identity DESC); PRAGMA user_version=4;"
+                    )
+                }
+                try database.execute(
+                    "CREATE INDEX IF NOT EXISTS records_kind_identity ON records(kind,id);")
                 try database.execute(
                     "CREATE TRIGGER IF NOT EXISTS receive_source_immutable_update BEFORE UPDATE ON records WHEN OLD.kind='source' AND OLD.scope='receive-checkpoint-migration' BEGIN SELECT RAISE(ABORT,'immutable receive source'); END; CREATE TRIGGER IF NOT EXISTS receive_source_immutable_delete BEFORE DELETE ON records WHEN OLD.kind='source' AND OLD.scope='receive-checkpoint-migration' BEGIN SELECT RAISE(ABORT,'immutable receive source'); END;"
                 )
@@ -95,6 +122,185 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             if let connection { sqlite3_close_v2(connection) }
             connection = nil
             throw error
+        }
+    }
+
+    struct SyncState: Equatable, Sendable {
+        let generation: String
+        let cursor: String
+    }
+    struct ServerFact: Sendable {
+        let identity: String
+        let kind: String
+        let revision: Int64
+        let created: Double
+        let body: Data?
+    }
+    func syncState(scope: String) throws -> SyncState? {
+        try synchronized {
+            let statement = try prepare("SELECT generation,cursor FROM history_sync WHERE scope=?")
+            defer { sqlite3_finalize(statement) }
+            try bind(scope, to: statement, at: 1)
+            guard try step(statement) else { return nil }
+            return try SyncState(
+                generation: text(statement, 0, maximum: 64), cursor: text(statement, 1, maximum: 512))
+        }
+    }
+    /// Only disposable metadata; local keys, saved paths and migration tombstones survive.
+    func clearServerMetadata(scope: String) throws {
+        guard Self.valid(scope, maximum: 4096) else { throw Failure.invalidRecord }
+        try transaction { database in
+            try database.run("DELETE FROM server_history WHERE scope=?", strings: [scope])
+            try database.run("DELETE FROM history_coverage WHERE scope=?", strings: [scope])
+            try database.run("DELETE FROM history_sync WHERE scope=?", strings: [scope])
+        }
+    }
+    func serverCoverage(scope: String, page: String) throws -> Data? {
+        try synchronized {
+            let statement = try prepare("SELECT body FROM history_coverage WHERE scope=? AND page=?")
+            defer { sqlite3_finalize(statement) }
+            try bind(scope, to: statement, at: 1)
+            try bind(page, to: statement, at: 2)
+            guard try step(statement) else { return nil }
+            return try blob(statement, 0)
+        }
+    }
+    func serverFact(scope: String, identity: String) throws -> ServerFact? {
+        try synchronized {
+            let statement = try prepare(
+                "SELECT identity,kind,revision,created,body FROM server_history WHERE scope=? AND identity=?"
+            )
+            defer { sqlite3_finalize(statement) }
+            try bind(scope, to: statement, at: 1)
+            try bind(identity, to: statement, at: 2)
+            guard try step(statement) else { return nil }
+            return try ServerFact(
+                identity: text(statement, 0, maximum: 128), kind: text(statement, 1, maximum: 16),
+                revision: sqlite3_column_int64(statement, 2), created: sqlite3_column_double(statement, 3),
+                body: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : blob(statement, 4))
+        }
+    }
+    func newestServerFacts(scope: String, kind: String?, limit: Int = 100) throws -> [ServerFact] {
+        guard (1...100).contains(limit) else { throw Failure.invalidPage }
+        return try synchronized {
+            var result: [ServerFact] = []
+            for selected in kind.map({ [$0] }) ?? ["transfer", "slot"] {
+                let statement = try prepare(
+                    "SELECT identity,kind,revision,created,body FROM server_history INDEXED BY server_history_page WHERE scope=? AND kind=? AND body IS NOT NULL ORDER BY created DESC,identity DESC LIMIT ?"
+                )
+                defer { sqlite3_finalize(statement) }
+                try bind(scope, to: statement, at: 1)
+                try bind(selected, to: statement, at: 2)
+                try check(sqlite3_bind_int(statement, 3, Int32(limit)))
+                while try step(statement) {
+                    result.append(
+                        try ServerFact(
+                            identity: text(statement, 0, maximum: 128), kind: text(statement, 1, maximum: 16),
+                            revision: sqlite3_column_int64(statement, 2),
+                            created: sqlite3_column_double(statement, 3), body: blob(statement, 4)))
+                }
+            }
+            return Array(
+                result.sorted {
+                    $0.created == $1.created ? $0.identity > $1.identity : $0.created > $1.created
+                }.prefix(limit))
+        }
+    }
+    /// Metadata, membership and cursor share the existing cross-process SQLite writer lock.
+    /// Compare-and-swap rejects a late snapshot/batch; private records are untouched.
+    func applyServerFacts(
+        scope: String, expected: SyncState?, state: SyncState?, facts: [ServerFact],
+        page: String? = nil, coverage: Data? = nil, reset: Bool = false, merge: () throws -> Void = {}
+    ) throws {
+        guard Self.valid(scope, maximum: 4096), facts.count <= 100,
+            facts.allSatisfy({
+                Self.valid($0.identity, maximum: 128) && ["transfer", "slot"].contains($0.kind)
+                    && $0.revision >= 0 && $0.created.isFinite && ($0.body?.count ?? 0) <= 8192
+            }),
+            (coverage?.count ?? 0) <= 32768
+        else { throw Failure.invalidRecord }
+        try transaction { database in
+            guard try database.syncState(scope: scope) == expected else { throw Failure.invalidPage }
+            if reset {
+                try database.run("DELETE FROM server_history WHERE scope=?", strings: [scope])
+                try database.run("DELETE FROM history_coverage WHERE scope=?", strings: [scope])
+                try database.run("DELETE FROM history_sync WHERE scope=?", strings: [scope])
+            }
+            for fact in facts {
+                let statement = try database.prepare(
+                    "INSERT INTO server_history(scope,identity,kind,generation,revision,created,body) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,identity) DO UPDATE SET generation=excluded.generation,revision=excluded.revision,created=excluded.created,body=excluded.body WHERE server_history.revision<excluded.revision OR server_history.generation<>excluded.generation OR excluded.generation='legacy'"
+                )
+                defer { sqlite3_finalize(statement) }
+                try database.bind(scope, to: statement, at: 1)
+                try database.bind(fact.identity, to: statement, at: 2)
+                try database.bind(fact.kind, to: statement, at: 3)
+                try database.bind(state?.generation ?? "legacy", to: statement, at: 4)
+                try database.check(sqlite3_bind_int64(statement, 5, fact.revision))
+                try database.check(sqlite3_bind_double(statement, 6, fact.created))
+                if let body = fact.body {
+                    try body.withUnsafeBytes {
+                        try database.check(
+                            sqlite3_bind_blob(statement, 7, $0.baseAddress, Int32(body.count), database.transient)
+                        )
+                    }
+                } else {
+                    try database.check(sqlite3_bind_null(statement, 7))
+                }
+                _ = try database.step(statement)
+            }
+            if let page, let coverage {
+                let statement = try database.prepare(
+                    "INSERT INTO history_coverage(scope,page,body) VALUES(?,?,?) ON CONFLICT(scope,page) DO UPDATE SET body=excluded.body"
+                )
+                defer { sqlite3_finalize(statement) }
+                try database.bind(scope, to: statement, at: 1)
+                try database.bind(page, to: statement, at: 2)
+                try coverage.withUnsafeBytes {
+                    try database.check(
+                        sqlite3_bind_blob(
+                            statement, 3, $0.baseAddress, Int32(coverage.count), database.transient))
+                }
+                _ = try database.step(statement)
+            }
+            if let state {
+                try database.run(
+                    "INSERT INTO history_sync(scope,generation,cursor) VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET generation=excluded.generation,cursor=excluded.cursor",
+                    strings: [scope, state.generation, state.cursor])
+            }
+            try merge()
+            // 2,000 disposable facts (including removals) per account; 10,000 globally.
+            // Any eviction drops coverage and forces bounded on-demand revalidation.
+            let count = try database.integer(
+                "SELECT COUNT(*) FROM server_history WHERE scope=?", strings: [scope])
+            if count > 2000 {
+                try database.run(
+                    "DELETE FROM server_history WHERE scope=? AND identity IN (SELECT identity FROM server_history WHERE scope=? ORDER BY created DESC,identity DESC LIMIT -1 OFFSET 2000)",
+                    strings: [scope, scope])
+                try database.run("DELETE FROM history_coverage WHERE scope=?", strings: [scope])
+                try database.run("DELETE FROM history_sync WHERE scope=?", strings: [scope])
+            }
+            if try database.integer("SELECT COUNT(*) FROM server_history") > 10000 {
+                try database.execute(
+                    """
+                    DELETE FROM history_coverage WHERE scope IN (SELECT scope FROM server_history ORDER BY created DESC,identity DESC,scope LIMIT -1 OFFSET 10000);
+                    DELETE FROM history_sync WHERE scope IN (SELECT scope FROM server_history ORDER BY created DESC,identity DESC,scope LIMIT -1 OFFSET 10000);
+                    DELETE FROM server_history WHERE (scope,identity) IN (SELECT scope,identity FROM server_history ORDER BY created DESC,identity DESC,scope LIMIT -1 OFFSET 10000);
+                    """
+                )
+            }
+            try database.run(
+                "DELETE FROM history_coverage WHERE scope=? AND page IN (SELECT page FROM history_coverage WHERE scope=? ORDER BY rowid DESC LIMIT -1 OFFSET 100)",
+                strings: [scope, scope])
+            try database.execute(
+                "DELETE FROM history_coverage WHERE rowid IN (SELECT rowid FROM history_coverage ORDER BY rowid DESC LIMIT -1 OFFSET 500);"
+            )
+            try database.execute(
+                """
+                DELETE FROM server_history WHERE scope IN (SELECT scope FROM history_sync ORDER BY rowid DESC LIMIT -1 OFFSET 500);
+                DELETE FROM history_coverage WHERE scope IN (SELECT scope FROM history_sync ORDER BY rowid DESC LIMIT -1 OFFSET 500);
+                DELETE FROM history_sync WHERE rowid IN (SELECT rowid FROM history_sync ORDER BY rowid DESC LIMIT -1 OFFSET 500);
+                """)
+
         }
     }
 
@@ -138,14 +344,21 @@ final class HistoryRecordDatabase: @unchecked Sendable {
 
     /// The callback may read, write and remove atomically. Nested calls use
     /// savepoints, so a caught inner failure cannot publish a half mutation.
-    func transaction<T>(_ body: (HistoryRecordDatabase) throws -> T) throws -> T { try withTransaction(immediate: true, body) }
+    func transaction<T>(_ body: (HistoryRecordDatabase) throws -> T) throws -> T {
+        try withTransaction(immediate: true, body)
+    }
 
     func hasAny(scopes: [String], kinds: [String]) throws -> Bool {
         let filters = try Self.filters(scopes: scopes, kinds: kinds)
         return try synchronized {
             for scope in filters.0 {
                 for kind in filters.1 {
-                    if try integer("SELECT EXISTS(SELECT 1 FROM records INDEXED BY records_page WHERE scope=? AND kind=?)", strings: [scope, kind]) == 1 { return true }
+                    if try integer(
+                        "SELECT EXISTS(SELECT 1 FROM records INDEXED BY records_page WHERE scope=? AND kind=?)",
+                        strings: [scope, kind]) == 1
+                    {
+                        return true
+                    }
                 }
             }
             return false
@@ -164,15 +377,23 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     /// Migration discovery only: a bounded primary-key seek across all scopes.
     /// Opaque bodies are not loaded while looking for records needing upgrade.
     func migrationPage(afterID: String? = nil, limit: Int = 25) throws -> MigrationPage {
-        guard (1...100).contains(limit), afterID.map({ Self.valid($0, maximum: 4096) }) ?? true else { throw Failure.invalidPage }
+        guard (1...100).contains(limit), afterID.map({ Self.valid($0, maximum: 4096) }) ?? true else {
+            throw Failure.invalidPage
+        }
         return try synchronized {
-            let sql = "SELECT id,kind FROM records" + (afterID == nil ? "" : " WHERE id>?") + " ORDER BY id LIMIT ?"
+            let sql =
+                "SELECT id,kind FROM records" + (afterID == nil ? "" : " WHERE id>?")
+                + " ORDER BY id LIMIT ?"
             let statement = try prepare(sql)
             defer { sqlite3_finalize(statement) }
             if let afterID { try bind(afterID, to: statement, at: 1) }
             try check(sqlite3_bind_int(statement, afterID == nil ? 1 : 2, Int32(limit + 1)))
             var entries: [MigrationEntry] = []
-            while try step(statement) { entries.append(MigrationEntry(id: try text(statement, 0, maximum: 4096), kind: try text(statement, 1, maximum: 128))) }
+            while try step(statement) {
+                entries.append(
+                    MigrationEntry(
+                        id: try text(statement, 0, maximum: 4096), kind: try text(statement, 1, maximum: 128)))
+            }
             let more = entries.count > limit
             if more { entries.removeLast() }
             return MigrationPage(entries: entries, nextID: more ? entries.last?.id : nil)
@@ -182,11 +403,14 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     func receiveParentPage(afterID: String?) throws -> MigrationPage {
         try synchronized {
             let statement = try prepare(
-                "SELECT id,kind FROM records INDEXED BY records_kind_identity WHERE kind='slot'" + (afterID == nil ? "" : " AND id>?") + " ORDER BY id LIMIT 2")
+                "SELECT id,kind FROM records INDEXED BY records_kind_identity WHERE kind='slot'"
+                    + (afterID == nil ? "" : " AND id>?") + " ORDER BY id LIMIT 2")
             defer { sqlite3_finalize(statement) }
             if let afterID { try bind(afterID, to: statement, at: 1) }
             var entries: [MigrationEntry] = []
-            while try step(statement) { entries.append(MigrationEntry(id: try text(statement, 0, maximum: 4096), kind: "slot")) }
+            while try step(statement) {
+                entries.append(MigrationEntry(id: try text(statement, 0, maximum: 4096), kind: "slot"))
+            }
             let more = entries.count > 1
             if more { entries.removeLast() }
             return MigrationPage(entries: entries, nextID: more ? entries.last?.id : nil)
@@ -199,7 +423,8 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         let filters = try Self.filters(scopes: scopes, kinds: kinds)
         guard (1...100).contains(limit) else { throw Failure.invalidPage }
         if let after {
-            guard after.scopes.map({ Data($0.utf8) }) == filters.0.map({ Data($0.utf8) }), after.kinds.map({ Data($0.utf8) }) == filters.1.map({ Data($0.utf8) }),
+            guard after.scopes.map({ Data($0.utf8) }) == filters.0.map({ Data($0.utf8) }),
+                after.kinds.map({ Data($0.utf8) }) == filters.1.map({ Data($0.utf8) }),
                 after.created.isFinite, Self.valid(after.id, maximum: 4096)
             else { throw Failure.invalidPage }
         }
@@ -212,7 +437,8 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             var candidates: [Candidate] = []
             for scope in filters.0 {
                 for kind in filters.1 {
-                    var sql = "SELECT id,sort_created,body_bytes FROM records INDEXED BY records_page WHERE scope=? AND kind=?"
+                    var sql =
+                        "SELECT id,sort_created,body_bytes FROM records INDEXED BY records_page WHERE scope=? AND kind=?"
                     if after != nil { sql += " AND (sort_created,id)>(?,?)" }
                     sql += " ORDER BY sort_created,id LIMIT ?"
                     let statement = try database.prepare(sql)
@@ -231,24 +457,38 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                         let id = try database.text(statement, 0, maximum: 4096)
                         let created = sqlite3_column_double(statement, 1)
                         let bytes = sqlite3_column_int64(statement, 2)
-                        guard created.isFinite, bytes >= 0, bytes <= Self.maximumRecordBytes else { throw Failure.tooLarge }
+                        guard created.isFinite, bytes >= 0, bytes <= Self.maximumRecordBytes else {
+                            throw Failure.tooLarge
+                        }
                         candidates.append(Candidate(id: id, sortCreated: created, bytes: Int(bytes)))
                     }
-                    candidates.sort { $0.sortCreated == $1.sortCreated ? $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) : $0.sortCreated < $1.sortCreated }
-                    if candidates.count > limit + 1 { candidates.removeSubrange((limit + 1)..<candidates.count) }
+                    candidates.sort {
+                        $0.sortCreated == $1.sortCreated
+                            ? $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) : $0.sortCreated < $1.sortCreated
+                    }
+                    if candidates.count > limit + 1 {
+                        candidates.removeSubrange((limit + 1)..<candidates.count)
+                    }
                 }
             }
-            candidates.sort { $0.sortCreated == $1.sortCreated ? $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) : $0.sortCreated < $1.sortCreated }
+            candidates.sort {
+                $0.sortCreated == $1.sortCreated
+                    ? $0.id.utf8.lexicographicallyPrecedes($1.id.utf8) : $0.sortCreated < $1.sortCreated
+            }
             var result: [Record] = []
             var bytes = 0
             for candidate in candidates.prefix(limit) {
                 if candidate.bytes > Self.maximumPageBytes - bytes { break }
-                guard let record = try database.readRecord(candidate.id) else { throw Failure.invalidRecord }
+                guard let record = try database.readRecord(candidate.id) else {
+                    throw Failure.invalidRecord
+                }
                 bytes += candidate.bytes
                 result.append(record)
             }
             var next: Cursor?
-            if result.count < candidates.count, let last = result.last { next = Cursor(created: last.created, id: last.id, scopes: filters.0, kinds: filters.1) }
+            if result.count < candidates.count, let last = result.last {
+                next = Cursor(created: last.created, id: last.id, scopes: filters.0, kinds: filters.1)
+            }
             return Page(records: result, next: next)
         }
     }
@@ -256,25 +496,36 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     /// Imports at most 100 objects per atomic batch. The source file is never
     /// removed here. A failed decode, oversized record, source change or commit
     /// rolls back the batch and its progress; newer rows and tombstones win.
-    func migrateJSONBatch(source: URL, key: String, limit: Int = 100, decode: (Data) throws -> Record) throws -> MigrationProgress {
-        try migrateJSON(source: source, key: key, limit: limit, snapshot: false) { _, data in try decode(data) }
+    func migrateJSONBatch(source: URL, key: String, limit: Int = 100, decode: (Data) throws -> Record)
+        throws -> MigrationProgress
+    {
+        try migrateJSON(source: source, key: key, limit: limit, snapshot: false) { _, data in
+            try decode(data)
+        }
     }
 
     /// Streams either a legacy root array (named "records") or a snapshot with
     /// records/receipts arrays, in source order. Each batch shares one marker.
-    func migrateJSONSnapshotBatch(source: URL, key: String, limit: Int = 100, decode: (String, Data) throws -> Record) throws -> MigrationProgress {
+    func migrateJSONSnapshotBatch(
+        source: URL, key: String, limit: Int = 100, decode: (String, Data) throws -> Record
+    ) throws -> MigrationProgress {
         try migrateJSON(source: source, key: key, limit: limit, snapshot: true, decode: decode)
     }
 
-    private func migrateJSON(source: URL, key: String, limit: Int, snapshot: Bool, decode: (String, Data) throws -> Record) throws -> MigrationProgress {
-        guard Self.valid(key, maximum: 4096), (1...100).contains(limit) else { throw Failure.invalidPage }
+    private func migrateJSON(
+        source: URL, key: String, limit: Int, snapshot: Bool, decode: (String, Data) throws -> Record
+    ) throws -> MigrationProgress {
+        guard Self.valid(key, maximum: 4096), (1...100).contains(limit) else {
+            throw Failure.invalidPage
+        }
         return try transaction { database in
             var offset: Int64 = 0
             var processed: Int64 = 0
             var inserted: Int64 = 0
             var previousSource: String?
             var streamState = ""
-            let statement = try database.prepare("SELECT source,offset,processed,inserted,complete,stream_state FROM migrations WHERE id=?")
+            let statement = try database.prepare(
+                "SELECT source,offset,processed,inserted,complete,stream_state FROM migrations WHERE id=?")
             defer { sqlite3_finalize(statement) }
             try database.bind(key, to: statement, at: 1)
             if try database.step(statement) {
@@ -282,14 +533,21 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                 offset = sqlite3_column_int64(statement, 1)
                 processed = sqlite3_column_int64(statement, 2)
                 inserted = sqlite3_column_int64(statement, 3)
-                guard offset >= 0, processed >= 0, inserted >= 0, inserted <= processed else { throw Failure.invalidRecord }
-                if sqlite3_column_int(statement, 4) == 1 { return MigrationProgress(processed: processed, inserted: inserted, complete: true) }
+                guard offset >= 0, processed >= 0, inserted >= 0, inserted <= processed else {
+                    throw Failure.invalidRecord
+                }
+                if sqlite3_column_int(statement, 4) == 1 {
+                    return MigrationProgress(processed: processed, inserted: inserted, complete: true)
+                }
                 guard sqlite3_column_int(statement, 4) == 0 else { throw Failure.invalidRecord }
                 streamState = try database.text(statement, 5, maximum: 1024, allowEmpty: true)
             }
-            let stream = try HistoryJSONStream(url: source, maximumObjectBytes: Self.maximumRecordBytes, snapshot: snapshot)
+            let stream = try HistoryJSONStream(
+                url: source, maximumObjectBytes: Self.maximumRecordBytes, snapshot: snapshot)
             defer { stream.close() }
-            if let previousSource, previousSource != stream.identity { throw Failure.migrationSourceChanged }
+            if let previousSource, previousSource != stream.identity {
+                throw Failure.migrationSourceChanged
+            }
             try stream.resume(at: offset, state: streamState)
             var complete = false
             for _ in 0..<limit {
@@ -326,19 +584,23 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     /// Account history uses entry-level checkpoints even inside an oversized
     /// inbox object. Staging, promotion and parser progress share one transaction.
     func migrateReceiveJSONBatch(
-        source: URL, key: String, decode: (Data) throws -> Record, validateEntry: (ReceiveHistoryStream.Entry) throws -> Void,
+        source: URL, key: String, decode: (Data) throws -> Record,
+        validateEntry: (ReceiveHistoryStream.Entry) throws -> Void,
         promote: (Record, ReceiveHistoryStream.Entry) throws -> Void
     ) throws -> MigrationProgress {
         guard Self.valid(key, maximum: 1024) else { throw Failure.invalidRecord }
         return try transaction { database in
-            let statement = try database.prepare("SELECT source,stream_state,complete,processed,inserted,offset FROM migrations WHERE id=?")
+            let statement = try database.prepare(
+                "SELECT source,stream_state,complete,processed,inserted,offset FROM migrations WHERE id=?")
             defer { sqlite3_finalize(statement) }
             try database.bind(key, to: statement, at: 1)
             var state = ReceiveHistoryStream.State()
             var previous: String?
             if try database.step(statement) {
                 if sqlite3_column_int(statement, 2) == 1 {
-                    return MigrationProgress(processed: sqlite3_column_int64(statement, 3), inserted: sqlite3_column_int64(statement, 4), complete: true)
+                    return MigrationProgress(
+                        processed: sqlite3_column_int64(statement, 3),
+                        inserted: sqlite3_column_int64(statement, 4), complete: true)
                 }
                 previous = try database.text(statement, 0, maximum: 8192)
                 let saved = try database.text(statement, 1, maximum: 2_097_152, allowEmpty: true)
@@ -353,10 +615,12 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                     state = try JSONDecoder().decode(ReceiveHistoryStream.State.self, from: Data(saved.utf8))
                 }
             }
-            let sourceStream = try HistoryJSONStream(url: source, maximumObjectBytes: Self.maximumRecordBytes)
+            let sourceStream = try HistoryJSONStream(
+                url: source, maximumObjectBytes: Self.maximumRecordBytes)
             defer { sourceStream.close() }
             if let previous, previous != sourceStream.identity { throw Failure.migrationSourceChanged }
-            let parser = ReceiveHistoryStream(state: state, read: { try sourceStream.readRange(at: $0, count: $1) })
+            let parser = ReceiveHistoryStream(
+                state: state, read: { try sourceStream.readRange(at: $0, count: $1) })
             var budget = 32
             let beginning = parser.state.offset
             while budget > 0, parser.state.phase != "done", parser.state.offset - beginning < 262144 {
@@ -364,7 +628,8 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                     if let entry = try parser.next() {
                         let scope = "receive-stage|" + key + "|" + String(parser.state.objectStart)
                         try validateEntry(entry)
-                        try ReceiveHistoryStream.stageEntry(database, entry: entry, scope: scope, index: parser.state.staged)
+                        try ReceiveHistoryStream.stageEntry(
+                            database, entry: entry, scope: scope, index: parser.state.staged)
                         budget -= 1
                         continue
                     }
@@ -374,14 +639,17 @@ final class HistoryRecordDatabase: @unchecked Sendable {
                 let scope = "receive-stage|" + key + "|" + String(parser.state.objectStart)
                 if parser.state.parentID == nil {
                     try Self.validate(record)
-                    guard parser.state.processed < Int64.max, parser.state.inserted < Int64.max else { throw Failure.tooLarge }
+                    guard parser.state.processed < Int64.max, parser.state.inserted < Int64.max else {
+                        throw Failure.tooLarge
+                    }
                     parser.state.parentID = record.id
                     parser.state.processed += 1
                     if try database.importIfAbsent(record) { parser.state.inserted += 1 }
                     // Keep the immutable file/range identity alongside staged
                     // checkpoints; the original JSON is never rewritten.
                     try ReceiveHistoryStream.retainRange(
-                        database, scope: scope, identity: sourceStream.identity, url: source, start: parser.state.objectStart, end: parser.state.objectEnd)
+                        database, scope: scope, identity: sourceStream.identity, url: source,
+                        start: parser.state.objectStart, end: parser.state.objectEnd)
                     budget -= 1
                 } else if parser.state.parentID != record.id {
                     throw Failure.invalidRecord
@@ -406,17 +674,23 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             try database.check(sqlite3_bind_int64(save, 4, parser.state.processed))
             try database.check(sqlite3_bind_int64(save, 5, parser.state.inserted))
             try database.check(sqlite3_bind_int(save, 6, parser.state.phase == "done" ? 1 : 0))
-            try database.bind(String(decoding: try JSONEncoder().encode(parser.state), as: UTF8.self), to: save, at: 7)
+            try database.bind(
+                String(decoding: try JSONEncoder().encode(parser.state), as: UTF8.self), to: save, at: 7)
             _ = try database.step(save)
-            return MigrationProgress(processed: parser.state.processed, inserted: parser.state.inserted, complete: parser.state.phase == "done")
+            return MigrationProgress(
+                processed: parser.state.processed, inserted: parser.state.inserted,
+                complete: parser.state.phase == "done")
         }
     }
 
     /// SQLite copies the retained original inside its engine. Swift never loads
     /// it as a Data object; subsequent reads use the public incremental BLOB API.
-    @discardableResult func archiveReceiveBody(id: String, sourceID: String, scope: String) throws -> Bool {
+    @discardableResult func archiveReceiveBody(id: String, sourceID: String, scope: String) throws
+        -> Bool
+    {
         try synchronized {
-            let sql = "INSERT OR IGNORE INTO records(id,scope,kind,sort_created,body_bytes,body) SELECT ?,?,'source',0,body_bytes,body FROM records WHERE id=?"
+            let sql =
+                "INSERT OR IGNORE INTO records(id,scope,kind,sort_created,body_bytes,body) SELECT ?,?,'source',0,body_bytes,body FROM records WHERE id=?"
             let statement = try prepare(sql)
             defer { sqlite3_finalize(statement) }
             try bind(sourceID, to: statement, at: 1)
@@ -427,25 +701,40 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         }
     }
 
-    func withReceiveBody<T>(id: String, _ body: (String, @escaping (Int64, Int) throws -> Data) throws -> T) throws -> T {
+    func withReceiveBody<T>(
+        id: String, _ body: (String, @escaping (Int64, Int) throws -> Data) throws -> T
+    ) throws -> T {
         try synchronized {
-            let statement = try prepare("SELECT rowid,body_bytes,length(body),typeof(body) FROM records WHERE id=? AND kind='source'")
+            let statement = try prepare(
+                "SELECT rowid,body_bytes,length(body),typeof(body) FROM records WHERE id=? AND kind='source'"
+            )
             defer { sqlite3_finalize(statement) }
             try bind(id, to: statement, at: 1)
-            guard try step(statement), try text(statement, 3, maximum: 16) == "blob" else { throw Failure.invalidRecord }
+            guard try step(statement), try text(statement, 3, maximum: 16) == "blob" else {
+                throw Failure.invalidRecord
+            }
             let rowID = sqlite3_column_int64(statement, 0)
             let length = sqlite3_column_int64(statement, 1)
-            guard length >= 0, length <= Int64(Int32.max), length == sqlite3_column_int64(statement, 2), let connection else { throw Failure.invalidRecord }
+            guard length >= 0, length <= Int64(Int32.max), length == sqlite3_column_int64(statement, 2),
+                let connection
+            else { throw Failure.invalidRecord }
             var blob: OpaquePointer?
             try check(sqlite3_blob_open(connection, "main", "records", "body", rowID, 0, &blob))
             guard let blob else { throw Failure.invalidRecord }
             defer { sqlite3_blob_close(blob) }
             guard sqlite3_blob_bytes(blob) == Int32(length) else { throw Failure.invalidRecord }
-            return try body("sqlite|" + id + "|" + String(rowID) + "|" + String(length)) { offset, count in
-                guard offset >= 0, offset <= length, (1...65536).contains(count) else { throw Failure.invalidRecord }
+            return try body("sqlite|" + id + "|" + String(rowID) + "|" + String(length)) {
+                offset, count in
+                guard offset >= 0, offset <= length, (1...65536).contains(count) else {
+                    throw Failure.invalidRecord
+                }
                 let count = min(count, Int(length - offset))
                 var data = Data(count: count)
-                if count > 0 { try data.withUnsafeMutableBytes { try self.check(sqlite3_blob_read(blob, $0.baseAddress, Int32(count), Int32(offset))) } }
+                if count > 0 {
+                    try data.withUnsafeMutableBytes {
+                        try self.check(sqlite3_blob_read(blob, $0.baseAddress, Int32(count), Int32(offset)))
+                    }
+                }
                 return data
             }
         }
@@ -463,20 +752,26 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             let processed = sqlite3_column_int64(statement, 0)
             let inserted = sqlite3_column_int64(statement, 1)
             let complete = sqlite3_column_int(statement, 2)
-            guard processed >= 0, inserted >= 0, inserted <= processed, complete == 0 || complete == 1 else { throw Failure.invalidRecord }
+            guard processed >= 0, inserted >= 0, inserted <= processed, complete == 0 || complete == 1
+            else { throw Failure.invalidRecord }
             return MigrationProgress(processed: processed, inserted: inserted, complete: complete == 1)
         }
     }
 
-    private static func valid(_ value: String, maximum: Int) -> Bool { !value.isEmpty && value.utf8.count <= maximum && !value.utf8.contains(0) }
+    private static func valid(_ value: String, maximum: Int) -> Bool {
+        !value.isEmpty && value.utf8.count <= maximum && !value.utf8.contains(0)
+    }
 
     private static func validate(_ record: Record) throws {
-        guard valid(record.id, maximum: 4096), valid(record.scope, maximum: 4096), valid(record.kind, maximum: 128), record.created.isFinite else { throw Failure.invalidRecord }
+        guard valid(record.id, maximum: 4096), valid(record.scope, maximum: 4096),
+            valid(record.kind, maximum: 128), record.created.isFinite
+        else { throw Failure.invalidRecord }
         guard record.body.count <= maximumRecordBytes else { throw Failure.tooLarge }
     }
 
     private static func filters(scopes: [String], kinds: [String]) throws -> ([String], [String]) {
-        guard !scopes.isEmpty, !kinds.isEmpty, scopes.count <= 8, kinds.count <= 8, scopes.allSatisfy({ valid($0, maximum: 4096) }), kinds.allSatisfy({ valid($0, maximum: 128) })
+        guard !scopes.isEmpty, !kinds.isEmpty, scopes.count <= 8, kinds.count <= 8,
+            scopes.allSatisfy({ valid($0, maximum: 4096) }), kinds.allSatisfy({ valid($0, maximum: 128) })
         else { throw Failure.invalidPage }
         func normalized(_ values: [String]) -> [String] {
             var unique: [Data: String] = [:]
@@ -492,7 +787,9 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         return try body()
     }
 
-    private func withTransaction<T>(immediate: Bool, _ body: (HistoryRecordDatabase) throws -> T) throws -> T {
+    private func withTransaction<T>(immediate: Bool, _ body: (HistoryRecordDatabase) throws -> T)
+        throws -> T
+    {
         try synchronized {
             let depth = transactionDepth
             let savepoint = "history_\(depth)"
@@ -525,14 +822,17 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     }
 
     private func readRecord(_ id: String) throws -> Record? {
-        let statement = try prepare("SELECT id,scope,kind,sort_created,body_bytes,body FROM records WHERE id=?")
+        let statement = try prepare(
+            "SELECT id,scope,kind,sort_created,body_bytes,body FROM records WHERE id=?")
         defer { sqlite3_finalize(statement) }
         try bind(id, to: statement, at: 1)
         guard try step(statement) else { return nil }
         let count = sqlite3_column_int64(statement, 4)
         guard count >= 0, count <= Self.maximumRecordBytes else { throw Failure.tooLarge }
         let actual = sqlite3_column_bytes(statement, 5)
-        guard Int64(actual) == count, sqlite3_column_type(statement, 5) == SQLITE_BLOB else { throw Failure.invalidRecord }
+        guard Int64(actual) == count, sqlite3_column_type(statement, 5) == SQLITE_BLOB else {
+            throw Failure.invalidRecord
+        }
         let data: Data
         if actual == 0 {
             data = Data()
@@ -541,7 +841,8 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             data = Data(bytes: bytes, count: Int(actual))
         }
         let record = Record(
-            id: try text(statement, 0, maximum: 4096), scope: try text(statement, 1, maximum: 4096), kind: try text(statement, 2, maximum: 128),
+            id: try text(statement, 0, maximum: 4096), scope: try text(statement, 1, maximum: 4096),
+            kind: try text(statement, 2, maximum: 128),
             created: -sqlite3_column_double(statement, 3), body: data)
         try Self.validate(record)
         return record
@@ -553,7 +854,8 @@ final class HistoryRecordDatabase: @unchecked Sendable {
             sql =
                 "INSERT INTO records(id,scope,kind,sort_created,body_bytes,body) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET scope=excluded.scope,kind=excluded.kind,sort_created=excluded.sort_created,body_bytes=excluded.body_bytes,body=excluded.body"
         } else {
-            sql = "INSERT OR IGNORE INTO records(id,scope,kind,sort_created,body_bytes,body) SELECT ?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM tombstones WHERE id=?)"
+            sql =
+                "INSERT OR IGNORE INTO records(id,scope,kind,sort_created,body_bytes,body) SELECT ?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM tombstones WHERE id=?)"
         }
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
@@ -565,7 +867,9 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         if record.body.isEmpty {
             try check(sqlite3_bind_zeroblob(statement, 6, 0))
         } else {
-            try record.body.withUnsafeBytes { bytes in try check(sqlite3_bind_blob(statement, 6, bytes.baseAddress, Int32(bytes.count), transient)) }
+            try record.body.withUnsafeBytes { bytes in
+                try check(sqlite3_bind_blob(statement, 6, bytes.baseAddress, Int32(bytes.count), transient))
+            }
         }
         if !replacing { try bind(record.id, to: statement, at: 7) }
         _ = try step(statement)
@@ -579,7 +883,9 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         return statement
     }
 
-    private func check(_ result: Int32) throws { guard result == SQLITE_OK else { throw Failure.sqlite(result) } }
+    private func check(_ result: Int32) throws {
+        guard result == SQLITE_OK else { throw Failure.sqlite(result) }
+    }
 
     private func execute(_ sql: String) throws {
         guard let connection else { throw Failure.sqlite(SQLITE_MISUSE) }
@@ -594,21 +900,42 @@ final class HistoryRecordDatabase: @unchecked Sendable {
         }
     }
 
-    private func bind(_ value: String, to statement: OpaquePointer, at index: Int32) throws { try check(sqlite3_bind_text(statement, index, value, -1, transient)) }
+    private func bind(_ value: String, to statement: OpaquePointer, at index: Int32) throws {
+        try check(sqlite3_bind_text(statement, index, value, -1, transient))
+    }
 
-    private func text(_ statement: OpaquePointer, _ index: Int32, maximum: Int, allowEmpty: Bool = false) throws -> String {
-        guard sqlite3_column_type(statement, index) == SQLITE_TEXT, sqlite3_column_bytes(statement, index) <= maximum, let pointer = sqlite3_column_text(statement, index) else {
+    private func text(
+        _ statement: OpaquePointer, _ index: Int32, maximum: Int, allowEmpty: Bool = false
+    ) throws -> String {
+        guard sqlite3_column_type(statement, index) == SQLITE_TEXT,
+            sqlite3_column_bytes(statement, index) <= maximum,
+            let pointer = sqlite3_column_text(statement, index)
+        else {
             throw Failure.invalidRecord
         }
         let data = Data(bytes: pointer, count: Int(sqlite3_column_bytes(statement, index)))
-        guard let value = String(data: data, encoding: .utf8), (allowEmpty && value.isEmpty) || Self.valid(value, maximum: maximum) else { throw Failure.invalidRecord }
+        guard let value = String(data: data, encoding: .utf8),
+            (allowEmpty && value.isEmpty) || Self.valid(value, maximum: maximum)
+        else { throw Failure.invalidRecord }
         return value
+    }
+
+    private func blob(_ statement: OpaquePointer, _ index: Int32) throws -> Data {
+        let count = sqlite3_column_bytes(statement, index)
+        guard sqlite3_column_type(statement, index) == SQLITE_BLOB, count >= 0, count <= 32768 else {
+            throw Failure.tooLarge
+        }
+        guard count > 0 else { return Data() }
+        guard let bytes = sqlite3_column_blob(statement, index) else { throw Failure.invalidRecord }
+        return Data(bytes: bytes, count: Int(count))
     }
 
     private func integer(_ sql: String, strings: [String] = []) throws -> Int64 {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
-        for (index, string) in strings.enumerated() { try bind(string, to: statement, at: Int32(index + 1)) }
+        for (index, string) in strings.enumerated() {
+            try bind(string, to: statement, at: Int32(index + 1))
+        }
         guard try step(statement) else { throw Failure.sqlite(SQLITE_ERROR) }
         return sqlite3_column_int64(statement, 0)
     }
@@ -616,7 +943,9 @@ final class HistoryRecordDatabase: @unchecked Sendable {
     private func run(_ sql: String, strings: [String]) throws {
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
-        for (index, string) in strings.enumerated() { try bind(string, to: statement, at: Int32(index + 1)) }
+        for (index, string) in strings.enumerated() {
+            try bind(string, to: statement, at: Int32(index + 1))
+        }
         _ = try step(statement)
     }
 }

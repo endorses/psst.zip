@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -40,6 +41,10 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
+	if _, err := db.Exec(`UPDATE history_sync_state SET generation=? WHERE id=1`, uuid.NewString()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("rotate history generation: %w", err)
+	}
 	return db, nil
 }
 

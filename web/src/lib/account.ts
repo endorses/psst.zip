@@ -1,3 +1,4 @@
+import { notifyHistoryMutation } from "./history-notifications.ts";
 import { apiErrorMessage } from "./api-error.ts";
 import { message as m, LocalizedError, type DisplayText } from "./i18n/index.ts";
 import {
@@ -23,6 +24,9 @@ export interface Session {
   current: boolean;
 }
 export interface Resource {
+  revision?: number;
+  history_after?: string;
+  history_after_kind?: string;
   id: string;
   title?: string | null;
   inactive_reason?: string | null;
@@ -73,10 +77,12 @@ export function receivedFileCount(resource: Resource): number | null {
 export class AccountError extends LocalizedError {
   status: number;
   code?: string;
-  constructor(status: number, message: DisplayText, code?: string) {
+  retryAfterMs?: number;
+  constructor(status: number, message: DisplayText, code?: string, retryAfterMs?: number) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 /** Stop reading at the byte boundary, including chunked or untrusted error responses. */
@@ -147,9 +153,19 @@ export async function accountRequest<T>(
         resourceLimitError(code)?.presentation ||
         apiErrorMessage(response.status, code),
       code,
+      parseRetryAfter(response.headers.get("Retry-After")),
     );
   }
-  return response.status === 204
-    ? (undefined as T)
-    : (JSON.parse(await accountBody(response, maxResponseBytes)) as T);
+  const result =
+    response.status === 204
+      ? (undefined as T)
+      : (JSON.parse(await accountBody(response, maxResponseBytes)) as T);
+  if (method !== "GET" && /^\/(transfers|slots)\//.test(path)) notifyHistoryMutation();
+  return result;
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const delay = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - Date.now();
+  return Number.isSafeInteger(delay) && delay >= 0 ? delay : undefined;
 }

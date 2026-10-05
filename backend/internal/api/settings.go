@@ -14,6 +14,7 @@ const encryptedChunkSize int64 = 4 * 1024 * 1024
 const encryptedChunkOverhead int64 = 60
 
 type serverSettings struct {
+	HistorySyncVersion    int                     `json:"history_sync_version"`
 	AbuseContactEmail     string                  `json:"abuse_contact_email"`
 	TrafficPolicy         database.TrafficPolicy  `json:"traffic_policy"`
 	PublicTransfersPaused bool                    `json:"public_transfers_paused"`
@@ -50,7 +51,7 @@ func (s *Server) settings() (serverSettings, error) {
 		return serverSettings{}, err
 	}
 	policy, err := s.queries.ResourcePolicy()
-	return serverSettings{AbuseContactEmail: email, TrafficPolicy: traffic, PublicTransfersPaused: state.PublicTransfersPaused, MaxFileSize: value, MaxFileSizeCeiling: ceiling, ResourcePolicy: policy}, err
+	return serverSettings{HistorySyncVersion: 1, AbuseContactEmail: email, TrafficPolicy: traffic, PublicTransfersPaused: state.PublicTransfersPaused, MaxFileSize: value, MaxFileSizeCeiling: ceiling, ResourcePolicy: policy}, err
 }
 
 func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {

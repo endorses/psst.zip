@@ -2,6 +2,7 @@ package zip.psst.shared.api
 
 import zip.psst.shared.model.LinkTitle
 import zip.psst.shared.model.UrlHelper
+import kotlin.time.Instant
 import kotlinx.serialization.json.*
 
 /** A page is never a complete account inventory, including a page with no rows. */
@@ -9,6 +10,18 @@ internal fun decodeResourcePage(body: JsonObject, after: String?, limit: Int): A
     require(body["paginated"] == JsonPrimitive(true) && body.containsKey("next_cursor")) {
         "This server does not support bounded History pages"
     }
+    val sync = body["sync_cursor"]
+    val generation = body["generation"]
+    require(
+        (sync == null && generation == null) ||
+            (sync is JsonPrimitive &&
+                sync.isString &&
+                validInboxCursor(sync.content) &&
+                sync.content.isNotEmpty() &&
+                generation is JsonPrimitive &&
+                generation.isString &&
+                UrlHelper.isResourceId(generation.content))
+    )
     val rawNext = body.getValue("next_cursor")
     require(rawNext == JsonNull || (rawNext is JsonPrimitive && rawNext.isString))
     val next = if (rawNext == JsonNull) null else rawNext.jsonPrimitive.content
@@ -34,6 +47,33 @@ internal fun decodeResourcePage(body: JsonObject, after: String?, limit: Int): A
     for ((kind, rows) in listOf("transfer" to transfers, "slot" to slots)) {
         for (raw in rows) {
             val row = raw.jsonObject
+            for (name in listOf("history_after", "history_after_kind")) row[name]?.let {
+                require(
+                    it is JsonPrimitive &&
+                        it.isString &&
+                        it.content.isNotEmpty() &&
+                        validInboxCursor(it.content)
+                )
+            }
+            if (sync != null || row.containsKey("revision")) historyRevision(row["revision"])
+            for (name in listOf("created_at", "expires_at", "downloaded_at")) {
+                val value = row[name]
+                if (value != null && value != JsonNull) {
+                    require(
+                        value is JsonPrimitive && value.isString && value.content.length in 1..64
+                    )
+                    Instant.parse(value.content)
+                }
+            }
+            if (sync != null) require(row["created_at"] != null && row["created_at"] != JsonNull)
+            row["inactive_reason"]
+                ?.takeIf { it != JsonNull }
+                ?.let { require(it is JsonPrimitive && it.isString && it.content.length <= 64) }
+            row["files"]?.let {
+                require(it is JsonArray && it.isEmpty()) { "History must not embed file payloads" }
+            }
+            if (row.containsKey("download_count"))
+                require(requireNotNull(row.number("download_count")) <= Int.MAX_VALUE)
             row["title"]
                 ?.takeIf { it != JsonNull }
                 ?.let { title ->

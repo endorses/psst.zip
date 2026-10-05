@@ -30,7 +30,9 @@
   import AccountUsage from "$lib/components/AccountUsage.svelte";
   import AccountTraffic from "$lib/components/AccountTraffic.svelte";
   import IncidentConfirmDialog from "$lib/components/IncidentConfirmDialog.svelte";
-  import { loadResourcePage, loadUsersPage, HISTORY_PREVIOUS_WINDOW } from "$lib/resource-history";
+  import { loadUsersPage, HISTORY_PREVIOUS_WINDOW } from "$lib/resource-history";
+  import { HistoryController } from "$lib/history-controller";
+  import { historyScope } from "$lib/history-cache";
   import { resourceFileCount, receivedFileCount } from "$lib/account";
   import ScanPanel from "$lib/components/ScanPanel.svelte";
   import Icon from "$lib/components/Icon.svelte";
@@ -232,7 +234,10 @@
     historyPage = $state(1),
     historyError = $state<DisplayText>("");
   let historyGeneration = 0;
-  let historyRequest: AbortController | null = null;
+  let historyController: HistoryController | null = null;
+  let historySelection = "";
+  let pendingHistoryTurn: { cursor: string; direction: "next" | "previous" | "first" } | null =
+    null;
   let receiveUrl = $state(""),
     receiveId = $state("");
   const receiveTitle = $derived(
@@ -280,10 +285,6 @@
           }
           if (user.must_change_password) {
             liveMessage = "";
-          }
-          if (!user.must_change_password && tab === "History" && !historyLoading) {
-            if (!(await refreshHistory(owner)))
-              throw new LocalizedError(m("couldNotRefreshHistory"));
           }
           if (
             !user.must_change_password &&
@@ -337,6 +338,7 @@
     }
     timerPoll = setTimeout(poll, 3000);
     function resume() {
+      historyController?.visibility(!document.hidden);
       if (!document.hidden && !polling) {
         clearTimeout(timerPoll);
         void poll();
@@ -353,7 +355,7 @@
     const timer = setInterval(() => (now = Date.now()), 1000);
     return () => {
       historyGeneration++;
-      historyRequest?.abort();
+      historyController?.dispose();
       receiveGeneration++;
       receiveRequest?.abort();
       stopped = true;
@@ -378,6 +380,9 @@
       if (owner !== epoch) return;
       user = account;
       loadAccount();
+      // Authentication has completed; History may now show cached rows while
+      // its cancellable metadata refresh is still awaiting the network.
+      loading = false;
       await select(routeTab(), false);
     } catch (err) {
       if (owner !== epoch) return;
@@ -404,84 +409,88 @@
     cursor = historyCursor,
     direction?: "next" | "previous" | "first",
   ) {
-    if (owner !== epoch || tab !== "History") return true;
-    const previousCursor = historyCursor,
-      account = user?.id,
-      generation = ++historyGeneration;
-    historyRequest?.abort();
-    const controller = new AbortController();
-    historyRequest = controller;
-    const current = () =>
-      owner === epoch &&
-      account === user?.id &&
-      tab === "History" &&
-      generation === historyGeneration &&
-      previousCursor === historyCursor;
-    historyLoading = true;
-    try {
-      const selectedFilter = historyFilter;
-      const result = await loadResourcePage(
-        cursor,
-        false,
-        controller.signal,
-        selectedFilter === "transfers"
-          ? "transfer"
-          : selectedFilter === "slots"
-            ? "slot"
-            : undefined,
-      );
-      if (selectedFilter !== historyFilter) return true;
-      if (!current()) return true;
-      let local: LocalHistoryPage | null = null;
-      try {
-        local = await loadLocalHistory(
-          account!,
-          [
-            ...result.transfers.map((item) => ({ kind: "transfers" as const, id: item.id })),
-            ...result.slots.map((item) => ({ kind: "slots" as const, id: item.id })),
-          ],
-          controller.signal,
-        );
-      } catch {
-        if (controller.signal.aborted) return true;
-      }
-      if (!current()) return true;
-      if (
-        direction === "next" &&
-        result.next_cursor &&
-        (result.next_cursor === historyCursor || historyPrevious.includes(result.next_cursor))
-      )
-        throw new LocalizedError(m("thisServerReturnedARepeatedHistoryPageRefreshOr"));
-      if (direction) {
-        historyPrevious =
-          direction === "next"
-            ? [...historyPrevious, historyCursor].slice(-HISTORY_PREVIOUS_WINDOW)
-            : direction === "previous"
-              ? historyPrevious.slice(0, -1)
-              : [];
-        historyPage =
-          direction === "next" ? historyPage + 1 : direction === "previous" ? historyPage - 1 : 1;
-        historyCursor = cursor;
-      }
-      historyNext = result.next_cursor;
-      transfers = result.transfers;
-      slots = result.slots;
-      links = local?.links ?? {};
-      labels = local?.labels ?? {};
-      if (!localRetry)
-        localHistoryWarning = local ? "" : m("localLinksAndNamesCouldNotBeLoadedExisting");
-      historyError = "";
-    } catch (cause) {
-      if (!current()) return true;
-      if (cause instanceof AccountError && cause.status === 401) {
-        clearAccount(true);
-        error = m("yourSessionEndedSignInAgain");
-      } else historyError = message(cause);
-      return false;
-    } finally {
-      if (generation === historyGeneration) historyLoading = false;
+    if (owner !== epoch || tab !== "History" || !user) return true;
+    const account = user.id;
+    if (!historyController) {
+      historyController = new HistoryController({
+        scope: historyScope(location.origin, account),
+        busy: (value) => {
+          if (owner === epoch) historyLoading = value;
+        },
+        error: (cause) => {
+          if (owner !== epoch || user?.id !== account || tab !== "History") return;
+          if (cause instanceof AccountError && cause.status === 401) {
+            clearAccount(true);
+            error = m("yourSessionEndedSignInAgain");
+          } else historyError = message(cause);
+        },
+        page: async (result) => {
+          const revision = historyGeneration,
+            turn = pendingHistoryTurn;
+          let local: LocalHistoryPage | null = null;
+          try {
+            local = await loadLocalHistory(account, [
+              ...result.transfers.map((item) => ({ kind: "transfers" as const, id: item.id })),
+              ...result.slots.map((item) => ({ kind: "slots" as const, id: item.id })),
+            ]);
+          } catch {
+            /* Server metadata remains usable without private storage. */
+          }
+          if (
+            owner !== epoch ||
+            user?.id !== account ||
+            tab !== "History" ||
+            revision !== historyGeneration
+          )
+            return;
+          if (turn && turn === pendingHistoryTurn) {
+            if (
+              turn.direction === "next" &&
+              result.next_cursor &&
+              (result.next_cursor === historyCursor || historyPrevious.includes(result.next_cursor))
+            )
+              throw new LocalizedError(m("thisServerReturnedARepeatedHistoryPageRefreshOr"));
+            historyPrevious =
+              turn.direction === "next"
+                ? [...historyPrevious, historyCursor].slice(-HISTORY_PREVIOUS_WINDOW)
+                : turn.direction === "previous"
+                  ? historyPrevious.slice(0, -1)
+                  : [];
+            historyPage =
+              turn.direction === "next"
+                ? historyPage + 1
+                : turn.direction === "previous"
+                  ? historyPage - 1
+                  : 1;
+            historyCursor = turn.cursor;
+            pendingHistoryTurn = null;
+          }
+          historyNext = result.next_cursor;
+          if (JSON.stringify(transfers) !== JSON.stringify(result.transfers))
+            transfers = result.transfers;
+          if (JSON.stringify(slots) !== JSON.stringify(result.slots)) slots = result.slots;
+          links = local?.links ?? {};
+          labels = local?.labels ?? {};
+          if (!localRetry)
+            localHistoryWarning = local ? "" : m("localLinksAndNamesCouldNotBeLoadedExisting");
+          historyError = "";
+        },
+      });
+      historyController.visibility(!document.hidden);
     }
-    return true;
+    const filter =
+      historyFilter === "transfers" ? "transfer" : historyFilter === "slots" ? "slot" : undefined;
+    const selection = `${filter ?? ""}:${cursor}`;
+    if (!direction && selection === historySelection) return historyController.refresh();
+    historyGeneration++;
+    pendingHistoryTurn = direction ? { cursor, direction } : null;
+    historySelection = selection;
+    const result = await historyController.enter(filter, cursor);
+    if (!result && pendingHistoryTurn) {
+      pendingHistoryTurn = null;
+      historySelection = "";
+    }
+    return result;
   }
   async function turnHistory(direction: "next" | "previous" | "first") {
     if (historyLoading) return;
@@ -698,7 +707,10 @@
     transfers = [];
     slots = [];
     historyGeneration++;
-    historyRequest?.abort();
+    historyController?.dispose();
+    historyController = null;
+    historySelection = "";
+    pendingHistoryTurn = null;
     historyPage = 1;
     historyError = "";
     historyCursor = "";
@@ -891,7 +903,9 @@
     }
     if (tab === "History" && next !== "History") {
       historyGeneration++;
-      historyRequest?.abort();
+      historyController?.stop();
+      historySelection = "";
+      pendingHistoryTurn = null;
       historyLoading = false;
     }
     tab = next;
@@ -1069,6 +1083,7 @@
       links = { ...links };
       pendingDelete = null;
       notice = m("linkRevokedAndServerFilesDeleted");
+      historyController?.mutation();
     });
   }
   async function changePassword(current: string, replacement: string) {
@@ -1117,6 +1132,7 @@
       }
       if (owner === epoch && user?.id === account && renameId === id && renameKind === kind)
         renameId = "";
+      historyController?.mutation();
     });
   }
   async function filterHistory(event: Event) {

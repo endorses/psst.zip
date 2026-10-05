@@ -71,6 +71,7 @@ def expression(s, i):
 NON_UI = {
     "init(coder:) is not supported",
     "BEGIN IMMEDIATE",
+    "EEE, dd MMM yyyy HH:mm:ss zzz",  # HTTP Retry-After protocol date, never UI.
     "Bearer ",
     "retained in immutable original JSON range",
 }

@@ -38,6 +38,9 @@ func (w *Worker) sweepContext(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	if err := w.queries.PruneHistoryChanges(ctx, time.Now()); err != nil {
+		log.Print("cleanup: history synchronization retention failed")
+	}
 	if _, err := w.queries.PruneSecurityEvents(time.Now()); err != nil {
 		log.Print("cleanup: security activity retention failed")
 	}

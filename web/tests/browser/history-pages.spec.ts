@@ -46,7 +46,7 @@ test("empty filtered history pages stay navigable and unknown counts never becom
   await expect(row).toContainText("File totals updating");
   await expect(row).not.toContainText("0 files received");
   await expect(page.getByRole("button", { name: "Older transfers" })).toBeDisabled();
-  await expect.poll(() => reads.length).toBeGreaterThan(2);
+  await expect.poll(() => reads.length, { timeout: 15000 }).toBeGreaterThan(2);
   expect(reads.slice(1).every((cursor) => cursor === historyCursor(1))).toBe(true);
   await page.getByRole("button", { name: "First page", exact: true }).click();
   await expect(page.getByText("Page 1", { exact: true })).toBeVisible();

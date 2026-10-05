@@ -14,6 +14,7 @@ class ServerLimits(
     @SerialName("max_file_size_ceiling") val maxFileSizeCeiling: Long,
     @SerialName("traffic_policy") val trafficPolicy: TrafficPolicy? = null,
     @SerialName("abuse_contact_email") val abuseContactEmail: String = "",
+    @SerialName("history_sync_version") val historySyncVersion: Int = 0,
 )
 
 class LimitsApi(private val client: HttpClient, private val config: ServerConfig) {
@@ -21,6 +22,10 @@ class LimitsApi(private val client: HttpClient, private val config: ServerConfig
     @Throws(Exception::class)
     suspend fun get(): ServerLimits {
         val response = client.get("${config.apiBaseUrl}/config") { expectSuccess = false }
+        if (response.status.value == 429)
+            throw HistorySyncRateLimitedException(
+                historyRetryAfterSeconds(response.headers["Retry-After"])
+            )
         require(response.status.value == 200) { "Could not read the server's file limit" }
         val limits = response.readControlJson<ServerLimits>(maxBytes = 64 * 1024)
         require(

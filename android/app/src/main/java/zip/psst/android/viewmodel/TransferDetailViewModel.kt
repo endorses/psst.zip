@@ -5,7 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
 import zip.psst.android.R
+import zip.psst.android.data.accountHistoryMetadata
 import zip.psst.android.data.refreshHistoryEntry
+import zip.psst.android.data.syncScope
 import zip.psst.android.i18n.*
 import zip.psst.shared.model.UrlHelper
 import java.time.Instant
@@ -74,7 +76,34 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
         loadJob =
             viewModelScope.launch {
                 val dao = app.database.transferHistoryDao()
-                val row = dao.getById(transferId)
+                val privateRow = dao.getById(transferId)?.takeIf { access.permits(it) }
+                val row =
+                    privateRow
+                        ?: if (
+                            access.accountId != null &&
+                                !access.isAdmin &&
+                                !access.mustChangePassword
+                        ) {
+                            val kind =
+                                if (type in listOf("receive", "received")) "slot" else "transfer"
+                            app.database
+                                .historySyncDao()
+                                .fact(access.syncScope(), kind, transferId)
+                                ?.takeUnless { it.removed }
+                                ?.let { fact ->
+                                    try {
+                                        accountHistoryMetadata(
+                                                zip.psst.shared.api.decodeCachedHistoryResources(
+                                                    fact.body
+                                                ),
+                                                access,
+                                            )
+                                            .firstOrNull()
+                                    } catch (_: Exception) {
+                                        null
+                                    }
+                                }
+                        } else null
                 if (
                     row == null || !access.permits(row) || app.prefs.historyAccess.value != access
                 ) {

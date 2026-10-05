@@ -116,6 +116,7 @@ var migrations = []string{
 	orphanMigration(),
 	inboxTotalsMigration(),
 	`ALTER TABLE transfers ADD COLUMN title TEXT CHECK(title IS NULL OR length(CAST(title AS BLOB))<=800); ALTER TABLE slots ADD COLUMN title TEXT CHECK(title IS NULL OR length(CAST(title AS BLOB))<=800)`,
+	historySyncMigration(),
 }
 
 func runMigrations(db *sql.DB) error {

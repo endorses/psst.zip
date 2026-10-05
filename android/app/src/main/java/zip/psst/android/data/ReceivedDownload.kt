@@ -41,6 +41,7 @@ internal suspend fun acknowledgeSavedDownload(client: ApiClient, transferId: Str
     withTimeoutOrNull(1_500L) {
         try {
             client.transfers.acknowledgeDownload(transferId)
+            HistoryNotifications.changed(client.config.normalizedBaseUrl)
             true
         } catch (e: CancellationException) {
             throw e

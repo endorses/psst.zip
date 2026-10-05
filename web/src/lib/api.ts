@@ -1,3 +1,4 @@
+import { notifyHistoryMutation } from "./history-notifications.ts";
 import { ApiError } from "./api-error.ts";
 import { message as m, LocalizedError } from "./i18n/index.ts";
 import { TrafficLimitError, trafficLimitError, detectTransferStop } from "./traffic-policy.ts";
@@ -71,11 +72,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw await responseError(res, signal);
   }
-  return JSON.parse(
+  const result = JSON.parse(
     new TextDecoder("utf-8", { fatal: true }).decode(
       await readBounded(res, 128 * 1024, undefined, signal),
     ),
   ) as T;
+  if (init?.method && init.method !== "GET") notifyHistoryMutation();
+  return result;
 }
 
 async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
@@ -88,6 +91,7 @@ async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
   if (!res.ok) {
     throw await responseError(res, init?.signal);
   }
+  if (init?.method && init.method !== "GET") notifyHistoryMutation();
   return res;
 }
 

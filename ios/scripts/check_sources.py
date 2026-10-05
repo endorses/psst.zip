@@ -170,6 +170,21 @@ assert "PasswordReplacementPolicy.valid" in read(
 )
 assert "preservingLocalName" in read("Shared/TransferHistoryStore.swift")
 assert "history.rename" in read("Psst/Views/HistoryView.swift")
+history_view = read("Psst/Views/HistoryView.swift")
+routine_task = history_view[
+    history_view.index('.task(id: "\\(visible)') : history_view.index(
+        ".onChange(of: scenePhase)"
+    )
+]
+assert "await page.refresh(history: history, session: session)" in routine_task
+assert "await refresh()" not in routine_task and "working" not in routine_task
+assert "!deviceMode" in routine_task and "session.canTransfer" in routine_task
+manual_refresh = history_view[
+    history_view.index("private func refresh()") : history_view.index(
+        "private func revoke("
+    )
+]
+assert "guard !working" in manual_refresh
 assert "localName: receiveName" in read("Psst/Views/HomeView.swift")
 for name in (
     "testHistoryMigrationPersistenceAndRefreshKeepLocalNameWithoutTypeCollision",

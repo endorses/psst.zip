@@ -11,10 +11,14 @@ suspend fun revokeHistoryEntry(
     dao: TransferHistoryDao,
     id: String,
     currentAccess: () -> HistoryAccess,
+    metadata: TransferHistoryEntity? = null,
     clientFactory: (ServerConfig) -> ApiClient = { ApiClient(it) },
 ) {
-    val row = dao.getById(id) ?: return
     val access = currentAccess()
+    val stored = dao.getById(id)
+    val row =
+        if (metadata != null && stored?.let(access::permits) != true) metadata else stored ?: return
+    require(row.id == id)
     uiRequire(access.permits(row)) {
         message(R.string.l_this_history_entry_belongs_to_another_account_or_server_132262)
     }
@@ -33,7 +37,7 @@ suspend fun revokeHistoryEntry(
         uiRequire(currentAccess() == access) {
             message(R.string.l_your_account_changed_open_history_again_a10d12)
         }
-        dao.delete(id)
+        if (stored == row) dao.delete(id)
     } catch (error: LinkDeletionException) {
         if (
             row.accountId == null &&

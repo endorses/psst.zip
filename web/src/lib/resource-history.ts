@@ -11,6 +11,8 @@ export interface ResourcePage {
   slots: Resource[];
   paginated: true;
   next_cursor: string | null;
+  sync_cursor?: string;
+  generation?: string;
 }
 const invalidPage = () =>
   new LocalizedError(m("thisServerReturnedAnUnsupportedResourcePageRefreshOr"));
@@ -20,8 +22,9 @@ const timestamp = (value: unknown): value is string =>
   typeof value === "string" &&
   /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(value) &&
   Number.isFinite(Date.parse(value));
-function validResource(value: unknown, slot: boolean): value is Resource {
+export function validHistoryResource(value: unknown, slot: boolean): value is Resource {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 16 * 1024) return false;
   const r = value as Record<string, unknown>;
   if (
     typeof r.id !== "string" ||
@@ -84,6 +87,12 @@ function validResource(value: unknown, slot: boolean): value is Resource {
     (r.completed_at !== undefined && r.completed_at !== null && !timestamp(r.completed_at))
   )
     return false;
+  if (r.revision !== undefined && !nonnegative(r.revision)) return false;
+  if (
+    (r.history_after !== undefined && !validInboxCursor(r.history_after)) ||
+    (r.history_after_kind !== undefined && !validInboxCursor(r.history_after_kind))
+  )
+    return false;
   return true;
 }
 export function validateResourcePage(value: unknown, after = ""): ResourcePage {
@@ -93,11 +102,18 @@ export function validateResourcePage(value: unknown, after = ""): ResourcePage {
     result.paginated !== true ||
     !Array.isArray(result.transfers) ||
     !Array.isArray(result.slots) ||
+    ((result.sync_cursor !== undefined || result.generation !== undefined) &&
+      (!validInboxCursor(result.sync_cursor) ||
+        typeof result.generation !== "string" ||
+        !inboxUUID.test(result.generation) ||
+        ![...(result.transfers ?? []), ...(result.slots ?? [])].every((r) =>
+          nonnegative(r.revision),
+        ))) ||
     result.transfers.length + result.slots.length > HISTORY_PAGE_SIZE ||
     (result.next_cursor !== null &&
       (!validInboxCursor(result.next_cursor) || result.next_cursor === after)) ||
-    !result.transfers.every((item) => validResource(item, false)) ||
-    !result.slots.every((item) => validResource(item, true)) ||
+    !result.transfers.every((item) => validHistoryResource(item, false)) ||
+    !result.slots.every((item) => validHistoryResource(item, true)) ||
     new Set([
       ...result.transfers.map((t) => `transfer:${t.id}`),
       ...result.slots.map((t) => `slot:${t.id}`),
@@ -113,6 +129,7 @@ export async function loadResourcePage(
   all = false,
   signal?: AbortSignal,
   kind?: "transfer" | "slot",
+  maxResponseBytes = 64 * 1024,
 ): Promise<ResourcePage> {
   if (after && !validInboxCursor(after)) throw invalidPage();
   const query = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE) });
@@ -125,7 +142,7 @@ export async function loadResourcePage(
     "GET",
     undefined,
     signal ? AbortSignal.any([signal, timeout]) : timeout,
-    64 * 1024,
+    maxResponseBytes,
   );
   const page = validateResourcePage(result, after);
   if ((kind === "transfer" && page.slots.length) || (kind === "slot" && page.transfers.length))

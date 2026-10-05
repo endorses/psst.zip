@@ -25,6 +25,7 @@ type ResourcePolicy struct {
 }
 
 type ResourceUsage struct {
+	HistoryMetadataBytes  int64 `json:"history_metadata_bytes"`
 	OccupiedBytesEstimate bool  `json:"occupied_bytes_estimate"`
 	ReservedBytes         int64 `json:"reserved_bytes"`
 	OccupiedBytes         int64 `json:"occupied_bytes"`
@@ -111,6 +112,14 @@ func readUsage(q rowQuery, owner string) (ResourceUsage, error) {
 	}
 	u := ResourceUsage{OccupiedBytesEstimate: true}
 	err := q.QueryRow(`SELECT COALESCE(SUM(reserved_bytes),0),COALESCE(SUM(occupied_bytes),0),COALESCE(SUM(files),0),COALESCE(SUM(transfers),0),COALESCE(SUM(slots),0) FROM resource_usage`+where, args...).Scan(&u.ReservedBytes, &u.OccupiedBytes, &u.Files, &u.Transfers, &u.Slots)
+	if err == nil {
+		// Fixed conservative row/index estimates; payload reservations remain separate.
+		if owner == "" {
+			err = q.QueryRow(`SELECT event_count*512+(SELECT COUNT(*) FROM history_sync_revisions)*128+(SELECT COUNT(*) FROM history_sync_private_transfers)*128+(SELECT COUNT(*) FROM history_sync_accounts)*128+4096 FROM history_sync_state WHERE id=1`).Scan(&u.HistoryMetadataBytes)
+		} else {
+			err = q.QueryRow(`SELECT COALESCE((SELECT event_count*512+128 FROM history_sync_accounts WHERE owner_id=?),0)+(SELECT COUNT(*) FROM transfers WHERE owner_id=?)*128+(SELECT COUNT(*) FROM slots WHERE owner_id=?)*128`, owner, owner, owner).Scan(&u.HistoryMetadataBytes)
+		}
+	}
 	return u, err
 }
 func (q *Queries) ResourceUsage(owner string) (ResourceUsage, error) { return readUsage(q.db, owner) }

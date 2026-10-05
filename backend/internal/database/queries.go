@@ -493,6 +493,11 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 		}
 		return ErrSlotQuota
 	}
+	// The deferred foreign key lets the journal know this identity is private
+	// before creation triggers run, without changing account allocation checks.
+	if _, err = tx.Exec(`INSERT INTO history_sync_private_transfers(transfer_id) VALUES(?)`, id); err != nil {
+		return ResourceError(err)
+	}
 	result, err := tx.Exec(`INSERT INTO transfers (id, status, expires_at, max_downloads, delete_token_hash,owner_id)
  SELECT ?, 'pending', ?, ?, ?,owner_id FROM slots WHERE id = ? AND status != 'revoked'`, id, expiresAt.UTC(), maxDownloads, hash, slotID)
 	if err != nil {

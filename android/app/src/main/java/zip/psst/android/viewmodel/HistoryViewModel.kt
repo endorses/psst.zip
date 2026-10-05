@@ -3,6 +3,7 @@ package zip.psst.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import zip.psst.android.PsstApplication
 import zip.psst.android.R
 import zip.psst.android.data.*
@@ -17,13 +18,15 @@ import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthResources
 import zip.psst.shared.api.AuthenticationRequiredException
+import zip.psst.shared.api.HistorySyncRateLimitedException
+import zip.psst.shared.api.HistorySyncResetRequiredException
 import zip.psst.shared.api.LinkDeletionException
 import zip.psst.shared.api.PasswordChangeRequiredException
 import zip.psst.shared.model.ServerConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class HistoryDeletionError(val id: String, val message: UiText)
 
@@ -52,6 +56,28 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     private val app = application as PsstApplication
     private val dao = app.database.transferHistoryDao()
+    private val syncCache = app.database.historySyncDao()
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val retryGate = HistoryNotifications.retryGate
+    private val snapshotAnchors =
+        java.util.Collections.synchronizedMap(LinkedHashMap<String, String>())
+
+    private fun anchorKey(access: HistoryAccess, kind: String, cursor: String) =
+        "${access.syncScope()}|$kind|$cursor"
+
+    private fun rememberAnchor(
+        access: HistoryAccess,
+        kind: String,
+        cursor: String?,
+        anchor: String?,
+    ) {
+        if (cursor == null || anchor == null) return
+        synchronized(snapshotAnchors) {
+            snapshotAnchors[anchorKey(access, kind, cursor)] = anchor
+            while (snapshotAnchors.size > 200) snapshotAnchors.remove(snapshotAnchors.keys.first())
+        }
+    }
+
     private val downloads = GuestDownloadStore(app)
     val filter = MutableStateFlow("all")
     val deviceRows = MutableStateFlow<List<HistoryRow>>(emptyList())
@@ -209,7 +235,25 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                             ids.isEmpty()
                     )
                         flowOf(emptyList())
-                    else dao.observePage(ids, access.serverUrl, access.accountId)
+                    else
+                        dao.observePage(ids, access.serverUrl, access.accountId).map { rows ->
+                            val now = System.currentTimeMillis()
+                            val privateById = rows.associateBy { it.id }
+                            accountHistoryMetadata(requireNotNull(state.page), access).map {
+                                incoming ->
+                                val row =
+                                    mergeAccountResource(privateById[incoming.id], incoming, access)
+                                        ?: incoming
+                                if (
+                                    row.expiresAt != null &&
+                                        row.expiresAt <= now &&
+                                        row.status !in
+                                            listOf("exhausted", "unavailable", "expired", "revoked")
+                                )
+                                    row.copy(status = "expired")
+                                else row
+                            }
+                        }
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -231,9 +275,20 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
+            HistoryNotifications.changes.collect { mutation ->
+                if (
+                    visible &&
+                        !_deviceHistory.value &&
+                        mutation.matches(app.prefs.historyAccess.value)
+                )
+                    startPolling()
+            }
+        }
+        viewModelScope.launch {
             app.prefs.historyAccess.collect { access ->
                 if (access == activeAccess) return@collect
                 activeAccess = access
+                snapshotAnchors.clear()
                 refreshJob?.cancel()
                 revision++
                 _pageState.value = AccountHistoryPageState()
@@ -267,7 +322,15 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     if (entry.type == "received") client.slots.renameTitle(entry.id, normalized)
                     else client.transfers.renameTitle(entry.id, normalized)
                 if (app.prefs.historyAccess.value != access) return@launch
-                dao.saveSharedTitle(entry.id, entry.accountId, entry.originScope, result.title)
+                app.database.withTransaction {
+                    dao.saveSharedTitle(entry.id, entry.accountId, entry.originScope, result.title)
+                    syncCache.rename(
+                        access,
+                        if (entry.type == "received") "slot" else "transfer",
+                        entry.id,
+                        result.title,
+                    )
+                }
                 if (_deviceHistory.value) loadDeviceHistory() else if (visible) startPolling()
             } catch (error: CancellationException) {
                 throw error
@@ -327,11 +390,19 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun startPolling(firstTarget: InboxPager? = null) {
-        refreshJob?.cancel()
+        if (firstTarget == null && refreshJob?.isActive == true) {
+            wake.trySend(Unit)
+            return
+        }
+        val previousJob = refreshJob
+        previousJob?.cancel()
         val requestRevision = ++revision
         refreshJob =
             viewModelScope.launch(Dispatchers.IO) {
+                previousJob?.join()
                 var target = firstTarget
+                var supportsSync: Boolean? = null
+                var failures = 0
                 while (isActive) {
                     val access = app.prefs.historyAccess.value
                     val token = app.prefs.getSessionToken(access.serverUrl)
@@ -340,6 +411,12 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                         return@launch
                     }
                     val pager = target ?: _pageState.value.pager
+                    val kind =
+                        when (filter.value) {
+                            "sent" -> "transfer"
+                            "received" -> "slot"
+                            else -> ""
+                        }
                     fun current() =
                         revision == requestRevision &&
                             app.prefs.historyAccess.value == access &&
@@ -349,26 +426,197 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     _pageState.update { it.copy(loading = true) }
                     val client = ApiClient(ServerConfig(access.serverUrl), sessionToken = token)
                     var failed = false
+                    var retryAfter = 0L
                     try {
-                        val page =
-                            client.auth.resourcesPage(
-                                pager.cursor,
-                                50,
-                                when (filter.value) {
-                                    "sent" -> "transfer"
-                                    "received" -> "slot"
-                                    else -> null
-                                },
+                        suspend fun showCached() {
+                            val cached = syncCache.cachedPage(access, kind, pager.cursor) ?: return
+                            if (!current()) return
+                            syncAccountHistory(dao, cached, access, retainNew = false) {
+                                if (current()) access else HistoryAccess()
+                            }
+                            if (current()) {
+                                _pageState.value = AccountHistoryPageState(access, pager, cached)
+                                val last =
+                                    (cached.transfers.map {
+                                            Triple(
+                                                it.createdAt,
+                                                it.id,
+                                                if (kind.isEmpty()) it.historyAfter
+                                                else it.historyAfterKind,
+                                            )
+                                        } +
+                                            cached.slots.map {
+                                                Triple(
+                                                    it.createdAt,
+                                                    it.id,
+                                                    if (kind.isEmpty()) it.historyAfter
+                                                    else it.historyAfterKind,
+                                                )
+                                            })
+                                        .minWithOrNull(
+                                            compareBy<Triple<String?, String, String?>> {
+                                                    parseHistoryExpiry(it.first) ?: 0
+                                                }
+                                                .thenBy { it.second }
+                                        )
+                                rememberAnchor(access, kind, cached.nextCursor, last?.third)
+                            }
+                        }
+                        var corruptCache = false
+                        try {
+                            showCached()
+                        } catch (_: HistoryCacheCorruptException) {
+                            corruptCache = true
+                        }
+                        // Local coverage establishes visible rows before any network I/O.
+                        val notBefore = retryGate.remaining(access.syncScope())
+                        if (notBefore > 0) {
+                            _pageState.update { it.copy(loading = false) }
+                            withTimeoutOrNull(notBefore) { wake.receive() }
+                            continue
+                        }
+                        if (supportsSync == null)
+                            supportsSync =
+                                kotlinx.coroutines.withTimeout(10_000L) {
+                                    client.limits.get().historySyncVersion == 1
+                                }
+                        if (!current()) return@launch
+                        val cachedWindow =
+                            syncCache.window(access.syncScope(), kind, pager.cursor.orEmpty())
+                        val authoritativeAfter =
+                            if (pager.cursor?.startsWith("local_") == true)
+                                cachedWindow?.serverAfter
+                                    ?: snapshotAnchors[anchorKey(access, kind, pager.cursor)]
+                            else pager.cursor
+                        rememberAnchor(access, kind, pager.cursor, authoritativeAfter)
+                        suspend fun fetchSnapshot(reset: Boolean = false) {
+                            // A local continuation is disposable coverage and never sent to the
+                            // server.
+                            val after = authoritativeAfter
+                            if (
+                                pager.cursor?.startsWith("local_") == true &&
+                                    after == null &&
+                                    !reset
                             )
-                        if (!current()) return@launch
-                        uiRequire(page.nextCursor == null || page.nextCursor !in pager.previous) {
-                            message(R.string.l_the_server_repeated_a_history_page_639a72)
+                                error("History coverage was evicted")
+                            val page =
+                                client.auth.resourcesPage(
+                                    if (reset) null else after,
+                                    50,
+                                    kind.takeIf { it.isNotEmpty() },
+                                )
+                            if (!current()) return
+                            uiRequire(
+                                page.nextCursor == null || page.nextCursor !in pager.previous
+                            ) {
+                                message(R.string.l_the_server_repeated_a_history_page_639a72)
+                            }
+                            app.database.withTransaction {
+                                if (!current())
+                                    throw CancellationException("History account changed")
+                                syncCache.snapshot(
+                                    page,
+                                    access,
+                                    kind,
+                                    if (reset) null else pager.cursor,
+                                    reset,
+                                    serverAfter = if (reset) null else after,
+                                )
+                                val effective =
+                                    syncCache.cachedPage(
+                                        access,
+                                        kind,
+                                        if (reset) null else pager.cursor,
+                                    ) ?: page
+                                syncAccountHistory(dao, effective, access, retainNew = false) {
+                                    if (current()) access else HistoryAccess()
+                                }
+                            }
                         }
-                        syncAccountHistory(dao, page, access) {
-                            if (current()) access else HistoryAccess()
+                        val persistedState = syncCache.state(access.syncScope())
+                        val invalidState =
+                            persistedState?.let {
+                                !it.generation.matches(
+                                    Regex("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+                                ) ||
+                                    it.cursor.length !in 1..512 ||
+                                    !it.cursor.matches(Regex("[A-Za-z0-9_-]+"))
+                            } == true
+                        if (
+                            supportsSync == true &&
+                                (corruptCache || persistedState == null || invalidState)
+                        ) {
+                            // An absent/invalid watermark cannot bootstrap from an older page: the
+                            // newest window and cursor must describe the same authoritative view.
+                            fetchSnapshot(reset = true)
+                            if (pager.cursor != null) {
+                                if (authoritativeAfter != null) fetchSnapshot()
+                                else {
+                                    target = InboxPager()
+                                    continue
+                                }
+                            }
+                        } else if (
+                            supportsSync != true ||
+                                syncCache.cachedPage(access, kind, pager.cursor) == null
+                        ) {
+                            fetchSnapshot()
                         }
+                        if (supportsSync == true) {
+                            try {
+                                // Four bounded pages per cycle; persist progress and yield to the
+                                // next cycle.
+                                for (batchNumber in 0 until 4) {
+                                    val state = syncCache.state(access.syncScope()) ?: break
+                                    val batch = client.auth.historyChanges(state.cursor, 50)
+                                    if (!current())
+                                        throw CancellationException("History account changed")
+                                    app.database.withTransaction {
+                                        if (!current())
+                                            throw CancellationException("History account changed")
+                                        syncCache.batch(batch, access, state)
+                                        val facts =
+                                            batch.changes
+                                                .filter { it.action == "upsert" }
+                                                .mapNotNull {
+                                                    syncCache
+                                                        .fact(access.syncScope(), it.kind, it.id)
+                                                        ?.takeUnless { it.removed }
+                                                        ?.let { fact ->
+                                                            zip.psst.shared.api
+                                                                .decodeCachedHistoryResources(
+                                                                    fact.body
+                                                                )
+                                                        }
+                                                }
+                                        syncAccountHistory(
+                                            dao,
+                                            AuthResources(
+                                                transfers = facts.flatMap { it.transfers },
+                                                slots = facts.flatMap { it.slots },
+                                            ),
+                                            access,
+                                            retainNew = false,
+                                        ) {
+                                            if (current()) access else HistoryAccess()
+                                        }
+                                    }
+                                    if (!batch.hasMore) break
+                                    kotlinx.coroutines.yield()
+                                }
+                            } catch (_: HistorySyncResetRequiredException) {
+                                fetchSnapshot(reset = true)
+                                if (pager.cursor != null) {
+                                    if (authoritativeAfter != null) fetchSnapshot()
+                                    else {
+                                        target = InboxPager()
+                                        continue
+                                    }
+                                }
+                            }
+                        }
+                        showCached()
                         if (!current()) return@launch
-                        _pageState.value = AccountHistoryPageState(access, pager, page)
                         accountIssue.value = null
                         transferIssue.value = null
                     } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
@@ -387,12 +635,17 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     } catch (e: Exception) {
                         if (!current()) return@launch
                         failed = true
+                        if (e is HistorySyncRateLimitedException) {
+                            retryAfter = e.retryAfterSeconds * 1000
+                            retryGate.defer(access.syncScope(), retryAfter)
+                        }
                         if (
                             e is PasswordChangeRequiredException ||
                                 e is AdminTransferForbiddenException
-                        )
+                        ) {
                             accountIssue.value = failureText(e)
-                        else
+                            return@launch
+                        } else
                             transferIssue.value =
                                 message(
                                     R.string
@@ -405,7 +658,14 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     if (!current()) return@launch
                     offline.value = failed
                     target = null
-                    delay(if (failed) 15000 else 5000)
+                    failures = if (failed) (failures + 1).coerceAtMost(4) else 0
+                    val wait =
+                        historyPollingDelay(
+                            failures,
+                            retryAfter,
+                            if (failed) kotlin.random.Random.nextLong(0, 1000) else 0,
+                        )
+                    withTimeoutOrNull(wait) { wake.receive() }
                 }
             }
     }
@@ -432,8 +692,20 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 try {
                     withContext(Dispatchers.IO) {
-                        val removed = dao.getById(id)
-                        revokeHistoryEntry(dao, id, { app.prefs.historyAccess.value }) { config ->
+                        val access = app.prefs.historyAccess.value
+                        val removed = dao.getById(id)?.takeIf { access.permits(it) }
+                        val metadata =
+                            _pageState.value.page?.let {
+                                accountHistoryMetadata(it, access).firstOrNull { row ->
+                                    row.id == id
+                                }
+                            }
+                        revokeHistoryEntry(
+                            dao,
+                            id,
+                            { app.prefs.historyAccess.value },
+                            metadata = metadata,
+                        ) { config ->
                             ApiClient(
                                 config,
                                 sessionToken = app.prefs.getSessionToken(config.normalizedBaseUrl),

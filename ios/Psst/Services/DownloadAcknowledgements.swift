@@ -16,7 +16,8 @@ final class DownloadAcknowledgements {
 
     func enqueue(serverURL: String, transferID: String, ownerID: String? = nil) throws {
         do {
-            try storage.queue().enqueue(.init(origin: serverURL, transferID: transferID, ownerID: ownerID))
+            try storage.queue().enqueue(
+                .init(origin: serverURL, transferID: transferID, ownerID: ownerID))
             DeviceRetryStatus.shared.receiptError = nil
         } catch {
             DeviceRetryStatus.shared.receiptError = Self.storageMessage
@@ -38,7 +39,10 @@ final class DownloadAcknowledgements {
                 try Task.checkCancellation()
                 let complete = try storage.migrate(
                     read: {
-                        guard let value = AppConstants.sharedDefaults.object(forKey: "pendingDownloadAcknowledgements") else { return nil }
+                        guard
+                            let value = AppConstants.sharedDefaults.object(
+                                forKey: "pendingDownloadAcknowledgements")
+                        else { return nil }
                         guard let data = value as? Data else { throw AccountError.storage }
                         return data
                     },
@@ -66,11 +70,17 @@ final class DownloadAcknowledgements {
                     else { continue }
                     token = session.token
                 }
-                let client = ApiClient(config: ServerConfig(baseUrl: receipt.origin), httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token)
+                let client = ApiClient(
+                    config: ServerConfig(baseUrl: receipt.origin),
+                    httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token)
                 defer { client.close() }
                 do {
                     try await client.transfers.acknowledgeDownload(transferId: receipt.transferID)
                     try queue.remove(receipt)
+                    if let ownerID = receipt.ownerID {
+                        NotificationCenter.default.post(
+                            name: .historyMutation, object: receipt.origin, userInfo: ["ownerID": ownerID])
+                    }
                 } catch {
                     try Task.checkCancellation()
                     try queue.rotate(receipt)
@@ -80,7 +90,9 @@ final class DownloadAcknowledgements {
             DeviceRetryStatus.shared.receiptError =
                 jobs.hadInvalidJobs
                 ? "Some saved confirmation records could not be read. They are preserved; other confirmations will continue. Restore local storage or retry."
-                : unavailable ? "Some delivery confirmations are waiting for a connection. Saved files remain available. Retry when connected." : nil
+                : unavailable
+                    ? "Some delivery confirmations are waiting for a connection. Saved files remain available. Retry when connected."
+                    : nil
         } catch is CancellationError {
             // Committed import progress and queued jobs remain intact.
         } catch { DeviceRetryStatus.shared.receiptError = Self.storageMessage }

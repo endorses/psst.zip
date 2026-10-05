@@ -1053,6 +1053,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         ),
                     )
                     scoped.transfers.complete(child.id)
+                    zip.psst.android.data.HistoryNotifications.changed(link.origin)
                     complete = true
                     _state.update { it.copy(uploaded = true, stage = ScanStage.SENT, error = null) }
                 } catch (e: CancellationException) {

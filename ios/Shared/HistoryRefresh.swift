@@ -7,75 +7,90 @@ extension TransferHistoryStore {
     func mergeResourcePage(_ list: ResourceList, session: DeviceSession) throws {
         let prefix = "resource|" + session.serverURL + "|" + session.userID + "|"
         try mutate(ids: list.identities.map { prefix + $0 }) { values in
-            var positions = Dictionary(values.enumerated().map { ($0.element.localID, $0.offset) }, uniquingKeysWith: { first, _ in first })
-            func base(_ id: String, slot: Bool, created: String?, expires: String?) -> TransferRecord {
-                let key = "resource|" + session.serverURL + "|" + session.userID + "|" + id + (slot ? "|slot" : "|transfer")
-                if let index = positions[key] { return values[index] }
-                return TransferRecord(
-                    id: id, direction: slot ? .received : .sent, state: .inProgress,
-                    createdAt: ServerTimestamp.parse(created) ?? Date(), expiresAt: ServerTimestamp.parse(expires), fileCount: 0, totalSize: 0,
-                    shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, isSlot: slot)
-            }
-            func save(_ record: TransferRecord) {
-                if let index = positions[record.localID] {
-                    values[index] = record
-                } else {
-                    positions[record.localID] = values.count
-                    values.append(record)
-                }
-            }
-            for transfer in list.transfers {
-                var record = base(transfer.id, slot: false, created: transfer.created_at, expires: transfer.expires_at)
-                record.sharedTitle = transfer.title
-                if transfer.status == "exhausted" {
-                    record.state = .exhausted
-                } else if transfer.status == "expired" {
-                    record.state = .expired
-                } else if transfer.status == "revoked" {
-                    record.state = .revoked
-                } else if transfer.downloaded_at != nil {
-                    record.state = .downloaded
-                } else if (transfer.download_count ?? 0) > 0 {
-                    record.state = .started
-                } else if transfer.status == "complete" {
-                    record.state = .complete
-                } else if record.state != .failed {
-                    record.state = .inProgress
-                }
-                if let count = transfer.file_count { record.fileCount = Int(clamping: count) }
-                // Server byte counts describe ciphertext, not local plaintext size.
-                record.serverSummaryKnown = transfer.summary.state == "ready"
-                record.expiresAt = ServerTimestamp.parse(transfer.expires_at) ?? record.expiresAt
-                record.maxDownloads = transfer.max_downloads
-                save(record)
-            }
-            for slot in list.slots {
-                var record = base(slot.id, slot: true, created: slot.created_at, expires: slot.expires_at)
-                record.sharedTitle = slot.title
-                record.receiveProtocol = slot.receive_protocol
-                record.maxFiles = slot.max_files
-                record.reservedFiles = slot.reserved_files
-                if slot.status == "expired" {
-                    record.state = .expired
-                } else if slot.status == "revoked" {
-                    record.state = .revoked
-                } else if let count = slot.completed_files {
-                    record.state = count == 0 ? .inProgress : .complete
-                }
-                // Only detailed inbox evidence can establish that every arrival is saved.
-                if let count = slot.completed_files { record.fileCount = Int(clamping: count) }
-                record.serverSummaryKnown = slot.summary.state == "ready"
-                record.expiresAt = ServerTimestamp.parse(slot.expires_at) ?? record.expiresAt
-                save(record)
+            let retained = Set(values.map(\.localID))
+            values = projectedResourcePage(list, session: session, local: values).filter {
+                retained.contains($0.localID)
             }
         }
     }
 
+    /// Server-only rows are disposable projections, never retained device records.
+    /// Enrichment is limited to the explicit page identities already read by index.
+    func projectedResourcePage(_ list: ResourceList, session: DeviceSession, local: [TransferRecord]) -> [TransferRecord] {
+        var values = local
+        var positions = Dictionary(values.enumerated().map { ($0.element.localID, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        func base(_ id: String, slot: Bool, created: String?, expires: String?) -> TransferRecord {
+            let key = "resource|" + session.serverURL + "|" + session.userID + "|" + id + (slot ? "|slot" : "|transfer")
+            if let index = positions[key] { return values[index] }
+            return TransferRecord(
+                id: id, direction: slot ? .received : .sent, state: .inProgress,
+                createdAt: ServerTimestamp.parse(created) ?? Date(), expiresAt: ServerTimestamp.parse(expires), fileCount: 0, totalSize: 0,
+                shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, isSlot: slot)
+        }
+        func save(_ record: TransferRecord) {
+            if let index = positions[record.localID] {
+                values[index] = record
+            } else {
+                positions[record.localID] = values.count
+                values.append(record)
+            }
+        }
+        for transfer in list.transfers {
+            var record = base(transfer.id, slot: false, created: transfer.created_at, expires: transfer.expires_at)
+            record.sharedTitle = transfer.title
+            if transfer.status == "exhausted" {
+                record.state = .exhausted
+            } else if transfer.status == "expired" {
+                record.state = .expired
+            } else if transfer.status == "revoked" {
+                record.state = .revoked
+            } else if transfer.downloaded_at != nil {
+                record.state = .downloaded
+            } else if (transfer.download_count ?? 0) > 0 {
+                record.state = .started
+            } else if transfer.status == "complete" {
+                record.state = .complete
+            } else if record.state != .failed {
+                record.state = .inProgress
+            }
+            if let count = transfer.file_count { record.fileCount = Int(clamping: count) }
+            // Server byte counts describe ciphertext, not local plaintext size.
+            record.serverSummaryKnown = transfer.summary.state == "ready"
+            record.expiresAt = ServerTimestamp.parse(transfer.expires_at) ?? record.expiresAt
+            record.maxDownloads = transfer.max_downloads
+            save(record)
+        }
+        for slot in list.slots {
+            var record = base(slot.id, slot: true, created: slot.created_at, expires: slot.expires_at)
+            record.sharedTitle = slot.title
+            record.receiveProtocol = slot.receive_protocol
+            record.maxFiles = slot.max_files
+            record.reservedFiles = slot.reserved_files
+            if slot.status == "expired" {
+                record.state = .expired
+            } else if slot.status == "revoked" {
+                record.state = .revoked
+            } else if let count = slot.completed_files {
+                record.state = count == 0 ? .inProgress : .complete
+            }
+            // Only detailed inbox evidence can establish that every arrival is saved.
+            if let count = slot.completed_files { record.fileCount = Int(clamping: count) }
+            record.serverSummaryKnown = slot.summary.state == "ready"
+            record.expiresAt = ServerTimestamp.parse(slot.expires_at) ?? record.expiresAt
+            save(record)
+        }
+        return values
+    }
+
     /// Refresh one send detail, without enumerating account history or inboxes.
-    func refreshSend(_ record: TransferRecord, session: DeviceSession) async throws {
-        guard record.belongs(to: session), session.canTransfer, record.isSlot != true, UUID(uuidString: record.id) != nil else { throw AccountError.changed }
+    @discardableResult
+    func refreshSend(_ record: TransferRecord, session: DeviceSession) async throws -> TransferRecord {
+        guard record.belongs(to: session), session.canTransfer, record.isSlot != true, UUID(uuidString: record.id) != nil else {
+            throw AccountError.changed
+        }
         do {
-            let data = try await AccountHTTP.request(server: session.serverURL, path: "transfers/" + record.id, token: session.token, maximumBytes: 131_072, timeout: 10)
+            let data = try await AccountHTTP.request(
+                server: session.serverURL, path: "transfers/" + record.id, token: session.token, maximumBytes: 131_072, timeout: 10)
             struct Status: Decodable {
                 let id: String
                 let status: String
@@ -86,42 +101,49 @@ extension TransferHistoryStore {
                 let max_downloads: Int
             }
             let status = try JSONDecoder().decode(Status.self, from: data)
-            guard status.id == record.id, status.file_count >= 0, status.file_count <= 100, status.download_count >= 0, status.max_downloads >= 0,
+            guard status.id == record.id, status.file_count >= 0, status.file_count <= 100, status.download_count >= 0,
+                status.max_downloads >= 0,
                 ["pending", "complete", "expired", "revoked", "exhausted"].contains(status.status)
             else { throw AccountError.request }
             let sharedTitle = try SharedLinkTitle.normalize(status.title)
             guard SecretStore.session == session, !Task.isCancelled else { throw AccountError.changed }
+            var refreshed = (try self.record(record.localID)) ?? record
+            refreshed.sharedTitle = sharedTitle
+            refreshed.fileCount = status.file_count
+            refreshed.serverSummaryKnown = true
+            refreshed.maxDownloads = status.max_downloads
+            if status.status == "exhausted" {
+                refreshed.state = .exhausted
+            } else if status.status == "revoked" {
+                refreshed.state = .revoked
+            } else if status.status == "expired" {
+                refreshed.state = .expired
+            } else if status.downloaded_at != nil {
+                refreshed.state = .downloaded
+            } else if status.download_count > 0 {
+                refreshed.state = .started
+            } else if status.status == "complete" {
+                refreshed.state = .complete
+            } else if refreshed.state != .failed {
+                refreshed.state = .inProgress
+            }
             try mutate(ids: [record.localID]) { values in
                 guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
-                values[index].sharedTitle = sharedTitle
-                values[index].fileCount = status.file_count
-                values[index].serverSummaryKnown = true
-                values[index].maxDownloads = status.max_downloads
-                if status.status == "exhausted" {
-                    values[index].state = .exhausted
-                } else if status.status == "revoked" {
-                    values[index].state = .revoked
-                } else if status.status == "expired" {
-                    values[index].state = .expired
-                } else if status.downloaded_at != nil {
-                    values[index].state = .downloaded
-                } else if status.download_count > 0 {
-                    values[index].state = .started
-                } else if status.status == "complete" {
-                    values[index].state = .complete
-                } else if values[index].state != .failed {
-                    values[index].state = .inProgress
-                }
+                values[index] = refreshed
             }
+            return refreshed
         } catch {
             guard SecretStore.session == session, !Task.isCancelled else { throw AccountError.changed }
             let unavailable: Bool
             if case AccountError.unavailable = error { unavailable = true } else { unavailable = TransferIncident.from(error) == .revoked }
             guard unavailable else { throw error }
+            var refreshed = (try self.record(record.localID)) ?? record
+            refreshed.state = refreshed.isExpired ? .expired : .revoked
             try mutate(ids: [record.localID]) { values in
                 guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
                 values[index].state = values[index].isExpired ? .expired : .revoked
             }
+            return refreshed
         }
     }
 }

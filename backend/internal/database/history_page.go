@@ -15,13 +15,19 @@ import (
 var ErrHistoryAccess = errors.New("history access is no longer authorized")
 
 type HistoryResource struct {
-	Transfer    *Transfer
-	Slot        *Slot
-	OwnerID     string
-	HasManifest bool
-	Summary     InboxSummary
+	HistoryAfter     string
+	HistoryAfterKind string
+	CreatedText      string
+	Revision         int64
+	Transfer         *Transfer
+	Slot             *Slot
+	OwnerID          string
+	HasManifest      bool
+	Summary          InboxSummary
 }
 type HistoryPage struct {
+	SyncCursor string
+	Generation string
 	Resources  []HistoryResource
 	NextCursor *string
 }
@@ -99,6 +105,16 @@ func historySummary(known, files, completed, size sql.NullInt64) InboxSummary {
 // position; an empty result with a continuation is therefore meaningful.
 // All policy, ownership and derived totals are read in one cancellable snapshot.
 func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool, limit int, after string, kinds ...string) (HistoryPage, error) {
+	return q.accountHistoryPage(ctx, actor, "", all, limit, after, kinds...)
+}
+
+// AccountHistoryPageForSession binds authorization to the same read snapshot as
+// the returned metadata, even when an authenticated HTTP session was just retired.
+func (q *Queries) AccountHistoryPageForSession(ctx context.Context, actor, session string, all bool, limit int, after string, kinds ...string) (HistoryPage, error) {
+	return q.accountHistoryPage(ctx, actor, session, all, limit, after, kinds...)
+}
+
+func (q *Queries) accountHistoryPage(ctx context.Context, actor, session string, all bool, limit int, after string, kinds ...string) (HistoryPage, error) {
 	page := HistoryPage{Resources: []HistoryResource{}}
 	filter := ""
 	if len(kinds) > 0 {
@@ -119,18 +135,15 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 		return page, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var role string
-	var disabled, changePassword bool
-	err = tx.QueryRowContext(ctx, `SELECT role,disabled,must_change_password FROM users WHERE id=?`, actor).Scan(&role, &disabled, &changePassword)
-	if errors.Is(err, sql.ErrNoRows) {
-		return page, ErrHistoryAccess
-	}
-	if err != nil {
+	if err = checkHistoryAccess(ctx, tx, actor, session, all); err != nil {
 		return page, err
 	}
-	if disabled || changePassword || (all && role != "admin") || (!all && role != "user") {
-		return page, ErrHistoryAccess
+
+	var watermark int64
+	if err := tx.QueryRowContext(ctx, `SELECT generation,revision FROM history_sync_state WHERE id=1`).Scan(&page.Generation, &watermark); err != nil {
+		return page, err
 	}
+	page.SyncCursor = encodeHistorySyncCursor(actor, page.Generation, watermark)
 	owner := actor
 	if all {
 		owner = ""
@@ -184,25 +197,9 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 		page.NextCursor = &next
 	}
 	for _, candidate := range candidates {
-		if candidate.kind == "transfer" {
-			var child bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM slot_transfers INDEXED BY slot_transfers_transfer WHERE transfer_id=?)`, candidate.id).Scan(&child); err != nil {
-				return page, err
-			}
-			if child {
-				continue
-			}
-		}
-		item := HistoryResource{}
-		var known, files, completed, size sql.NullInt64
-		if candidate.kind == "transfer" {
-			item.Transfer = &Transfer{}
-			t := item.Transfer
-			err = tx.QueryRowContext(ctx, `SELECT t.id,t.status,t.expires_at,t.max_downloads,t.download_count,t.created_at,t.completed_at,t.downloaded_at,t.title,`+exhaustedSQL("t")+`,COALESCE(t.owner_id,''),EXISTS(SELECT 1 FROM manifests WHERE transfer_id=t.id),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM transfers t LEFT JOIN admin_resource_totals c ON c.kind='transfer' AND c.resource_id=t.id WHERE t.id=?`, candidate.id).Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.Title, &t.Exhausted, &item.OwnerID, &item.HasManifest, &known, &files, &completed, &size)
-		} else {
-			item.Slot = &Slot{}
-			s := item.Slot
-			err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.created_at,s.receive_protocol,CASE WHEN length(s.recipient_public_key)<=128 THEN s.recipient_public_key ELSE NULL END,s.max_files,s.reserved_files,s.title,COALESCE(s.owner_id,''),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM slots s LEFT JOIN admin_resource_totals c ON c.kind='slot' AND c.resource_id=s.id WHERE s.id=?`, candidate.id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.Title, &item.OwnerID, &known, &files, &completed, &size)
+		item, err := readHistoryResource(ctx, tx, candidate.kind, candidate.id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
 		}
 		if err != nil {
 			return page, err
@@ -210,8 +207,55 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 		if !all && item.OwnerID != actor {
 			return page, ErrHistoryAccess
 		}
-		item.Summary = historySummary(known, files, completed, size)
+		setHistoryAnchors(&item, candidate.kind, candidate.id, actor, all)
 		page.Resources = append(page.Resources, item)
 	}
+
 	return page, tx.Commit()
+}
+
+func readHistoryResource(ctx context.Context, tx *sql.Tx, kind, id string) (HistoryResource, error) {
+	if kind == "transfer" {
+		var child bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM slot_transfers INDEXED BY slot_transfers_transfer WHERE transfer_id=?) OR EXISTS(SELECT 1 FROM history_sync_private_transfers WHERE transfer_id=?)`, id, id).Scan(&child); err != nil {
+			return HistoryResource{}, err
+		}
+		if child {
+			return HistoryResource{}, sql.ErrNoRows
+		}
+	}
+	item := HistoryResource{}
+	var err error
+	var known, files, completed, size sql.NullInt64
+	if kind == "transfer" {
+		item.Transfer = &Transfer{}
+		t := item.Transfer
+		err = tx.QueryRowContext(ctx, `SELECT t.id,t.status,t.expires_at,t.max_downloads,t.download_count,t.created_at,t.completed_at,t.downloaded_at,t.title,`+exhaustedSQL("t")+`,COALESCE(t.owner_id,''),EXISTS(SELECT 1 FROM manifests WHERE transfer_id=t.id),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes,substr(CAST(t.created_at AS TEXT),1,65) FROM transfers t LEFT JOIN admin_resource_totals c ON c.kind='transfer' AND c.resource_id=t.id WHERE t.id=?`, id).Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.Title, &t.Exhausted, &item.OwnerID, &item.HasManifest, &known, &files, &completed, &size, &item.CreatedText)
+	} else {
+		item.Slot = &Slot{}
+		s := item.Slot
+		err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.created_at,s.receive_protocol,CASE WHEN length(s.recipient_public_key)<=128 THEN s.recipient_public_key ELSE NULL END,s.max_files,s.reserved_files,s.title,COALESCE(s.owner_id,''),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes,substr(CAST(s.created_at AS TEXT),1,65) FROM slots s LEFT JOIN admin_resource_totals c ON c.kind='slot' AND c.resource_id=s.id WHERE s.id=?`, id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.Title, &item.OwnerID, &known, &files, &completed, &size, &item.CreatedText)
+	}
+	if err != nil {
+		return item, err
+	}
+	if !validAuditID(id) || len(item.CreatedText) == 0 || len(item.CreatedText) > 64 {
+		return item, errors.New("invalid history identity or timestamp")
+	}
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT revision FROM history_sync_revisions WHERE kind=? AND resource_id=?),0)`, kind, id).Scan(&item.Revision); err != nil {
+		return item, err
+	}
+	item.Summary = historySummary(known, files, completed, size)
+	return item, nil
+}
+
+// setHistoryAnchors uses the stored created-time representation, matching the
+// indexed snapshot ordering even for legacy SQLite timestamp formats.
+func setHistoryAnchors(item *HistoryResource, kind, id, actor string, all bool) {
+	encode := func(filter string) string {
+		raw, _ := json.Marshal(historyCursor{Version: 1, Actor: actor, All: all, Created: item.CreatedText, ID: id, Kind: kind, Filter: filter})
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	item.HistoryAfter = encode("")
+	item.HistoryAfterKind = encode(kind)
 }

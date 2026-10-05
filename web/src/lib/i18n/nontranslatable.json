@@ -230,6 +230,16 @@
       "file": "routes/d/[transferId]/+page.svelte",
       "value": "files.zip",
       "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/history-cache.ts",
+      "value": "psst.server-history.v1",
+      "reason": "Persistent internal database/channel identifier; never rendered."
+    },
+    {
+      "file": "lib/history-notifications.ts",
+      "value": "psst.history-cache.v1",
+      "reason": "Persistent internal database/channel identifier; never rendered."
     }
   ],
   "notes": [

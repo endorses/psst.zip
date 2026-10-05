@@ -69,7 +69,9 @@ enum SecretStore {
         if status == errSecItemNotFound {
             var item = query(name)
             attributes.forEach { item[$0.key] = $0.value }
-            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw AccountError.storage }
+            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
+                throw AccountError.storage
+            }
         } else if status != errSecSuccess {
             throw AccountError.storage
         }
@@ -86,7 +88,8 @@ enum SecretStore {
 }
 
 enum AccountError: LocalizedError {
-    case signIn, changed, address, storage, request, pairing, unavailable, administrator, passwordChange, passwordPolicy
+    case signIn, changed, address, storage, request, pairing, unavailable, administrator,
+        passwordChange, passwordPolicy
     var errorDescription: String? {
         switch self {
         case .administrator:
@@ -94,13 +97,20 @@ enum AccountError: LocalizedError {
                 "Administrator accounts manage the server on the website. Sign in with a regular account to transfer files. You can still scan public links without signing in."
             )
         case .passwordChange: L10n.message("Replace your temporary password before continuing.")
-        case .passwordPolicy: L10n.message("Check your current password. The new password must differ and contain 12–72 UTF-8 bytes.")
+        case .passwordPolicy:
+            L10n.message(
+                "Check your current password. The new password must differ and contain 12–72 UTF-8 bytes.")
         case .signIn: L10n.message("Sign in again to continue.")
         case .changed: L10n.message("The account changed. Return to your original account to continue.")
-        case .address: L10n.message("Enter a server origin such as https://files.example.com, without a path.")
-        case .storage: L10n.message("Secure storage is unavailable. Check the app’s signing configuration.")
-        case .request: L10n.message("Could not connect. Check your network and server address, then retry.")
-        case .pairing: L10n.message("This login code is invalid, expired, or already used. Generate a new code on the website.")
+        case .address:
+            L10n.message("Enter a server origin such as https://files.example.com, without a path.")
+        case .storage:
+            L10n.message("Secure storage is unavailable. Check the app’s signing configuration.")
+        case .request:
+            L10n.message("Could not connect. Check your network and server address, then retry.")
+        case .pairing:
+            L10n.message(
+                "This login code is invalid, expired, or already used. Generate a new code on the website.")
         case .unavailable: L10n.message("This link expired or was revoked.")
         }
     }
@@ -120,10 +130,10 @@ final class NoRedirects: NSObject, URLSessionTaskDelegate {
 enum AccountHTTP {
     static func origin(_ raw: String) throws -> String {
         guard let url = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-              let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
-              url.port == nil || (1 ... 65535).contains(url.port!)
+            ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+            let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
+            url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
+            url.port == nil || (1...65535).contains(url.port!)
         else { throw AccountError.address }
         var canonical = url
         canonical.scheme = url.scheme?.lowercased()
@@ -138,7 +148,9 @@ enum AccountHTTP {
         body: [String: String]? = nil, maximumBytes: Int = 1_048_576,
         timeout: TimeInterval = 15
     ) async throws -> Data {
-        guard (1 ... 1_048_576).contains(maximumBytes), (1 ... 15).contains(timeout) else { throw AccountError.request }
+        guard (1...1_048_576).contains(maximumBytes), (1...15).contains(timeout) else {
+            throw AccountError.request
+        }
         let origin = try origin(server)
         guard let url = URL(string: origin + "/api/v1/" + path) else { throw AccountError.address }
         var request = URLRequest(url: url, timeoutInterval: timeout)
@@ -154,7 +166,8 @@ enum AccountHTTP {
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
         configuration.timeoutIntervalForResource = timeout * 2
-        let session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+        let session = URLSession(
+            configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         let (bytes, response) = try await session.bytes(for: request)
         guard response.expectedContentLength <= Int64(maximumBytes) else { throw AccountError.request }
@@ -168,6 +181,20 @@ enum AccountHTTP {
         if method == "DELETE", response.statusCode == 404 {
             return Data()
         }
+        if path.hasPrefix("auth/history/changes"), response.statusCode == 409,
+            response.value(forHTTPHeaderField: "X-Psst-Error-Code") == "history_sync_reset_required"
+        {
+            throw HistorySync.Failure.resetRequired
+        }
+        if path.hasPrefix("auth/history/changes"),
+            response.statusCode == 429 || response.statusCode == 503,
+            let raw = response.value(forHTTPHeaderField: "Retry-After")
+        {
+            let seconds = HistorySync.retryDelay(raw)
+            if let seconds, seconds.isFinite, seconds > 0 {
+                throw HistorySync.Failure.retryAfter(seconds)
+            }
+        }
         if let incident = TransferIncident.response(
             status: response.statusCode, body: data,
             codeHeader: response.value(forHTTPHeaderField: "X-Psst-Error-Code"),
@@ -177,7 +204,8 @@ enum AccountHTTP {
         }
         if response.statusCode == 401 {
             if token != nil {
-                NotificationCenter.default.post(name: .sessionExpired, object: origin, userInfo: ["sessionToken": token!])
+                NotificationCenter.default.post(
+                    name: .sessionExpired, object: origin, userInfo: ["sessionToken": token!])
             }
             throw AccountError.signIn
         }
@@ -185,8 +213,11 @@ enum AccountHTTP {
             struct Failure: Decodable { let code: String? }
             let code = (try? JSONDecoder().decode(Failure.self, from: data))?.code
             if code == "password_change_required" || code == "admin_transfer_forbidden" {
-                NotificationCenter.default.post(name: .accountRestricted, object: origin, userInfo: ["code": code!, "sessionToken": token ?? ""])
-                throw code == "password_change_required" ? AccountError.passwordChange : AccountError.administrator
+                NotificationCenter.default.post(
+                    name: .accountRestricted, object: origin,
+                    userInfo: ["code": code!, "sessionToken": token ?? ""])
+                throw code == "password_change_required"
+                    ? AccountError.passwordChange : AccountError.administrator
             }
         }
         if path == "auth/password", [400, 403].contains(response.statusCode) {
@@ -195,7 +226,7 @@ enum AccountHTTP {
         if response.statusCode == 404 || response.statusCode == 410 {
             throw AccountError.unavailable
         }
-        guard (200 ... 299).contains(response.statusCode) else {
+        guard (200...299).contains(response.statusCode) else {
             throw path.contains("pairings") ? AccountError.pairing : AccountError.request
         }
         return data

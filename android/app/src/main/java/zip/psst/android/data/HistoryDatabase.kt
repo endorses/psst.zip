@@ -295,17 +295,43 @@ interface TransferHistoryDao : InboxCheckpointQueries {
     entities =
         [
             TransferHistoryEntity::class,
+            HistoryServerFact::class,
+            HistorySyncState::class,
+            HistoryCachedWindow::class,
             InboxChildCheckpoint::class,
             InboxFileCheckpoint::class,
             InboxLegacyCheckpoint::class,
         ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
+    abstract fun historySyncDao(): HistorySyncDao
+
     companion object {
+        val MIGRATION_11_12 =
+            object : Migration(11, 12) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS history_server_facts (scope TEXT NOT NULL,kind TEXT NOT NULL,id TEXT NOT NULL,generation TEXT NOT NULL,revision INTEGER NOT NULL,createdAt INTEGER NOT NULL,body TEXT NOT NULL,removed INTEGER NOT NULL,PRIMARY KEY(scope,kind,id))"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_history_server_facts_scope_kind_createdAt_id ON history_server_facts(scope,kind,createdAt,id)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_history_server_facts_scope_createdAt_id ON history_server_facts(scope,createdAt,id)"
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS history_sync_state (scope TEXT NOT NULL PRIMARY KEY,generation TEXT NOT NULL,cursor TEXT NOT NULL)"
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS history_cached_windows (scope TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT NOT NULL,generation TEXT NOT NULL,floorTime INTEGER NOT NULL,floorId TEXT NOT NULL,beforeTime INTEGER NOT NULL,beforeId TEXT NOT NULL,nextCursor TEXT,legacyPage TEXT,serverAfter TEXT,PRIMARY KEY(scope,kind,cursor))"
+                    )
+                }
+            }
+
         val MIGRATION_10_11 =
             object : Migration(10, 11) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -407,6 +433,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_8_9,
                     MIGRATION_9_10,
                     MIGRATION_10_11,
+                    MIGRATION_11_12,
                 )
                 .build()
         }

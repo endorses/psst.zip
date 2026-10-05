@@ -12,6 +12,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.fromHttpToGmtDate
+import io.ktor.util.date.GMTDate
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -71,6 +73,19 @@ class PairingCode(
             }
             return PairingCode(pairing.type, pairing.version, normalizedOrigin, pairing.code)
         }
+    }
+}
+
+/** Both standard Retry-After formats; bound conversion so a valid long delay cannot overflow. */
+internal fun historyRetryAfterSeconds(value: String?, nowMillis: Long = GMTDate().timestamp): Long {
+    val header = value?.trim() ?: return 10
+    if (header.matches(Regex("[0-9]+")))
+        return (header.toLongOrNull() ?: Long.MAX_VALUE).coerceAtMost(Long.MAX_VALUE / 1000)
+    return try {
+        val delay = (header.fromHttpToGmtDate().timestamp - nowMillis).coerceAtLeast(0)
+        delay / 1000 + if (delay % 1000 == 0L) 0 else 1
+    } catch (_: Exception) {
+        10
     }
 }
 
@@ -146,10 +161,46 @@ class AuthApi(
                     kind?.let { parameter("kind", it) }
                     after?.let { parameter("after", it) }
                 }
+            if (response.status.value == 429)
+                throw HistorySyncRateLimitedException(
+                    historyRetryAfterSeconds(response.headers["Retry-After"])
+                )
             response.checkAuthenticatedWrite()
             decodeResourcePage(
                 response.readControlJson<kotlinx.serialization.json.JsonObject>(1024 * 1024),
                 after,
+                limit,
+            )
+        }
+
+    @Throws(Exception::class)
+    suspend fun historyChanges(cursor: String, limit: Int = 50): HistoryChanges =
+        withTimeout(10_000L) {
+            require(
+                limit in 1..100 &&
+                    cursor.length in 1..512 &&
+                    cursor.matches(Regex("[A-Za-z0-9_-]+"))
+            )
+            val response =
+                client.get("${config.apiBaseUrl}/auth/history/changes") {
+                    expectSuccess = false
+                    token?.let { bearerAuth(it) }
+                    parameter("cursor", cursor)
+                    parameter("limit", limit)
+                }
+            if (
+                response.status.value == 409 &&
+                    response.headers["X-Psst-Error-Code"] == "history_sync_reset_required"
+            )
+                throw HistorySyncResetRequiredException()
+            if (response.status.value == 429)
+                throw HistorySyncRateLimitedException(
+                    historyRetryAfterSeconds(response.headers["Retry-After"])
+                )
+            response.checkAuthenticatedWrite()
+            decodeHistoryChanges(
+                response.readControlJson<kotlinx.serialization.json.JsonObject>(1024 * 1024),
+                cursor,
                 limit,
             )
         }

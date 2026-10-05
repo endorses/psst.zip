@@ -411,6 +411,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     withContext(NonCancellable) {
                         app.database.transferHistoryDao().insert(requireNotNull(allocation))
                     }
+                    zip.psst.android.data.HistoryNotifications.changed(serverUrl, accountId)
                     zip.psst.android.data.verifyReceivePolicy(
                         client.slots.get(slot.id),
                         publicKey,

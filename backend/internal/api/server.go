@@ -92,6 +92,7 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireAdmin).Patch("/admin/incident-state", s.updateIncidentState)
 		r.With(s.requireAdmin).Post("/admin/users/{userID}/shutdown", s.shutdownAccount)
 		r.With(s.requireAdmin).Patch("/admin/resource-policy", s.updateResourcePolicy)
+		r.With(s.requireRegularUser).Get("/auth/history/changes", s.historyChanges)
 		r.With(s.requireRegularUser).Get("/auth/usage", s.accountUsage)
 		r.With(s.requireAdmin).Get("/admin/security-events", s.getSecurityEvents)
 		r.With(s.requireAdmin).Get("/admin/cleanup", s.getCleanupOverview)

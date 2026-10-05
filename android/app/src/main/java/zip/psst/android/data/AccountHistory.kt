@@ -1,6 +1,7 @@
 package zip.psst.android.data
 
 import zip.psst.shared.api.AuthResourceSlot
+import zip.psst.shared.api.AuthResourceTransfer
 import zip.psst.shared.api.AuthResources
 import kotlinx.coroutines.CancellationException
 
@@ -12,43 +13,50 @@ internal suspend fun syncAccountHistory(
     dao: TransferHistoryDao,
     resources: AuthResources,
     access: HistoryAccess,
+    retainNew: Boolean = true,
     currentAccess: () -> HistoryAccess,
 ) {
     require(!access.accountId.isNullOrBlank())
-    for (transfer in resources.transfers) {
+    for (resource in accountHistoryMetadata(resources, access)) {
         if (currentAccess() != access) throw CancellationException("Account changed")
-        dao.mergeAccountResource(
-            TransferHistoryEntity(
-                id = transfer.id,
-                type = "sent",
-                fileCount = (transfer.fileCount ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-                summaryUpdating = transfer.summary?.ready != true,
-                totalSize =
-                    0, // Server sizes are encrypted bytes, never present them as plaintext sizes.
-                serverUrl = access.serverUrl,
-                encryptionKey = "",
-                status =
-                    when {
-                        transfer.status == "exhausted" -> "exhausted"
-                        transfer.status in listOf("expired", "revoked") -> "unavailable"
-                        transfer.downloadedAt != null -> "downloaded"
-                        transfer.downloadCount > 0 -> "download_started"
-                        else -> transfer.status
-                    },
-                accountId = access.accountId,
-                createdAt = parseHistoryExpiry(transfer.createdAt) ?: System.currentTimeMillis(),
-                expiresAt = parseHistoryExpiry(transfer.expiresAt),
-                maxDownloads = transfer.maxDownloads,
-                sharedTitle = transfer.title,
-            ),
-            access,
-        )
-    }
-    for (slot in resources.slots) {
-        if (currentAccess() != access) throw CancellationException("Account changed")
-        dao.mergeAccountResource(slotHistoryResource(slot, access), access)
+        if (retainNew || dao.getById(resource.id) != null)
+            dao.mergeAccountResource(resource, access)
     }
 }
+
+internal fun accountHistoryMetadata(
+    resources: AuthResources,
+    access: HistoryAccess,
+): List<TransferHistoryEntity> =
+    resources.transfers.map { transferHistoryResource(it, access) } +
+        resources.slots.map { slotHistoryResource(it, access) }
+
+internal fun transferHistoryResource(
+    transfer: AuthResourceTransfer,
+    access: HistoryAccess,
+): TransferHistoryEntity =
+    TransferHistoryEntity(
+        id = transfer.id,
+        type = "sent",
+        fileCount = (transfer.fileCount ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        summaryUpdating = transfer.summary?.ready != true,
+        totalSize = 0, // Server sizes are encrypted bytes, never present them as plaintext sizes.
+        serverUrl = access.serverUrl,
+        encryptionKey = "",
+        status =
+            when {
+                transfer.status == "exhausted" -> "exhausted"
+                transfer.status in listOf("expired", "revoked") -> "unavailable"
+                transfer.downloadedAt != null -> "downloaded"
+                transfer.downloadCount > 0 -> "download_started"
+                else -> transfer.status
+            },
+        accountId = access.accountId,
+        createdAt = parseHistoryExpiry(transfer.createdAt) ?: System.currentTimeMillis(),
+        expiresAt = parseHistoryExpiry(transfer.expiresAt),
+        maxDownloads = transfer.maxDownloads,
+        sharedTitle = transfer.title,
+    )
 
 /** Compact resource summaries contain authoritative counts, never an authoritative child list. */
 internal fun slotHistoryResource(
