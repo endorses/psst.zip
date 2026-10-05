@@ -1680,13 +1680,13 @@ external results do not authorize another discovery round or a release claim.
       save workflows. An actual unsandboxed `adb devices -l` lists no device.
       Compiled instrumentation tests and prior emulator evidence do not establish
       the required physical/older Android or iOS results.
-- [ ] **E-03 — compatible development delivery:** after compatible artifacts and
-      their required checks, back up and update the existing `psst-local`
-      deployment, preserving its actual volumes, configured LAN URL and
-      LAN/loopback port bindings. Its labels identify `docker-compose.yml` plus
-      a stdin override; an empty default-project `docker compose ps` does not
-      mean that the service is stopped. The configured LAN URL currently returns
-      HTTP 200. No deployment or operator configuration was changed in this audit.
+- [x] **E-03 — compatible development delivery:** update the independently
+      authorized LAN development service with the tested backend/web/Android
+      implementation and artifacts. Preserve the original volumes, operator
+      `.env`, canonical LAN URL and LAN/loopback bindings. The delivery checkpoint
+      below records the stopped backup, runtime verification and real LAN flows.
+      Native iOS and physical-device qualification remains pending separately;
+      this development update is not a public release or a native build result.
 
 Public ACME issuance/renewal, operator-specific gateways/CDNs/IPv6 and an
 operator's real backup qualify those deployments. The original local scope calls
@@ -1695,3 +1695,60 @@ it does not require obtaining a public domain or starting a public instance.
 Keep those public qualification limits explicit without adding them as a new
 local implementation blocker. Native/device and compatible delivery requirements
 above retain their original scope and remain pending.
+
+### LAN development delivery, 2026-10-05
+
+Continue the authorized development delivery independently of missing native
+qualification. Requiring every iOS/device result before this LAN update was an
+agent-inferred dependency; the plan retains those checks without introducing
+that additional dependency. The closure audit remains terminal **BLOCKED** by
+E-01/E-02, with E-03 now completed; no discovery or review campaign was restarted.
+
+- [x] Retain old image tags and the exact loaded proxy configuration for rollback.
+      Build current backend/web images before stopping the service. Stop both
+      writers, archive the complete existing backend, Caddy data and Caddy config
+      volumes, verify archive readability and SHA-256 checksums, and retain
+      protected configuration and original container metadata. The private cold
+      snapshot is in ignored `backend/data/development-backups/20261005T015929Z/`,
+      outside the managed payload volume and web/build contexts. Snapshot files
+      have mode 0600 and the directory mode 0700; this local rollback snapshot
+      does not claim encrypted off-host backup qualification.
+- [x] Update `psst-local` using its existing named volumes. Migrate only the
+      stopped proxy volumes to UID/GID 10001. Preserve
+      `http://192.168.178.29`, `192.168.178.29:80` and `127.0.0.1:18480`.
+      Translate the old proxy's internal HTTP listener to 8080 without editing
+      operator `.env`; the backend has no published port and trusts only the
+      dedicated proxy address on the new internal network.
+- [x] Verify both containers run without root, with read-only root filesystems,
+      dropped capabilities, no-new-privileges, bounded RAM/CPU/process/tmpfs
+      settings and rotating logs. The configured LAN URL returns HTTP 200 with
+      the compiled UI and planned security headers. Public configuration retains
+      the administrator's 250 MiB maximum file size; no budget/pause setting was
+      changed by the smoke checks.
+- [x] Verify SQLite integrity in the stopped snapshot and current database,
+      preservation of all original account identities, the configured file limit,
+      unchanged operator `.env` and every retained snapshot checksum. These checks
+      support this development migration, not unrun iOS data migration or general
+      power-loss durability.
+- [x] Run the real LAN API smoke: preserved administrator login/cookie origin,
+      administrator transfer refusal, temporary-account password replacement,
+      unlimited/single-attempt send creation, capped v2 inbox creation and anonymous
+      owner-read denial. Use no production account password resets.
+- [x] Run real Chromium flows at the configured LAN origin, which lacks a secure
+      context: unlimited two-file send/decrypt/save; per-file single-attempt
+      send/decrypt/save, authoritative repeat-response refusal and exhausted
+      controls after reopening; a two-file receive link with two isolated senders,
+      anonymous inbox-read denial, third-sender refusal and owner HPKE decrypt/save.
+      Compare every saved file to its original bytes. Temporary harness response
+      shape/locator errors were corrected before final passes; application code
+      needed no changes. Existing race tests supply concurrent boundary evidence.
+- [x] Revoke test links, shut down only the disposable smoke account and revoke
+      smoke administrator sessions. The supported API retains its disabled-account
+      and audit metadata; do not claim the account was deleted. Remove temporary
+      smoke-account credentials and temporary delivery helpers/caches; retain the
+      protected rollback snapshot and image tags. The built Android debug APK is
+      `android/app/build/outputs/apk/debug/app-debug.apk`.
+- [ ] Complete E-01/E-02 using macOS/Xcode and physical test devices. The running
+      development service is available for those tests; deployment success does
+      not close native provider interoperability, signing, migration, storage,
+      interruption, QR or accessibility validation.
