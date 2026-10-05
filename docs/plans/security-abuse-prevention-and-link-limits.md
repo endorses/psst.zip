@@ -1177,9 +1177,11 @@ and iOS guest storage/queues still need bounded local reads and writes.
       reject-all trust defaults and bounded limiter identities. Ruff formatting/
       lint, Python syntax/CLI, Markdown/YAML formatting and diff checks pass;
       a separate Docker inventory confirms zero remaining test resources.
-- [ ] Complete public ACME issuance/renewal, operator-specific gateway/CDN/IPv6
-      layouts and all remaining native/device,
-      recipient and full-plan release gates. Test CA verification does not prove
+- [ ] Complete all remaining native/device,
+      recipient and full-plan release gates. Public ACME issuance/renewal and
+      operator-specific gateway/CDN/IPv6 checks qualify an actual public deployment;
+      they do not require inventing a public deployment for local implementation.
+      Test CA verification does not prove
       publicly trusted certificate issuance, provider billing protection or an
       operator's actual backup. The running development instance is unchanged;
       the full plan remains open.
@@ -1254,7 +1256,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
       pass; task-specific temporary formatter/harness caches are removed.
 - [ ] Complete native iOS app/share-extension builds and the two new display
       XCTest cases, physical/older Android, low-storage/background/process-termination
-      flows, public ACME and the remaining full-plan release gates. Browser and
+      flows and the remaining full-plan release gates. Browser and
       JVM/source checks do not prove native runtime behavior; the development
       deployment is unchanged and the full plan remains open.
 
@@ -1300,7 +1302,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
 - [x] Complete the separate isolated physical volume-pressure exercise recorded
       in the checkpoint below; the page-count test alone does not prove physical
       filesystem ENOSPC/WAL-write behavior.
-- [ ] Complete public ACME, native iOS
+- [ ] Complete native iOS
       app/share-extension/device gates, physical/older Android and the remaining
       full-plan requirements. The running development deployment is unchanged.
 
@@ -1337,7 +1339,7 @@ and iOS guest storage/queues still need bounded local reads and writes.
       does not replace a production handler or database, and changes no running
       deployment. Document the supported minimum fixture reserve and tmpfs
       verification boundary in the resource-management guide.
-- [ ] Complete public ACME issuance/renewal and native
+- [ ] Complete native
       iOS/physical Android gates and the remaining full-plan requirements. These
       tmpfs checks do not prove power-loss durability or every operator's
       filesystem, quotas, storage drivers or provider configuration.
@@ -1626,6 +1628,70 @@ requirements open until their complete scope is verified.
 - [ ] Execute the added iOS History policy XCTest cases and native app/extension
       workflows on macOS. Verify physical Android/iOS migration, accessibility,
       narrow/large-text creation, cancellation, QR and partial-save behavior.
-      Complete public ACME/operator deployment and the original full-plan gates.
+      Complete compatible development delivery and the original full-plan gates.
       Source checks, portable/unit results and compiled APKs do not close these
       native/deployment requirements or establish release readiness.
+
+### Bounded full-plan closure audit and event-reader repair, 2026-10-05
+
+The `security-link-limits-20261005` campaign used one discovery round, one primary
+repair batch and one integrated independent post-fix review. No supplemental
+repair batch was needed. Its terminal outcome is **BLOCKED** by the finite native,
+physical-device and dependent delivery checks below. This ends the audit; missing
+external results do not authorize another discovery round or a release claim.
+
+- [x] Fix **SL-01**: the shared owner-inbox SSE parser bounded neither individual
+      lines nor accumulated event data. Limit each decoded line to 4,096 characters
+      and each event to 16,384 characters, counting ignored fields and line
+      separators before retention. Close the response on excess, cancellation
+      or early collection exit. Android retains its existing bounded polling
+      fallback. This shared Kotlin change applies to both platform targets.
+- [x] Add six actual `SlotApi`/channel regressions for an oversized unterminated
+      line, accumulated multiline event, ignored-field bypass, valid repeated
+      events with budget reset, blocked-read cancellation and early collection
+      exit. All six pass (0.182 s), without waiting for hostile responses to end.
+      The integrated independent review finds no supplemental production defect.
+- [x] Fix **SL-02**: describe browser cancellation's bounded advisory metadata
+      refresh accurately, retaining separate control/payload signals and no
+      automatic payload retry or delivery acknowledgement. Scope the new event
+      parser statement to the shared client rather than browser `EventSource`.
+- [x] Run from `android/`:
+      `JAVA_HOME=/opt/android-studio/jbr ./gradlew :shared:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --offline --no-daemon`.
+      All 153 shared tests and 135 Android tests pass with no failures, errors or
+      skips; debug app and instrumentation APKs build (22 s). Format both changed
+      Kotlin files with checksum-verified ktfmt 0.54; dry formatting checks pass.
+      `python3 ios/scripts/check_sources.py` passes, explicitly not a Swift build.
+- [x] Recheck the complete backend after the latest download-counter and API
+      changes with official checksum-verified Go 1.26.8:
+      `go test -count=1 -race ./...` and `go build -o <temporary-output> ./cmd/server`
+      pass. All nine tested packages pass, including API (274.127 s), database
+      (305.950 s) and reconciliation (71.193 s). Installed golangci-lint 2.13.2
+      reports zero issues with the supported Go toolchain; this is separate from
+      the earlier pinned 2.13.0 evidence. Temporary toolchain/formatter/build
+      caches are removed after verification; no disposable services remain.
+- [ ] **E-01 — native build/provider validation:** run the documented macOS
+      Xcode generation, app/share-extension build and complete XCTest workflow
+      from `ios/README.md`, including CryptoKit/Kotlin interoperability. The CI
+      job exists but this Linux checkout has no Xcode or configured Git remote;
+      a macOS machine or CI repository is still needed. Preserve its build logs
+      and `.xcresult`; portable Swift/source checks are insufficient.
+- [ ] **E-02 — physical-device validation:** execute the documented Android/iOS
+      QR, migration, accessibility, storage, interruption/background and partial
+      save workflows. An actual unsandboxed `adb devices -l` lists no device.
+      Compiled instrumentation tests and prior emulator evidence do not establish
+      the required physical/older Android or iOS results.
+- [ ] **E-03 — compatible development delivery:** after compatible artifacts and
+      their required checks, back up and update the existing `psst-local`
+      deployment, preserving its actual volumes, configured LAN URL and
+      LAN/loopback port bindings. Its labels identify `docker-compose.yml` plus
+      a stdin override; an empty default-project `docker compose ps` does not
+      mean that the service is stopped. The configured LAN URL currently returns
+      HTTP 200. No deployment or operator configuration was changed in this audit.
+
+Public ACME issuance/renewal, operator-specific gateways/CDNs/IPv6 and an
+operator's real backup qualify those deployments. The original local scope calls
+for hardened supplied configuration and isolated bundled/external-proxy checks;
+it does not require obtaining a public domain or starting a public instance.
+Keep those public qualification limits explicit without adding them as a new
+local implementation blocker. Native/device and compatible delivery requirements
+above retain their original scope and remain pending.

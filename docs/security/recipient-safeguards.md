@@ -53,9 +53,12 @@ Do not interpret successful decryption as malware detection.
 Browser transfer metadata is capped at 128 KiB and encrypted manifests at 1 MiB.
 Control reads have a 10-second deadline and accept cancellation. Error responses
 are read once with a 4 KiB cap; only recognized policy codes are translated into
-messages, never raw server HTML/text. A cancelled save skips the final metadata
-refresh so a stalled response cannot delay cleanup. Payload transfer deadlines
-remain distinct from these small-control-response limits.
+messages, never raw server HTML/text. After payload cancellation, browser saves
+may refresh advisory metadata with a separate bounded control signal; this never
+retries the payload or acknowledges delivery. Payload transfer deadlines remain
+distinct from these small-control-response limits. The shared client's inbox
+event parser bounds individual decoded lines and cumulative events, including
+ignored fields, and closes on malformed oversized input or cancellation.
 
 ## Space and temporary copies
 

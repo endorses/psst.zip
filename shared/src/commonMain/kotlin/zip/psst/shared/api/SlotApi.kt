@@ -16,6 +16,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.utils.io.cancel
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -32,6 +33,11 @@ private data class CreateReceiveRequest(
 
 /** Represents a Server-Sent Event from the slot events endpoint. */
 data class SlotEvent(val event: String, val data: String)
+
+// Notifications carry small identities, not manifests or file contents. Bound decoded characters
+// both per line and across an event, including ignored fields, before retaining any server input.
+private const val MAX_EVENT_LINE_CHARS = 4096
+private const val MAX_EVENT_CHARS = 16 * 1024
 
 /** API operations for drop slots (receive flow). */
 class SlotApi(
@@ -171,32 +177,42 @@ class SlotApi(
                 val channel = response.bodyAsChannel()
                 var currentEvent = ""
                 var currentData = StringBuilder()
+                var eventChars = 0
 
-                while (!channel.isClosedForRead) {
-                    val line = channel.readUTF8Line() ?: break
+                try {
+                    while (!channel.isClosedForRead) {
+                        val line = channel.readUTF8Line(MAX_EVENT_LINE_CHARS) ?: break
+                        require(line.length < MAX_EVENT_CHARS - eventChars) {
+                            "Inbox notification is too large"
+                        }
+                        eventChars += line.length + 1
 
-                    when {
-                        line.startsWith("event:") -> {
-                            currentEvent = line.removePrefix("event:").trim()
-                        }
-                        line.startsWith("data:") -> {
-                            if (currentData.isNotEmpty()) currentData.append('\n')
-                            currentData.append(line.removePrefix("data:").trim())
-                        }
-                        line.isBlank() -> {
-                            // Empty line signals end of an event
-                            if (currentEvent.isNotEmpty() || currentData.isNotEmpty()) {
-                                emit(
-                                    SlotEvent(
-                                        event = currentEvent.ifEmpty { "message" },
-                                        data = currentData.toString(),
+                        when {
+                            line.startsWith("event:") -> {
+                                currentEvent = line.removePrefix("event:").trim()
+                            }
+                            line.startsWith("data:") -> {
+                                if (currentData.isNotEmpty()) currentData.append('\n')
+                                currentData.append(line.removePrefix("data:").trim())
+                            }
+                            line.isBlank() -> {
+                                // Empty line signals end of an event and resets its whole budget.
+                                if (currentEvent.isNotEmpty() || currentData.isNotEmpty()) {
+                                    emit(
+                                        SlotEvent(
+                                            event = currentEvent.ifEmpty { "message" },
+                                            data = currentData.toString(),
+                                        )
                                     )
-                                )
-                                currentEvent = ""
-                                currentData = StringBuilder()
+                                    currentEvent = ""
+                                    currentData = StringBuilder()
+                                }
+                                eventChars = 0
                             }
                         }
                     }
+                } finally {
+                    channel.cancel()
                 }
             }
     }
