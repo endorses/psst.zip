@@ -41,7 +41,7 @@ struct TransferDetailView: View {
                     if vm.maxDownloads > 0 {
                         Text("Up to \(vm.maxDownloads) download attempts per file").font(.footnote)
                     }
-                    if let expiry = vm.expiresAt {
+                    if vm.record?.linkActive != false, let expiry = vm.expiresAt {
                         expiryLabel(expiry)
                     }
                 }
@@ -152,7 +152,7 @@ struct TransferDetailView: View {
                         if vm.pageWindow.number > 1 { Button("First page") { Task { await vm.firstPage() } }.disabled(!vm.canBrowse) }
                     }
                     if let onCreateAnother { Button("Create another link", action: onCreateAnother).disabled(active) }
-                    if let expiry = vm.expiresAt {
+                    if vm.record?.linkActive != false, let expiry = vm.expiresAt {
                         expiryLabel(expiry)
                     }
                 }

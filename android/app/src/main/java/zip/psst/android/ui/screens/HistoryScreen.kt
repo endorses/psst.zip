@@ -31,7 +31,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -239,6 +239,7 @@ fun HistoryScreen(
                     viewModel.refresh()
                     guest.refreshHistory()
                 }
+                Lifecycle.Event.ON_PAUSE,
                 Lifecycle.Event.ON_STOP -> viewModel.stopRefreshing()
                 else -> Unit
             }
@@ -331,7 +332,6 @@ fun HistoryScreen(
                     }
                 }
             }
-            if (mergedLoading || pageState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             mergedIssue?.let {
                 Text(it, Modifier.padding(16.dp))
                 TextButton(onClick = viewModel::refreshDeviceHistory) { Text("Retry") }
@@ -554,12 +554,18 @@ private fun HistoryItem(
                     modifier = Modifier.semantics { contentDescription = fullTitle },
                     style = MaterialTheme.typography.titleSmall,
                 )
+                val fileCount = serverCount ?: entity.fileCount.toLong()
+                val fileCountLabel =
+                    pluralStringResource(
+                        R.plurals.file_count_label,
+                        fileCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
+                        fileCount,
+                    )
                 Text(
                     text =
                         (if (entity.summaryUpdating)
                             "Counts updating · last known ${entity.fileCount} file(s)"
-                        else
-                            "${formatTimestamp(entity.createdAt)} · ${serverCount ?: entity.fileCount.toLong()} files") +
+                        else "${formatTimestamp(entity.createdAt)} · $fileCountLabel") +
                             if (serverSize != null) {
                                 " · ${formatFileSize(serverSize)} encrypted"
                             } else if (entity.totalSize > 0) {
@@ -581,12 +587,14 @@ private fun HistoryItem(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                entity.expiresAt?.let { expiresAt ->
-                    Text(
-                        relativeExpiry(expiresAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (entity.status !in listOf("exhausted", "unavailable", "expired", "revoked")) {
+                    entity.expiresAt?.let { expiresAt ->
+                        Text(
+                            relativeExpiry(expiresAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 Text(
                     text = historyStatusLabel(entity.type, entity.status),

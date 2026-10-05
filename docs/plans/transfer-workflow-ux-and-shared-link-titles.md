@@ -319,7 +319,7 @@ in the protected, ignored directory
 
 The updated APK is
 `android/app/build/outputs/apk/debug/app-debug.apk` (23,484,430 bytes), SHA-256
-`36171ebe8c6f8ec0dd3be34492166110d4679215d58a1a2a89a552deb87a7a80`.
+`a9a3e6d0fa5a72bfb86e922f4c823df7885bacafef82451ec12af0c575512239`.
 
 Real LAN verification passed against the updated compiled UI: named two-file
 sending, exact saved bytes, partial availability and final exhaustion denial;
@@ -327,3 +327,30 @@ public receive uploading; private owner decryption/saving with account context
 and Back to inbox; and immediate same-server scanned-invitation sending. The
 verification used temporary accounts and shut down their links and sessions
 after each run. The existing application accounts and policies were preserved.
+
+## Follow-up: inactive expiry and quiet History refresh
+
+2026-10-05, following the screenshots of exhausted links and the Android refresh
+bar. Exhaustion already denies fresh downloads; the original expiry timestamp
+remains necessary for metadata retention and final receipts, and does not mean
+the link is still downloadable. Presentation now separates those concerns.
+
+- [x] Hide the future expiry countdown for inactive links in web and Android
+      History, and the corresponding iOS transfer details. Preserve existing
+      exhaustion enforcement, final-reader draining and receipt behavior.
+- [x] Remove Android History's top progress bar, preserving existing records and
+      actionable request errors during refresh. Correct the single-file count.
+- [x] Cancel Android History polling on pause as well as stop/disposal. Polling
+      starts on entry/resume only in Server history mode: five seconds after a
+      successful request, fifteen seconds after a failed request. On-device
+      History does not run that server poll. iOS already restricts its loop to
+      visible History while the scene is active: five seconds after success,
+      with failures backing off to ten, twenty and thirty seconds.
+- [x] Verify the focused web multi-file exhaustion regression, including exact
+      saved bytes, refusal after exhaustion and absence of expiry text. Svelte
+      check returned zero errors/warnings and the production web image built.
+      Android debug build and app unit tests passed; available iOS source and
+      compiler syntax checks passed. Native iOS validation remains pending.
+- [x] Deploy the corrected web image to the LAN service while preserving the
+      backend container, environment, policies, mounts, networks and runtime
+      restrictions. Retain the previous web image for rollback.

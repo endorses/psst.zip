@@ -1672,10 +1672,13 @@
             >
               {historyCursor || historyNext ? "No transfers on this page." : "No transfers yet."}
             </p>{/if}
-          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}<article
-              class="resource"
-              data-resource-id={item.id}
-            >
+          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}
+            {@const storedSize = labelFor(labels, item.kind, item.id).size || item.total_size || 0}
+            {@const activeLink =
+              !downloadLinkExhausted(item) &&
+              item.status !== "revoked" &&
+              Date.parse(item.expires_at) > now}
+            <article class="resource" data-resource-id={item.id}>
               <div>
                 <span class="type-badge"
                   ><Icon
@@ -1701,13 +1704,10 @@
                       ? `${receivedFileCount(item)} files received`
                       : `${resourceFileCount(item)} files · ${status(item)}`}
                 </p>
-                <p class="muted small">
-                  {labelFor(labels, item.kind, item.id).size
-                    ? formatSize(labelFor(labels, item.kind, item.id).size ?? 0) + " · "
-                    : item.total_size
-                      ? formatSize(item.total_size) + " stored · "
-                      : ""}Expires {date(item.expires_at)}
-                </p>
+                {#if storedSize || activeLink}<p class="muted small">
+                    {#if storedSize}{formatSize(storedSize)} stored{activeLink ? " · " : ""}{/if}
+                    {#if activeLink}Expires {date(item.expires_at)}{/if}
+                  </p>{/if}
                 {#if !links[item.id] && !downloadLinkExhausted(item)}<p class="muted small">
                     Encryption key is on another device
                   </p>{/if}

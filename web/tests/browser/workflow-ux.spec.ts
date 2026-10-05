@@ -237,6 +237,7 @@ test("shared send title survives another browser and the whole link closes only 
     await page.getByRole("link", { name: "History", exact: true }).click();
     const row = page.locator(".resource").filter({ hasText: "Trip documents" });
     await expect(row).toContainText("Download limit reached");
+    await expect(row).not.toContainText("Expires");
     await expect(row.getByRole("link", { name: "Open", exact: true })).toHaveCount(0);
     await expect(row.getByRole("button", { name: "Copy link", exact: true })).toHaveCount(0);
     await expect(row.getByRole("link", { name: "New send link" })).toBeVisible();
