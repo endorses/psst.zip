@@ -219,7 +219,7 @@ test("admin metrics and resources distinguish unavailable, degraded and stale da
   await expect(page.getByText("Resources could not be loaded", { exact: false })).toHaveCount(0);
 });
 
-test("same-account selected files survive reset, temporary login and password replacement without auto-upload; another account clears them", async ({
+test("same-account selected files and download policy survive reset and password replacement without auto-upload; another account clears them", async ({
   page,
   adminRequest,
 }) => {
@@ -239,6 +239,8 @@ test("same-account selected files survive reset, temporary login and password re
     mimeType: "text/plain",
     buffer: Buffer.from("private pending bytes"),
   });
+  await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
+  await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("8");
   let uploads = 0;
   page.on("request", (r) => {
     if (r.url().endsWith("/api/v1/transfers") && r.method() === "POST") uploads++;
@@ -255,6 +257,8 @@ test("same-account selected files survive reset, temporary login and password re
   // authenticate follows the real required-change form and signs in with the replacement.
   await authenticate(page, { username, password: reset });
   await expect(page.getByText(filename, { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).toBeChecked();
+  await expect(page.getByRole("spinbutton", { name: "Limit downloads per file" })).toHaveValue("8");
   await expect(page.getByRole("button", { name: "Send files", exact: true })).toBeEnabled();
   expect(uploads).toBe(0);
   const resources = await (await adminRequest.get("/api/v1/auth/resources?all=true")).json();
@@ -273,6 +277,12 @@ test("same-account selected files survive reset, temporary login and password re
   });
   await authenticate(page);
   await expect(page.getByText(filename, { exact: true })).toHaveCount(0);
+  await page.getByLabel("Choose files", { exact: true }).setInputFiles({
+    name: "different-account.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("a genuinely new selection"),
+  });
+  await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).not.toBeChecked();
   expect(uploads).toBe(0);
 });
 

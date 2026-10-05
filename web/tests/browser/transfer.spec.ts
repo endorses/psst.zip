@@ -116,3 +116,39 @@ test("per-file download limit is fixed at creation and exhausted controls reflec
   await expect(page.getByRole("button", { name: "Save all as ZIP" })).toBeDisabled();
   await expect(page.getByText("· 0 attempts remaining", { exact: true })).toBeVisible();
 });
+
+test("an allocated send keeps its fixed download policy through retry and resets it for a new send", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.getByLabel("Choose files").setInputFiles(files);
+  await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
+  await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("3");
+  const selectedPolicies: number[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/v1/transfers") && request.method() === "POST") {
+      selectedPolicies.push(request.postDataJSON().max_downloads);
+    }
+  });
+  let interrupted = false;
+  await page.route("**/api/v1/transfers/*/manifest", (route) => {
+    if (route.request().method() !== "POST" || interrupted) return route.continue();
+    interrupted = true;
+    return route.fulfill({ status: 503, json: { error: "Temporary manifest outage" } });
+  });
+  await page.getByRole("button", { name: "Send files", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry upload", exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).toBeDisabled();
+  await expect(page.getByRole("spinbutton", { name: "Limit downloads per file" })).toHaveValue("3");
+  await expect(page.getByRole("spinbutton", { name: "Limit downloads per file" })).toBeDisabled();
+  await page.getByRole("button", { name: "Retry upload", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ready to share" })).toBeVisible();
+  expect(selectedPolicies).toEqual([3, 3]);
+  await expect(
+    page.getByText("3 download attempts per file, including interrupted downloads."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Send more files", exact: true }).click();
+  await page.getByLabel("Choose files").setInputFiles(files);
+  await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).toBeEnabled();
+});

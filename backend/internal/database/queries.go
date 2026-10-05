@@ -139,9 +139,12 @@ func (q *Queries) CompleteTransfer(id string) error {
 	return tx.Commit()
 }
 
+var ErrDownloadCounter = errors.New("download accounting is invalid or exhausted")
+
 // ReserveFileDownload atomically consumes one GET allowance for this file.
 // Each file gets max_downloads attempts, so a multi-file transfer remains usable.
 // Transfer download_count is the minimum across its files: complete file sets.
+// Guard even unlimited counters: SQLite promotes overflowing integers to REAL.
 func (q *Queries) ReserveFileDownload(transferID, fileID string) (bool, error) {
 	tx, err := q.db.Begin()
 	if err != nil {
@@ -150,15 +153,38 @@ func (q *Queries) ReserveFileDownload(transferID, fileID string) (bool, error) {
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE files SET download_count = download_count + 1
  WHERE id = ? AND transfer_id = ? AND upload_complete = 1
+ AND typeof(download_count) = 'integer'
+ AND download_count BETWEEN 0 AND 9223372036854775806
+ AND NOT EXISTS (SELECT 1 FROM files sibling WHERE sibling.transfer_id = files.transfer_id
+ AND (typeof(sibling.download_count) != 'integer' OR sibling.download_count < 0))
  AND EXISTS (SELECT 1 FROM transfers t WHERE t.id = files.transfer_id
  AND t.status = 'complete'
- AND (t.max_downloads <= 0 OR files.download_count < t.max_downloads))`, fileID, transferID)
+ AND typeof(t.max_downloads) = 'integer' AND t.max_downloads BETWEEN 0 AND 2147483647
+ AND (t.max_downloads = 0 OR files.download_count < t.max_downloads))`, fileID, transferID)
 	if err != nil {
 		return false, err
 	}
 	n, err := res.RowsAffected()
-	if err != nil || n == 0 {
+	if err != nil {
 		return false, err
+	}
+	if n == 0 {
+		var invalid bool
+		err = tx.QueryRow(`SELECT EXISTS (
+ SELECT 1 FROM files f JOIN transfers t ON t.id = f.transfer_id
+ WHERE f.id = ? AND f.transfer_id = ? AND (
+ typeof(f.download_count) != 'integer' OR f.download_count < 0
+ OR f.download_count = 9223372036854775807
+ OR typeof(t.max_downloads) != 'integer' OR t.max_downloads NOT BETWEEN 0 AND 2147483647
+ OR EXISTS (SELECT 1 FROM files sibling WHERE sibling.transfer_id = f.transfer_id
+ AND (typeof(sibling.download_count) != 'integer' OR sibling.download_count < 0))))`, fileID, transferID).Scan(&invalid)
+		if err != nil {
+			return false, err
+		}
+		if invalid {
+			return false, ErrDownloadCounter
+		}
+		return false, nil
 	}
 	_, err = tx.Exec(`UPDATE transfers SET download_count =
  (SELECT MIN(download_count) FROM files WHERE transfer_id = ?) WHERE id = ?`, transferID, transferID)

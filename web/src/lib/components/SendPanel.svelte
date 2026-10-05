@@ -1,3 +1,7 @@
+<script module lang="ts">
+  export type SendDraft = { files: File[]; maxDownloads: number; policyLocked: boolean };
+</script>
+
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
   import { beforeNavigate } from "$app/navigation";
@@ -13,7 +17,7 @@
     keyString,
     oncreated = () => {},
     onactive = () => {},
-    initialFiles = [],
+    initialDraft = { files: [], maxDownloads: 0, policyLocked: false },
     onselection = () => {},
   }: {
     accountId?: string;
@@ -21,17 +25,21 @@
     keyString?: string;
     oncreated?: (id: string, url: string, title: string, size: number) => void;
     onactive?: (active: boolean) => void;
-    initialFiles?: File[];
-    onselection?: (files: File[]) => void;
+    initialDraft?: SendDraft;
+    onselection?: (draft: SendDraft) => void;
   } = $props();
   const job = new UploadJob(untrack(() => (slotId ? { slotId, key: keyString ?? "" } : undefined)));
-  let maxDownloads = $state(0);
+  let maxDownloads = $state(untrack(() => initialDraft.maxDownloads));
+  let policyLocked = $state(untrack(() => initialDraft.policyLocked));
   onMount(() => {
     void job.refreshLimit();
   });
   // Initial selection belongs to the account-keyed component; never react to another account.
-  job.files = untrack(() => [...initialFiles]);
-  $effect(() => onselection(job.files));
+  job.files = untrack(() => [...initialDraft.files]);
+  $effect(() => {
+    if (!slotId && job.transferId) policyLocked = true;
+  });
+  $effect(() => onselection({ files: job.files, maxDownloads, policyLocked }));
   $effect(() => onactive(job.active || (job.files.length > 0 && job.state !== "done")));
   function unload(e: BeforeUnloadEvent) {
     if (job.active || (job.files.length && job.state !== "done")) {
@@ -71,6 +79,7 @@
       job.state = "idle";
       job.url = "";
       maxDownloads = 0;
+      policyLocked = false;
       if (slotId) void job.refreshLimit();
     }}>Send more files</button
   >
@@ -193,6 +202,7 @@
     </ul>
     {#if !slotId}<OptionalLimit
         bind:value={maxDownloads}
+        disabled={policyLocked}
         label="Limit downloads per file"
         description="Each file allows this many download attempts. Interrupted downloads and retries count. This limit is fixed when you send."
       />{/if}

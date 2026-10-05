@@ -1520,3 +1520,54 @@ and iOS guest storage/queues still need bounded local reads and writes.
       cannot establish a native pass. Keep the original native/platform gates
       open. Physical-device signing, Keychain/App Group provisioning, cameras,
       interruption behavior and extension memory still need their own checks.
+
+### Remaining link-policy implementation check, 2026-10-05
+
+A bounded source check of sections 8–11 found implementation gaps in addition to
+the native validation gates. This is not a final closure audit. Keep the original
+requirements open until their complete scope is verified.
+
+- [ ] Give expired transfer/inbox responses consistent machine-readable errors
+      and retain distinct revocation/allowance messages. Numeric creation
+      validation must also expose a stable validation code consistently.
+- [ ] Finish the collapsed Link limits grouping, enable controls and field-level
+      validation on web and Android. iOS already has its disclosure control;
+      native focus, appearance and accessibility checks remain pending.
+- [ ] Preserve Android's chosen send cap through same-account restricted login
+      and password replacement; `SendViewModel` currently restores only files.
+      Preserve immutable allocated policies through recoverable errors across
+      platforms. Verify iOS setup-level duplicate-tap protection rather than
+      relying only on each newly created receive view model's guard.
+- [ ] Offer Android's optional receive-link name before creation. Show configured
+      caps and cumulative receive usage in Android/iOS History rows and explicit
+      configured receive caps in web results/History, without exposing keys or
+      filenames on devices missing them.
+- [ ] Finish exhausted-action messages and availability refresh. Android must
+      disable resume/redownload when all missing files are exhausted while
+      retaining local Open/Share. Web must display Download limit reached,
+      refresh metadata after cancellation, explain unavailable ZIP choices and
+      distinguish receive file/byte/batch exhaustion in the opening state.
+- [ ] Add the dedicated Range-header reservation regression and verify the
+      remaining creation/reset/partial-save workflows on native platforms.
+
+### Checked download counters and preserved web drafts, 2026-10-05
+
+- [x] Reject invalid SQLite download-counter storage types, negative accounting,
+      invalid stored caps and exhausted integer headroom before reserving a
+      response. Preserve writer-first transactions, atomic per-file/aggregate
+      updates and ordinary quota/missing-file denials. A bounded independent
+      read-only review finds no issues in this change.
+- [x] Run the new database reservation tests with the race detector three times:
+      all pass (29.279 s), including corruption without mutation, independent
+      connections competing for the final integer attempt and persistence after
+      reopen. Existing API quota/cleanup/acknowledgement and database migration/
+      traffic regressions pass (API 7.486 s; database 3.308 s).
+- [x] Preserve the chosen web send cap with the selected files through same-account
+      restricted login/password replacement. Keep an allocated draft's policy
+      locked after recoverable errors; clear the draft for another account or a
+      genuinely new send. Two real-browser regressions pass (20.6 s), covering
+      same-account restoration, account switching, failed manifest retry and a
+      fresh unlimited send. Web type checking reports zero errors/warnings;
+      focused limits, resource-history and guest-capacity unit tests pass.
+- [ ] Finish the remaining source gaps listed above and native/deployment gates.
+      These focused results do not establish full-plan completion.

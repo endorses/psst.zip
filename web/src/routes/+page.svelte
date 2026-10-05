@@ -29,7 +29,7 @@
   import RevokeDialog from "$lib/components/RevokeDialog.svelte";
   import { BRAND } from "$lib/brand";
   import { formatSize } from "$lib/upload-job.svelte";
-  import SendPanel from "$lib/components/SendPanel.svelte";
+  import SendPanel, { type SendDraft } from "$lib/components/SendPanel.svelte";
   import {
     accountRequest as request,
     AccountError,
@@ -68,10 +68,11 @@
   let receiveInfo = $state<InboxPage | null>(null),
     maxFiles = $state(0);
   let receiveNeedsKey = $state(false);
-  let pendingFiles: File[] = [],
+  const emptySendDraft = (): SendDraft => ({ files: [], maxDownloads: 0, policyLocked: false });
+  let pendingDraft = emptySendDraft(),
     pendingOwner = "";
-  let selectedFiles: File[] = [];
-  let restoredFiles = $state<File[]>([]);
+  let selectedDraft = emptySendDraft();
+  let restoredDraft = $state<SendDraft>(emptySendDraft());
   let sendActive = $state(false),
     showPassword = $state(false),
     historyFilter = $state("all"),
@@ -590,16 +591,16 @@
     if (preserveSelection && user?.role === "user") {
       // A restricted login has no SendPanel. Its same-account selection remains in
       // the pending queue until the required password flow has fully completed.
-      const selection =
-        user.must_change_password && pendingOwner === user.id ? pendingFiles : selectedFiles;
+      const draft =
+        user.must_change_password && pendingOwner === user.id ? pendingDraft : selectedDraft;
       pendingOwner = user.id;
-      pendingFiles = [...selection];
+      pendingDraft = { ...draft, files: [...draft.files] };
     } else {
       pendingOwner = "";
-      pendingFiles = [];
+      pendingDraft = emptySendDraft();
     }
-    restoredFiles = [];
-    selectedFiles = [];
+    restoredDraft = emptySendDraft();
+    selectedDraft = emptySendDraft();
     epoch++;
     void cancelPair();
     user = null;
@@ -727,13 +728,16 @@
       } catch {}
       epoch++;
       if (pendingOwner !== user.id || user.role !== "user") {
-        pendingFiles = [];
+        pendingDraft = emptySendDraft();
         pendingOwner = "";
       }
-      restoredFiles = [];
+      restoredDraft = emptySendDraft();
       if (!user.must_change_password && user.role === "user") {
-        restoredFiles = pendingOwner === user.id ? [...pendingFiles] : [];
-        pendingFiles = [];
+        restoredDraft =
+          pendingOwner === user.id
+            ? { ...pendingDraft, files: [...pendingDraft.files] }
+            : emptySendDraft();
+        pendingDraft = emptySendDraft();
         pendingOwner = "";
       }
       loadAccount();
@@ -1366,8 +1370,8 @@
         {#if user.role === "user"}{#key user.id}<div hidden={tab !== "Send"}>
               <SendPanel
                 accountId={user.id}
-                initialFiles={restoredFiles}
-                onselection={(files) => (selectedFiles = files)}
+                initialDraft={restoredDraft}
+                onselection={(draft) => (selectedDraft = draft)}
                 oncreated={remember}
                 onactive={(value) => (sendActive = value)}
               />
