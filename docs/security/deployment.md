@@ -212,6 +212,14 @@ version catalog/locks where present); do not float crypto provider versions or
 upgrade a wire format without interoperability tests. Pull/build new base images
 in an isolated environment before replacing the running stack.
 
+The backend image and CI use Go 1.26.8. The module's `go 1.23.0` language
+declaration does not promise security support for an old Go toolchain. Choose a
+patched release within [Go's supported release window](https://go.dev/doc/devel/release#policy),
+and record the actual compiler in the delivered binary with `go version -m`.
+Keep the Docker builder, CI and release-build toolchain aligned. Base-image tags
+can move; record the resolved image digests for the candidate release and retain
+the matching rollback images instead of assuming the same tag reproduces them.
+
 Run `npm audit` in `web`, a maintained `govulncheck ./...` in `backend`, and an
 image scanner such as Docker Scout or Trivy on both final images. Review the
 actual reachable findings and publish the tool/database versions and results;
@@ -221,13 +229,63 @@ web checks/unit/browser tests, Android/shared tests and APK build, and the nativ
 iOS build/tests before release. The portable Swift harness supplements native
 validation; it does not replace it.
 
-The current release setup produces checksums, but does not establish signed
+For the currently tested source scanner/toolchain combination, from `backend`:
+
+```sh
+GOTOOLCHAIN=go1.26.8 go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+go version -m /actual/candidate/server
+govulncheck -mode=binary /actual/candidate/server
+```
+
+Refresh the scanner version during release review. A scanner/package-loading
+failure is not a clean result; use a compatible maintained parser/toolchain and
+scan the actual candidate binary as well. A source scan with a newer compiler
+does not establish that an older compiled artifact has patched standard-library
+code. Findings classified as uncalled still need a documented applicability
+decision; a zero reachable-symbol result is not a guarantee against unknown flaws.
+
+For web updates, review the audit before changing the lockfile, then verify a
+fresh install and the actual static output:
+
+```sh
+cd web
+npm audit
+npm audit fix --package-lock-only --ignore-scripts
+npm ci
+npm audit
+npm run check
+npm test
+npm run build
+```
+
+Do not automatically force framework-major upgrades or silence audit failures.
+The current SvelteKit 2 dependency graph uses a scoped `cookie: 0.7.2` override
+for [the cookie field-validation advisory](https://github.com/advisories/GHSA-pxg6-pf52-xh8x).
+Review/remove that override when upstream ships a compatible patched dependency;
+test it again before a major framework upgrade. Crypto providers remain pinned
+independently of routine tooling updates. The supplied web image contains the
+compiled static site served by Caddy, not a public Vite or SvelteKit Node server.
+Development-tool advisories and shipped-browser advisories require separate
+applicability decisions, even when both are fixed in the same lockfile update.
+
+`.goreleaser.yml` configures `checksums.txt`; this is configuration evidence, not
+proof that a candidate release was built or verified. It does not establish signed
 artifacts, provenance, or bit-for-bit reproducible binaries. A checksum from the
 same compromised download site is not proof of authenticity. Operators should
 build a reviewed commit or use a release whose independently verified signatures
 are explicitly published. Preserve database policy settings, volume identities,
 proxy configuration and environment files across updates; never solve an update
 error by deleting the database.
+
+Before replacing an instance, take the [stopped complete backup](backup-restore.md)
+and test the candidate with fresh disposable volumes. Use the installation's
+existing Compose project/files/environment and actual volume mappings when
+switching images. Do not reset `.env`, trusted-proxy settings, resource/traffic
+budgets, factor state or database volumes to make an upgrade succeed. Verify
+those persisted settings, sign-in/recent proof, paused-state behavior and cleanup
+after restart before deliberately resuming public traffic. Use the protected
+matching backup and images for rollback; starting an old binary against a newer
+schema is not a supported substitute for restore.
 
 ## Backups and restores
 

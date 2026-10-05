@@ -219,3 +219,36 @@ test("real disposable enrollment, factor login, expired recent proof, recovery r
   ).toBeVisible();
   await previous.dispose();
 });
+
+test.describe.serial("worker administrator proof refresh", () => {
+  test("an expired worker proof rejects account creation", async ({ adminRequest }) => {
+    const identityResponse = await adminRequest.get("/api/v1/auth/me");
+    expect(identityResponse.ok()).toBe(true);
+    ageDisposableSession((await identityResponse.json()).session_id);
+    const rejected = await adminRequest.post("/api/v1/admin/users", {
+      data: {
+        username: `expired-proof-${Date.now()}`,
+        password: "Disposable-member-password-2026",
+        role: "user",
+      },
+    });
+    expect(rejected.status()).toBe(403);
+    expect((await rejected.json()).code).toBe("recent_authentication_required");
+  });
+
+  test("the next setup explicitly refreshes the same worker proof", async ({ adminRequest }) => {
+    const status = await adminRequest.get("/api/v1/admin/security");
+    expect(status.ok()).toBe(true);
+    expect(Date.parse((await status.json()).recent_until)).toBeGreaterThan(
+      Date.parse(status.headers().date),
+    );
+    const created = await adminRequest.post("/api/v1/admin/users", {
+      data: {
+        username: `fresh-proof-${Date.now()}`,
+        password: "Disposable-member-password-2026",
+        role: "user",
+      },
+    });
+    expect(created.status()).toBe(201);
+  });
+});

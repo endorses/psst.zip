@@ -43,7 +43,7 @@ func (q *Queries) InboxEventSessions(ctx context.Context, slot, owner string, se
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	active := make(map[string]bool, len(sessions))
 	now := time.Now()
 	for rows.Next() {

@@ -17,7 +17,7 @@ func passwordPolicyDB(t *testing.T) (*sql.DB, *Queries) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { closeFixture(t, db) })
 	return db, NewQueries(db)
 }
 
@@ -53,7 +53,6 @@ func TestPasswordPolicyMigrationPreservesExistingAccountsAndCredentials(t *testi
 			t.Fatal(err)
 		}
 	}
-	q := NewQueries(legacy)
 	if _, err := legacy.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, "existing-session", "user", []byte("existing-session-secret"), "Browser", time.Now().UTC(), time.Now().Add(time.Hour).UTC()); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +67,7 @@ func TestPasswordPolicyMigrationPreservesExistingAccountsAndCredentials(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		q = NewQueries(upgraded)
+		q := NewQueries(upgraded)
 		for _, role := range []string{"user", "admin"} {
 			user, err := q.UserByID(role)
 			if err != nil || user.MustChangePassword || !bytes.Equal(user.PasswordHash, []byte(role+"-password")) {

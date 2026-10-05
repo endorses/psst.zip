@@ -29,7 +29,7 @@ func admissionRouter(t *testing.T) (*Server, http.Handler) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	q := database.NewQueries(db)
 	hash, err := bcrypt.GenerateFromPassword([]byte("disposable correct password"), bcrypt.MinCost)
 	if err != nil {

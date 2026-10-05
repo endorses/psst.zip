@@ -314,7 +314,7 @@ func TestPayloadCheckFailuresAreSafeAndPreserveQuota(t *testing.T) {
 type appendBeforePayloadLoadStore struct{ store.FileStore }
 
 func (s appendBeforePayloadLoadStore) Load(key string) (io.ReadCloser, error) {
-	if _, err := s.FileStore.SaveAt(key, strings.NewReader("uncommitted-tail"), 4); err != nil {
+	if _, err := s.SaveAt(key, strings.NewReader("uncommitted-tail"), 4); err != nil {
 		return nil, err
 	}
 	return s.FileStore.Load(key)
@@ -340,7 +340,7 @@ func TestStorageChecksStatusIsAdminOnlyAndUncached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal(response.StatusCode, response.Header)
 	}

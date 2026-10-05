@@ -116,7 +116,7 @@ func (q *Queries) RecordAdminAuthenticationFailure(user string, hash []byte, rev
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := lockAdmin(tx, user, hash, revision)
 	if err != nil {
 		return err
@@ -190,7 +190,7 @@ func (q *Queries) CreateAdminSession(s Session, tokenHash, passwordHash []byte, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	security, err := lockAdmin(tx, s.UserID, passwordHash, revision)
 	if err != nil {
 		return err
@@ -247,7 +247,7 @@ func (q *Queries) ReauthenticateAdmin(user, session string, passwordHash []byte,
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := lockAdmin(tx, user, passwordHash, revision)
 	if err != nil {
 		return time.Time{}, err
@@ -285,7 +285,7 @@ func (q *Queries) AdminSecurityMetadata(user, session string, now time.Time) (Ad
 	if err != nil {
 		return AdminSecurityMetadata{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := readAdminSecurity(tx, user)
 	if err != nil {
 		return AdminSecurityMetadata{}, err
@@ -307,7 +307,7 @@ func (q *Queries) BeginAdminEnrollment(user, session string, passwordHash []byte
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := lockAdmin(tx, user, passwordHash, revision)
 	if err != nil {
 		return time.Time{}, err
@@ -381,7 +381,7 @@ func (q *Queries) ConfirmAdminEnrollment(user, session string, passwordHash []by
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := lockAdmin(tx, user, passwordHash, revision)
 	if err != nil {
 		return nil, err
@@ -457,7 +457,7 @@ func (q *Queries) ChangeAdminFactor(user, session string, passwordHash []byte, r
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s, err := lockAdmin(tx, user, passwordHash, revision)
 	if err != nil {
 		return nil, err
@@ -505,7 +505,7 @@ func (q *Queries) ResetAdminFactor(username string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE users SET disabled=disabled WHERE username=? COLLATE BINARY`, username); err != nil {
 		return err
 	}

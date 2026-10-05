@@ -69,7 +69,7 @@ func TestResetIsScopedToAdministratorAndPreservesPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	for _, user := range []database.User{
 		{ID: "admin", Username: "admin", Role: "admin", PasswordHash: []byte("original")},
@@ -112,7 +112,7 @@ func TestEnrolledDisabledAdministratorResetClearsOnlyCredentialMaterial(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	u := database.User{ID: "admin", Username: "admin", Role: "admin", PasswordHash: []byte("original")}
 	if err := q.CreateUser(u, false); err != nil {
@@ -178,7 +178,7 @@ func TestResetWithoutAuditStorageRemainsAvailableAndReportsGap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	user := database.User{ID: "operator", Username: "operator", Role: "admin", PasswordHash: []byte("preserved-password")}
 	if err := q.CreateUser(user, false); err != nil {

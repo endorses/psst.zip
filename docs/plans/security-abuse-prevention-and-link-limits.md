@@ -165,8 +165,8 @@ End-to-end encryption prevents server inspection of honest ciphertext. A custom 
 - [x] Keep a minimal bounded security audit trail for administrative changes, suspicious authentication patterns, suspensions and revocations. Redact authorization headers, cookies, pairing codes, key fragments and sensitive query values; avoid logging request bodies, filenames or decrypted metadata. State retention and access policy and rotate application/container logs.
 - [x] Harden supplied deployment configuration: private backend networking, explicit trusted HTTPS setup, prominent opt-in development HTTP, non-root execution where supported, least capabilities, no-new-privileges, restricted writable paths, process/memory/CPU limits and tested restart behavior. Keep storage/database/key material out of the static web root and avoid exposing diagnostic/admin ports publicly.
 - [x] Add a tested Content Security Policy compatible with compiled assets, theme initialization, local QR scanning, blob downloads, workers and intentional external-server scan behavior. Preserve nosniff, frame denial, no-referrer and camera restrictions. Treat CSP as defense in depth, not evidence that an existing XSS has been found.
-- [ ] Document supported dependency/base-image update and vulnerability-check workflows, signed/reproducible release verification where available, backups/restores and safe credential handling. Ensure updates do not reset operator budgets/proxy policy. Describe what restored metadata/key material can and cannot recover without promising server access to plaintext.
-- [ ] Align security claims throughout UI/README: trusted HTTPS and trustworthy client software remain necessary, browser-delivered JavaScript depends on its serving origin, encryption does not prove sender identity or file safety, and operators need a way to respond to abuse. Do not imply encryption removes hosting-provider obligations or guarantees legal immunity.
+- [x] Document supported dependency/base-image update and vulnerability-check workflows, signed/reproducible release verification where available, backups/restores and safe credential handling. Ensure updates do not reset operator budgets/proxy policy. Describe what restored metadata/key material can and cannot recover without promising server access to plaintext. See the dependency and verification checkpoint below; documentation does not establish unrun release/image/native checks.
+- [x] Align security claims throughout UI/README: trusted HTTPS and trustworthy client software remain necessary, browser-delivered JavaScript depends on its serving origin, encryption does not prove sender identity or file safety, and operators need a way to respond to abuse. Do not imply encryption removes hosting-provider obligations or guarantees legal immunity. The browser delivery/HTTP notices, recipient confirmation, README and operator guides explain these boundaries; no public-release readiness is claimed.
 - [ ] Test emergency stop/revoke during concurrent upload/download, account suspension with existing public links, restart during cleanup, tampered report fields, secret redaction, bounded logs, recovery access and both bundled/external proxy setups using isolated deployment data.
 
 ## 7. Recipient safeguards for hostile links and files
@@ -1377,3 +1377,120 @@ and iOS guest storage/queues still need bounded local reads and writes.
       full-plan requirements. Internal issuer storage/restore verification does
       not prove public ACME account/challenge/renewal behavior, a protected
       operator backup, ciphertext/client-key restoration or power-loss durability.
+
+### Dependency and verification checkpoint, 2026-10-05
+
+- [x] Update compatible web dependencies and the committed npm lock: SvelteKit
+      2.70.3, Svelte 5.57.1, Vite 6.4.3, fflate 0.8.3 and their affected transitive
+      dependencies. Scope the patched cookie 0.7.2 override to SvelteKit. A fresh
+      `npm ci` and `npm audit` report zero vulnerabilities. Keep the existing
+      framework majors and pinned receive-cryptography providers. Web unit tests
+      pass 91/91; Svelte check reports zero errors/warnings and the static build
+      succeeds. An audit result is a dated known-advisory check, not proof against
+      unknown vulnerabilities or a claim that all development dependencies ship
+      in the static Caddy image.
+- [x] Update chi from 5.2.1 to 5.3.0, retaining the application's explicit trusted
+      proxy resolver. The application does not use RealIP or RedirectSlashes;
+      updating nevertheless removes their affected package versions. Align the
+      Docker builder and CI Go version to supported Go 1.26.8. `go mod tidy`
+      records the existing direct Unix syscall dependency accurately without
+      changing its version. CI selects a maintained Go-compatible linter; its
+      passing uncapped result is recorded separately below.
+- [x] Use a private temporary Go 1.26.8 toolchain/cache and govulncheck 1.8.0
+      because the previously installed scanner cannot load the host Go 1.27
+      standard library. `go mod verify`, verbose source scanning, server build,
+      `go version -m` and binary scanning pass. The source scan reports zero
+      reachable-symbol findings, zero affected imported packages and 21 module
+      findings; the Linux binary reports zero reachable findings and 20 module
+      findings. The remaining reports concern SSH/agent/knownhosts/OpenPGP code
+      not imported by the backend and a Windows-only API absent from the Linux
+      artifact. The backend imports bcrypt and Unix syscalls, not those affected
+      packages. This applicability decision is scoped to the scanned source and
+      Linux artifact; re-evaluate other platforms and dependency changes, and do
+      not present it as a globally clean module graph.
+- [x] Run Go 1.26.8 `go test -race -count=1 -timeout=15m ./...` successfully:
+      API 272.988 s, database 298.792 s, reconciliation 67.843 s, cleanup 14.944 s
+      and the remaining packages pass; total pipeline test time 316.37 s. The
+      earlier 300-second outer harness timed out, rather than demonstrating a
+      test failure. The terminal rerun uses a bounded longer harness and removes
+      its compiler, scanner, binary, modules and caches afterward.
+- [x] Rebuild final patched backend/web images and run
+      `python3 tools/test_external_proxy.py`: verified TLS/container hardening,
+      canonical Origin/cookie policy, live authenticated inbox SSE/revocation,
+      pause/restart/resume/logout persistence, cold restore into new volumes and
+      three real-peer/spoofed-forwarding paths pass. Disposable containers,
+      volumes, private temporary files and uniquely tagged images are removed.
+      The test uses a private test CA and does not establish public ACME behavior.
+- [x] Expand the deployment update guide with source/binary/image/native review
+      boundaries, pinned installation and supported compiler guidance, actual
+      artifact/compiler/digest verification, safe settings-preserving upgrade
+      and matching-backup rollback. Describe the release checksum configuration
+      as configuration evidence only: signed releases, provenance and bit-for-bit
+      reproducibility are not established. Align README safety/hosting-provider
+      claims with browser notices and recipient safeguards. Correct stale
+      incident/authentication guide statements about implemented security activity
+      and cleanup visibility.
+- [x] Correct older browser fixtures without changing production controls: honor
+      the actual 30-second account throttle instead of retrying after a clamped
+      10 seconds; bound retries with a clear failure, let shared loopback request
+      admission refill before page initialization, and preserve real UI login and
+      mandatory password replacement. Derive the 367-day traffic test range from
+      backend UTC within its 400-day retention. Mock the current paged inbox
+      verification endpoint with a schema-valid rejected legacy protocol so the
+      compatibility test exercises rejection before publishing a receive link.
+- [x] Run the official checksum-verified golangci-lint 2.13.0 release against
+      the Go 1.26.8 module in private temporary caches. The first failed report
+      capped its output at 57 existing findings; later uncapped checking exposed
+      further unchecked error returns. Repair these without disabling checks:
+      preserve primary errors and make intentionally ignored secondary rollback,
+      close and already-committed response errors explicit. Assert test response
+      decoding, database setup and important fixture closes; remove dead test
+      assignments and equivalent static-check findings. Final
+      `golangci-lint run --timeout=5m --max-issues-per-linter=0 --max-same-issues=0 ./...`
+      passes with zero issues. A bounded independent read-only review of the
+      production diff finds no policy, transaction or stream-cleanup changes.
+- [x] Finish the broad browser run: 141 pass, three fail and one opt-in LAN case
+      skips. Diagnose expired worker administrator proof, an outdated guest
+      selection assertion and factor enrollment sharing the exhausted login
+      bucket. Explicitly refresh the worker's proof before fixture setup only
+      when needed, retaining real password verification and Retry-After handling;
+      never replay a rejected protected mutation. Assert that oversized guest
+      selection is rejected before any allocation, then send one valid file and
+      retain the missing-private-key checks. Both corrected UX cases pass against
+      a fresh disposable backend. One earlier follow-up command used a mistaken
+      proxy target containing `/api` twice and failed with 404; correcting the
+      test command required no production change.
+- [x] Run `tests/browser/admin-security-runtime.spec.ts` separately with its
+      private state marker and a fresh disposable backend: all three cases pass
+      (34.5 s). The factor lifecycle verifies enrollment, factor login, expired
+      recent proof, recovery rotation, revoked sessions and disabling the factor.
+      Two serial cases deliberately age the worker proof, verify account creation
+      is denied, then verify the next setup explicitly reauthenticates and creates
+      an account. The broad run's three failures are resolved by the focused
+      follow-ups; this is combined evidence, not a claim that a new uninterrupted
+      full browser run passed. Disposable backends and state markers are removed.
+      CI now defines a separate fresh-backend factor lifecycle step after the
+      general browser suite; this local verification does not claim a hosted CI
+      run has executed.
+- [x] Correct the two concrete cleanup-test findings from final verification.
+      The connection-cancellation test keeps fallback cleanup only until its
+      explicitly checked early release; 20 race-detector repetitions pass
+      (16.389 s). The SQLite-full recovery test evaluates its deferred database
+      receiver immediately and registers separate cleanup for the reopened
+      database; three race repetitions pass (3.846 s). This avoids capturing a
+      reassigned/nil receiver without hiding a meaningful database close error.
+- [x] Run final backend verification after the lint repairs. The full
+      `go test -race -count=1 -timeout=15m ./...` passes API (267.365 s), cleanup
+      (14.759 s), reconciliation (69.246 s) and the other packages, but fails the
+      database package on the double-close assertion described above. After its
+      correction, the entire database race suite passes (270.480 s); the changed
+      SQLite-full cleanup case also passes its focused repetitions. The final
+      server build and uncapped lint rerun pass with zero issues. These combined
+      runs cover the final sources; they do not erase the earlier failed run or
+      imply a new uninterrupted full-suite success.
+- [x] Resolve the lint issues, finish the browser follow-ups and record their
+      terminal results before preparing this checkpoint for commit. Keep the
+      production throttles and recent-authentication requirements intact.
+- [ ] Complete native iOS/physical Android, publicly trusted ACME/operator
+      deployment and the other full-plan gates. This checkpoint is not a
+      release-completion decision.

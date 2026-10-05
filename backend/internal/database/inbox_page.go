@@ -77,7 +77,7 @@ func (q *Queries) OwnerInboxPage(ctx context.Context, slotID, owner string, limi
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	s := out.Slot
 	query := `SELECT id,status,expires_at,created_at,receive_protocol,CASE WHEN length(recipient_public_key)<=128 THEN recipient_public_key ELSE NULL END,max_files,reserved_files,reserved_bytes,upload_count FROM slots WHERE id=?`
 	args := []any{slotID}
@@ -100,13 +100,13 @@ func (q *Queries) OwnerInboxPage(ctx context.Context, slotID, owner string, limi
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return out, err
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return out, err
 	}

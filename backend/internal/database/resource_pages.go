@@ -26,7 +26,7 @@ func (q *Queries) UsersPage(limit int, after string) ([]User, *string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var next *string
 	for rows.Next() {
 		user, err := scanUser(rows)

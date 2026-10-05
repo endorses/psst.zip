@@ -32,7 +32,7 @@ func request(t *testing.T, env *testEnv, method, target string, body io.Reader, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	if resp.StatusCode != status {
 		data, _ := io.ReadAll(resp.Body)
 		t.Fatalf("%s %s: want %d, got %d: %s", method, target, status, resp.StatusCode, data)
@@ -62,7 +62,7 @@ func newUpload(t *testing.T, env *testEnv, transfer string, size int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create upload: %d", resp.StatusCode)
 	}
@@ -95,7 +95,7 @@ func patch(t *testing.T, env *testEnv, target, data string, offset, status int, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != status {
 		b, _ := io.ReadAll(resp.Body)
 		t.Fatalf("PATCH: want %d, got %d: %s", status, resp.StatusCode, b)
@@ -176,7 +176,7 @@ func TestTusBoundsOwnershipAndConcurrentOffsets(t *testing.T) {
 				statuses <- 0
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			statuses <- resp.StatusCode
 		}()
 	}
@@ -264,7 +264,7 @@ func TestConcurrentDownloadQuota(t *testing.T) {
 				statuses <- 0
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			statuses <- resp.StatusCode
 		}()
 	}
@@ -303,7 +303,7 @@ func TestSlotCompletionEventsAndLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer events.Body.Close()
+	defer func() { _ = events.Body.Close() }()
 	scanner := bufio.NewScanner(events.Body)
 	// Consume the initial connection event, ensuring subscription is installed.
 	for scanner.Scan() {
@@ -382,7 +382,7 @@ func TestUploadLimitAndBrowserPreflight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("upload size limit: %d", resp.StatusCode)
 	}
@@ -395,7 +395,7 @@ func TestUploadLimitAndBrowserPreflight(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusNoContent || !strings.Contains(resp.Header.Get("Access-Control-Allow-Methods"), "PATCH") {
 			t.Fatalf("preflight %s: %d %v", target, resp.StatusCode, resp.Header)
 		}

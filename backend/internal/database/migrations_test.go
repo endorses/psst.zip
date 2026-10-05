@@ -89,7 +89,7 @@ func TestDownloadAcknowledgementMigrationPreservesExistingTransfers(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	q = NewQueries(reopened)
 	if allowed, err := q.AcknowledgeDownload("existing-transfer", acknowledgedAt.Add(time.Minute)); err != nil || !allowed {
 		t.Fatalf("retry reopened: %v %v", allowed, err)
@@ -116,7 +116,6 @@ func TestPairingTrackingMigrationPreservesOutstandingGrants(t *testing.T) {
 			}
 		}
 	}
-	q := NewQueries(legacy)
 	user := User{ID: "owner", Username: "owner", Role: "user", PasswordHash: []byte("hash")}
 	if _, err := legacy.Exec(`INSERT INTO users(id,username,role,password_hash) VALUES(?,?,?,?)`, user.ID, user.Username, user.Role, user.PasswordHash); err != nil {
 		t.Fatal(err)
@@ -135,8 +134,8 @@ func TestPairingTrackingMigrationPreservesOutstandingGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer upgraded.Close()
-	q = NewQueries(upgraded)
+	defer closeFixture(t, upgraded)
+	q := NewQueries(upgraded)
 	var id string
 	if err := upgraded.QueryRow(`SELECT id FROM pairings`).Scan(&id); err != nil || id == "" {
 		t.Fatalf("missing tracking ID %q %v", id, err)

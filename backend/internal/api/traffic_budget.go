@@ -88,7 +88,7 @@ func (s *Server) updateTrafficPolicy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateAccountTrafficPolicy(w http.ResponseWriter, r *http.Request) {
 	// This PATCH alone deliberately accepts null to restore inheritance. Decode a
 	// single keyed object token-by-token so duplicates/unknown fields stay invalid.
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, controlBodyLimit))
 	t, err := d.Token()
 	if err != nil || t != json.Delim('{') {

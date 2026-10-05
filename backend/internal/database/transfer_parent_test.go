@@ -61,7 +61,7 @@ func TestTransferParentProbeUsesCoveringReverseIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer closeFixture(t, rows)
 	var plan strings.Builder
 	for rows.Next() {
 		var id, parent, unused int

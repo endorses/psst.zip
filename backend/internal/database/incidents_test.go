@@ -36,7 +36,7 @@ func TestIncidentPausePersistsAndGuardsAllocationRaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	state, err := NewQueries(reopened).IncidentState()
 	if err != nil || !state.PublicTransfersPaused {
 		t.Fatalf("lost pause on restart %+v %v", state, err)
@@ -98,8 +98,12 @@ func TestIncidentAccountShutdownIsAtomicWithConcurrentCreation(t *testing.T) {
 	if err := q.db.QueryRow(`SELECT COUNT(*) FROM transfers WHERE owner_id='owner' AND status!='revoked'`).Scan(&live); err != nil {
 		t.Fatal(err)
 	}
-	q.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id='owner'`).Scan(&sessions)
-	q.db.QueryRow(`SELECT COUNT(*) FROM pairings WHERE user_id='owner'`).Scan(&pairings)
+	if err := q.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id='owner'`).Scan(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.db.QueryRow(`SELECT COUNT(*) FROM pairings WHERE user_id='owner'`).Scan(&pairings); err != nil {
+		t.Fatal(err)
+	}
 	if live != 0 || sessions != 0 || pairings != 0 {
 		t.Fatalf("shutdown survivors links=%d sessions=%d pairings=%d", live, sessions, pairings)
 	}

@@ -111,10 +111,10 @@ func TestStalledBodyDeadlineAndProgressingStream(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reader, writer := io.Pipe()
-			defer reader.Close()
-			defer writer.Close()
+			defer func() { _ = reader.Close() }()
+			defer func() { _ = writer.Close() }()
 			go func() {
-				defer writer.Close()
+				defer func() { _ = writer.Close() }()
 				_, _ = writer.Write([]byte("a"))
 				if tc.progress {
 					for i := 0; i < 6; i++ {
@@ -133,7 +133,7 @@ func TestStalledBodyDeadlineAndProgressingStream(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			if response.StatusCode != tc.status {
 				t.Fatalf("want %d got %d", tc.status, response.StatusCode)
 			}
@@ -155,15 +155,15 @@ func TestEarlyResponseBoundsUnreadBodyDrain(t *testing.T) {
 	}), 50*time.Millisecond, 100*time.Millisecond))
 	defer server.Close()
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		response, err := server.Client().Post(server.URL, "application/json", reader)
 		if err == nil {
-			io.Copy(io.Discard, response.Body)
-			response.Body.Close()
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
 		}
 	}()
 	if _, err := writer.Write([]byte("{")); err != nil {

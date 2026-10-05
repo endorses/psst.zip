@@ -33,7 +33,7 @@ func TestAuthMetadataHTTPBoundedLegacySessionView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC()
 	for i := 0; i < 80; i++ {
 		id := fmt.Sprint("legacy-session-", i)
@@ -76,7 +76,7 @@ func TestAuthMetadataHTTPAccountCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for i := count; i < database.MaxAuthUsers; i++ {
 		id := fmt.Sprint("full-", i)
 		if _, err = tx.Exec(`INSERT INTO users(id,username,role,password_hash,disabled) VALUES(?,?,'user',?,1)`, id, id, []byte("hash")); err != nil {

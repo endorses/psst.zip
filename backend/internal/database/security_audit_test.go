@@ -18,7 +18,7 @@ func TestSecurityAuditBucketsProtectAdministration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, group := range []struct {
 		kind, origin string
 		total        int

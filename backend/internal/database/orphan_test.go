@@ -59,12 +59,12 @@ func TestOrphanDeleteCallbackHoldsWriterLockAcrossConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer other.Close()
+	defer closeFixture(t, other)
 	conn, err := other.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer closeFixture(t, conn)
 	if _, err = conn.ExecContext(ctx, `PRAGMA busy_timeout=0`); err != nil {
 		t.Fatal(err)
 	}

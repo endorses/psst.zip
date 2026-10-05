@@ -29,7 +29,7 @@ func (q *Queries) CreateFileWithQuota(id, transfer string, size, limit int64, fi
 	if err != nil {
 		return ResourceError(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	fileLimit := MaxTransferFiles
 	if len(fileLimits) > 0 {
 		fileLimit = EffectiveTransferFileLimit(fileLimits[0])

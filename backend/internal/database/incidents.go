@@ -48,7 +48,7 @@ func (q *Queries) setTransfersPaused(paused, local bool, actors []*AdminActor) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.Exec(`UPDATE incident_state SET public_transfers_paused=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=1 AND public_transfers_paused!=?`, paused, paused)
 	if err != nil {
 		return err
@@ -96,7 +96,7 @@ func (q *Queries) ShutdownAccount(id string, actors ...*AdminActor) (AccountShut
 	if err != nil {
 		return result, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, id)
 	if err != nil {
 		return result, err
@@ -207,7 +207,7 @@ func (q *Queries) RevokedResourceBatch(kind, after string, limit int) ([]string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := []string{}
 	for rows.Next() {
 		var id string

@@ -34,7 +34,7 @@ func (q *Queries) ResourceSnapshot(owner string) (ResourceSnapshot, error) {
 	if err != nil {
 		return ResourceSnapshot{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	policy, err := readPolicy(tx)
 	if err != nil {
 		return ResourceSnapshot{}, err

@@ -17,7 +17,7 @@ func (q *Queries) SetMaxFileSize(value int64, actors ...*AdminActor) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	auditChanged := false
 	if optionalAdminActor(actors) != nil {
 		var previous int64

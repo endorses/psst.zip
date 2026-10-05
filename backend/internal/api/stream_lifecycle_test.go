@@ -60,7 +60,7 @@ func TestStreamAdmissionAttributesGuestsAndDownloadsToOwner(t *testing.T) {
 		defer close(done)
 		response, err := limited.Client().Do(request)
 		if err == nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 	}()
 	select {
@@ -78,7 +78,7 @@ func TestStreamAdmissionAttributesGuestsAndDownloadsToOwner(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		if response.StatusCode != want {
 			data, _ := io.ReadAll(response.Body)
 			t.Fatalf("%s want%d got%d: %s", path, want, response.StatusCode, data)
@@ -136,7 +136,7 @@ func TestExhaustedCleanupRetainsPayloadUntilFinalReaderCloses(t *testing.T) {
 	go func() {
 		response, err := server.server.Client().Get(target)
 		if err == nil {
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			data, readErr := io.ReadAll(response.Body)
 			if readErr != nil {
 				err = readErr
@@ -212,7 +212,7 @@ func TestRevocationCancelsBlockedDownloadBeforeDeletingPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 200 || !store.HasReaders(id) {
 		t.Fatal("download was not active")
 	}

@@ -229,7 +229,7 @@ func TestInboxEventInitialAuthorizationFailureIsDelivered(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			slot := "55dca03b-4720-4052-b7c5-28eeb0597497"
 			if _, err := db.Exec(`INSERT INTO slots(id,status,expires_at) VALUES(?,'waiting',?)`, slot, time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
@@ -253,7 +253,7 @@ func TestInboxEventInitialAuthorizationFailureIsDelivered(t *testing.T) {
 			if err != nil {
 				t.Fatalf("authorization response was lost: %v", err)
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			data, err := io.ReadAll(response.Body)
 			if err != nil {
 				t.Fatal(err)
@@ -324,7 +324,7 @@ func TestInboxEventQueuedMessageRechecksReadAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			slot := "e63a50c0-d65c-4371-b312-34d8f65b9ef7"
 			if _, err := db.Exec(`INSERT INTO slots(id,status,expires_at) VALUES(?,'waiting',?)`, slot, time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
@@ -356,7 +356,7 @@ func TestInboxEventQueuedMessageRechecksReadAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			scan := bufio.NewScanner(response.Body)
 			for scan.Scan() {
 				if scan.Text() == "" {

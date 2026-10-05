@@ -3,7 +3,6 @@ package database
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"math"
 	"path/filepath"
 	"reflect"
@@ -37,7 +36,7 @@ func TestTrafficRetentionMigrationSeedsLifetimeOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	db.Close()
+	closeFixture(t, db)
 	for i := 0; i < 2; i++ {
 		db, err = Open(path)
 		if err != nil {
@@ -54,7 +53,7 @@ func TestTrafficRetentionMigrationSeedsLifetimeOnce(t *testing.T) {
 		if _, e = q.PruneTrafficHistory(now); e != nil {
 			t.Fatal(e)
 		}
-		db.Close()
+		closeFixture(t, db)
 	}
 }
 
@@ -157,7 +156,6 @@ func TestTrafficRetentionPreservesEveryBillingDayAndPreviousCycle(t *testing.T) 
 		previous bool
 		global   bool
 	}
-	before := map[key]TrafficBudgetUsage{}
 	collect := func() map[key]TrafficBudgetUsage {
 		t.Helper()
 		got := map[key]TrafficBudgetUsage{}
@@ -179,7 +177,7 @@ func TestTrafficRetentionPreservesEveryBillingDayAndPreviousCycle(t *testing.T) 
 		}
 		return got
 	}
-	before = collect()
+	before := collect()
 	if _, err := q.PruneTrafficHistory(now); err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +249,7 @@ func TestTrafficRetentionConcurrentSnapshotAndPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	other := NewQueries(db)
 	now := time.Now().UTC()
 	old := now.AddDate(-2, 0, 0)
@@ -284,7 +282,7 @@ func TestTrafficRetentionConcurrentSnapshotAndPrune(t *testing.T) {
 			daily += d.UploadedBytes
 		}
 		if h.Lifetime.UploadedBytes != daily+20 {
-			t.Fatal(fmt.Sprintf("torn snapshot: lifetime %d daily %d", h.Lifetime.UploadedBytes, daily))
+			t.Fatalf("torn snapshot: lifetime %d daily %d", h.Lifetime.UploadedBytes, daily)
 		}
 	}
 	if err = <-done; err != nil {

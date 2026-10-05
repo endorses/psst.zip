@@ -172,7 +172,7 @@ func pressureUpload(t *testing.T, env *testEnv, transfer string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 201 {
 		t.Fatal("pressure upload was not admitted", response.StatusCode)
 	}
@@ -193,7 +193,7 @@ func pressurePatch(t *testing.T, env *testEnv, transfer, file string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(response.Body)
 	if err != nil || response.StatusCode != 507 || !strings.Contains(string(body), "disk_capacity") {
 		t.Fatal("physical pressure did not fail safely", response.StatusCode, string(body), err)
@@ -207,7 +207,11 @@ func TestIsolatedPhysicalStoragePressure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Error(err)
+			}
+		})
 		env := setupAuthFixtureIn(t, false, dir)
 		lowerPressureReserve(t, env.queries)
 		fs := fixtureStore(t, env)
@@ -243,7 +247,11 @@ func TestIsolatedPhysicalStoragePressure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Error(err)
+			}
+		})
 		// Metadata is on the container's separate bounded /tmp mount, so actual
 		// payload ENOSPC can still persist resumable offsets and cleanup state.
 		env := setupAuthFixture(t, false)
@@ -285,7 +293,11 @@ func TestIsolatedPhysicalStoragePressure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Error(err)
+			}
+		})
 		env := setupAuthFixtureIn(t, false, dir)
 		env.db.SetMaxOpenConns(1)
 		lowerPressureReserve(t, env.queries)
@@ -337,7 +349,7 @@ func TestIsolatedPhysicalStoragePressure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer restored.Close()
+		defer func() { _ = restored.Close() }()
 		q := database.NewQueries(restored)
 		state, err := q.ResourceCleanup("transfer", id)
 		if err != nil || (state.State != "pending" && state.State != "failed") {

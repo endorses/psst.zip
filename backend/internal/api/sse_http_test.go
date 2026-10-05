@@ -29,7 +29,7 @@ func openInboxEvents(t *testing.T, env *testEnv, slot, token string) *inboxEvent
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { response.Body.Close() })
+	t.Cleanup(func() { _ = response.Body.Close() })
 	if response.StatusCode != 200 || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("SSE handshake: %d / %s", response.StatusCode, response.Header.Get("Cache-Control"))
 	}

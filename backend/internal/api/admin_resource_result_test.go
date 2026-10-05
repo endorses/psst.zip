@@ -15,7 +15,7 @@ func TestAdminCleanupResultAfterConcurrentPayloadCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	s := &Server{queries: q}
 	id := "finished-payload"

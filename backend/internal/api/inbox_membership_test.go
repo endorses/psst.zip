@@ -30,7 +30,7 @@ func TestInboxMembershipExactOwnerOnlyAndMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4097))
 	if err != nil || len(body) > 4096 || response.StatusCode != 200 || response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("unbounded or cacheable membership: %d %s %v", response.StatusCode, body, err)

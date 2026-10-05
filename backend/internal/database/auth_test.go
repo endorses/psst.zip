@@ -14,7 +14,7 @@ func TestReceiveBudgetReservationConcurrentAndCumulative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	if err := q.CreateReceiveSlot("slot", time.Now().Add(time.Hour), nil, "", 2, "fixture-key", 0); err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestAuthenticationMigrationPreservesLegacyOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	if err := q.CreateTransfer("legacy", time.Now().Add(time.Hour), 0, nil); err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestPairingCancellationAndReplacementAtFractionalExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	user := User{ID: "issuer", Username: "issuer", Role: "user", PasswordHash: []byte("hash")}
 	if err := q.CreateUser(user, false); err != nil {

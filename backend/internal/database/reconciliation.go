@@ -156,7 +156,7 @@ func (q *Queries) RepairPendingFile(ctx context.Context, expected File, offset i
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE files SET id=id WHERE id=? AND transfer_id=? AND size=? AND upload_offset=? AND upload_complete=? AND payload_deleted=0
  AND EXISTS(SELECT 1 FROM transfers t WHERE t.id=files.transfer_id AND t.status='pending')
  AND NOT EXISTS(SELECT 1 FROM cleanup_tasks c WHERE c.kind='transfer' AND c.resource_id=files.transfer_id AND c.mode='full')`, expected.ID, expected.TransferID, expected.Size, expected.UploadOffset, expected.UploadComplete)
@@ -200,7 +200,7 @@ func (q *Queries) NextReconciliationBatch(ctx context.Context) (ReconciliationBa
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = tx.QueryRowContext(ctx, `SELECT generation,cursor FROM file_reconciliation_progress WHERE id=1`).Scan(&out.Generation, &out.Before); err != nil {
 		return out, err
 	}
@@ -219,14 +219,14 @@ func (q *Queries) NextReconciliationBatch(ctx context.Context) (ReconciliationBa
 	for rows.Next() {
 		var f File
 		if err = rows.Scan(&f.ID, &f.TransferID); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return out, err
 		}
 		out.Files = append(out.Files, f)
 		out.After = f.ID
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return out, err
 	}
@@ -278,7 +278,7 @@ func (q *Queries) TransferFileIDs(ctx context.Context, transferID, after string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := []string{}
 	for rows.Next() {
 		var id string

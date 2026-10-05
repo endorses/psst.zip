@@ -83,7 +83,7 @@ func TestReconciliationRepairRollsBackAndSerializesPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer otherDB.Close()
+	defer closeFixture(t, otherDB)
 	other := NewQueries(otherDB)
 	entered, finish := make(chan struct{}), make(chan struct{})
 	var wg sync.WaitGroup

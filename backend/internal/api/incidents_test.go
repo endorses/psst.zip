@@ -28,9 +28,15 @@ func TestIncidentPausePreservesRecoveryAndBlocksEveryPayloadRoute(t *testing.T) 
 	if err := fixtureStore(t, env).Save(ready+"/"+file, strings.NewReader("data")); err != nil {
 		t.Fatal(err)
 	}
-	env.queries.UpdateFileOffset(file, 4, true)
-	env.queries.SaveManifest(ready, []byte("manifest"))
-	env.queries.CompleteTransfer(ready)
+	if err := env.queries.UpdateFileOffset(file, 4, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.queries.SaveManifest(ready, []byte("manifest")); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.queries.CompleteTransfer(ready); err != nil {
+		t.Fatal(err)
+	}
 	pending := authRequest(t, env, "POST", "/transfers", env.userToken, nil, 201)["id"].(string)
 	upload := uuid.NewString()
 	if err := env.queries.CreateFile(upload, pending, 4); err != nil {
@@ -130,16 +136,16 @@ func TestIncidentCLIStopsInFlightManifestAndSurvivesServerRestart(t *testing.T) 
 	defer cancel()
 	go server.RunIncidentMonitor(ctx)
 	reader, writer := io.Pipe()
-	defer writer.Close()
-	defer reader.Close()
+	defer func() { _ = writer.Close() }()
+	defer func() { _ = reader.Close() }()
 	request, _ := http.NewRequest("POST", httpServer.URL+"/api/v1/transfers/"+id+"/manifest", reader)
 	request.Header.Set("Authorization", "Bearer "+env.userToken)
 	done := make(chan error, 1)
 	go func() {
 		response, err := httpServer.Client().Do(request)
 		if response != nil {
-			io.Copy(io.Discard, response.Body)
-			response.Body.Close()
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
 			if response.StatusCode >= 200 && response.StatusCode < 300 {
 				err = io.ErrUnexpectedEOF
 			}
@@ -162,7 +168,7 @@ func TestIncidentCLIStopsInFlightManifestAndSurvivesServerRestart(t *testing.T) 
 	}
 	// The client transport can still be waiting on its own producer after the
 	// server request has stopped; closing that producer completes the client side.
-	writer.Close()
+	_ = writer.Close()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -230,7 +236,7 @@ func TestIncidentPauseAndShutdownCancelBlockedDownloadsBeforeCleanup(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			if response.StatusCode != 200 || !store.HasReaders(id) {
 				t.Fatal("download was not active")
 			}
@@ -306,8 +312,8 @@ func TestIncidentPauseInterruptsGuestBlobUploadAndAllowsExplicitResume(t *testin
 	}))
 	defer httpServer.Close()
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	target := httpServer.URL + "/api/v1/transfers/" + id + "/files/" + file
 	request, _ := http.NewRequest("PATCH", target, reader)
 	request.ContentLength = 4
@@ -320,7 +326,7 @@ func TestIncidentPauseInterruptsGuestBlobUploadAndAllowsExplicitResume(t *testin
 		defer close(done)
 		response, _ := httpServer.Client().Do(request)
 		if response != nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 	}()
 	select {
@@ -334,7 +340,7 @@ func TestIncidentPauseInterruptsGuestBlobUploadAndAllowsExplicitResume(t *testin
 	case <-time.After(2 * time.Second):
 		t.Fatal("pause did not cancel guest body read")
 	}
-	writer.Close()
+	_ = writer.Close()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -351,7 +357,7 @@ func TestIncidentPauseInterruptsGuestBlobUploadAndAllowsExplicitResume(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	if response.StatusCode != 204 {
 		t.Fatalf("explicit resumed upload status %d", response.StatusCode)
 	}

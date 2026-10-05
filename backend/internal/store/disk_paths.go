@@ -22,7 +22,7 @@ func payloadParts(key string) (string, string, error) {
 			return "", "", errors.New("invalid payload key")
 		}
 		for _, c := range part {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '-' && c != '_' && c != '.' {
 				return "", "", errors.New("invalid payload key")
 			}
 		}

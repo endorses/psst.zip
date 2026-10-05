@@ -82,8 +82,10 @@ func TestAdminResourceInventoryAccessFiltersAndRedaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.Copy(io.Discard, response.Body)
-	response.Body.Close()
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
 	if response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("resource metadata cached")
 	}

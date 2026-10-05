@@ -30,7 +30,7 @@ func TestIncidentCleanupBatchesAdvancePastFailuresAndRetainReservations(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	disk, err := store.NewDiskStore(filepath.Join(dir, "files"))
 	if err != nil {

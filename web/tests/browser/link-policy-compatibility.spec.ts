@@ -41,12 +41,15 @@ for (const unavailable of [false, true]) {
       if (response.url().endsWith("/api/v1/slots") && response.request().method() === "POST")
         id = (await response.json()).id;
     });
-    await page.route("**/api/v1/slots/*", async (route) => {
+    await page.route(/\/api\/v1\/slots\/[^/]+\/inbox(?:\?|$)/, async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       if (unavailable) return route.abort();
       const response = await route.fetch();
       const body = await response.json();
-      delete body.receive_protocol;
+      // A supported page shape with a legacy protocol must still be rejected
+      // before publishing an invitation. Owner verification now uses inbox pages.
+      body.receive_protocol = 1;
+      body.recipient_public_key = "";
       await route.fulfill({ response, json: body });
     });
     await page.getByRole("link", { name: "Receive", exact: true }).click();

@@ -26,7 +26,7 @@ func TestTransferMetadataRejectsOversizedLegacyListWithoutPartialDisclosure(t *t
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer tx.Rollback()
+			defer func() { _ = tx.Rollback() }()
 			for i := 0; i < count; i++ {
 				if _, err = tx.Exec(`INSERT INTO files(id,transfer_id,size,upload_offset,upload_complete,download_count) VALUES(?,?,7,7,1,2)`, fmt.Sprintf("private-file-%04d", i), fileLimitTransfer); err != nil {
 					t.Fatal(err)

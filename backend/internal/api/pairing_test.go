@@ -116,7 +116,7 @@ func TestPairingCancelOrReplaceRacesRedemption(t *testing.T) {
 					results <- result{kind, 0}
 					return
 				}
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				results <- result{kind, resp.StatusCode}
 			}
 			go request("redeem", "POST", "/auth/pairings/redeem", "", map[string]any{"code": pair["code"]})

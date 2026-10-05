@@ -12,7 +12,7 @@ import (
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -22,7 +22,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // Empty bodies remain supported for legacy creation clients. Every nonempty
 // body must be one strict JSON object; malformed input never creates defaults.
 func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, controlBodyLimit))
 	if err != nil {
 		return err

@@ -166,7 +166,7 @@ func TestCounterRebuildRevisionConflictAndRestartPreserveBoundedWork(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	other := NewQueries(db)
 	if err = other.ResetCounterRebuild(ctx); err != nil {
 		t.Fatal(err)

@@ -12,7 +12,7 @@ func (q *Queries) beginAdminMutation(actors []*AdminActor) (*sql.Tx, error) {
 	}
 	actor := optionalAdminActor(actors)
 	if err = ValidateAdminActor(tx, actor); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	return tx, nil

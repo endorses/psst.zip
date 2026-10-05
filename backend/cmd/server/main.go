@@ -33,8 +33,8 @@ func main() {
 			return
 		}
 		if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
-			fmt.Fprint(os.Stdout, incidentcli.Usage)
-			fmt.Fprint(os.Stdout, adminsecuritycli.Usage)
+			_, _ = fmt.Fprint(os.Stdout, incidentcli.Usage)
+			_, _ = fmt.Fprint(os.Stdout, adminsecuritycli.Usage)
 			return
 		}
 		if len(os.Args) != 2 {
@@ -58,7 +58,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fs, err := store.NewDiskStore(cfg.StoragePath)
 	if err != nil {

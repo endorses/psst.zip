@@ -105,7 +105,7 @@ func (q *Queries) AuthenticationSessions(user, current string) (AuthenticationSe
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Go's UTC timestamp encoding sorts chronologically, including variable
 	// fractional precision. Verify selected rows with time.Time as well.
 	rows, err := tx.Query(`SELECT id,user_id,device_name,created_at,expires_at FROM sessions WHERE user_id=? AND expires_at>? ORDER BY expires_at DESC,id DESC LIMIT ?`, user, now.UTC(), MaxAuthSessionsPerUser+1)
@@ -115,7 +115,7 @@ func (q *Queries) AuthenticationSessions(user, current string) (AuthenticationSe
 	for rows.Next() {
 		var s Session
 		if err = rows.Scan(&s.ID, &s.UserID, &s.DeviceName, &s.CreatedAt, &s.ExpiresAt); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return out, err
 		}
 		if now.Before(s.ExpiresAt) {
@@ -123,7 +123,7 @@ func (q *Queries) AuthenticationSessions(user, current string) (AuthenticationSe
 		}
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return out, err
 	}
@@ -161,7 +161,7 @@ func (q *Queries) PruneAuthentication() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now()
 	if _, err = tx.Exec(`UPDATE auth_metadata_cleanup SET user_cursor=user_cursor WHERE id=1`); err != nil {
 		return err
@@ -186,13 +186,13 @@ func (q *Queries) PruneAuthentication() error {
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		users = append(users, id)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}

@@ -31,12 +31,12 @@ func Open(dbPath string) (*sql.DB, error) {
 	}
 
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
 	if err := runMigrations(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -57,7 +57,7 @@ func protectDatabaseFiles(path string) error {
 		return fmt.Errorf("protect database: %w", err)
 	}
 	if err = file.Chmod(0600); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("protect database permissions: %w", err)
 	}
 	if err = file.Close(); err != nil {

@@ -16,7 +16,7 @@ func resourceFixture(t *testing.T) (*Queries, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { closeFixture(t, db) })
 	return NewQueries(db), path
 }
 func policyForTest(t *testing.T, q *Queries) ResourcePolicy {
@@ -56,7 +56,7 @@ func TestResourceStorageConcurrentAcrossConnectionsAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer second.Close()
+	defer closeFixture(t, second)
 	other := NewQueries(second)
 	var wg sync.WaitGroup
 	results := make(chan error, 16)
@@ -95,7 +95,7 @@ func TestResourceStorageConcurrentAcrossConnectionsAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	actual, err := NewQueries(reopened).ResourceUsage("")
 	if err != nil || actual != u {
 		t.Fatalf("restart usage %+v %v", actual, err)

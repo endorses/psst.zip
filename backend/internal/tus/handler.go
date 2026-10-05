@@ -86,7 +86,7 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 			w.Header().Set("X-Psst-Error-Code", code)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
-			json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
 			return
 		}
 		if errors.Is(err, database.ErrResourceLimit) || errors.Is(err, database.ErrDiskCapacity) {
@@ -96,26 +96,26 @@ func (h *Handler) ServeCreate(w http.ResponseWriter, r *http.Request, transferID
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
-			json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": code, "error": err.Error()})
 			return
 		}
 		if errors.Is(err, database.ErrTransferFileQuota) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Psst-Error-Code", "transfer_file_limit_exceeded")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"code": "transfer_file_limit_exceeded", "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "transfer_file_limit_exceeded", "error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrUploadFileLimit) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{"code": "receive_file_limit", "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "receive_file_limit", "error": err.Error()})
 			return
 		}
 		if errors.Is(err, ErrUploadLimit) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{"code": "receive_byte_limit", "error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "receive_byte_limit", "error": err.Error()})
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -218,7 +218,7 @@ func (h *Handler) ServePatch(w http.ResponseWriter, r *http.Request, fileID stri
 		if errors.Is(err, database.ErrDiskCapacity) || errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInsufficientStorage)
-			json.NewEncoder(w).Encode(map[string]string{"code": "disk_capacity", "error": "Server storage capacity is unavailable."})
+			_ = json.NewEncoder(w).Encode(map[string]string{"code": "disk_capacity", "error": "Server storage capacity is unavailable."})
 			return
 		}
 		var limitError *http.MaxBytesError

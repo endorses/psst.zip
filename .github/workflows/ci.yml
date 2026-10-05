@@ -17,12 +17,13 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26.8"
           cache-dependency-path: backend/go.sum
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
+          version: v2.13.0
           working-directory: backend
 
       - name: Test
@@ -51,7 +52,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.26.8"
           cache-dependency-path: backend/go.sum
 
       - name: Type check
@@ -65,6 +66,13 @@ jobs:
 
       - name: Browser tests
         run: npm run test:browser
+
+      - name: Disposable administrator authentication lifecycle
+        env:
+          PSST_TEST_STATE_FILE: ${{ runner.temp }}/psst-admin-security-state.json
+          PSST_TEST_BACKEND_PORT: "18789"
+          PSST_TEST_BACKEND_URL: http://127.0.0.1:18789
+        run: npm run test:browser -- tests/browser/admin-security-runtime.spec.ts
 
       - name: Build
         run: npm run build

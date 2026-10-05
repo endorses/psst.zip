@@ -35,7 +35,7 @@ func setup(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{database.NewQueries(db), disk, db, path}
-	t.Cleanup(func() { f.db.Close() })
+	t.Cleanup(func() { closeFixture(t, f.db) })
 	return f
 }
 func (f *fixture) file(t *testing.T, transfer, id string, size, offset int64, complete bool, body *string) {
@@ -216,7 +216,7 @@ func TestFailuresAreFixedDurableAndResolvedOnRetry(t *testing.T) {
 		t.Fatal(issue, err)
 	}
 	assertFile(t, f, "file", 3, false, number(6))
-	f.db.Close()
+	closeFixture(t, f.db)
 	f.db, err = database.Open(f.path)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestSweepBoundedCursorRestartAndBusyFairness(t *testing.T) {
 	}
 	assertFile(t, f, "f-063", 1, false, number(1))
 	assertFile(t, f, "f-064", 1, false, number(4))
-	f.db.Close()
+	closeFixture(t, f.db)
 	f.db, err = database.Open(f.path)
 	if err != nil {
 		t.Fatal(err)
@@ -351,7 +351,7 @@ func TestRepairedDataRetainsCommittedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer closeFixture(t, r)
 	bytes, err := io.ReadAll(r)
 	if err != nil || string(bytes) != "abc" {
 		t.Fatal(string(bytes), err)
@@ -417,7 +417,7 @@ func TestIssuePersistenceFailureRemainsVisibleAndCannotStrandLaterRows(t *testin
 	if err != nil || status.State != "degraded" || status.ScanErrorCode != "scan_failed" || status.IssueCount != 0 {
 		t.Fatal(status, err)
 	}
-	f.db.Close()
+	closeFixture(t, f.db)
 	f.db, err = database.Open(f.path)
 	if err != nil {
 		t.Fatal(err)

@@ -35,7 +35,7 @@ func TestTrafficIOCountsPartialFailuresAndExcludesErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := &Server{queries: database.NewQueries(db)}
 	m := s.newTrafficMeter()
 	body := trafficBody{&partialTrafficReader{}, m}
@@ -63,7 +63,7 @@ func TestTrafficFlushBoundedAndFailureVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := &Server{queries: database.NewQueries(db)}
 	m := s.newTrafficMeter()
 	defer m.close()

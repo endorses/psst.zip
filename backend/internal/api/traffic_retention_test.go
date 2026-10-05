@@ -14,7 +14,7 @@ func TestTrafficReportClockRollbackNeverShowsPartialCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	s := &Server{queries: q}
 	// Pruning on this future date puts the watermark at 2030-03-15. Rolling

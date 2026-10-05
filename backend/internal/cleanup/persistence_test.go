@@ -59,7 +59,7 @@ func TestCleanupPartialDeletionRetainsReservationAndResumesAfterRestart(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q = database.NewQueries(db)
 	for i := 0; i < 5; i++ {
 		if err := q.RequestResourceCleanup("transfer", "large"); err != nil {
@@ -90,7 +90,7 @@ func TestCleanupExhaustedPayloadWaitsForFinalReaderAndPreservesMetadata(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	disk, err := store.NewDiskStore(filepath.Join(dir, "payloads"))
 	if err != nil {
@@ -170,7 +170,7 @@ func TestCleanupMetadataDeletionFailureRetainsReservationAndRetries(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	disk, err := store.NewDiskStore(filepath.Join(dir, "payloads"))
 	if err != nil {
@@ -231,7 +231,7 @@ func TestCleanupUncertainDeletionRetainsMetadataAndReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	disk, err := store.NewDiskStore(filepath.Join(dir, "payloads"))
 	if err != nil {

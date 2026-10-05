@@ -270,7 +270,7 @@ func TestHistoryCandidateQueriesUseBoundedIndexedSeeks(t *testing.T) {
 				}
 				plan += detail
 			}
-			rows.Close()
+			closeFixture(t, rows)
 			expected := "admin_" + kind + "s_history"
 			if owner != "" {
 				expected = "admin_" + kind + "s_owner_history"

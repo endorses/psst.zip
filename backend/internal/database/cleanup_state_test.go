@@ -36,7 +36,7 @@ func TestCleanupDiscoveryBoundedDurableAndOffsetAware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	if err := q.DiscoverCleanup(time.Now()); err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestCleanupRetryProofAndDurableFailureMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	state, err = q.ResourceCleanup("transfer", "live")
 	if err != nil || state.AttemptCount != 1 || state.LastFailureAt == nil || state.NextRetryAt == nil || !state.NextRetryAt.After(now) {

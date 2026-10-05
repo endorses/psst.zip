@@ -110,7 +110,7 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 	if err != nil {
 		return page, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var role string
 	var disabled, changePassword bool
 	err = tx.QueryRowContext(ctx, `SELECT role,disabled,must_change_password FROM users WHERE id=?`, actor).Scan(&role, &disabled, &changePassword)
@@ -137,17 +137,17 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 		for rows.Next() {
 			item := historyCandidate{kind: kind}
 			if e = rows.Scan(&item.id, &item.created); e != nil {
-				rows.Close()
+				_ = rows.Close()
 				return page, e
 			}
 			if item.id == "" || !validAuditID(item.id) || len(item.created) == 0 || len(item.created) > 64 {
-				rows.Close()
+				_ = rows.Close()
 				return page, errors.New("invalid history identity")
 			}
 			candidates = append(candidates, item)
 		}
 		e = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if e != nil {
 			return page, e
 		}

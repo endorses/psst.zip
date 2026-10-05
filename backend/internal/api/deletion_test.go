@@ -67,7 +67,7 @@ func deleteResource(t *testing.T, env *testEnv, target, token string, status int
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != status {
 		body, _ := io.ReadAll(response.Body)
 		t.Fatalf("DELETE want %d, got %d: %s", status, response.StatusCode, body)
@@ -161,7 +161,7 @@ func TestSlotDeletionRevokesAllChildrenAndClosesEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer events.Body.Close()
+	defer func() { _ = events.Body.Close() }()
 	scanner := bufio.NewScanner(events.Body)
 	for scanner.Scan() {
 		if scanner.Text() == "" {
@@ -300,7 +300,7 @@ func TestDeletionWaitsForActiveUploadAcrossServerInstances(t *testing.T) {
 			uploadDone <- 0
 			return
 		}
-		response.Body.Close()
+		_ = response.Body.Close()
 		uploadDone <- response.StatusCode
 	}()
 	select {
@@ -315,7 +315,7 @@ func TestDeletionWaitsForActiveUploadAcrossServerInstances(t *testing.T) {
 			deletionDone <- 0
 			return
 		}
-		response.Body.Close()
+		_ = response.Body.Close()
 		deletionDone <- response.StatusCode
 	}()
 	select {
@@ -354,7 +354,7 @@ func TestConcurrentSlotCreationAndDeletionLeavesNoChildren(t *testing.T) {
 				statuses <- 0
 				return
 			}
-			response.Body.Close()
+			_ = response.Body.Close()
 			statuses <- response.StatusCode
 		}()
 	}
@@ -386,7 +386,7 @@ func TestDeletionPreflightAllowsAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusNoContent || !strings.Contains(response.Header.Get("Access-Control-Allow-Methods"), "DELETE") || !strings.Contains(response.Header.Get("Access-Control-Allow-Headers"), "Authorization") {
 		t.Fatalf("deletion preflight failed: %d %v", response.StatusCode, response.Header)
 	}

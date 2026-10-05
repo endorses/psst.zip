@@ -236,13 +236,13 @@ func (q *Queries) AdminResources(f AdminResourceFilter, limit int, after string)
 		for rows.Next() {
 			item, err := scanAdminResource(rows, kind)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return p, err
 			}
 			p.Resources = append(p.Resources, item)
 		}
 		err = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if err != nil {
 			return p, err
 		}
@@ -322,14 +322,14 @@ func (q *Queries) AdminResourceEvents(kind, id string, before int64, limit int, 
 		for rows.Next() {
 			var e SecurityEvent
 			if err = rows.Scan(&e.ID, &e.OccurredAt, &e.Kind, &e.Origin, &e.ActorID, &e.TargetType, &e.TargetID, &e.Outcome, &e.Count); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				q.MarkSecurityAuditDegraded()
 				return p, err
 			}
 			p.Events = append(p.Events, e)
 		}
 		err = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if err != nil {
 			q.MarkSecurityAuditDegraded()
 			return p, err

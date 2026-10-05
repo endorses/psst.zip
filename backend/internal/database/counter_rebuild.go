@@ -221,13 +221,13 @@ func discoverCounterJobs(ctx context.Context, tx *sql.Tx, budget *int) error {
 		for rows.Next() {
 			var id string
 			if err = rows.Scan(&id); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			ids = append(ids, id)
 		}
 		err = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if err != nil {
 			return err
 		}
@@ -265,13 +265,13 @@ func discoverCounterJobs(ctx context.Context, tx *sql.Tx, budget *int) error {
 		for rows.Next() {
 			var e entry
 			if err = rows.Scan(&e.kind, &e.id, &e.exists); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			entries = append(entries, e)
 		}
 		err = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if err != nil {
 			return err
 		}
@@ -317,48 +317,48 @@ func counterFilePage(ctx context.Context, tx *sql.Tx, j *counterJob, transfer st
 		var size, offset int64
 		var deleted, uploaded, complete bool
 		if err = rows.Scan(&id, &size, &offset, &deleted, &uploaded, &complete); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		count++
 		j.cursor = id
 		if size < 0 || offset < 0 || offset > size {
-			rows.Close()
+			_ = rows.Close()
 			return errors.New("invalid file accounting")
 		}
 		if err = addCounter(&j.files, 1); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		if err = addCounter(&j.fileBytes, size); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		if uploaded {
 			if err = addCounter(&j.uploaded, 1); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			if complete {
 				if err = addCounter(&j.completed, 1); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 			}
 		}
 		if !deleted {
 			if err = addCounter(&j.reserved, size); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			if err = addCounter(&j.occupied, offset); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 		}
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -407,37 +407,37 @@ func counterSummaryPage(ctx context.Context, tx *sql.Tx, j *counterJob, budget *
 	for rows.Next() {
 		var id, kind, state string
 		if err = rows.Scan(&id, &kind, &state); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		count++
 		j.cursor = id
 		j.child = kind
 		if err = addCounter(&j.files, 1); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		if state == "failed" {
 			if err = addCounter(&j.reserved, 1); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 		}
 		if state == "busy" || state == "waiting_children" {
 			if err = addCounter(&j.occupied, 1); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 		}
 		if state == "unavailable" {
 			if err = addCounter(&j.manifest, 1); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 		}
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -601,7 +601,7 @@ func (q *Queries) RebuildCounterBatch(ctx context.Context, budget int) (err erro
 		q.recordCounterRebuildFailure(ctx, nil)
 		return ErrCounterRebuild
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var job *counterJob
 	fail := func(cause error) error {
 		_ = tx.Rollback()

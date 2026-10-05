@@ -42,7 +42,7 @@ func (q *Queries) CreateUser(u User, bootstrap bool, actors ...*AdminActor) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func (q *Queries) Users() ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []User{}
 	for rows.Next() {
 		u, err := scanUser(rows)
@@ -124,7 +124,7 @@ func (q *Queries) updateUser(id string, disabled *bool, password, expectedHash [
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// Acquire the SQLite writer lock before evaluating the last-admin invariant.
 	res, err := tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, id)
 	if err != nil {
@@ -234,7 +234,7 @@ func (q *Queries) CreateSession(s Session, hash []byte, passwordHash []byte) err
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE users SET disabled=disabled WHERE id=? AND disabled=0 AND password_hash=? AND NOT EXISTS(SELECT 1 FROM admin_security a WHERE a.user_id=users.id AND a.secret!='')`, s.UserID, passwordHash)
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func (q *Queries) deleteSession(id, user string, accountAction bool, actors []*A
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = ValidateAdminActor(tx, optionalAdminActor(actors)); err != nil {
 		return err
 	}
@@ -335,7 +335,7 @@ func (q *Queries) CreateTrackedPairing(id string, hash []byte, user, session str
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, user); err != nil {
 		return err
 	}
@@ -426,7 +426,7 @@ func (q *Queries) CancelPairing(id, user, session string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE users SET disabled=disabled WHERE id=?`, user); err != nil {
 		return err
 	}
@@ -449,7 +449,7 @@ func (q *Queries) RedeemPairing(hash, tokenHash []byte, s Session) (*User, error
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var user, parentSession, pairingID string
 	var expiry time.Time
 	err = tx.QueryRow(`UPDATE pairings SET status='connected',device_name=? WHERE code_hash=? AND status='pending' RETURNING user_id,session_id,expires_at,id`, s.DeviceName, hash).Scan(&user, &parentSession, &expiry, &pairingID)
@@ -513,7 +513,7 @@ func (q *Queries) OwnedIDs(kind, user string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := []string{}
 	for rows.Next() {
 		var id string

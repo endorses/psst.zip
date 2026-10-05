@@ -584,6 +584,15 @@ keys or plaintext. Use HTTP only on a trusted network; use trusted HTTPS for
 untrusted networks or Internet-facing deployments. Encryption also assumes the
 client application itself is trustworthy.
 
+Successful decryption does not verify the sender's identity or certify that a
+file is safe. The service cannot inspect encrypted content. Operators still need
+to follow their hosting provider's rules and respond to abuse; configure the
+[abuse contact](docs/security/abuse-contact.md) and use the
+[incident controls](docs/security/incident-response.md) when needed. Encryption
+does not remove those responsibilities. Follow the
+[dependency, image and release verification workflow](docs/security/deployment.md#updates-and-vulnerability-review)
+when updating a self-hosted instance.
+
 - **File encryption**: AES-256-GCM. Send links share the symmetric decryption key. Receive invitations share only a public X25519 key; RFC 9180 HPKE wraps a separate symmetric key for each submission.
 - **Key in URL fragment**: The `#key` portion of URLs is not sent to the server by browsers (per RFC 3986). The server only sees the transfer ID.
 - **Encrypted storage**: The backend stores encrypted file contents and filenames, plus visible operational metadata. A compromised server delivering altered browser JavaScript can compromise browser-side secrecy; trusted HTTPS protects transport, not a malicious web application.

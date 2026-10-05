@@ -23,7 +23,7 @@ func rawAuthorized(t *testing.T, env *testEnv, method, path, token string, body 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	data, _ := io.ReadAll(response.Body)
 	if response.StatusCode != status {
 		t.Fatalf("%s %s expected %d got %d: %s", method, path, status, response.StatusCode, data)

@@ -34,7 +34,7 @@ func TestInboxMembershipUsesExactIndexesAndRechecksOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer closeFixture(t, rows)
 	probes := 0
 	for rows.Next() {
 		var id, parent, unused int
@@ -59,7 +59,7 @@ func TestInboxMembershipQueriesHonorContextWhilePoolOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	defer closeFixture(t, held)
 	for _, query := range []func(context.Context) error{
 		func(ctx context.Context) error { _, err := q.InboxOwnerContext(ctx, "inbox"); return err },
 		func(ctx context.Context) error {

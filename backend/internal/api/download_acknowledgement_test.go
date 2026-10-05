@@ -157,7 +157,7 @@ func TestConcurrentDownloadAcknowledgementsKeepFirstTimestamp(t *testing.T) {
 				statuses <- 0
 				return
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			statuses <- response.StatusCode
 		}()
 	}
@@ -255,7 +255,7 @@ func TestQuotaCleanupKeepsAlreadyOpenPayloadReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	allowed, err := env.queries.ReserveFileDownload(id, path.Base(target))
 	if err != nil || !allowed {
 		t.Fatalf("reserve: %v %v", allowed, err)

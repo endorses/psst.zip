@@ -193,7 +193,7 @@ func TestPayloadOperationsRejectTraversalSymlinksAndSpecialFiles(t *testing.T) {
 				t.Fatalf("unsafe inspect: %+v", info)
 			}
 			if reader, err := disk.Load(key); err == nil {
-				reader.Close()
+				_ = reader.Close()
 				t.Fatal("unsafe load")
 			}
 			if err := disk.Save(key, strings.NewReader("bad")); err == nil {

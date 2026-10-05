@@ -21,7 +21,7 @@ func TestSecurityEventsAccessPaginationAndRedaction(t *testing.T) {
 		}
 		err = env.queries.AppendSecurityEvent(tx, database.SecurityEvent{Kind: "settings.file_size_changed", Origin: "administrator", ActorID: "fixture-admin", TargetType: "server", Outcome: "succeeded", Count: 1})
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			t.Fatal(err)
 		}
 		if err := tx.Commit(); err != nil {
@@ -56,7 +56,7 @@ func TestSecurityEventsAccessPaginationAndRedaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.Header.Get("Cache-Control") != "no-store" || !strings.Contains(string(data), `"degraded":true`) {
 		t.Fatalf("%v %s", resp.Header, data)

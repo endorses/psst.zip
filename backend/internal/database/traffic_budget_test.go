@@ -37,7 +37,7 @@ func TestTrafficLeasesConcurrentAcrossConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer otherDB.Close()
+	defer closeFixture(t, otherDB)
 	other := NewQueries(otherDB)
 	now := time.Now()
 	var wg sync.WaitGroup
@@ -100,7 +100,7 @@ func TestTrafficCrashReservationsConservativeAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	r := NewQueries(reopened)
 	if err = r.RecoverTrafficLeases(); err != nil {
 		t.Fatal(err)
@@ -230,12 +230,12 @@ func TestTrafficMigrationSeedsGlobalWithoutInventingOwners(t *testing.T) {
 	}(); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
+	closeFixture(t, db)
 	migrated, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer migrated.Close()
+	defer closeFixture(t, migrated)
 	q := NewQueries(migrated)
 	global := budgetSnapshot(t, q, "", now)
 	account := budgetSnapshot(t, q, "owner", now)
@@ -402,7 +402,7 @@ func TestTrafficConcurrencyEnvironmentSeedsOnlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	other := NewQueries(reopened)
 	if err = other.InitializeTrafficConcurrency(2, 1, 1, 1, 1); err != nil {
 		t.Fatal(err)

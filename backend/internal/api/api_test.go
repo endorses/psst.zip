@@ -99,7 +99,7 @@ func setupAuthFixtureIn(t *testing.T, authorized bool, dir string) *testEnv {
 
 	t.Cleanup(func() {
 		ts.Close()
-		db.Close()
+		_ = db.Close()
 	})
 
 	env := &testEnv{server: ts, db: db, queries: queries, dataDir: dir, userToken: token}
@@ -121,14 +121,16 @@ func TestCreateTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create transfer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 
 	var result api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
 
 	if result.ID == "" {
 		t.Fatal("expected non-empty transfer ID")
@@ -145,7 +147,7 @@ func TestCreateTransferNoBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create transfer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
@@ -158,22 +160,26 @@ func TestGetTransfer(t *testing.T) {
 	// Create a transfer.
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json", nil)
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	// Get it.
 	resp, err := http.Get(env.url("/api/v1/transfers/" + created.ID))
 	if err != nil {
 		t.Fatalf("get transfer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
 	var tr api.TransferResponse
-	json.NewDecoder(resp.Body).Decode(&tr)
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		t.Fatal(err)
+	}
 	if tr.ID != created.ID {
 		t.Fatalf("expected ID %s, got %s", created.ID, tr.ID)
 	}
@@ -190,7 +196,7 @@ func TestGetTransferNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get transfer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
@@ -204,7 +210,7 @@ func TestGetTransferInvalidID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get transfer: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
@@ -218,8 +224,10 @@ func TestFullTransferFlow(t *testing.T) {
 	// 1. Create transfer.
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json", nil)
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 	transferID := created.ID
 
 	// 2. Create a file upload via tus.
@@ -236,7 +244,7 @@ func TestFullTransferFlow(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
 	}
 	fileID := path.Base(resp.Header.Get("Location"))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if fileID == "" {
 		t.Fatal("expected file ID in Location header")
 	}
@@ -256,7 +264,7 @@ func TestFullTransferFlow(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 4. Upload manifest.
 	manifest := []byte(`{"encrypted": "manifest data"}`)
@@ -269,7 +277,7 @@ func TestFullTransferFlow(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 5. Complete transfer.
 	resp, err = http.Post(env.url("/api/v1/transfers/"+transferID+"/complete"), "", nil)
@@ -280,13 +288,15 @@ func TestFullTransferFlow(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 204, got %d: %s", resp.StatusCode, string(body))
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 6. Get transfer — should be complete.
 	resp, _ = http.Get(env.url("/api/v1/transfers/" + transferID))
 	var tr api.TransferResponse
-	json.NewDecoder(resp.Body).Decode(&tr)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 	if tr.Status != "complete" {
 		t.Fatalf("expected status complete, got %s", tr.Status)
 	}
@@ -303,7 +313,7 @@ func TestFullTransferFlow(t *testing.T) {
 		t.Fatalf("download file: %v", err)
 	}
 	downloaded, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -317,7 +327,7 @@ func TestFullTransferFlow(t *testing.T) {
 		t.Fatalf("download manifest: %v", err)
 	}
 	manifestData, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if string(manifestData) != string(manifest) {
 		t.Fatalf("manifest data mismatch: got %q", string(manifestData))
 	}
@@ -330,8 +340,10 @@ func TestTusResumeUpload(t *testing.T) {
 	// Create transfer.
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json", nil)
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 	transferID := created.ID
 
 	// Full data.
@@ -343,7 +355,7 @@ func TestTusResumeUpload(t *testing.T) {
 	tusReq.Header.Set("Upload-Length", fmt.Sprintf("%d", len(fullData)))
 	resp, _ = client.Do(tusReq)
 	fileID := path.Base(resp.Header.Get("Location"))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Upload first 10 bytes.
 	chunk1 := fullData[:10]
@@ -360,7 +372,7 @@ func TestTusResumeUpload(t *testing.T) {
 	if resp.Header.Get("Upload-Offset") != "10" {
 		t.Fatalf("expected offset 10, got %s", resp.Header.Get("Upload-Offset"))
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Check offset via HEAD.
 	headReq, _ := http.NewRequest("HEAD",
@@ -369,7 +381,7 @@ func TestTusResumeUpload(t *testing.T) {
 	if resp.Header.Get("Upload-Offset") != "10" {
 		t.Fatalf("HEAD offset expected 10, got %s", resp.Header.Get("Upload-Offset"))
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Upload remaining bytes.
 	chunk2 := fullData[10:]
@@ -383,15 +395,15 @@ func TestTusResumeUpload(t *testing.T) {
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("second patch: expected 204, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Complete and download.
 	resp, _ = http.Post(env.url("/api/v1/transfers/"+transferID+"/complete"), "", nil)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	resp, _ = http.Get(env.url("/api/v1/transfers/" + transferID + "/files/" + fileID))
 	downloaded, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if string(downloaded) != string(fullData) {
 		t.Fatalf("resumed upload data mismatch: got %q, want %q", string(downloaded), string(fullData))
 	}
@@ -404,22 +416,24 @@ func TestCompleteTransferWithIncompleteFiles(t *testing.T) {
 	// Create transfer.
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json", nil)
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	// Create a file upload but don't upload any data.
 	tusReq, _ := http.NewRequest("POST", env.url("/api/v1/transfers/"+created.ID+"/files"), nil)
 	tusReq.Header.Set("Tus-Resumable", "1.0.0")
 	tusReq.Header.Set("Upload-Length", "100")
 	resp, _ = client.Do(tusReq)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Try to complete — should fail.
 	resp, _ = http.Post(env.url("/api/v1/transfers/"+created.ID+"/complete"), "", nil)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestDownloadLimit(t *testing.T) {
@@ -430,8 +444,10 @@ func TestDownloadLimit(t *testing.T) {
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json",
 		strings.NewReader(`{"max_downloads": 1}`))
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 	transferID := created.ID
 
 	// Upload a file.
@@ -441,7 +457,7 @@ func TestDownloadLimit(t *testing.T) {
 	tusReq.Header.Set("Upload-Length", fmt.Sprintf("%d", len(fileData)))
 	resp, _ = client.Do(tusReq)
 	fileID := path.Base(resp.Header.Get("Location"))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	patchReq, _ := http.NewRequest("PATCH",
 		env.url("/api/v1/transfers/"+transferID+"/files/"+fileID),
@@ -450,25 +466,25 @@ func TestDownloadLimit(t *testing.T) {
 	patchReq.Header.Set("Upload-Offset", "0")
 	patchReq.Header.Set("Content-Type", "application/offset+octet-stream")
 	resp, _ = client.Do(patchReq)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Complete.
 	resp, _ = http.Post(env.url("/api/v1/transfers/"+transferID+"/complete"), "", nil)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// First download — should work.
 	resp, _ = http.Get(env.url("/api/v1/transfers/" + transferID + "/files/" + fileID))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first download: expected 200, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Second download — should be denied.
 	resp, _ = http.Get(env.url("/api/v1/transfers/" + transferID + "/files/" + fileID))
 	if resp.StatusCode != http.StatusGone {
 		t.Fatalf("second download: expected 410, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- Slot flow tests ---
@@ -480,14 +496,16 @@ func TestCreateSlot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create slot: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", resp.StatusCode)
 	}
 
 	var result api.CreateSlotResponse
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
 	if result.ID == "" {
 		t.Fatal("expected non-empty slot ID")
 	}
@@ -499,22 +517,26 @@ func TestGetSlot(t *testing.T) {
 	// Create slot.
 	resp, _ := http.Post(env.url("/api/v1/slots"), "application/json", nil)
 	var created api.CreateSlotResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	// Get slot.
 	resp, err := http.Get(env.url("/api/v1/slots/" + created.ID))
 	if err != nil {
 		t.Fatalf("get slot: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
 	var slot api.SlotResponse
-	json.NewDecoder(resp.Body).Decode(&slot)
+	if err := json.NewDecoder(resp.Body).Decode(&slot); err != nil {
+		t.Fatal(err)
+	}
 	if slot.ID != created.ID {
 		t.Fatalf("expected ID %s, got %s", created.ID, slot.ID)
 	}
@@ -529,8 +551,10 @@ func TestSlotTransferFlow(t *testing.T) {
 	// Create slot.
 	resp, _ := http.Post(env.url("/api/v1/slots"), "application/json", strings.NewReader(fixtureSlotJSON))
 	var slot api.CreateSlotResponse
-	json.NewDecoder(resp.Body).Decode(&slot)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&slot); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	// Create a transfer under the slot.
 	resp, err := http.Post(env.url("/api/v1/slots/"+slot.ID+"/transfers"), "application/json", nil)
@@ -542,8 +566,10 @@ func TestSlotTransferFlow(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(body))
 	}
 	var transfer api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&transfer)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&transfer); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	if transfer.ID == "" {
 		t.Fatal("expected non-empty transfer ID")
@@ -552,8 +578,10 @@ func TestSlotTransferFlow(t *testing.T) {
 	// Get slot — should have the transfer linked.
 	resp, _ = http.Get(env.url("/api/v1/slots/" + slot.ID))
 	var slotResp api.SlotResponse
-	json.NewDecoder(resp.Body).Decode(&slotResp)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&slotResp); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	if len(slotResp.Transfers) != 1 {
 		t.Fatalf("expected 1 transfer, got %d", len(slotResp.Transfers))
@@ -572,8 +600,10 @@ func TestCleanupExpiredTransfers(t *testing.T) {
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json",
 		strings.NewReader(`{"expires_in_seconds": 1}`))
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	// Directly set expires_at in the past.
 	_, err := env.db.Exec("UPDATE transfers SET expires_at = ? WHERE id = ?",
@@ -602,7 +632,7 @@ func TestCleanupExpiredTransfers(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 after cleanup, got %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestTusOptions(t *testing.T) {
@@ -612,15 +642,17 @@ func TestTusOptions(t *testing.T) {
 	// Create transfer first.
 	resp, _ := http.Post(env.url("/api/v1/transfers"), "application/json", nil)
 	var created api.CreateTransferResponse
-	json.NewDecoder(resp.Body).Decode(&created)
-	resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
 
 	req, _ := http.NewRequest("OPTIONS", env.url("/api/v1/transfers/"+created.ID+"/files"), nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("options: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", resp.StatusCode)

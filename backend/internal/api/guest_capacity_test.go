@@ -29,7 +29,7 @@ func guestCapacityAPI(t *testing.T, configuredFileLimits ...int) (http.Handler, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	q := database.NewQueries(db)
 	if err = q.CreateUser(database.User{ID: "private-owner", Username: "private-name", Role: "user", PasswordHash: []byte("hash")}, false); err != nil {
 		t.Fatal(err)

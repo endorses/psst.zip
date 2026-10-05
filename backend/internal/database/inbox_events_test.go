@@ -13,14 +13,19 @@ func TestInboxEventQueryCancelsWhileWaitingForDatabaseConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	db.SetMaxOpenConns(1)
 	held, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
+	released := false
+	defer func() {
+		if !released {
+			closeFixture(t, held)
+		}
+	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -48,6 +53,7 @@ func TestInboxEventQueryCancelsWhileWaitingForDatabaseConnection(t *testing.T) {
 	if err := held.Close(); err != nil {
 		t.Fatal(err)
 	}
+	released = true
 	if active, err := q.InboxEventSessions(context.Background(), "inbox", "owner", []string{"session"}); err != nil || len(active) != 0 {
 		t.Fatalf("canceled query leaked database capacity: %v %v", active, err)
 	}

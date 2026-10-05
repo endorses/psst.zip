@@ -98,7 +98,7 @@ func (q *Queries) SetTrafficPolicy(p TrafficPolicy, actors ...*AdminActor) error
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	auditChanged := false
 	if optionalAdminActor(actors) != nil {
 		previous, _, readErr := readTrafficPolicy(tx)
@@ -131,7 +131,7 @@ func (q *Queries) SetAccountTrafficBudget(owner string, budget *int64, actors ..
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	auditChanged := false
 	if optionalAdminActor(actors) != nil {
 		var previous sql.NullInt64
@@ -261,7 +261,7 @@ func (q *Queries) TrafficBudgetSnapshot(owner string, now time.Time) (TrafficBud
 	if err != nil {
 		return TrafficBudgetSnapshot{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, epoch, err := readTrafficPolicy(tx)
 	if err != nil {
 		return TrafficBudgetSnapshot{}, err
@@ -304,7 +304,7 @@ func (q *Queries) ReserveTraffic(owner string, upload bool, want int64, now time
 	if err != nil {
 		return TrafficLease{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return TrafficLease{}, err
 	}
@@ -363,7 +363,7 @@ func (q *Queries) SettleTraffic(id string, actual int64) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (q *Queries) RecoverTrafficLeases() error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return err
 	}
@@ -444,7 +444,7 @@ func (q *Queries) TrafficPolicyVersion(owner string) (TrafficPolicy, string, err
 	if err != nil {
 		return TrafficPolicy{}, "", err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	p, _, err := readTrafficPolicy(tx)
 	if err != nil {
 		return p, "", err
@@ -460,7 +460,7 @@ func (q *Queries) InitializeTrafficConcurrency(total, account, ip, transfer, slo
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE traffic_policy SET revision=revision WHERE id=1`); err != nil {
 		return err
 	}

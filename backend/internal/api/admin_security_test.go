@@ -29,7 +29,7 @@ func adminProofLogin(t *testing.T, env *testEnv, proof map[string]string, want i
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	data, _ := io.ReadAll(res.Body)
 	if res.StatusCode != want {
 		t.Fatalf("admin login want%d got%d", want, res.StatusCode)
@@ -204,7 +204,7 @@ func TestAdministratorEnrollmentCancellationAndStaleCookieLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 {
 		t.Fatal("stale cookie blocked explicit login", res.StatusCode)
 	}
@@ -243,7 +243,7 @@ func TestAdministratorSecurityStrictBodiesAndOwnerAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 403 {
 		t.Fatal("cookie mutation bypassed same-origin guard")
 	}

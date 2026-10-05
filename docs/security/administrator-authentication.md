@@ -174,9 +174,10 @@ or cookie is issued before complete verification. Stale administrative mutations
 return `403 recent_authentication_required`; bounded verification cooldowns return
 `429 administrator_authentication_locked` with retry information.
 
-The wider security implementation plan still includes bounded security auditing,
-metadata retention, deployment and native verification. This authentication
-checkpoint is not a claim that every security requirement is complete.
+The wider security implementation includes bounded
+[security activity](security-activity.md) and metadata retention. Deployment and
+native verification remain open. This authentication checkpoint is not a claim
+that every security requirement is complete.
 
 Backend verification runs with `go test -race ./...` from `backend/`. This includes
 TOTP vectors, replay/recovery races, persisted cooldowns, enrollment binding,
@@ -196,12 +197,15 @@ PSST_TEST_BACKEND_URL=http://127.0.0.1:18789 \
 npm run test:browser -- tests/browser/admin-security-runtime.spec.ts
 ```
 
-This opt-in test ages one session only in the harness-created temporary database;
-it does not change production authentication timeouts or add a production bypass.
+These opt-in tests age sessions only in the harness-created temporary database;
+they do not change production authentication timeouts or add a production bypass.
 It is skipped before authentication fixtures when `PSST_TEST_STATE_FILE` is unset.
 Keep this lifecycle separate from other real-auth suites to avoid exhausting the
 deliberately shared login limiter. The test makes paced, explicit UI submissions;
 production does not automatically retry authentication or protected mutations.
+The same file verifies that an expired worker-session proof rejects account
+creation, then that the next test setup explicitly reauthenticates before its
+administrative mutation. The fixture never replays a rejected mutation.
 
 The Chromium lifecycle and rendered QR fallback decoding passed. Physical
 authenticator scanning, non-Chromium browsers and native iOS administrator-login

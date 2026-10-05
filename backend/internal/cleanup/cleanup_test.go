@@ -19,7 +19,7 @@ func TestCleanupSkipsBusyTransferAndRetries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
 	if err != nil {
@@ -65,7 +65,7 @@ func TestSweepRetainsTrafficTotalsAndContinuesAfterRetentionFailure(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
 	if err != nil {
@@ -103,7 +103,7 @@ func TestSecurityAuditRetentionFailureDoesNotBlockPayloadCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
 	if err != nil {
@@ -142,7 +142,7 @@ func TestCanceledCleanupWorkerDoesNotPerformStartupWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	files, err := store.NewDiskStore(filepath.Join(dir, "files"))
 	if err != nil {

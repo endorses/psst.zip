@@ -104,7 +104,7 @@ func (q *Queries) CompleteTransfer(id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// First write acquires the SQLite writer lock before reading file counts.
 	res, err := tx.Exec(`UPDATE transfers SET status='complete',completed_at=CURRENT_TIMESTAMP
  WHERE id=? AND status='pending'
@@ -147,7 +147,7 @@ func (q *Queries) ReserveFileDownload(transferID, fileID string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE files SET download_count = download_count + 1
  WHERE id = ? AND transfer_id = ? AND upload_complete = 1
  AND EXISTS (SELECT 1 FROM transfers t WHERE t.id = files.transfer_id
@@ -215,7 +215,7 @@ func (q *Queries) ListFilesContext(ctx context.Context, transferID string) ([]Fi
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var files []File
 	for rows.Next() {
@@ -327,7 +327,7 @@ func (q *Queries) ListSlotTransfers(slotID string) ([]Transfer, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var transfers []Transfer
 	for rows.Next() {
@@ -386,7 +386,7 @@ func (q *Queries) AcknowledgeDownload(id string, at time.Time) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.Exec(`UPDATE transfers SET downloaded_at=?
  WHERE id=? AND status='complete' AND downloaded_at IS NULL
  AND EXISTS (SELECT 1 FROM files WHERE transfer_id=transfers.id)
@@ -429,7 +429,7 @@ func (q *Queries) CreateSlotTransfer(slotID, id string, expiresAt time.Time, max
 	if err != nil {
 		return ResourceError(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	limit := 20
 	if len(limits) > 0 && limits[0] > 0 {
 		limit = limits[0]
@@ -489,7 +489,7 @@ func (q *Queries) revokeTransfer(id string, event *SecurityEvent, actors []*Admi
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.Exec(`UPDATE transfers SET status = 'revoked' WHERE id = ? AND status!='revoked'`, id)
 	if err != nil {
 		return err
@@ -531,7 +531,7 @@ func (q *Queries) revokeSlotQueued(id string, event *SecurityEvent, actors []*Ad
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.Exec(`UPDATE slots SET status='revoked' WHERE id=? AND status!='revoked'`, id)
 	if err != nil {
 		return err

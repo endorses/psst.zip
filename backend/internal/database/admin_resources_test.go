@@ -134,12 +134,12 @@ func TestAdminResourceTotalsAcrossConnectionRestartAndBackfill(t *testing.T) {
 	if err = q.LinkSlotTransfer("slot", "child"); err != nil {
 		t.Fatal(err)
 	}
-	old.Close()
+	closeFixture(t, old)
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	assertResourceTotals(t, q, "slot", "slot", 1, 1, 51, 29, 6)
 	resource, err := q.AdminResource("transfer", "child")
@@ -161,7 +161,7 @@ func TestAdminResourceTotalsAcrossConnectionRestartAndBackfill(t *testing.T) {
 	if err = q2.SaveManifest("child", []byte("xx")); err != nil {
 		t.Fatal(err)
 	}
-	other.Close()
+	closeFixture(t, other)
 	assertResourceTotals(t, q, "slot", "slot", 1, 1, 47, 47, 2)
 }
 
@@ -341,7 +341,7 @@ func TestAdminResourceQueriesUseOrderedIndexes(t *testing.T) {
 				}
 				found = found || strings.Contains(detail, index)
 			}
-			rows.Close()
+			closeFixture(t, rows)
 			if !found {
 				t.Fatal("missing ordered index", index)
 			}

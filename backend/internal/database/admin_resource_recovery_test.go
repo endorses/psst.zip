@@ -125,18 +125,18 @@ func TestAdminResourceOptionalSummaryUsesIndexedBoundedLookups(t *testing.T) {
 				var id, parent, unused int
 				var detail string
 				if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-					rows.Close()
+					closeFixture(t, rows)
 					t.Fatal(err)
 				}
 				if strings.Contains(detail, "USE TEMP B-TREE") || strings.HasPrefix(detail, "SCAN ") {
-					rows.Close()
+					closeFixture(t, rows)
 					t.Fatalf("unbounded optional-summary query: %s", detail)
 				}
 				ordered = ordered || strings.Contains(detail, "SEARCH r USING INDEX "+index)
 				summary = summary || strings.Contains(detail, "SEARCH c USING INDEX sqlite_autoindex_admin_resource_totals_1") && strings.Contains(detail, "LEFT-JOIN")
 			}
 			err = rows.Err()
-			rows.Close()
+			closeFixture(t, rows)
 			if err != nil || !ordered || !summary {
 				t.Fatalf("missing bounded canonical/summary seek: %s ordered=%v summary=%v err=%v", index, ordered, summary, err)
 			}

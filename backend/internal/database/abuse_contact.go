@@ -79,7 +79,8 @@ func (q *Queries) SetAbuseContactEmail(email string, actors ...*AdminActor) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	// Rollback is a no-op after commit; preserve any primary mutation error.
+	defer func() { _ = tx.Rollback() }()
 	var previous string
 	if err = tx.QueryRow(`SELECT email FROM abuse_contact WHERE id=1`).Scan(&previous); err != nil {
 		return err

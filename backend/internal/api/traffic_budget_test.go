@@ -47,7 +47,7 @@ func TestTrafficBudgetBeforeDownloadAttemptAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 429 || res.Header.Get("X-Psst-Error-Code") != "traffic_budget_exhausted" || res.Header.Get("X-Psst-Retry-At") == "" || res.Header.Get("Retry-After") == "" || !bytes.Contains(data, []byte("retry_at")) {
 		t.Fatalf("%d %v %s", res.StatusCode, res.Header, data)
 	}
@@ -84,7 +84,7 @@ func TestTrafficBudgetPartialResponseAndManifestRetries(t *testing.T) {
 	res, err := env.server.Client().Get(env.url("/api/v1/transfers/" + id + "/files/" + file))
 	if err == nil {
 		_, readErr := io.ReadAll(res.Body)
-		res.Body.Close()
+		_ = res.Body.Close()
 		if readErr == nil {
 			t.Fatal("partial response appeared complete")
 		}
@@ -199,7 +199,7 @@ func TestTrafficBudgetPartialTusRetainsCheckpointAndManualResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 429 || res.Header.Get("X-Psst-Error-Code") != "traffic_budget_exhausted" {
 		t.Fatalf("%d %s", res.StatusCode, body)
 	}
@@ -214,7 +214,7 @@ func TestTrafficBudgetPartialTusRetainsCheckpointAndManualResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 200 || res.Header.Get("Upload-Offset") != "100" {
 		t.Fatal(res.StatusCode, res.Header)
 	}
@@ -226,7 +226,7 @@ func TestTrafficBudgetPartialTusRetainsCheckpointAndManualResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(res.Body)
-	res.Body.Close()
+	_ = res.Body.Close()
 	if res.StatusCode != 204 {
 		t.Fatalf("%d %s", res.StatusCode, body)
 	}

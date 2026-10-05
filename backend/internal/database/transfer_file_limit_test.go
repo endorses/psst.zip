@@ -21,7 +21,7 @@ func TestTransferFileListBoundsHistoricalMetadata(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer tx.Rollback()
+			defer func() { _ = tx.Rollback() }()
 			for i := 0; i < count; i++ {
 				if _, err = tx.Exec(`INSERT INTO files(id,transfer_id,size,upload_offset,upload_complete,download_count) VALUES(?,'legacy',7,7,1,2)`, fmt.Sprintf("legacy-%04d", i)); err != nil {
 					t.Fatal(err)
@@ -93,7 +93,7 @@ func TestTransferFileAllocationSerializesProtocolCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer otherDB.Close()
+	defer closeFixture(t, otherDB)
 	start := make(chan struct{})
 	results := make(chan error, 2)
 	for i, allocator := range []*Queries{q, NewQueries(otherDB)} {

@@ -42,7 +42,7 @@ func authRequest(t *testing.T, env *testEnv, method, path, token string, body an
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != status {
 		t.Fatalf("%s %s want%d got%d: %s", method, path, status, resp.StatusCode, data)
@@ -135,12 +135,14 @@ func TestAuthLoginAndCookieOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		t.Fatal(resp.Status)
 	}
 	var decoded map[string]any
-	json.NewDecoder(resp.Body).Decode(&decoded)
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := decoded["token"]; ok {
 		t.Fatal("cookie login leaked token")
 	}
@@ -156,7 +158,7 @@ func TestAuthLoginAndCookieOrigin(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		want := 403
 		if origin == env.server.URL {
 			want = 201
@@ -185,7 +187,7 @@ func TestAuthPairingSingleUseAndSessionRevocation(t *testing.T) {
 				statuses <- 0
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			statuses <- resp.StatusCode
 		}()
 	}
@@ -312,7 +314,7 @@ func adminWebLoginToken(t *testing.T, env *testEnv, username, password string) s
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != 200 {
 		body, _ := io.ReadAll(res.Body)
 		t.Fatalf("web admin login: %d %s", res.StatusCode, body)

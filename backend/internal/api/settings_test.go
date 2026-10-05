@@ -37,7 +37,7 @@ func TestAdminFileLimitAuthorizationPersistenceAndEnforcement(t *testing.T) {
 			t.Fatal(err)
 		}
 		stored, err := database.NewQueries(db).MaxFileSize()
-		db.Close()
+		_ = db.Close()
 		if err != nil || stored != limit {
 			t.Fatalf("stored=%d error=%v", stored, err)
 		}
@@ -52,7 +52,7 @@ func TestAdminFileLimitAuthorizationPersistenceAndEnforcement(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res.Body.Close()
+			_ = res.Body.Close()
 			want := 201
 			if delta == 1 {
 				want = 413
@@ -78,7 +78,7 @@ func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	location := response.Header.Get("Location")
-	response.Body.Close()
+	_ = response.Body.Close()
 	if response.StatusCode != 201 {
 		t.Fatal(response.StatusCode)
 	}
@@ -93,7 +93,7 @@ func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response.Body.Close()
+	_ = response.Body.Close()
 	if response.StatusCode != 204 {
 		t.Fatal(response.StatusCode)
 	}
@@ -103,7 +103,7 @@ func TestLoweringLimitKeepsReservedUploadAndDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	received, err := io.ReadAll(response.Body)
 	if err != nil || response.StatusCode != 200 || !bytes.Equal(body, received) {
 		t.Fatalf("reserved upload/download failed: status%d err%v", response.StatusCode, err)

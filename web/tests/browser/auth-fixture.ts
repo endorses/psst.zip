@@ -15,6 +15,13 @@ export const test = base.extend<
   { adminRequest: APIRequestContext },
   { apiToken: string; adminToken: string }
 >({
+  page: async ({ page }, use, testInfo) => {
+    testInfo.setTimeout(Math.max(testInfo.timeout, 180000));
+    // Tests share one loopback client. Let the real 20/s global bucket refill
+    // after the preceding test and API setup before the page initializes.
+    await page.waitForTimeout(1000);
+    await use(page);
+  },
   adminToken: [
     async ({ playwright }, use) => {
       const context = await playwright.request.newContext({
@@ -38,7 +45,7 @@ export const test = base.extend<
       await use(token);
       await context.dispose();
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 180000 },
   ],
   apiToken: [
     async ({ playwright, adminToken }, use) => {
@@ -85,7 +92,7 @@ export const test = base.extend<
       await context.dispose();
       await admin.dispose();
     },
-    { scope: "worker", auto: true },
+    { scope: "worker", auto: true, timeout: 180000 },
   ],
   request: async ({ playwright, baseURL, apiToken }, use) => {
     const context = await playwright.request.newContext({
@@ -100,12 +107,30 @@ export const test = base.extend<
       baseURL,
       extraHTTPHeaders: { Authorization: `Bearer ${adminToken}` },
     });
-    await use(context);
-    await context.dispose();
+    try {
+      // The worker session outlives the five-minute proof. Refresh explicitly
+      // before setup when needed; never replay a rejected administrative mutation.
+      const status = await context.get("/api/v1/admin/security");
+      expect(status.ok(), await status.text()).toBe(true);
+      const { recent_until } = await status.json();
+      const serverNow = Date.parse(status.headers().date);
+      expect(Number.isFinite(serverNow)).toBe(true);
+      if (!recent_until || Date.parse(recent_until) < serverNow + 90000) {
+        const refreshed = await retryAuth(() =>
+          context.post("/api/v1/admin/security/reauth", {
+            data: { password: adminCredentials.password },
+          }),
+        );
+        expect(refreshed.ok(), await refreshed.text()).toBe(true);
+      }
+      await use(context);
+    } finally {
+      await context.dispose();
+    }
   },
 });
-// The production limiter permits one authentication attempt every five seconds after
-// its initial burst. Keep it enabled and pace only explicit 429 responses.
+// The IP login bucket refills every five seconds; the account bucket refills
+// every thirty seconds. Keep both enabled and honor explicit 429 responses.
 export async function authDelay(headers: Record<string, string>) {
   const value = headers["retry-after"];
   const seconds = value ? Number(value) : NaN;
@@ -115,7 +140,7 @@ export async function authDelay(headers: Record<string, string>) {
       ? Date.parse(value) - Date.now()
       : 5000;
   await new Promise((resolve) =>
-    setTimeout(resolve, Math.max(1000, Math.min(10000, delay || 5000))),
+    setTimeout(resolve, Math.max(1000, Math.min(60000, delay || 5000))),
   );
 }
 export async function retryAuth(operation: () => Promise<APIResponse>): Promise<APIResponse> {
@@ -126,7 +151,8 @@ export async function retryAuth(operation: () => Promise<APIResponse>): Promise<
   }
   return response;
 }
-export async function authenticate(page: Page, loginCredentials = credentials) {
+export async function submitLogin(page: Page, loginCredentials = credentials) {
+  test.setTimeout(Math.max(test.info().timeout, 180000));
   for (let attempt = 0; attempt < 4; attempt++) {
     await page.getByLabel("Username", { exact: true }).fill(loginCredentials.username);
     await page.getByLabel("Password", { exact: true }).fill(loginCredentials.password);
@@ -137,10 +163,16 @@ export async function authenticate(page: Page, loginCredentials = credentials) {
     const response = await result;
     if (response.status() !== 429) {
       expect(response.ok(), await response.text()).toBe(true);
-      break;
+      return;
+    }
+    if (attempt === 3) {
+      expect(response.ok(), `Sign-in remained throttled: ${await response.text()}`).toBe(true);
     }
     await authDelay(response.headers());
   }
+}
+export async function authenticate(page: Page, loginCredentials = credentials) {
+  await submitLogin(page, loginCredentials);
   await expect(
     page
       .getByRole("navigation", { name: "Account navigation" })

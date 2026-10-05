@@ -76,8 +76,9 @@ Revoked rows form a persistent cleanup queue. Each one-second sweep visits up to
 resources. Inbox cleanup waits for its separately processed children. Files with
 active readers are not deleted or refunded prematurely. Failed deletion remains
 charged and is retried; restarting the server restarts the sweep without making
-revoked resources usable. A dashboard for cleanup failures/backlog remains a
-separate unfinished plan requirement.
+revoked resources usable. The administrator Resources view shows bounded cleanup
+backlog, oldest-pending age and retry failures; see the
+[resource policy and recovery guide](resource-limits.md).
 
 ## API and release status
 
@@ -93,8 +94,9 @@ and recovery.
 
 These controls are part of the ongoing security plan. Administrator second
 factors, recent-authentication checks and separate
-[traffic/bandwidth budgets](traffic-limits.md) are implemented. Bounded security
-auditing and cleanup visibility remain pending. A manual pause is
+[traffic/bandwidth budgets](traffic-limits.md), bounded
+[security activity](security-activity.md) and cleanup visibility are implemented.
+A manual pause is
 not an automatic spending cap. It also does not prevent charges for rejected
 network requests, proxy/static traffic or network-level attacks.
 

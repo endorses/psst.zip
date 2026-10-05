@@ -206,7 +206,7 @@ func (s *Server) uploadManifest(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	unlock, ok := acquireResource(w, r, id, false)
 	if !ok {
@@ -257,7 +257,8 @@ func (s *Server) downloadManifest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	// Headers are already sent; a failed response write cannot be replaced.
+	_, _ = w.Write(data)
 }
 
 func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
@@ -315,12 +316,12 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	readerDone, err := store.AcquireReader(transferID)
 	if err != nil {
-		rc.Close()
+		_ = rc.Close()
 		writeError(w, 503, "resource is busy; retry later")
 		return
 	}
 	defer readerDone()
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	if r.Context().Err() != nil {
 		return
 	}
@@ -341,7 +342,10 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	// Never serve uncommitted trailing bytes if an external filesystem change
 	// races inspection. A short response remains incomplete to the HTTP client.
-	io.CopyN(w, rc, f.Size)
+	if _, err := io.CopyN(w, rc, f.Size); err != nil {
+		// Do not append a control error to a partially streamed ciphertext body.
+		return
+	}
 }
 
 // --- tus wrappers ---

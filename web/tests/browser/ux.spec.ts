@@ -326,11 +326,11 @@ test("receive cap rejects oversized batches and a device without its private key
   const sender = await context.newPage();
   await sender.goto(link);
   await sender.getByLabel("Choose files").setInputFiles([file, { ...file, name: "extra.txt" }]);
-  await sender.getByRole("button", { name: "Send files", exact: true }).click();
   await expect(sender.getByRole("alert")).toContainText("file");
+  await expect(sender.getByRole("button", { name: "Send files", exact: true })).toHaveCount(0);
   expect((await (await request.get(`/api/v1/slots/${slot}`)).json()).transfers).toHaveLength(0);
-  await sender.getByRole("button", { name: "Remove extra.txt" }).click();
-  await sender.getByRole("button", { name: "Retry upload", exact: true }).click();
+  await sender.getByLabel("Choose files").setInputFiles(file);
+  await sender.getByRole("button", { name: "Send files", exact: true }).click();
   await expect(sender.getByRole("heading", { name: "Files sent" })).toBeVisible();
   await sender.close();
   const info = await (await request.get(`/api/v1/slots/${slot}`)).json();

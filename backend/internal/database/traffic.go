@@ -88,7 +88,7 @@ func (q *Queries) AddTraffic(at time.Time, t TrafficTotals) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = addTraffic(tx, at, t); err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (q *Queries) SetTrafficSettings(s TrafficSettings, actors ...*AdminActor) e
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	auditChanged := false
 	if optionalAdminActor(actors) != nil {
 		var previous sql.NullInt64
@@ -143,7 +143,7 @@ func (q *Queries) TrafficDays() ([]TrafficDay, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	days := []TrafficDay{}
 	for rows.Next() {
 		var d TrafficDay
@@ -175,7 +175,7 @@ func (q *Queries) Overview(now time.Time) (users, transfers, slots int, manifest
 			var expires time.Time
 			err = rows.Scan(&expires)
 			if err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return
 			}
 			if now.Before(expires) {
@@ -187,7 +187,7 @@ func (q *Queries) Overview(now time.Time) (users, transfers, slots int, manifest
 			}
 		}
 		err = rows.Err()
-		rows.Close()
+		_ = rows.Close()
 		if err != nil {
 			return
 		}
@@ -201,7 +201,7 @@ func (q *Queries) Overview(now time.Time) (users, transfers, slots int, manifest
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var transfer, id string
 		err = rows.Scan(&transfer, &id)

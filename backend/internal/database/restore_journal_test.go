@@ -25,12 +25,12 @@ func TestRestoreJournalWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	conn, err := db.Conn(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer closeFixture(t, conn)
 	if _, err = conn.ExecContext(context.Background(), `PRAGMA wal_autocheckpoint=0`); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestRestoreColdCopyRetainsCommittedWAL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer rdb.Close()
+			defer closeFixture(t, rdb)
 			rq := NewQueries(rdb)
 			limit, err := rq.MaxFileSize()
 			if err != nil {
@@ -175,13 +175,13 @@ func copyRestoreJournalFile(t *testing.T, source, target string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer in.Close()
+	defer closeFixture(t, in)
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		t.Fatal(err)
 	}
 	if err = out.Close(); err != nil {

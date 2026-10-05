@@ -48,7 +48,7 @@ func (q *Queries) PruneTrafficHistory(now time.Time) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE traffic_retention SET retained_from=MAX(retained_from,?) WHERE id=1`, trafficRetentionStart(now)); err != nil {
 		return 0, err
 	}
@@ -68,13 +68,13 @@ func (q *Queries) PruneTrafficHistory(now time.Time) (int64, error) {
 	for rows.Next() {
 		var e entry
 		if err = rows.Scan(&e.owner, &e.date, &e.up, &e.down, &e.cu, &e.cd); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		batch = append(batch, e)
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return 0, err
 	}
@@ -120,7 +120,7 @@ func (q *Queries) TrafficHistory(now time.Time) (TrafficHistorySnapshot, error) 
 	if err != nil {
 		return h, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var allowance sql.NullInt64
 	if err = tx.QueryRow(`SELECT recording_started_at,updated_at,degraded,allowance_bytes,cycle_start_day,basis FROM traffic_state WHERE id=1`).Scan(&h.State.RecordingStartedAt, &h.State.UpdatedAt, &h.State.Degraded, &allowance, &h.State.Settings.CycleStartDay, &h.State.Settings.Basis); err != nil {
 		return h, err
@@ -142,7 +142,7 @@ func (q *Queries) TrafficHistory(now time.Time) (TrafficHistorySnapshot, error) 
 	if err != nil {
 		return h, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	h.Days = []TrafficDay{}
 	for rows.Next() {
 		var d TrafficDay

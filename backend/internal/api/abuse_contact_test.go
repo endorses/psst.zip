@@ -55,7 +55,7 @@ func TestAbuseContactStrictBodyAndNoSecretEcho(t *testing.T) {
 			t.Fatal(err)
 		}
 		raw, _ := io.ReadAll(response.Body)
-		response.Body.Close()
+		_ = response.Body.Close()
 		if response.StatusCode != 400 || strings.Contains(string(raw), "secret") {
 			t.Fatal(response.StatusCode, string(raw))
 		}
@@ -66,7 +66,7 @@ func TestAbuseContactStrictBodyAndNoSecretEcho(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("contact cached")
 	}

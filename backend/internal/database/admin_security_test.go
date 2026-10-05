@@ -137,7 +137,7 @@ func TestAdminFactorConcurrentReplayAndRecoveryUse(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer closeFixture(t, db)
 			other := NewQueries(db)
 			state, _ := q.AdminSecurity(u.ID)
 			proofAt := now.Add(30 * time.Second)
@@ -193,7 +193,7 @@ func TestAdminFactorFailureCooldownPersistsAndExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	other := NewQueries(db)
 	stored, _ := other.AdminSecurity(u.ID)
 	if stored.Failures != 5 || stored.LockedUntil != now.Add(5*time.Minute).Unix() {
@@ -331,12 +331,12 @@ func TestAdminSecurityMigrationLeavesOldSessionsNotRecent(t *testing.T) {
 	if _, err = old.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES('old','admin',?,'Browser',?,?)`, []byte("token"), time.Now().UTC(), time.Now().Add(time.Hour).UTC()); err != nil {
 		t.Fatal(err)
 	}
-	old.Close()
+	closeFixture(t, old)
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	metadata, err := q.AdminSecurityMetadata("admin", "old", time.Now())
 	if err != nil || metadata.Enabled || metadata.RecentUntil != nil {
@@ -355,7 +355,7 @@ func TestDatabaseCredentialFilesPrivatePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		info, err := os.Stat(path + suffix)
 		if err != nil {
@@ -378,7 +378,7 @@ func TestDatabaseCredentialFilesPrivatePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer other.Close()
+	defer closeFixture(t, other)
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		info, _ := os.Stat(path + suffix)
 		if info.Mode().Perm() != 0600 {
@@ -397,7 +397,7 @@ func TestDatabaseCredentialPathMetacharactersAreLiteral(t *testing.T) {
 	if err = NewQueries(db).CreateUser(User{ID: "admin", Username: "admin", Role: "admin", PasswordHash: []byte("hash")}, false); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
+	closeFixture(t, db)
 	info, err := os.Stat(path)
 	if err != nil || info.Size() == 0 || info.Mode().Perm() != 0600 {
 		t.Fatal(info, err)
@@ -406,7 +406,7 @@ func TestDatabaseCredentialPathMetacharactersAreLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Close()
+	defer closeFixture(t, reopened)
 	if n, err := NewQueries(reopened).UserCount(); err != nil || n != 1 {
 		t.Fatal("opened different database", n, err)
 	}

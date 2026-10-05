@@ -27,7 +27,7 @@ func seedMetadataSessions(t *testing.T, q *Queries, u User, count int, at time.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for i := 0; i < count; i++ {
 		s := metadataSession(u, fmt.Sprintf("session-%04d", i), at.Add(time.Duration(i)*time.Millisecond))
 		if _, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, s.ID, u.ID, []byte(s.ID), s.DeviceName, s.CreatedAt.UTC(), s.ExpiresAt.UTC()); err != nil {
@@ -302,7 +302,7 @@ func TestAuthMetadataCleanupUsesExpiryIndexes(t *testing.T) {
 			}
 			details += detail + "\n"
 		}
-		rows.Close()
+		closeFixture(t, rows)
 		if !strings.Contains(details, sample.index) {
 			t.Fatal("missing expiry index", details)
 		}
@@ -323,7 +323,7 @@ func TestAuthMetadataExpiredPairingTreesCannotBlockSessionRotation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for i := 0; i < 256; i++ {
 		id := fmt.Sprintf("expired-%04d", i)
 		if _, err = tx.Exec(`INSERT INTO sessions(id,user_id,token_hash,device_name,created_at,expires_at) VALUES(?,?,?,?,?,?)`, id, u.ID, []byte(id), "Expired browser", now.Add(-48*time.Hour), now.Add(-time.Hour)); err != nil {

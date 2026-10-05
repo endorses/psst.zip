@@ -53,7 +53,7 @@ func TestTrafficConcurrentDurabilityAndOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	got, err := q.TrafficState()
 	if err != nil || !got.Degraded || got.RecordingStartedAt != state.RecordingStartedAt || *got.Settings.AllowanceBytes != 1000 || got.Settings.CycleStartDay != 31 || got.Settings.Basis != "combined" {
@@ -87,7 +87,7 @@ func TestTrafficFileEventsSurviveDeletionAndReceiptRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	until := time.Now().Add(time.Hour)
 	if err = q.CreateSlot("slot", until, nil); err != nil {

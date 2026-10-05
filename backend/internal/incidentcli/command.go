@@ -37,7 +37,7 @@ func Run(path, action string, out io.Writer) error {
 	if err != nil {
 		return errors.New("could not open server database")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	if err := q.ValidateIncidentSchema(); err != nil {
 		return errors.New("database is not a supported psst.zip server database; no change made")

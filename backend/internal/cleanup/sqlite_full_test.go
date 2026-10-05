@@ -30,7 +30,7 @@ func TestCleanupSQLiteFullPreservesReservationsAndRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { db.Close() }()
+	defer func(opened *sql.DB) { _ = opened.Close() }(db)
 	// max_page_count is connection-scoped; keep all statements on one connection.
 	db.SetMaxOpenConns(1)
 	q := database.NewQueries(db)
@@ -101,6 +101,7 @@ INSERT INTO pressure(data) VALUES(zeroblob(65536)); END`); err != nil {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(opened *sql.DB) { _ = opened.Close() }(db)
 	q = database.NewQueries(db)
 	restored, err := q.ResourceCleanup("transfer", "full-db")
 	if err != nil || restored.State != "failed" || restored.AttemptCount != state.AttemptCount {

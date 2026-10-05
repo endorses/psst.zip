@@ -81,7 +81,7 @@ func (q *Queries) SetResourcePolicy(p ResourcePolicy, actors ...*AdminActor) err
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	auditChanged := false
 	if optionalAdminActor(actors) != nil {
 		previous, readErr := readPolicy(tx)
@@ -123,7 +123,7 @@ func (q *Queries) beginAllocation(extra int64, manifest bool, expires *time.Time
 		return nil, err
 	}
 	if _, err = tx.Exec(`UPDATE resource_policy SET id=id WHERE id=1`); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	p, err := readPolicy(tx)
@@ -134,7 +134,7 @@ func (q *Queries) beginAllocation(extra int64, manifest bool, expires *time.Time
 		err = q.checkCapacity(tx, p, extra, manifest)
 	}
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return nil, err
 	}
 	return tx, nil
@@ -144,7 +144,7 @@ func (q *Queries) allocationExec(extra int64, manifest bool, expires *time.Time,
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(query, args...); err != nil {
 		return ResourceError(err)
 	}

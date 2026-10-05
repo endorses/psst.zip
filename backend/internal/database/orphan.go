@@ -247,7 +247,7 @@ func (q *Queries) CommitOrphanPage(ctx context.Context, d OrphanDirectory, p sto
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var tick int64
 	err = tx.QueryRowContext(ctx, `UPDATE orphan_progress SET tick=tick+1 WHERE id=1 AND generation=? RETURNING tick`, d.Generation).Scan(&tick)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -341,7 +341,7 @@ func (q *Queries) FailOrphanDirectory(ctx context.Context, d OrphanDirectory) er
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE orphan_progress SET unstable=1,pass_unstable=1,scan_error=1,pass_failed=1 WHERE id=1 AND generation=?`, d.Generation)
 	if err != nil {
 		return err
@@ -376,7 +376,7 @@ func (q *Queries) NextOrphanCandidates(ctx context.Context) ([]OrphanCandidate, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []OrphanCandidate
 	for rows.Next() {
 		var c OrphanCandidate
@@ -402,7 +402,7 @@ func (q *Queries) TouchOrphanCandidate(ctx context.Context, c OrphanCandidate, c
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var tick int64
 	if err = tx.QueryRowContext(ctx, `UPDATE orphan_progress SET tick=tick+1 WHERE id=1 RETURNING tick`).Scan(&tick); err != nil {
 		return err
@@ -422,7 +422,7 @@ func (q *Queries) RetireChangedOrphan(ctx context.Context, c OrphanCandidate) er
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.ExecContext(ctx, `UPDATE orphan_progress SET unstable=1,pass_unstable=1 WHERE id=1`); err != nil {
 		return err
 	}
@@ -440,7 +440,7 @@ func (q *Queries) RemoveOrphanCandidate(ctx context.Context, c OrphanCandidate, 
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE orphan_candidates SET revision=revision WHERE directory=? AND name=? AND revision=? AND first_seen<=? AND category!='unsupported'`, c.Entry.Directory, c.Entry.Name, c.Revision, now.Add(-OrphanGracePeriod).Unix())
 	if err != nil {
 		return false, err
@@ -484,7 +484,7 @@ func (q *Queries) finishOrphanPass(ctx context.Context, now time.Time, generatio
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var clean bool
 	err = tx.QueryRowContext(ctx, `UPDATE orphan_progress SET tick=tick+1 WHERE id=1 AND generation=? AND root_done=1 AND NOT EXISTS(SELECT 1 FROM orphan_directories) RETURNING (pass_saturated=0 AND pass_unstable=0 AND pass_failed=0 AND NOT EXISTS(SELECT 1 FROM orphan_candidates))`, generation).Scan(&clean)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -1,4 +1,4 @@
-import { test, expect, authenticate, adminCredentials, signIn, retryAuth } from "./auth-fixture";
+import { test, expect, authenticate, adminCredentials, signIn, submitLogin } from "./auth-fixture";
 
 test("temporary password is mandatory, mismatch remains local, replacement invalidates the session", async ({
   page,
@@ -14,11 +14,7 @@ test("temporary password is mandatory, mismatch remains local, replacement inval
     ).ok(),
   ).toBe(true);
   await page.goto("/?view=scan");
-  await page.getByLabel("Username", { exact: true }).fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  const login = page.waitForResponse((r) => r.url().endsWith("/auth/login"));
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  expect((await login).ok()).toBe(true);
+  await submitLogin(page, { username, password });
   await expect(page.getByRole("heading", { name: "Choose your own password" })).toBeVisible();
   await expect(page.getByRole("navigation")).toHaveCount(0);
   await page.reload();
@@ -282,12 +278,22 @@ test("same-account selected files survive reset, temporary login and password re
 
 test("a real 367-day traffic range fits phone and desktop while the numeric table remains usable", async ({
   page,
+  adminRequest,
 }) => {
+  const report = await adminRequest.get("/api/v1/admin/traffic");
+  expect(report.ok(), await report.text()).toBe(true);
+  const backendNow = new Date(report.headers().date);
+  expect(Number.isNaN(backendNow.getTime())).toBe(false);
+  const through = backendNow.toISOString().slice(0, 10);
+  const first = new Date(`${through}T00:00:00Z`);
+  first.setUTCDate(first.getUTCDate() - 366);
+  const from = first.toISOString().slice(0, 10);
+  expect(from >= (await report.json()).history_retained_from).toBe(true);
   await page.goto("/?view=traffic");
   await authenticate(page, adminCredentials);
   await expect(page.getByRole("heading", { name: "Selected period", exact: true })).toBeVisible();
-  await page.getByLabel("From (UTC)", { exact: true }).fill("2025-01-01");
-  await page.getByLabel("Through (UTC, inclusive)", { exact: true }).fill("2026-01-02");
+  await page.getByLabel("From (UTC)", { exact: true }).fill(from);
+  await page.getByLabel("Through (UTC, inclusive)", { exact: true }).fill(through);
   const fetched = page.waitForResponse((r) => r.url().includes("/api/v1/admin/traffic?"));
   await page.getByRole("button", { name: "Show traffic", exact: true }).click();
   const result = await fetched;

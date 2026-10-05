@@ -141,7 +141,7 @@ func (q *Queries) DiscoverCleanup(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE cleanup_progress SET id=id WHERE id=1`); err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func (q *Queries) DiscoverCleanup(now time.Time) error {
 		var maximum, downloads int
 		var payload, parentRevoked bool
 		if err = rows.Scan(&id, &status, &expires, &pending, &maximum, &downloads, &payload, &parentRevoked); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		count++
@@ -181,7 +181,7 @@ func (q *Queries) DiscoverCleanup(now time.Time) error {
 		}
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (q *Queries) DiscoverCleanup(now time.Time) error {
 		var id, status string
 		var expires time.Time
 		if err = rows.Scan(&id, &status, &expires); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		count++
@@ -227,7 +227,7 @@ func (q *Queries) DiscoverCleanup(now time.Time) error {
 		}
 	}
 	err = rows.Err()
-	rows.Close()
+	_ = rows.Close()
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func (q *Queries) DueCleanup(kind string, now time.Time) ([]CleanupTask, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	tasks := []CleanupTask{}
 	for rows.Next() {
 		task := CleanupTask{Kind: kind}
@@ -300,7 +300,7 @@ func (q *Queries) RequestResourceCleanup(kind, id string, actors ...*AdminActor)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE cleanup_progress SET id=id WHERE id=1`); err != nil {
 		return err
 	}
@@ -345,7 +345,7 @@ func (q *Queries) ReleaseCleanedPayloads(id string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Exec(`UPDATE files SET payload_deleted=1 WHERE transfer_id=?`, id); err != nil {
 		return err
 	}
@@ -367,7 +367,7 @@ func (q *Queries) SlotCleanupChildren(id string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ids := []string{}
 	for rows.Next() {
 		var child string

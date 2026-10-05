@@ -132,7 +132,7 @@ func TestReceiveFileAllowanceConcurrentCumulativeAndRestartSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	slot, err = NewQueries(db).GetSlot("slot")
 	if err != nil || slot.ReservedFiles != 3 || slot.MaxFiles != 3 {
 		t.Fatalf("restart lost reservation: %+v %v", slot, err)
@@ -143,7 +143,7 @@ func TestReceiveFileAllowanceRollbackAndByteQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q := NewQueries(db)
 	if err := q.CreateReceiveSlot("slot", time.Now().Add(time.Hour), nil, "", 2, "key", 2); err != nil {
 		t.Fatal(err)
@@ -211,7 +211,7 @@ func TestReceivePolicyMigrationPreservesLegacyRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	slot, err := q.GetSlot("legacy")
 	if err != nil {

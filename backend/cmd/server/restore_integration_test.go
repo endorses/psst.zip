@@ -259,7 +259,7 @@ func seedRestoreFiles(t *testing.T, directory string, payload, manifest []byte) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	q := database.NewQueries(db)
 	hash, err := bcrypt.GenerateFromPassword([]byte("restore-test-password"), bcrypt.MinCost)
 	if err != nil {
@@ -476,7 +476,7 @@ func TestColdRestoreRunsRealServerStartupAndHTTPPolicies(t *testing.T) {
 		if openErr != nil {
 			t.Fatal(openErr)
 		}
-		defer sourceDB.Close()
+		defer func() { _ = sourceDB.Close() }()
 		sourceQueries := database.NewQueries(sourceDB)
 		tokenDigest := sha256.Sum256([]byte(ownerToken))
 		session, owner, lookupErr := sourceQueries.SessionByHash(tokenDigest[:])

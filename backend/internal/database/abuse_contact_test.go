@@ -41,7 +41,7 @@ func TestAbuseContactPersistenceAuditAndAtomicFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	value, err = NewQueries(db).AbuseContactEmail()
-	db.Close()
+	closeFixture(t, db)
 	if err != nil || value != "abuse@example.com" {
 		t.Fatal(value, err)
 	}
@@ -128,12 +128,12 @@ func TestAbuseContactUpgradePreservesBoundedAuditAndSequence(t *testing.T) {
 	if _, err = old.Exec(`UPDATE sqlite_sequence SET seq=999 WHERE name='security_events'`); err != nil {
 		t.Fatal(err)
 	}
-	old.Close()
+	closeFixture(t, old)
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	after, err := q.SecurityEvents(0, 100, time.Now())
 	if err != nil {

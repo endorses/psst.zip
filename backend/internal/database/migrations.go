@@ -141,7 +141,7 @@ func runMigrations(db *sql.DB) error {
 			_, err = tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", i)
 		}
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("run migration %d: %w", i, err)
 		}
 		if err = tx.Commit(); err != nil {

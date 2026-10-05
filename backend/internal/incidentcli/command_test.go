@@ -21,7 +21,7 @@ func TestIncidentCLIStateAndMissingDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 	for _, step := range []struct{ action, want string }{{"pause", `"public_transfers_paused":true`}, {"incident-status", `"public_transfers_paused":true`}, {"resume", `"public_transfers_paused":false`}} {
 		var out bytes.Buffer
 		if err := Run(path, step.action, &out); err != nil {
@@ -86,7 +86,7 @@ func TestIncidentCLIWithoutAuditStoragePreservesJSONRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`DROP TABLE security_events`); err != nil {
 		t.Fatal(err)
 	}

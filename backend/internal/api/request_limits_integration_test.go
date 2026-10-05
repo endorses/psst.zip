@@ -37,8 +37,8 @@ func TestSlowSlotCreationBodyDoesNotHoldSlotLock(t *testing.T) {
 	env := setup(t)
 	slot := ownedSlot(t, env)
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "POST", env.url("/api/v1/slots/"+slot.ID+"/transfers"), reader)
@@ -47,7 +47,7 @@ func TestSlowSlotCreationBodyDoesNotHoldSlotLock(t *testing.T) {
 		defer close(done)
 		response, err := env.server.Client().Do(req)
 		if err == nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 		}
 	}()
 	// Pipe.Write returning means the client started sending the deliberately
@@ -62,7 +62,7 @@ func TestSlowSlotCreationBodyDoesNotHoldSlotLock(t *testing.T) {
 	}
 	unlock()
 	cancel()
-	writer.Close()
+	_ = writer.Close()
 	select {
 	case <-done:
 	case <-time.After(time.Second):

@@ -78,7 +78,7 @@ func TestInboxPageBoundsRawRowsAndAdvancesEmptyPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer closeFixture(t, rows)
 	var plan string
 	for rows.Next() {
 		var a, b, c int
@@ -210,7 +210,7 @@ func TestInboxTotalsHistoricalMigrationAndBoundedRebuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer old.Close()
+	defer closeFixture(t, old)
 	for version, migration := range migrations[:len(migrations)-1] {
 		if _, err = old.Exec(migration); err != nil {
 			t.Fatal(err)
@@ -244,12 +244,12 @@ func TestInboxTotalsHistoricalMigrationAndBoundedRebuild(t *testing.T) {
 	if _, err = old.Exec(`UPDATE transfers SET status='complete' WHERE id='child'`); err != nil {
 		t.Fatal(err)
 	}
-	old.Close()
+	closeFixture(t, old)
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeFixture(t, db)
 	q = NewQueries(db)
 	page, err := q.OwnerInboxPage(context.Background(), "inbox", "", 10, "", false, time.Now())
 	if err != nil || page.Summary.State != "updating" || page.Summary.FileCount != nil || page.Summary.CompletedFiles != nil || page.Summary.TotalSize != nil {
@@ -361,7 +361,7 @@ func TestInboxRebuildRestartsPartialCompletionSnapshotAfterMutation(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer other.Close()
+	defer closeFixture(t, other)
 	restarted := NewQueries(other)
 	if err = restarted.ResetCounterRebuild(context.Background()); err != nil {
 		t.Fatal(err)

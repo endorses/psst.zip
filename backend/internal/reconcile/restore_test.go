@@ -161,7 +161,7 @@ func openRestore(t *testing.T, db, payload restoreCheckpoint) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{q: database.NewQueries(conn), disk: disk, db: conn, path: path}
-	t.Cleanup(func() { f.db.Close() })
+	t.Cleanup(func() { closeFixture(t, f.db) })
 	restoreStartup(t, f)
 	return f
 }
@@ -186,7 +186,7 @@ func restorePayload(t *testing.T, f *fixture, key string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer closeFixture(t, r)
 	body, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)

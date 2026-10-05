@@ -103,7 +103,7 @@ func TestAdminInboxRevokeStopsAnActualChildDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != 200 || !store.HasReaders(child) {
 		t.Fatal("child download not active", response.StatusCode)
 	}

@@ -78,7 +78,7 @@ func validAuditID(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
 			return false
 		}
 	}
@@ -143,7 +143,7 @@ func (q *Queries) RecordSecurityEvent(e SecurityEvent) error {
 		q.MarkSecurityAuditDegraded()
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err = q.AppendSecurityEvent(tx, e); err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (q *Queries) RecordSecurityEvents(ctx context.Context, events []SecurityEve
 		q.MarkSecurityAuditDegraded()
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, e := range events {
 		if !strings.HasPrefix(e.Kind, "authentication.") {
 			return errors.New("invalid security aggregate kind")
@@ -209,7 +209,7 @@ func (q *Queries) SecurityEvents(before int64, limit int, now time.Time) (Securi
 		q.MarkSecurityAuditDegraded()
 		return p, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var e SecurityEvent
 		if err = rows.Scan(&e.ID, &e.OccurredAt, &e.Kind, &e.Origin, &e.ActorID, &e.TargetType, &e.TargetID, &e.Outcome, &e.Count); err != nil {
