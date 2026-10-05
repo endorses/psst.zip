@@ -11,6 +11,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,12 +22,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import zip.psst.android.R
 import zip.psst.android.data.SavedGuestFile
 import zip.psst.android.data.compactHistoryTitle
 import zip.psst.android.data.receivedFilenameLabel
@@ -49,6 +53,7 @@ fun ScanScreen(
     val state by viewModel.state.collectAsState()
     val accountState by account.uiState.collectAsState()
 
+    var secondary by remember { mutableStateOf(false) }
     var paste by remember { mutableStateOf("") }
     var pairingConfirmation by remember { mutableStateOf(false) }
 
@@ -153,7 +158,16 @@ fun ScanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (historical) "Downloaded files" else "Scan QR code") },
+                title = {
+                    Text(
+                        if (state.kind == ScanInputKind.UPLOAD) "Send files"
+                        else if (historical) "Downloaded files" else "Scan QR code"
+                    )
+                },
+                actions = {
+                    if (state.kind != null)
+                        TextButton(onClick = { secondary = true }) { Text("More") }
+                },
                 navigationIcon = {
                     IconButton(onClick = ::back) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -162,6 +176,15 @@ fun ScanScreen(
             )
         }
     ) { padding ->
+        if (state.kind == ScanInputKind.UPLOAD) {
+            ScannedSendContent(
+                viewModel,
+                state,
+                Modifier.padding(padding),
+                { picker.launch(arrayOf("*/*")) },
+            )
+            return@Scaffold
+        }
         Column(
             Modifier.fillMaxSize()
                 .padding(padding)
@@ -182,11 +205,7 @@ fun ScanScreen(
             }
             state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error)
-            AbuseReportButton(state.reportReference)
-            if (!state.busy && !accountState.isTesting && state.kind != null) {
-                if (!historical) TextButton(onClick = viewModel::clear) { Text("Scan again") }
-                TextButton(onClick = onHistory) { Text("View in History") }
-            }
+            if (state.kind == null) AbuseReportButton(state.reportReference)
             run {
                 if (state.origin.isNotBlank())
                     Text(state.origin, style = MaterialTheme.typography.titleMedium)
@@ -222,6 +241,9 @@ fun ScanScreen(
                                 else state.stage.ifBlank { "Ready to receive" },
                                 style = MaterialTheme.typography.headlineSmall,
                             )
+                            record?.sharedTitle?.let {
+                                Text(it, style = MaterialTheme.typography.titleMedium)
+                            }
                             Text("Downloads/psst.zip")
                             if (state.fileAttempts.isNotEmpty())
                                 record?.files?.forEach { file ->
@@ -313,7 +335,13 @@ fun ScanScreen(
                                 Text(
                                     "Choose files deliberately to send to the server above. Its file limit is checked before uploading."
                                 )
-                                Text("${state.uploadFiles.size} files selected")
+                                Text(
+                                    pluralStringResource(
+                                        R.plurals.files_selected_count,
+                                        state.uploadFiles.size,
+                                        state.uploadFiles.size,
+                                    )
+                                )
                                 if (state.maxUploadFiles > 0)
                                     Text(
                                         "${state.remainingUploadFiles ?: "…"} file allocations remaining. Unfinished uploads also count; deletion does not restore the allowance."
@@ -390,6 +418,45 @@ fun ScanScreen(
             }
         }
     }
+    if (secondary)
+        AlertDialog(
+            onDismissRequest = { secondary = false },
+            title = { Text("Transfer options") },
+            text = {
+                Column {
+                    Text(state.origin)
+                    AbuseReportButton(state.reportReference)
+                    if (state.pendingReceipts > 0)
+                        TextButton(onClick = viewModel::retryAllReceipts, enabled = !state.busy) {
+                            Text("Retry receipts")
+                        }
+                    if (state.pendingCleanup > 0)
+                        TextButton(onClick = viewModel::retryCleanup, enabled = !state.busy) {
+                            Text("Retry upload cleanup")
+                        }
+                    if (!historical)
+                        TextButton(
+                            onClick = {
+                                viewModel.clear()
+                                secondary = false
+                            },
+                            enabled = !state.busy,
+                        ) {
+                            Text("Scan again")
+                        }
+                    TextButton(
+                        onClick = {
+                            secondary = false
+                            onHistory()
+                        },
+                        enabled = !state.busy,
+                    ) {
+                        Text("History")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { secondary = false }) { Text("Close") } },
+        )
     state.downloadConsent
         ?.takeIf { !state.busy }
         ?.let { consent ->
@@ -475,4 +542,77 @@ fun ScanScreen(
                 TextButton(onClick = { pairingConfirmation = false }) { Text("Cancel") }
             },
         )
+}
+
+@Composable
+private fun ScannedSendContent(
+    viewModel: ScanViewModel,
+    state: zip.psst.android.viewmodel.ScanState,
+    modifier: Modifier,
+    addFiles: () -> Unit,
+) {
+    Column(
+        modifier.fillMaxSize().imePadding().navigationBarsPadding().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            state.sharedTitle ?: "Send to this receive link",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        Text(state.origin, style = MaterialTheme.typography.bodySmall)
+        if (state.origin.startsWith("http://"))
+            Text("HTTP · unencrypted connection", color = MaterialTheme.colorScheme.error)
+        Text(
+            pluralStringResource(
+                R.plurals.files_selected_count,
+                state.uploadFiles.size,
+                state.uploadFiles.size,
+            ) + (state.remainingUploadFiles?.let { " · $it files remaining" } ?: "")
+        )
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.notice?.let { Text(it) }
+            }
+            items(state.uploadFiles, key = { it.toString() }) { uri ->
+                Card {
+                    Row(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(viewModel.uploadName(uri), Modifier.weight(1f))
+                        if (!state.busy)
+                            TextButton(onClick = { viewModel.removeUpload(uri) }) { Text("Remove") }
+                    }
+                }
+            }
+            item { Text(state.uploadCapacityMessage, style = MaterialTheme.typography.bodySmall) }
+            if (!state.busy && !state.uploaded)
+                item {
+                    TextButton(onClick = viewModel::refreshUploadPolicy) {
+                        Text("Refresh capacity")
+                    }
+                }
+        }
+        if (state.busy) {
+            Text(state.stage)
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            TextButton(onClick = viewModel::cancel) { Text("Cancel") }
+        } else if (state.uploaded) Text("Files sent", style = MaterialTheme.typography.titleMedium)
+        else {
+            OutlinedButton(onClick = addFiles, modifier = Modifier.fillMaxWidth()) {
+                Text("Add files")
+            }
+            Button(
+                onClick = viewModel::upload,
+                enabled = state.uploadFiles.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Send files")
+            }
+        }
+    }
 }

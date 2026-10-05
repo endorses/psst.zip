@@ -20,9 +20,7 @@ def plist(name):
 
 app = plist("Psst/Info.plist")
 extension = plist("PsstShareExtension/Info.plist")
-assert (
-    app["CFBundleDisplayName"] == extension["CFBundleDisplayName"] == "psst.zip"
-)
+assert app["CFBundleDisplayName"] == extension["CFBundleDisplayName"] == "psst.zip"
 assert app["CFBundleIdentifier"] == "zip.psst.ios"
 assert extension["CFBundleIdentifier"] == "zip.psst.ios.share-extension"
 for path in (
@@ -47,9 +45,7 @@ assert "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" in read(
 )
 assert "completionHandler(nil)" in read("Shared/SessionStore.swift")
 assert "sessionToken: session.token" in read("Shared/ServerConfigManager.swift")
-assert "HistorySnapshot.load" in read(
-    "Psst/ViewModels/HistoryPageViewModel.swift"
-)
+assert "HistorySnapshot.load" in read("Psst/ViewModels/HistoryPageViewModel.swift")
 assert '"auth/resources?limit=' in read("Shared/HistorySnapshot.swift")
 assert "historyStore.completeReceivedTransfer" in read(
     "Psst/ViewModels/ReceiveViewModel.swift"
@@ -57,9 +53,7 @@ assert "historyStore.completeReceivedTransfer" in read(
 assert "record == nil" in read("Psst/ViewModels/ReceiveViewModel.swift")
 assert "history.revoke" in read("Psst/Views/HistoryView.swift")
 assert "group.zip.psst.ios" in read("Shared/AppConstants.swift")
-assert "case .downloading: ProgressView" in read(
-    "Psst/Views/TransferDetailView.swift"
-)
+assert "case .downloading: ProgressView" in read("Psst/Views/TransferDetailView.swift")
 assert "PsstTests" in read("project.yml")
 assert "testPartialSaveRetryKeepsOriginalSlotAndSkipsSuccessfulFile" in read(
     "PsstTests/TransferWorkflowTests.swift"
@@ -80,15 +74,12 @@ for name in (
     assert "ServerTimestamp.parse" in read(name)
     assert "ISO8601DateFormatter()" not in read(name)
 # This production collector rejects the entire provider selection; these checks only verify wiring.
-assert "ShareSelection.loadAll" in read(
-    "PsstShareExtension/ShareViewController.swift"
-)
+assert "ShareSelection.loadAll" in read("PsstShareExtension/ShareViewController.swift")
 assert "ShareSelection.copyProviderFile" in read(
     "PsstShareExtension/ShareViewController.swift"
 )
-assert (
-    "testMixedValidAndOversizedShareSelectionRejectsAllAndCleansCopies"
-    in read("PsstTests/TransferWorkflowTests.swift")
+assert "testMixedValidAndOversizedShareSelectionRejectsAllAndCleansCopies" in read(
+    "PsstTests/TransferWorkflowTests.swift"
 )
 assert "testUnknownProviderFailureDoesNotPrepareValidSubset" in read(
     "PsstTests/TransferWorkflowTests.swift"
@@ -122,9 +113,7 @@ for path in ROOT.rglob("*.swift"):
         if char in "({[":
             stack.append(char)
         elif char in ")}]":
-            assert (
-                stack and stack.pop() == {")": "(", "}": "{", "]": "["}[char]
-            ), path
+            assert stack and stack.pop() == {")": "(", "}": "{", "]": "["}[char], path
     assert not stack, path
 for path in ROOT.rglob("*.json"):
     if "build" not in path.parts:
@@ -135,19 +124,19 @@ assert "ScanReceiveView(isSelected: selectedTab == 1 && !settings)" in read(
     "Psst/ContentView.swift"
 )
 assert "guestTransfer.cancel()" in read("Psst/ContentView.swift")
-assert "HistoryEntry.combine" in read("Psst/Views/HistoryView.swift")
-assert "historyOnly" not in read("Psst/Views/ScanReceiveView.swift")
-assert "isActive: visible && isSelected" in read(
-    "Psst/Views/ScanReceiveView.swift"
+assert "MergedDeviceHistoryViewModel" in read("Psst/Views/HistoryView.swift")
+assert "BoundedHistoryMerge" in read(
+    "Psst/ViewModels/MergedDeviceHistoryViewModel.swift"
 )
+assert "kind: kind" in read("Psst/ViewModels/HistoryPageViewModel.swift")
+assert "historyOnly" not in read("Psst/Views/ScanReceiveView.swift")
+assert "isActive: visible && isSelected" in read("Psst/Views/ScanReceiveView.swift")
 assert "state.permitsStart" in read("Shared/SendViewModel.swift")
 assert "ApiClient.companion.anonymous" in read(
     "Psst/ViewModels/GuestTransferModel.swift"
 )
 assert "validateForTransfer" in read("Psst/ViewModels/GuestTransferModel.swift")
-assert "StreamedFiles.receive" in read(
-    "Psst/ViewModels/GuestTransferModel.swift"
-)
+assert "StreamedFiles.receive" in read("Psst/ViewModels/GuestTransferModel.swift")
 assert "downloadFileChunks" in read("Shared/StreamedFiles.swift")
 assert "createFileUpload" in read("Shared/BufferedUpload.swift")
 assert "limits.get()" in read("Shared/SendViewModel.swift")
@@ -158,15 +147,12 @@ assert "transfers.delete" not in read("Psst/Services/GuestDownloadStore.swift")
 # Wiring only: independent receipt rows survive local history removal. Runtime
 # preservation and retry behavior are covered by the guest storage tests.
 assert 'kinds: ["receipt"]' in read("Psst/Services/GuestDownloadStore.swift")
-assert "ScanInputClassifier.shared.classify" in read(
-    "Shared/ServerConfigManager.swift"
-)
+assert "ScanInputClassifier.shared.classify" in read("Shared/ServerConfigManager.swift")
 assert "testKillAfterPublicationReconcilesIntentBeforeReceipt" in read(
     "PsstTests/GuestDownloadTests.swift"
 )
-assert (
-    "testReceiptFailureKeepsSavedStateAndRetriesWithoutFileWorkAfterRemoval"
-    in read("PsstTests/GuestDownloadTests.swift")
+assert "testReceiptFailureKeepsSavedStateAndRetriesWithoutFileWorkAfterRemoval" in read(
+    "PsstTests/GuestDownloadTests.swift"
 )
 # Administration/UX gates are wiring checks, not proof of native behavior.
 assert '"Switch camera"' not in read("Shared/PairingScanner.swift")
@@ -174,15 +160,11 @@ assert "ScannerCameraSelection.ordered" in read("Shared/PairingScanner.swift")
 assert "runtimeErrorNotification" in read("Shared/PairingScanner.swift")
 assert "retryCamera" in read("Shared/PairingScanner.swift")
 assert "must_change_password" in read("Shared/ServerConfigManager.swift")
-assert 'response.user.role != "admin"' in read(
-    "Shared/ServerConfigManager.swift"
-)
+assert 'response.user.role != "admin"' in read("Shared/ServerConfigManager.swift")
 assert "refreshAccount()" in read("Psst/ContentView.swift")
 assert "refreshAccount()" in read("PsstShareExtension/ShareExtensionView.swift")
 assert "PasswordReplacementFields" in read("Shared/LoginFields.swift")
-assert "textContentType(.newPassword)" in read(
-    "Shared/PasswordReplacementFields.swift"
-)
+assert "textContentType(.newPassword)" in read("Shared/PasswordReplacementFields.swift")
 assert "PasswordReplacementPolicy.valid" in read(
     "Shared/PasswordReplacementFields.swift"
 )
@@ -203,9 +185,7 @@ for name in (
 assert "migrateReceiveJSONBatch" in read("Shared/TransferHistoryStore.swift")
 assert "ReceiveHistoryStream" in read("Shared/ReceiveCheckpointStorage.swift")
 assert "sqlite3_blob_read" in read("Shared/HistoryRecordDatabase.swift")
-assert "receive_source_immutable_update" in read(
-    "Shared/HistoryRecordDatabase.swift"
-)
+assert "receive_source_immutable_update" in read("Shared/HistoryRecordDatabase.swift")
 assert "legacy.savedFiles" not in read("Shared/ReceiveCheckpointStorage.swift")
 for name in (
     "testOversizedInboxStreamsBeforeLateIdentityAndResumesWithinObject",

@@ -39,6 +39,8 @@ struct GuestDownload: Codable, Identifiable, Equatable, Sendable {
     var transferID: String
     var createdAt = Date()
     var files: [GuestFile] = []
+    var sharedTitle: String? = nil
+    var exhausted: Bool? = nil
     var complete = false
     var receiptPending = false
     var receiptDelivered = false

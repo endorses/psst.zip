@@ -68,6 +68,7 @@ final class SendViewModel {
     private let serverConfig: ServerConfigManager
     private let historyStore: TransferHistoryStore
     let maxDownloads: Int32
+    let sharedTitle: String?
     private var client: ApiClient?
     private var origin: DeviceSession?
     private var runID = UUID()
@@ -75,12 +76,13 @@ final class SendViewModel {
 
     init(
         fileURLs: [URL], serverConfig: ServerConfigManager, historyStore: TransferHistoryStore,
-        limit: Int = BufferedUpload.maxFileBytes, maxDownloads: Int32 = 0
+        limit: Int = BufferedUpload.maxFileBytes, maxDownloads: Int32 = 0, sharedTitle: String? = nil
     ) {
         self.fileURLs = fileURLs
         self.serverConfig = serverConfig
         self.historyStore = historyStore
         self.maxDownloads = maxDownloads
+        self.sharedTitle = sharedTitle
         uploadPolicy = UploadSizePolicy(processingCeiling: limit)
     }
 
@@ -91,6 +93,15 @@ final class SendViewModel {
             defer { starting = false }
             await startUpload()
         }
+    }
+
+    func refreshLinkStatus() async {
+        guard !active, state == .complete, let record, let session = serverConfig.session, record.belongs(to: session) else { return }
+        do {
+            try await historyStore.refreshSend(record, session: session)
+            try serverConfig.check(session)
+            self.record = try historyStore.record(record.localID)
+        } catch { /* A failed status refresh does not erase a usable saved link. */  }
     }
 
     func stop() {
@@ -152,14 +163,15 @@ final class SendViewModel {
                 self.client = nil
             }
             let key = try CryptoProvider.shared.generateKey()
-            let transfer = try await client.transfers.create(maxDownloads: maxDownloads)
+            let transfer = try await client.transfers.create(maxDownloads: maxDownloads, title: try SharedLinkTitle.normalize(sharedTitle))
             guard UUID(uuidString: transfer.id) != nil else { throw AccountError.request }
             let url = UrlHelper.shared.buildDownloadUrl(baseUrl: session.serverURL, transferId: transfer.id, key: key)
             var entry = TransferRecord(
                 id: transfer.id, direction: .sent, state: .inProgress,
                 createdAt: Date(), expiresAt: ServerTimestamp.parse(transfer.expiresAt),
                 fileCount: fileURLs.count, totalSize: sizes.reduce(0, +), shareURL: nil,
-                serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, isSlot: false, maxDownloads: Int(maxDownloads))
+                serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, sharedTitle: try SharedLinkTitle.normalize(sharedTitle), isSlot: false,
+                maxDownloads: Int(maxDownloads))
             try historyStore.add(entry)
             record = entry
             try entry.saveSecrets(link: url, deletionToken: transfer.deleteToken)

@@ -62,6 +62,7 @@ class StorageMigrationDeviceTest {
                 AppDatabase.MIGRATION_7_8,
                 AppDatabase.MIGRATION_8_9,
                 AppDatabase.MIGRATION_9_10,
+                AppDatabase.MIGRATION_10_11,
             )
             .build()
 
@@ -116,7 +117,7 @@ class StorageMigrationDeviceTest {
             val dao = db.transferHistoryDao()
             val upgraded =
                 requireNotNull(dao.getById(slot)) // Room validates the actual 7→8→9 schema.
-            assertEquals(10, db.openHelper.writableDatabase.version)
+            assertEquals(11, db.openHelper.writableDatabase.version)
             assertEquals("pending", upgraded.checkpointState)
             assertEquals("{}", upgraded.receivedTransfersJson)
             assertEquals(marker, upgraded.encryptionKey)
@@ -159,6 +160,104 @@ class StorageMigrationDeviceTest {
             )
         }
     }
+
+    @Test
+    fun sharedTitleRoomUpgradePreservesLocalState() =
+        runBlocking<Unit> {
+            val name = "instrumented-shared-title-upgrade.db"
+            context.deleteDatabase(name)
+            fun open() =
+                Room.databaseBuilder(context, AppDatabase::class.java, name)
+                    .addMigrations(AppDatabase.MIGRATION_10_11)
+                    .build()
+            val before =
+                TransferHistoryEntity(
+                    slot,
+                    "received",
+                    1,
+                    42,
+                    origin,
+                    marker,
+                    "has_uploads",
+                    accountId = account,
+                    title = "Old local label",
+                    deletionToken = "retained-owner-capability",
+                    checkpointKnownFiles = 1,
+                    checkpointKnownBytes = 42,
+                )
+            InboxKeyStore(context).save(origin, account, slot, key)
+            open().let { db ->
+                try {
+                    db.transferHistoryDao().insert(before)
+                    db.transferHistoryDao()
+                        .recordSavedFile(
+                            slot,
+                            "child/blob",
+                            before.checkpointScope(),
+                            "content://retained/file",
+                        )
+                } finally {
+                    db.close()
+                }
+            }
+            SQLiteDatabase.openDatabase(
+                    context.getDatabasePath(name).path,
+                    null,
+                    SQLiteDatabase.OPEN_READWRITE,
+                )
+                .use { db ->
+                    db.execSQL(
+                        "DROP INDEX index_transfer_history_accountId_originScope_type_createdAt_id"
+                    )
+                    db.execSQL("ALTER TABLE transfer_history DROP COLUMN sharedTitle")
+                    db.version = 10
+                }
+            open().let { db ->
+                try {
+                    val dao = db.transferHistoryDao()
+                    val after = requireNotNull(dao.getById(slot))
+                    assertEquals(11, db.openHelper.writableDatabase.version)
+                    assertNull(after.sharedTitle)
+                    assertEquals(before.title, after.title)
+                    assertEquals(before.encryptionKey, after.encryptionKey)
+                    assertEquals(before.deletionToken, after.deletionToken)
+                    assertEquals(1L, after.checkpointKnownFiles)
+                    assertEquals(42L, after.checkpointKnownBytes)
+                    assertArrayEquals(key, InboxKeyStore(context).read(after))
+                    assertEquals(
+                        "content://retained/file",
+                        dao.checkpointFile(after.checkpointScope(), slot, "child", "blob")?.uri,
+                    )
+                    assertEquals(
+                        listOf(slot),
+                        dao.filteredDeviceHistoryPage(
+                                account,
+                                origin,
+                                "received",
+                                Long.MAX_VALUE,
+                                "\uffff",
+                            )
+                            .map { it.id },
+                    )
+                    assertTrue(
+                        dao.filteredDeviceHistoryPage(
+                                "other-owner",
+                                origin,
+                                "received",
+                                Long.MAX_VALUE,
+                                "\uffff",
+                            )
+                            .isEmpty()
+                    )
+                    dao.saveSharedTitle(slot, account, origin, "Shared inbox name")
+                    assertEquals("Shared inbox name", dao.getById(slot)?.sharedTitle)
+                    assertNull(dao.getById(slot)?.title)
+                } finally {
+                    db.close()
+                }
+            }
+            context.deleteDatabase(name)
+        }
 
     @Test
     fun resumeRoomMigration() = runBlocking {

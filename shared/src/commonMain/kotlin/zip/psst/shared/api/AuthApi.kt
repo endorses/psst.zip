@@ -111,8 +111,13 @@ class AuthApi(
     /** Bounded page API for native callers that expose explicit incremental history loading. */
     @Throws(Exception::class)
     suspend fun resourcesPage(after: String?, limit: Int): AuthResources =
+        resourcesPage(after, limit, null)
+
+    @Throws(Exception::class)
+    suspend fun resourcesPage(after: String?, limit: Int, kind: String?): AuthResources =
         withTimeout(10_000L) {
             require(limit in 1..100)
+            require(kind == null || kind in listOf("transfer", "slot"))
             require(
                 after == null || (after.length in 1..512 && after.matches(Regex("[A-Za-z0-9_-]+")))
             )
@@ -121,6 +126,7 @@ class AuthApi(
                     expectSuccess = false
                     token?.let { bearerAuth(it) }
                     parameter("limit", limit)
+                    kind?.let { parameter("kind", it) }
                     after?.let { parameter("after", it) }
                 }
             response.checkAuthenticatedWrite()

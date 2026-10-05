@@ -246,28 +246,56 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun reconnect() = setVisible(true)
 
-    @OptIn(ExperimentalEncodingApi::class)
     fun renameLocal(value: String) {
-        val name = value.take(200)
-        _uiState.update { it.copy(localName = name) }
+        _uiState.update { it.copy(localName = value) }
+    }
+
+    fun renameShared(draft: String) {
         val access = app.prefs.historyAccess.value
         val id = _uiState.value.slotId ?: return
-        viewModelScope.launch {
-            val dao = app.database.transferHistoryDao()
-            val row = dao.getById(id) ?: return@launch
-            if (
-                access == app.prefs.historyAccess.value &&
-                    access.permits(row) &&
-                    row.accountId != null
-            )
-                dao.rename(
-                    row.id,
-                    row.serverUrl,
-                    row.accountId,
-                    row.type,
-                    name.trim().ifEmpty { null },
+        viewModelScope.launch(Dispatchers.IO) {
+            val row = app.database.transferHistoryDao().getById(id) ?: return@launch
+            if (!access.permits(row) || row.accountId == null) return@launch
+            val client =
+                ApiClient(
+                    ServerConfig(row.serverUrl),
+                    sessionToken = app.prefs.getSessionToken(row.serverUrl),
                 )
+            try {
+                val result =
+                    client.slots.renameTitle(id, zip.psst.shared.model.LinkTitle.normalize(draft))
+                if (app.prefs.historyAccess.value != access || _uiState.value.slotId != id)
+                    return@launch
+                app.database
+                    .transferHistoryDao()
+                    .saveSharedTitle(id, row.accountId, row.originScope, result.title)
+                _uiState.update { it.copy(localName = result.title.orEmpty()) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(error = error.message ?: "Could not rename this link. Retry.")
+                }
+            } finally {
+                client.close()
+            }
         }
+    }
+
+    fun createAnother() {
+        if (_uiState.value.isDownloading || _uiState.value.isCreatingSlot) return
+        createJob?.cancel()
+        sseJob?.cancel()
+        pollJob?.cancel()
+        pageJob?.cancel()
+        slotClient?.close()
+        slotClient = null
+        slotAccess = null
+        pageRevision++
+        frozenPage = null
+        frozenPager = null
+        encryptionKeyBytes = null
+        _uiState.value = ReceiveUiState()
     }
 
     fun setMaxFiles(value: String) {
@@ -349,7 +377,12 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val key = pair.publicKey
                     val publicKey =
                         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(key)
-                    val slot = client.slots.create(publicKey, limit)
+                    val slot =
+                        client.slots.create(
+                            publicKey,
+                            limit,
+                            zip.psst.shared.model.LinkTitle.normalize(localName),
+                        )
                     if (app.prefs.historyAccess.value == access)
                         _uiState.update { it.copy(linkPolicyLocked = true) }
                     allocation =
@@ -364,7 +397,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             deletionToken = slot.deleteToken,
                             accountId = accountId,
                             expiresAt = parseHistoryExpiry(slot.expiresAt),
-                            title = localName,
+                            sharedTitle = slot.title,
                             maxFiles = limit,
                             reservedFiles = 0,
                         )
@@ -399,7 +432,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     expiresAt = parseHistoryExpiry(slot.expiresAt),
                                     deletionToken = slot.deleteToken,
                                     accountId = accountId,
-                                    title = localName,
+                                    sharedTitle = slot.title,
                                     maxFiles = limit,
                                     reservedFiles = 0,
                                 )
@@ -574,6 +607,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         snapshot,
                         expectedScope = visibleRow.checkpointScope(),
                     )
+                if (row != null) dao.update(row.copy(sharedTitle = slot.title))
                 val savedChildren =
                     row?.let {
                             dao.savedChildren(
@@ -586,6 +620,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update {
                         it.copy(
                             page = slot,
+                            localName = slot.title ?: row.title.orEmpty(),
                             pager = target,
                             isPaging = false,
                             connectionError = false,

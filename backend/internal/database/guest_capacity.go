@@ -68,7 +68,7 @@ func (q *Queries) GuestSlotCapacity(ctx context.Context, id string, limits Guest
 	defer func() { _ = tx.Rollback() }()
 	var owner string
 	s := out.Slot
-	err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.receive_protocol,s.recipient_public_key,s.max_files,s.reserved_files,s.reserved_bytes,s.upload_count,COALESCE(s.owner_id,''),COALESCE(u.disabled,1) FROM slots s LEFT JOIN users u ON u.id=s.owner_id WHERE s.id=?`, id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount, &owner, &out.OwnerDisabled)
+	err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.receive_protocol,s.recipient_public_key,s.max_files,s.reserved_files,s.reserved_bytes,s.upload_count,s.title,COALESCE(s.owner_id,''),COALESCE(u.disabled,1) FROM slots s LEFT JOIN users u ON u.id=s.owner_id WHERE s.id=?`, id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount, &s.Title, &owner, &out.OwnerDisabled)
 	if err != nil {
 		return out, err
 	}

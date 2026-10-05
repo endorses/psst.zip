@@ -13,6 +13,7 @@ import { getSlotAvailability } from "./api";
 import { parseReceiveFragment } from "./receive-keys";
 import { sealSubmissionKey, encodeReceiveEnvelope } from "./receive-crypto";
 import { validateLinkLimit } from "./link-limits";
+import { normalizeLinkTitle } from "./link-title";
 import { TransferStateError, transferStateError } from "./incident-state";
 import {
   GuestCapacityError,
@@ -213,6 +214,7 @@ export class UploadJob {
     slotId?: string;
     key?: string;
     maxDownloads?: number;
+    title?: string | null;
     oncreated?: (id: string, url: string, title: string, size: number) => void;
   }) {
     if (this.active || this.checking || this.disposed || !this.files.length) return;
@@ -307,6 +309,7 @@ export class UploadJob {
           throw Error("Your account changed. Sign in again before sending files.");
       }
       const maxDownloads = validateLinkLimit(options.maxDownloads ?? 0);
+      const sharedTitle = normalizeLinkTitle(options.title);
       const receiver = options.slotId ? parseReceiveFragment(options.key ?? "") : null;
       const key = await generateKey();
       check();
@@ -324,18 +327,20 @@ export class UploadJob {
         await request(options.slotId ? `/slots/${options.slotId}/transfers` : "/transfers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(options.slotId ? {} : { max_downloads: maxDownloads }),
+          body: JSON.stringify(
+            options.slotId ? {} : { max_downloads: maxDownloads, title: sharedTitle },
+          ),
         })
       ).json();
       check();
       this.transferId = created.id;
       this.token = created.delete_token ?? "";
-      if (!options.slotId && maxDownloads > 0) {
+      if (!options.slotId && (maxDownloads > 0 || sharedTitle)) {
         const accepted = await (await request(`/transfers/${created.id}`)).json();
-        if (accepted.max_downloads !== maxDownloads) {
+        if (accepted.max_downloads !== maxDownloads || (accepted.title ?? null) !== sharedTitle) {
           await this.cleanup();
           throw new Error(
-            "This server did not accept the download limit. Ask its operator to update it. No files were uploaded.",
+            "This server did not accept the link settings. Ask its operator to update it. No files were uploaded.",
           );
         }
       }

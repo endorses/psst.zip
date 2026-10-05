@@ -7,23 +7,21 @@
     disabled = false,
   }: { value?: number; label: string; description: string; disabled?: boolean } = $props();
   const id = $props.id();
+  // Bind the native disclosure state so edits inside it cannot reapply a stale
+  // closed value. Restored policies start expanded; subsequent changes are native.
   let opened = $state(untrack(() => value !== 0));
   const invalid = $derived(
     value !== 0 && (!Number.isInteger(value) || value < 1 || value > 2_147_483_647),
   );
 </script>
 
-<details
-  class="optional-limit"
-  open={opened}
-  ontoggle={(event) => (opened = event.currentTarget.open)}
->
+<details class="optional-limit" bind:open={opened}>
   <summary
     >Link limits <span class="muted small">{value === 0 ? "Optional" : "Limit enabled"}</span
     ></summary
   >
   <div class="limit-fields">
-    <label>
+    <label class="limit-toggle">
       <input
         type="checkbox"
         {disabled}
@@ -77,5 +75,19 @@
   }
   input[type="checkbox"] {
     width: auto;
+  }
+  .limit-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    min-height: 44px;
+    cursor: pointer;
+  }
+  .limit-toggle input {
+    flex: none;
+    margin: 0;
+    width: 1.1rem;
+    height: 1.1rem;
   }
 </style>

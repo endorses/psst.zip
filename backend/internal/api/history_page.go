@@ -43,7 +43,7 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	page, err := s.queries.AccountHistoryPage(ctx, a.user.ID, query.all, query.limit, query.after)
+	page, err := s.queries.AccountHistoryPage(ctx, a.user.ID, query.all, query.limit, query.after, query.kind)
 	if err != nil {
 		switch {
 		case errors.Is(err, database.ErrInvalidPage):
@@ -63,7 +63,7 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			owner = resource.OwnerID
 		}
 		if t := resource.Transfer; t != nil {
-			item := TransferResponse{ID: t.ID, Status: t.Status, HasManifest: resource.HasManifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt, OwnerID: owner, Files: []FileInfo{}}
+			item := TransferResponse{ID: t.ID, Status: transferPublicStatus(t), Title: t.Title, InactiveReason: transferInactiveReason(t), HasManifest: resource.HasManifest, ExpiresAt: t.ExpiresAt, MaxDownloads: t.MaxDownloads, DownloadCount: t.DownloadCount, CreatedAt: t.CreatedAt, OwnerID: owner, Files: []FileInfo{}}
 			if t.CompletedAt.Valid {
 				item.CompletedAt = &t.CompletedAt.Time
 			}
@@ -73,7 +73,7 @@ func (s *Server) resources(w http.ResponseWriter, r *http.Request) {
 			transfers = append(transfers, historyTransferResponse{TransferResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, Summary: resource.Summary})
 		} else {
 			slot := resource.Slot
-			item := SlotResponse{ID: slot.ID, Status: slot.Status, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt, OwnerID: owner, Transfers: []SlotTransferInfo{}, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, ReservedFiles: slot.ReservedFiles, RemainingFiles: remainingFiles(slot)}
+			item := SlotResponse{ID: slot.ID, Status: slot.Status, Title: slot.Title, ExpiresAt: slot.ExpiresAt, CreatedAt: slot.CreatedAt, OwnerID: owner, Transfers: []SlotTransferInfo{}, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, ReservedFiles: slot.ReservedFiles, RemainingFiles: remainingFiles(slot)}
 			slots = append(slots, historySlotResponse{SlotResponse: item, FileCount: resource.Summary.FileCount, TotalSize: resource.Summary.TotalSize, CompletedFiles: resource.Summary.CompletedFiles, Summary: resource.Summary})
 		}
 	}
@@ -84,6 +84,7 @@ type historyQuery struct {
 	limit int
 	after string
 	all   bool
+	kind  string
 }
 
 func httpParseHistoryQuery(r *http.Request) (historyQuery, error) {
@@ -104,6 +105,11 @@ func httpParseHistoryQuery(r *http.Request) (historyQuery, error) {
 			}
 		case "after":
 			out.after = value[0]
+		case "kind":
+			if value[0] != "transfer" && value[0] != "slot" {
+				return out, database.ErrInvalidPage
+			}
+			out.kind = value[0]
 		case "all":
 			if value[0] != "true" && value[0] != "false" {
 				return out, database.ErrInvalidPage

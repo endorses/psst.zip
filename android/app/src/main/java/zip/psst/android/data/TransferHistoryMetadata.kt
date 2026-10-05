@@ -15,6 +15,7 @@ data class TransferHistoryMetadata(
     val accountId: String?,
     val title: String?,
     val automaticTitle: String?,
+    val sharedTitle: String?,
     val originScope: String,
     val summaryUpdating: Boolean,
     val checkpointState: String,
@@ -43,6 +44,7 @@ internal fun TransferHistoryEntity.metadata() =
         accountId,
         title,
         automaticTitle,
+        sharedTitle,
         originScope,
         summaryUpdating,
         checkpointState,
@@ -57,7 +59,7 @@ internal fun TransferHistoryEntity.metadata() =
     )
 
 internal const val HISTORY_METADATA_PROJECTION =
-    "id, type, fileCount, totalSize, serverUrl, encryptionKey, status, createdAt, expiresAt, deletionToken, accountId, title, automaticTitle, originScope, summaryUpdating, checkpointState, checkpointColumn, checkpointOffset, checkpointKnownFiles, checkpointKnownBytes, checkpointSavedFiles, maxDownloads, maxFiles, reservedFiles, '[]' AS savedFileIdsJson, '{}' AS receivedTransfersJson, '[]' AS savedTransferIdsJson"
+    "id, type, fileCount, totalSize, serverUrl, encryptionKey, status, createdAt, expiresAt, deletionToken, accountId, title, automaticTitle, sharedTitle, originScope, summaryUpdating, checkpointState, checkpointColumn, checkpointOffset, checkpointKnownFiles, checkpointKnownBytes, checkpointSavedFiles, maxDownloads, maxFiles, reservedFiles, '[]' AS savedFileIdsJson, '{}' AS receivedTransfersJson, '[]' AS savedTransferIdsJson"
 
 internal val INBOX_CHECKPOINT_SCHEMA =
     listOf(
@@ -81,3 +83,6 @@ internal val HISTORY_LINK_POLICY_SCHEMA =
         "ALTER TABLE transfer_history ADD COLUMN maxFiles INTEGER",
         "ALTER TABLE transfer_history ADD COLUMN reservedFiles INTEGER",
     )
+
+internal val HISTORY_SHARED_TITLE_SCHEMA =
+    listOf("ALTER TABLE transfer_history ADD COLUMN sharedTitle TEXT", ACCOUNT_FILTERED_INDEX_SQL)

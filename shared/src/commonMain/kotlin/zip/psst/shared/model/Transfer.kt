@@ -22,6 +22,8 @@ data class Transfer(
     @SerialName("downloaded_at") val downloadedAt: String? = null,
     @SerialName("max_downloads") val maxDownloads: Int = 0,
     val files: List<TransferFile> = emptyList(),
+    val title: String? = null,
+    @SerialName("inactive_reason") val inactiveReason: String? = null,
 )
 
 @Serializable
@@ -37,4 +39,5 @@ enum class TransferStatus {
     @SerialName("pending") PENDING,
     @SerialName("complete") COMPLETE,
     @SerialName("expired") EXPIRED,
+    @SerialName("exhausted") EXHAUSTED,
 }

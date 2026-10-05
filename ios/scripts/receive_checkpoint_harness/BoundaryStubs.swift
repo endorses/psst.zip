@@ -27,7 +27,9 @@ enum AccountError: Error { case storage, changed }
 enum HistoryFilter { case all, sent, receive }
 enum AccountHTTP {
     static func origin(_ value: String) throws -> String { value }
-    static func request(server: String, path: String, method: String, token: String) async throws -> Data { throw AccountError.storage }
+    static func request(server: String, path: String, method: String, token: String, body: [String: String]? = nil, maximumBytes: Int = 1_048_576, timeout: TimeInterval = 15)
+        async throws -> Data
+    { throw AccountError.storage }
 }
 enum AppConstants {
     static let sharedDefaults = UserDefaults.standard

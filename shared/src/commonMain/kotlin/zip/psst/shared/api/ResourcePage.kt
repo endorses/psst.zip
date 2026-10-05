@@ -1,5 +1,6 @@
 package zip.psst.shared.api
 
+import zip.psst.shared.model.LinkTitle
 import zip.psst.shared.model.UrlHelper
 import kotlinx.serialization.json.*
 
@@ -33,6 +34,12 @@ internal fun decodeResourcePage(body: JsonObject, after: String?, limit: Int): A
     for ((kind, rows) in listOf("transfer" to transfers, "slot" to slots)) {
         for (raw in rows) {
             val row = raw.jsonObject
+            row["title"]
+                ?.takeIf { it != JsonNull }
+                ?.let { title ->
+                    require(title is JsonPrimitive && title.isString)
+                    require(LinkTitle.normalize(title.content) == title.content)
+                }
             val id = row["id"]?.jsonPrimitive?.content.orEmpty()
             require(UrlHelper.isResourceId(id) && identities.add(id.lowercase())) {
                 "Invalid or duplicate resource identity"
@@ -41,7 +48,7 @@ internal fun decodeResourcePage(body: JsonObject, after: String?, limit: Int): A
             require(
                 status in
                     if (kind == "slot") listOf("waiting", "has_uploads", "expired", "revoked")
-                    else listOf("pending", "complete", "expired", "revoked")
+                    else listOf("pending", "complete", "expired", "revoked", "exhausted")
             )
             val summary = requireNotNull(row["summary"] as? JsonObject)
             val state = summary["state"]?.jsonPrimitive?.content

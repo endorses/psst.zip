@@ -115,7 +115,7 @@ test("insufficient OPFS quota prevents a large file request and explains destina
     });
   });
   const transfer = await prepareDownload(page, { count: 1, size: 26 * 1024 * 1024 });
-  await expect(page.getByText(/cannot check free space in your download folder/)).toBeVisible();
+  await expect(page.getByText(/cannot check free space in your download folder/)).toHaveCount(0);
   await page.getByRole("button", { name: "Save file", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Not enough browser storage");
   await page.screenshot({ path: testInfo.outputPath("recipient-storage.png"), fullPage: true });
@@ -133,17 +133,17 @@ test("a valid encrypted manifest above the aggregate ceiling never fetches file 
   expect(transfer.acknowledgments()).toBe(0);
 });
 
-test("Cancel saving does not wait for a stalled post-download metadata refresh", async ({
+test("completed saving does not wait for a stalled metadata refresh or offer cancellation", async ({
   page,
 }) => {
   const transfer = await prepareDownload(page, { count: 1, stallRefresh: true });
   await page.getByRole("button", { name: "Save file", exact: true }).click();
   await expect.poll(transfer.metadataRequests).toBe(2);
-  await page.getByRole("button", { name: "Cancel saving" }).click();
-  await expect(page.getByRole("alert")).toContainText("Saving stopped");
-  await expect(page.getByRole("button", { name: "Save file", exact: true })).toBeEnabled();
-  expect(transfer.downloads()).toBe(0);
-  expect(transfer.acknowledgments()).toBe(0);
+  await expect(page.getByText("Sender notified.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel saving" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save again", exact: true })).toBeEnabled();
+  expect(transfer.downloads()).toBe(1);
+  expect(transfer.acknowledgments()).toBe(1);
 });
 
 async function downloadIndividual(page: Page, index: number) {

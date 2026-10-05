@@ -22,7 +22,8 @@ struct ServerConfigView: View {
                         Text(message).foregroundStyle(PsstTheme.warning)
                     }
                     if serverConfig.needsSignIn {
-                        Text(serverConfig.passwordChanged ? "Password changed. Sign in with your new password." : "Your session expired. Sign in again.").foregroundStyle(PsstTheme.warning)
+                        Text(serverConfig.passwordChanged ? "Password changed. Sign in with your new password." : "Your session expired. Sign in again.").foregroundStyle(
+                            PsstTheme.warning)
                     }
                 } else {
                     Text("Not signed in")
@@ -31,13 +32,17 @@ struct ServerConfigView: View {
             }
             Section("Connection") {
                 if !serverConfig.serverURL.isEmpty {
-                    Label(serverConfig.serverURL.hasPrefix("https://") ? "Encrypted connection" : "HTTP · Unencrypted connection", systemImage: serverConfig.serverURL.hasPrefix("https://") ? "lock" : "lock.open")
+                    Label(
+                        serverConfig.serverURL.hasPrefix("https://") ? "Encrypted connection" : "HTTP · Unencrypted connection",
+                        systemImage: serverConfig.serverURL.hasPrefix("https://") ? "lock" : "lock.open")
                     Button("Test connection") {
                         checking = true
                         Task {
                             defer { checking = false }
-                            do { try await serverConfig.testConnection(server: serverConfig.serverURL); connection = "Connected" }
-                            catch { connection = "Could not connect. Check the server address and network." }
+                            do {
+                                try await serverConfig.testConnection(server: serverConfig.serverURL)
+                                connection = "Connected"
+                            } catch { connection = "Could not connect. Check the server address and network." }
                         }
                     }.disabled(checking)
                 }
@@ -50,9 +55,13 @@ struct ServerConfigView: View {
             }
             if serverConfig.isConfigured, !serverConfig.needsSignIn {
                 Section("Usage") {
-                    NavigationLink("Transfer traffic") { AccountTrafficView() }
+                    NavigationLink {
+                        AccountTrafficView()
+                    } label: {
+                        Label("Usage & traffic", systemImage: "chart.bar")
+                    }
                 }
-                Section("Password") { PasswordReplacementFields() }
+                Section("Security") { NavigationLink("Change password") { Form { PasswordReplacementFields() }.navigationTitle("Change password") } }
             }
             if let context = AbuseReportContext(origin: serverConfig.serverURL), let contact = serverConfig.abuseContactEmail {
                 Section("Help & contact") {

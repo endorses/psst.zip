@@ -65,18 +65,23 @@ test("malformed page preserves names, keys and the last loaded history rows", as
     { owner: historyID(900), id },
   );
   let bad = false;
+  let title: string | null = null;
+  await page.route(`**/api/v1/transfers/${id}/title`, (route) => {
+    title = route.request().postDataJSON().title;
+    return route.fulfill({ json: { title } });
+  });
   await page.route("**/api/v1/auth/resources?*", (route) =>
     route.fulfill({
       json: bad
         ? { transfers: [], slots: [] }
-        : historyPage({ transfers: [historyTransfer()], next_cursor: historyCursor(1) }),
+        : historyPage({ transfers: [historyTransfer({ title })], next_cursor: historyCursor(1) }),
     }),
   );
   await page.goto("/?view=history");
   const row = page.locator(`[data-resource-id="${id}"]`);
   await expect(row.getByRole("link", { name: "Open", exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Rename", exact: true }).click();
-  await row.getByLabel("Name on this device").fill("Keep my label");
+  await row.getByLabel("Link title").fill("Keep my label");
   await row.getByRole("button", { name: "Save name", exact: true }).click();
   bad = true;
   await page.getByRole("button", { name: "Older transfers" }).click();

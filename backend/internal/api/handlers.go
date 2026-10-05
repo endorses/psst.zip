@@ -25,6 +25,9 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !normalizeRequestTitle(w, &req.Title) {
+		return
+	}
 	if !validTransferPolicy(w, req) {
 		return
 	}
@@ -42,7 +45,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateTransfer(id, expiresAt, req.MaxDownloads, hash, identity(r).user.ID); err != nil {
+	if err := s.queries.CreateTransferWithTitle(id, expiresAt, req.MaxDownloads, hash, identity(r).user.ID, req.Title); err != nil {
 		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
@@ -54,6 +57,7 @@ func (s *Server) createTransfer(w http.ResponseWriter, r *http.Request) {
 		ID:          id,
 		ExpiresAt:   expiresAt,
 		DeleteToken: token,
+		Title:       req.Title,
 	})
 }
 
@@ -101,16 +105,18 @@ func (s *Server) getTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := TransferResponse{
-		ID:            t.ID,
-		Status:        t.Status,
-		FileCount:     len(files),
-		TotalSize:     totalSize,
-		HasManifest:   hasManifest,
-		ExpiresAt:     t.ExpiresAt,
-		MaxDownloads:  t.MaxDownloads,
-		DownloadCount: t.DownloadCount,
-		CreatedAt:     t.CreatedAt,
-		Files:         files,
+		ID:             t.ID,
+		Status:         transferPublicStatus(t),
+		Title:          t.Title,
+		InactiveReason: transferInactiveReason(t),
+		FileCount:      len(files),
+		TotalSize:      totalSize,
+		HasManifest:    hasManifest,
+		ExpiresAt:      t.ExpiresAt,
+		MaxDownloads:   t.MaxDownloads,
+		DownloadCount:  t.DownloadCount,
+		CreatedAt:      t.CreatedAt,
+		Files:          files,
 	}
 	if t.CompletedAt.Valid {
 		resp.CompletedAt = &t.CompletedAt.Time
@@ -466,6 +472,9 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !normalizeRequestTitle(w, &req.Title) {
+		return
+	}
 	if !validSlotPolicy(w, &req) {
 		return
 	}
@@ -495,7 +504,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	expiresAt := time.Now().Add(expiry)
 
-	if err := s.queries.CreateReceiveSlot(id, expiresAt, hash, identity(r).user.ID, req.ReceiveProtocol, req.RecipientPublicKey, req.MaxFiles); err != nil {
+	if err := s.queries.CreateReceiveSlot(id, expiresAt, hash, identity(r).user.ID, req.ReceiveProtocol, req.RecipientPublicKey, req.MaxFiles, req.Title); err != nil {
 		if incidentFailure(w, err) || resourceFailure(w, err) {
 			return
 		}
@@ -507,6 +516,7 @@ func (s *Server) createSlot(w http.ResponseWriter, r *http.Request) {
 		ID:          id,
 		ExpiresAt:   expiresAt,
 		DeleteToken: token,
+		Title:       req.Title,
 	})
 }
 

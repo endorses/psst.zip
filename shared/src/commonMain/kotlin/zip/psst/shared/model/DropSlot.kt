@@ -25,6 +25,7 @@ data class DropSlot(
     val paginated: Boolean = false,
     @SerialName("next_cursor") val nextCursor: String? = null,
     val summary: InboxSummary? = null,
+    val title: String? = null,
 ) {
     val fileCount: Int
         get() = completedTransfers.sumOf { it.fileCount }
@@ -56,6 +57,7 @@ data class SlotAvailability(
     @SerialName("remaining_bytes") val remainingBytes: Long = 0,
     @SerialName("remaining_transfers") val remainingTransfers: Int = 0,
     @SerialName("upload_capacity") val uploadCapacity: UploadCapacity? = null,
+    val title: String? = null,
 ) {
     @Throws(Exception::class)
     fun validateInvitation(slotId: String, publicKey: ByteArray) {

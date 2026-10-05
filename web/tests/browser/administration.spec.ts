@@ -167,28 +167,34 @@ test("phone navigation uses equal columns with icons above single-line labels in
   }
 });
 
-test("receive titles and renames stay local, clear restores fallback and reload retains edits", async ({
+test("receive titles and renames are shared, clear restores fallback and reload retains edits", async ({
   page,
+  request,
 }) => {
   await signIn(page);
   await page.getByRole("link", { name: "Receive", exact: true }).click();
-  await page.getByLabel("Link name (optional)").fill("結婚式 photos");
+  await page.getByLabel("Link title (optional)").fill("結婚式 photos");
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
   const url = await page.getByLabel("Full link", { exact: true }).inputValue();
   const id = new URL(url).pathname.split("/").pop();
+  expect((await (await request.get(`/api/v1/slots/${id}`)).json()).title).toBe("結婚式 photos");
   await page.getByRole("link", { name: "History", exact: true }).click();
   const row = page.locator(`[data-resource-id="${id}"]`);
   await expect(row.getByText("結婚式 photos", { exact: true })).toBeVisible();
   await row.getByRole("button", { name: "Rename" }).click();
-  await row.getByLabel("Name on this device").fill("Local renamed link");
+  await row.getByLabel("Link title").fill("Shared renamed link");
   await row.getByRole("button", { name: "Save name" }).click();
   await page.reload();
-  await expect(row.getByText("Local renamed link", { exact: true })).toBeVisible();
+  await expect(row.getByText("Shared renamed link", { exact: true })).toBeVisible();
+  expect((await (await request.get(`/api/v1/slots/${id}/availability`)).json()).title).toBe(
+    "Shared renamed link",
+  );
   await row.getByRole("button", { name: "Rename" }).click();
-  await row.getByLabel("Name on this device").fill("");
+  await row.getByLabel("Link title").fill("");
   await row.getByRole("button", { name: "Save name" }).click();
-  await expect(row.getByText("Local renamed link", { exact: true })).toHaveCount(0);
-  await expect(row.getByText("Receive link", { exact: true })).toBeVisible();
+  await expect(row.getByText("Shared renamed link", { exact: true })).toHaveCount(0);
+  await expect(row.locator(".history-title")).toHaveText("Receive link");
+  expect((await (await request.get(`/api/v1/slots/${id}`)).json()).title).toBeNull();
 });
 
 test("admin metrics and resources distinguish unavailable, degraded and stale data", async ({
@@ -239,6 +245,7 @@ test("same-account selected files and download policy survive reset and password
     mimeType: "text/plain",
     buffer: Buffer.from("private pending bytes"),
   });
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("8");
@@ -283,6 +290,7 @@ test("same-account selected files and download policy survive reset and password
     mimeType: "text/plain",
     buffer: Buffer.from("a genuinely new selection"),
   });
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).not.toBeChecked();
   expect(uploads).toBe(0);

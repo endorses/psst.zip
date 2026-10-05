@@ -28,3 +28,8 @@ internal const val GUEST_FIRST_PAGE_SQL =
     "SELECT identity, created_at, payload FROM records WHERE kind='json' AND deleted=0 ORDER BY created_at DESC, identity DESC LIMIT 51"
 internal const val GUEST_NEXT_PAGE_SQL =
     "SELECT identity, created_at, payload FROM records WHERE kind='json' AND deleted=0 AND (created_at, identity) < (?, ?) ORDER BY created_at DESC, identity DESC LIMIT 51"
+
+internal const val ACCOUNT_FILTERED_PAGE_SQL =
+    "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE accountId = :accountId AND originScope = :originScope AND type = :kind AND (createdAt,id) < (:beforeTime,:beforeId) ORDER BY createdAt DESC,id DESC LIMIT 51"
+internal const val ACCOUNT_FILTERED_INDEX_SQL =
+    "CREATE INDEX index_transfer_history_accountId_originScope_type_createdAt_id ON transfer_history(accountId,originScope,type,createdAt,id)"

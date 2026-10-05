@@ -1,6 +1,7 @@
 import type { Manifest } from "./crypto.ts";
 import type { TransferInfo } from "./api.ts";
 import { wireSize } from "./chunked-files.ts";
+import { validSharedTitle } from "./link-title.ts";
 
 /** Cross-check server metadata against the authenticated, bounded manifest. */
 export function validateDownload(info: TransferInfo, id: string, manifest: Manifest): void {
@@ -11,7 +12,8 @@ export function validateDownload(info: TransferInfo, id: string, manifest: Manif
     !info ||
     typeof info.id !== "string" ||
     info.id.toLowerCase() !== id.toLowerCase() ||
-    info.status !== "complete" ||
+    !["complete", "exhausted"].includes(info.status) ||
+    !validSharedTitle(info.title) ||
     info.file_count !== manifest.files.length ||
     !Number.isSafeInteger(info.total_size) ||
     info.total_size !== manifest.files.reduce((sum, file) => sum + wireSize(file.size), 0)

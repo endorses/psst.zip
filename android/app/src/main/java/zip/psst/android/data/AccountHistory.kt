@@ -29,6 +29,7 @@ internal suspend fun syncAccountHistory(
                 encryptionKey = "",
                 status =
                     when {
+                        transfer.status == "exhausted" -> "exhausted"
                         transfer.status in listOf("expired", "revoked") -> "unavailable"
                         transfer.downloadedAt != null -> "downloaded"
                         transfer.downloadCount > 0 -> "download_started"
@@ -38,6 +39,7 @@ internal suspend fun syncAccountHistory(
                 createdAt = parseHistoryExpiry(transfer.createdAt) ?: System.currentTimeMillis(),
                 expiresAt = parseHistoryExpiry(transfer.expiresAt),
                 maxDownloads = transfer.maxDownloads,
+                sharedTitle = transfer.title,
             ),
             access,
         )
@@ -74,6 +76,7 @@ internal fun slotHistoryResource(
         expiresAt = parseHistoryExpiry(slot.expiresAt),
         maxFiles = slot.maxFiles,
         reservedFiles = slot.reservedFiles,
+        sharedTitle = slot.title,
     )
 }
 
@@ -95,6 +98,7 @@ internal fun mergeAccountResource(
         current?.copy(
             fileCount = if (incoming.summaryUpdating) current.fileCount else incoming.fileCount,
             summaryUpdating = incoming.summaryUpdating,
+            sharedTitle = incoming.sharedTitle,
             expiresAt = incoming.expiresAt ?: current.expiresAt,
             maxDownloads = incoming.maxDownloads ?: current.maxDownloads,
             maxFiles = incoming.maxFiles ?: current.maxFiles,

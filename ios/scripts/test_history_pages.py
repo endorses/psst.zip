@@ -24,6 +24,28 @@ def main():
                 .read_text()
                 .replace("@testable import Psst", "@testable import HistoryPageHarness")
             )
+        for name in ("SharedLinkTitle", "BoundedHistoryMerge", "TransferRecord"):
+            shutil.copy2(ROOT / f"Shared/{name}.swift", sources)
+        (sources / "Boundaries.swift").write_text("""import Foundation
+extension String { init(localized value: String) { self = value } }
+struct DeviceSession: Equatable { var serverURL: String; var userID: String; var canTransfer = true }
+enum SecretStore {
+ static func read(_ key: String) -> Data? { nil }
+ static func write(_ data: Data, name: String) throws {}
+}
+""")
+        for path in (
+            "Psst/Services/UnifiedHistory.swift",
+            "Psst/ViewModels/MergedDeviceHistoryViewModel.swift",
+        ):
+            shutil.copy2(ROOT / path, sources)
+        shutil.copy2(ROOT / "scripts/workflow_harness/HistoryStores.swift", sources)
+        shutil.copy2(ROOT / "scripts/workflow_harness/MergedHistoryTests.swift", tests)
+        (tests / "WorkflowPresentationTests.swift").write_text(
+            (ROOT / "PsstTests/WorkflowPresentationTests.swift")
+            .read_text()
+            .replace("@testable import Psst", "@testable import HistoryPageHarness")
+        )
         (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
 let package = Package(name: "HistoryPageHarness", targets: [

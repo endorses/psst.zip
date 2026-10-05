@@ -55,7 +55,15 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 		if err := fields.Decode(&value); err != nil {
 			return err
 		}
-		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		allowsTitleNull := false
+		switch v.(type) {
+		case *CreateTransferRequest, *CreateSlotRequest, *RenameTitleRequest:
+			allowsTitleNull = name == "title"
+		}
+		if allowsTitleNull && !validEncodedLinkTitle(value) {
+			return errors.New("invalid Unicode title")
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) && !allowsTitleNull {
 			return errors.New("null fields are not supported")
 		}
 	}

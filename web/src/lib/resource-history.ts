@@ -1,6 +1,7 @@
 import { accountRequest, type Resource, type User } from "./account.ts";
 import { inboxUUID, validInboxCursor } from "./inbox-page.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
+import { validSharedTitle } from "./link-title.ts";
 
 export const HISTORY_PAGE_SIZE = 50;
 export const HISTORY_PREVIOUS_WINDOW = 100;
@@ -26,12 +27,13 @@ function validResource(value: unknown, slot: boolean): value is Resource {
   if (
     typeof r.id !== "string" ||
     !inboxUUID.test(r.id) ||
+    !validSharedTitle(r.title) ||
     !timestamp(r.created_at) ||
     !timestamp(r.expires_at) ||
     (r.owner_id !== undefined && (typeof r.owner_id !== "string" || !inboxUUID.test(r.owner_id))) ||
-    !(slot ? ["waiting", "has_uploads", "revoked"] : ["pending", "complete", "revoked"]).includes(
-      r.status as string,
-    )
+    !(
+      slot ? ["waiting", "has_uploads", "revoked"] : ["pending", "complete", "revoked", "exhausted"]
+    ).includes(r.status as string)
   )
     return false;
   if (!r.summary || typeof r.summary !== "object" || Array.isArray(r.summary)) return false;
@@ -111,10 +113,12 @@ export async function loadResourcePage(
   after = "",
   all = false,
   signal?: AbortSignal,
+  kind?: "transfer" | "slot",
 ): Promise<ResourcePage> {
   if (after && !validInboxCursor(after)) throw invalidPage();
   const query = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE) });
   if (all) query.set("all", "true");
+  if (kind) query.set("kind", kind);
   if (after) query.set("after", after);
   const timeout = AbortSignal.timeout(10000);
   const result = await accountRequest<unknown>(
@@ -124,7 +128,10 @@ export async function loadResourcePage(
     signal ? AbortSignal.any([signal, timeout]) : timeout,
     64 * 1024,
   );
-  return validateResourcePage(result, after);
+  const page = validateResourcePage(result, after);
+  if ((kind === "transfer" && page.slots.length) || (kind === "slot" && page.transfers.length))
+    throw invalidPage();
+  return page;
 }
 
 export async function loadUsersPage(

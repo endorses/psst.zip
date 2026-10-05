@@ -6,6 +6,7 @@ import { resourceLimitError } from "./resource-policy.ts";
 import { TransferStateError, transferStateError } from "./incident-state.ts";
 import { validateSlotAvailability, type SlotAvailability } from "./guest-capacity.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
+import { normalizeLinkTitle } from "./link-title.ts";
 import {
   INBOX_PAGE_SIZE,
   inboxUUID,
@@ -98,11 +99,17 @@ export interface CreateTransferResponse {
   delete_token?: string;
 }
 
-export async function createTransfer(maxDownloads = 0): Promise<CreateTransferResponse> {
+export async function createTransfer(
+  maxDownloads = 0,
+  title?: string | null,
+): Promise<CreateTransferResponse> {
   return request<CreateTransferResponse>("/transfers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ max_downloads: validateLinkLimit(maxDownloads) }),
+    body: JSON.stringify({
+      max_downloads: validateLinkLimit(maxDownloads),
+      title: normalizeLinkTitle(title),
+    }),
   });
 }
 
@@ -131,6 +138,8 @@ export async function completeTransfer(transferId: string, token?: string): Prom
 
 export interface TransferInfo {
   id: string;
+  title?: string | null;
+  inactive_reason?: string | null;
   status: string;
   file_count: number;
   total_size: number;
@@ -206,7 +215,11 @@ export interface CreateSlotResponse {
   delete_token?: string;
 }
 
-export async function createSlot(publicKey: string, maxFiles = 0): Promise<CreateSlotResponse> {
+export async function createSlot(
+  publicKey: string,
+  maxFiles = 0,
+  title?: string | null,
+): Promise<CreateSlotResponse> {
   return request<CreateSlotResponse>("/slots", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -214,12 +227,14 @@ export async function createSlot(publicKey: string, maxFiles = 0): Promise<Creat
       receive_protocol: 2,
       recipient_public_key: publicKey,
       max_files: validateLinkLimit(maxFiles),
+      title: normalizeLinkTitle(title),
     }),
   });
 }
 
 export interface SlotInfo {
   id: string;
+  title?: string | null;
   transfers: { transfer_id: string; status: string; file_count: number }[];
   expires_at: string;
   receive_protocol: number;
@@ -228,6 +243,23 @@ export interface SlotInfo {
   reserved_files: number;
   completed_files: number;
   remaining_files: number | null;
+}
+
+export async function renameLinkTitle(
+  kind: "transfers" | "slots",
+  id: string,
+  title: string | null,
+): Promise<{ title: string | null }> {
+  if (!inboxUUID.test(id)) throw new Error("Invalid link ID");
+  const normalized = normalizeLinkTitle(title);
+  const result = await request<{ title: string | null }>(`/${kind}/${id}/title`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: normalized }),
+  });
+  if (result.title !== normalized)
+    throw new Error("The server did not save this title. Refresh and try again.");
+  return result;
 }
 
 export async function getSlotAvailability(

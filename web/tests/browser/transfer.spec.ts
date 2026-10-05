@@ -99,6 +99,7 @@ test("per-file download limit is fixed at creation and exhausted controls reflec
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(files);
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("1");
@@ -123,6 +124,7 @@ test("an allocated send keeps its fixed download policy through retry and resets
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(files);
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("spinbutton", { name: "Limit downloads per file" }).fill("3");
@@ -151,6 +153,7 @@ test("an allocated send keeps its fixed download policy through retry and resets
   ).toBeVisible();
   await page.getByRole("button", { name: "Send more files", exact: true }).click();
   await page.getByLabel("Choose files").setInputFiles(files);
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Limit downloads per file" })).toBeEnabled();
@@ -161,6 +164,7 @@ test("invalid enabled link limit is announced inline without allocating a transf
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(files);
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   const limits = page.locator("details.optional-limit");
   await expect(limits).not.toHaveAttribute("open", "");
   await limits.locator("summary").click();
@@ -188,6 +192,7 @@ test("cancelling a started download refreshes exhaustion without retrying the pa
 }) => {
   await signIn(page);
   await page.getByLabel("Choose files").setInputFiles(files.slice(0, 1));
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("button", { name: "Send files", exact: true }).click();

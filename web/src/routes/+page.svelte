@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, untrack, tick } from "svelte";
   import { brandedQr } from "$lib/branded-qr";
   import { page } from "$app/stores";
   import { beforeNavigate, goto } from "$app/navigation";
@@ -37,7 +37,7 @@
     type Session,
     type Resource,
   } from "$lib/account";
-  import { createSlot, getSlotInbox, type InboxPage } from "$lib/api";
+  import { createSlot, getSlotInbox, renameLinkTitle, type InboxPage } from "$lib/api";
   import {
     loadLocalHistory,
     saveLocalLink,
@@ -46,11 +46,14 @@
     type LocalHistoryPage,
   } from "$lib/local-history";
   import { INBOX_PREVIOUS_WINDOW } from "$lib/inbox-page";
+  import { rememberInboxPosition, restoreInboxPosition } from "$lib/inbox-navigation";
   import { exportKey } from "$lib/crypto";
   import { generateReceiveKeyPair } from "$lib/receive-crypto";
   import { storeReceiveKey, loadReceiveKey, removeReceiveKey } from "$lib/receive-keys";
   import OptionalLimit from "$lib/components/OptionalLimit.svelte";
+  import { normalizeLinkTitle, downloadLinkExhausted } from "$lib/link-title";
   type Tab =
+    | "Usage"
     | "Resources"
     | "Overview"
     | "Traffic"
@@ -68,6 +71,8 @@
   let receiveInfo = $state<InboxPage | null>(null),
     maxFiles = $state(0);
   let receiveNeedsKey = $state(false);
+  let receiveSharing = $state(false);
+  let receiveCreating = $state(false);
   const emptySendDraft = (): SendDraft => ({ files: [], maxDownloads: 0, policyLocked: false });
   let pendingDraft = emptySendDraft(),
     pendingOwner = "";
@@ -91,6 +96,7 @@
     pairingStatus = $state("pending"),
     pairedDevice = $state("");
   const destinations = [
+    "Usage",
     "Resources",
     "Overview",
     "Traffic",
@@ -108,6 +114,7 @@
   const adminDestinations = ["Overview", "Users", "Traffic", "Security", "Server"] as const;
   const mainDestinations = ["Send", "Receive", "Scan", "History", "Settings"] as const;
   const settingsDestinations = [
+    { name: "Usage", title: "Usage", description: "Storage and transfer traffic." },
     {
       name: "Account",
       title: "Account",
@@ -163,7 +170,26 @@
     securityMutationActive = active;
   }
   beforeNavigate((navigation) => {
-    if (securityMutationActive) navigation.cancel();
+    if (securityMutationActive) {
+      navigation.cancel();
+      return;
+    }
+    const target = navigation.to?.url;
+    if (
+      user &&
+      tab === "Receive" &&
+      receiveId &&
+      target?.origin === location.origin &&
+      target.pathname.startsWith("/d/") &&
+      target.searchParams.get("inbox") === receiveId
+    ) {
+      rememberInboxPosition(sessionStorage, user.id, receiveId, {
+        cursor: receiveCursor,
+        previous: receivePrevious,
+        page: receivePage,
+        scroll: window.scrollY,
+      });
+    }
   });
   interface SessionsResponse {
     sessions: Session[];
@@ -200,6 +226,9 @@
   let historyRequest: AbortController | null = null;
   let receiveUrl = $state(""),
     receiveId = $state("");
+  const receiveTitle = $derived(
+    receiveInfo?.title || labelFor(labels, "slots", receiveId).custom || "Receive files",
+  );
   let pairingQr = $state(""),
     pairingExpires = $state(""),
     now = $state(Date.now());
@@ -329,19 +358,26 @@
     };
   });
   async function initialize() {
+    const owner = epoch;
     try {
-      user = (await request<{ user: User }>("/auth/me")).user;
+      const account = (await request<{ user: User }>("/auth/me")).user;
+      // A route change can destroy this instance while its account request is
+      // pending. Only the live instance may consume the inbox return checkpoint.
+      if (owner !== epoch) return;
+      user = account;
       loadAccount();
       await select(routeTab(), false);
     } catch (err) {
+      if (owner !== epoch) return;
       if (!(err instanceof AccountError && err.status === 401)) error = message(err);
       try {
-        setupRequired = (await request<{ setup_required: boolean }>("/auth/status")).setup_required;
+        const setup = (await request<{ setup_required: boolean }>("/auth/status")).setup_required;
+        if (owner === epoch) setupRequired = setup;
       } catch {
         /* Main error remains visible. */
       }
     } finally {
-      loading = false;
+      if (owner === epoch) loading = false;
     }
   }
   function loadAccount() {
@@ -371,7 +407,18 @@
       previousCursor === historyCursor;
     historyLoading = true;
     try {
-      const result = await loadResourcePage(cursor, false, controller.signal);
+      const selectedFilter = historyFilter;
+      const result = await loadResourcePage(
+        cursor,
+        false,
+        controller.signal,
+        selectedFilter === "transfers"
+          ? "transfer"
+          : selectedFilter === "slots"
+            ? "slot"
+            : undefined,
+      );
+      if (selectedFilter !== historyFilter) return true;
       if (!current()) return true;
       let local: LocalHistoryPage | null = null;
       try {
@@ -456,6 +503,7 @@
     receiveError = $state("");
   let receiveGeneration = 0;
   let receiveRequest: AbortController | null = null;
+  let receiveReturnScroll: number | null = null;
   function resetReceive(id: string) {
     receiveGeneration++;
     receiveRequest?.abort();
@@ -464,6 +512,18 @@
     receiveNext = null;
     receivePrevious = [];
     receivePage = 1;
+    receiveSharing = false;
+    receiveCreating = false;
+    receiveReturnScroll = null;
+    if (user && typeof sessionStorage !== "undefined") {
+      const position = restoreInboxPosition(sessionStorage, user.id, id);
+      if (position) {
+        receiveCursor = position.cursor;
+        receivePrevious = position.previous;
+        receivePage = position.page;
+        receiveReturnScroll = position.scroll;
+      }
+    }
     receiveInfo = null;
     receiveLoading = false;
     receiveError = "";
@@ -543,6 +603,12 @@
               ? `${location.origin}/d/${t.transfer_id}?inbox=${encodeURIComponent(id)}`
               : `${location.origin}/d/${t.transfer_id}${key}`,
         }));
+      if (receiveReturnScroll !== null) {
+        const scroll = receiveReturnScroll;
+        receiveReturnScroll = null;
+        await tick();
+        if (current()) window.scrollTo({ top: scroll, behavior: "instant" });
+      }
     } catch (cause) {
       if (!current()) return;
       if (cause instanceof Error && /API (404|410)(?:$|:)/.test(cause.message)) {
@@ -810,7 +876,7 @@
     const allowed =
       user.role === "admin"
         ? [...adminDestinations, "Account", "Devices", "Resources"]
-        : [...mainDestinations, "Account", "Devices"];
+        : [...mainDestinations, "Account", "Devices", "Usage"];
     if (!allowed.includes(next as never)) {
       next = user.role === "admin" ? "Overview" : "Send";
       navigate = true;
@@ -863,9 +929,10 @@
       const owner = epoch;
       const account = user!.id;
       const selectedMaxFiles = maxFiles;
+      const selectedTitle = normalizeLinkTitle(receiveName);
       const pair = await generateReceiveKeyPair();
       const publicKey = await exportKey(pair.publicKey);
-      const slot = await createSlot(publicKey, selectedMaxFiles);
+      const slot = await createSlot(publicKey, selectedMaxFiles, selectedTitle);
       try {
         if (owner !== epoch || user?.id !== account)
           throw new Error("Your account changed. Create the receive link again.");
@@ -896,7 +963,8 @@
       if (
         accepted.receive_protocol !== 2 ||
         accepted.recipient_public_key !== publicKey ||
-        accepted.max_files !== selectedMaxFiles
+        accepted.max_files !== selectedMaxFiles ||
+        (accepted.title ?? null) !== selectedTitle
       ) {
         let removed = false;
         if (slot.delete_token) {
@@ -919,22 +987,9 @@
       receiveUrl = `${location.origin}/u/${slot.id}#v2.${publicKey}`;
       await remember(slot.id, receiveUrl);
       if (owner !== epoch || user?.id !== account) return;
-      if (user && receiveName.trim()) {
-        try {
-          const label = await updateLocalLabel(
-            account,
-            { kind: "slots", id: slot.id },
-            { custom: receiveName.trim() },
-          );
-          if (owner !== epoch || user?.id !== account) return;
-          labels = { [labelKey("slots", slot.id)]: label };
-        } catch {
-          if (owner !== epoch || user?.id !== account) return;
-          localHistoryWarning =
-            "The receive link was created, but its name could not be saved on this device. Check browser storage and retry the name from History.";
-        }
-      }
       receiveName = "";
+      receiveCreating = false;
+      receiveSharing = false;
       maxFiles = 0;
       receiveNeedsKey = false;
       await refreshReceived(slot.id, owner);
@@ -1024,39 +1079,55 @@
   function historyTitle(item: Resource & { kind: "transfers" | "slots" }) {
     const label = labelFor(labels, item.kind, item.id);
     return (
+      item.title ||
       label.custom ||
       label.title ||
-      `${item.kind === "slots" ? "Receive link" : "Sent files"}${item.created_at ? " · " + new Date(item.created_at).toLocaleString() : ""}`
+      (item.kind === "slots" ? "Receive link" : "Sent files")
     );
   }
   async function rename() {
-    if (!user) return;
+    if (!user || busy) return;
     const account = user.id,
       owner = epoch,
       id = renameId,
-      kind = renameKind,
-      cursor = historyCursor,
-      currentTab = tab,
-      custom = renameValue.trim() || undefined;
-    try {
-      const label = await updateLocalLabel(account, { kind, id }, { custom });
-      if (
-        owner !== epoch ||
-        user?.id !== account ||
-        renameId !== id ||
-        renameKind !== kind ||
-        historyCursor !== cursor ||
-        tab !== currentTab
-      )
-        return;
-      labels = { ...labels, [labelKey(kind, id)]: label };
-      if (!localRetry) localHistoryWarning = "";
-      renameId = "";
-    } catch {
-      if (owner === epoch && user?.id === account)
-        localHistoryWarning =
-          "This name could not be saved on this device. Check browser storage permissions and space, then try Save name again.";
-    }
+      kind = renameKind;
+    await act(async () => {
+      const result = await renameLinkTitle(kind, id, normalizeLinkTitle(renameValue));
+      if (owner !== epoch || user?.id !== account) return;
+      transfers = transfers.map((item) =>
+        item.id === id && kind === "transfers" ? { ...item, title: result.title } : item,
+      );
+      slots = slots.map((item) =>
+        item.id === id && kind === "slots" ? { ...item, title: result.title } : item,
+      );
+      if (kind === "slots" && receiveId === id && receiveInfo)
+        receiveInfo = { ...receiveInfo, title: result.title };
+      try {
+        const label = await updateLocalLabel(account, { kind, id }, { custom: undefined });
+        if (owner === epoch && user?.id === account)
+          labels = { ...labels, [labelKey(kind, id)]: label };
+      } catch {
+        if (owner === epoch && user?.id === account)
+          localHistoryWarning = "Title saved. Local history could not be updated.";
+      }
+      if (owner === epoch && user?.id === account && renameId === id && renameKind === kind)
+        renameId = "";
+    });
+  }
+  async function filterHistory(event: Event) {
+    historyFilter = (event.currentTarget as HTMLSelectElement).value;
+    historyCursor = "";
+    historyPrevious = [];
+    historyPage = 1;
+    historyNext = null;
+    transfers = [];
+    slots = [];
+    await refreshHistory();
+  }
+  function beginRename(kind: "transfers" | "slots", id: string, title?: string | null) {
+    renameId = id;
+    renameKind = kind;
+    renameValue = title || labelFor(labels, kind, id).custom || "";
   }
   async function pair() {
     await act(async () => {
@@ -1123,6 +1194,7 @@
   }
   function status(item: Resource) {
     if (Date.parse(item.expires_at) < now) return "Expired";
+    if (downloadLinkExhausted(item)) return "Download limit reached";
     return item.downloaded_at
       ? "Downloaded"
       : item.status === "complete"
@@ -1276,12 +1348,12 @@
             aria-current={tab === item
               ? "page"
               : (item === "Overview" && tab === "Resources") ||
-                  (item === "Settings" && ["Account", "Devices"].includes(tab))
+                  (item === "Settings" && ["Account", "Devices", "Usage"].includes(tab))
                 ? "location"
                 : undefined}
             class:active={tab === item ||
               (item === "Overview" && tab === "Resources") ||
-              (item === "Settings" && ["Account", "Devices"].includes(tab))}
+              (item === "Settings" && ["Account", "Devices", "Usage"].includes(tab))}
             data-sveltekit-keepfocus
             data-sveltekit-noscroll
           >
@@ -1370,6 +1442,7 @@
         {#if user.role === "user"}{#key user.id}<div hidden={tab !== "Send"}>
               <SendPanel
                 accountId={user.id}
+                visible={tab === "Send"}
                 initialDraft={restoredDraft}
                 onselection={(draft) => (selectedDraft = draft)}
                 oncreated={remember}
@@ -1388,10 +1461,12 @@
           <ServerSettings />
           <AbuseContactSettings />
           <ResourcePolicySettings />
+        {:else if tab === "Usage" && user.role === "user"}
+          <a href="/?view=settings" class="back-link">← Settings</a>
+          <h1>Usage</h1>
+          <AccountUsage /><AccountTraffic />
         {:else if tab === "Settings"}<h1>Settings</h1>
           <p class="muted">Your account, devices, and server access.</p>
-          <AccountUsage />
-          <AccountTraffic />
           <div class="settings-list">
             {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
               <a
@@ -1400,7 +1475,9 @@
                 data-sveltekit-keepfocus
                 data-sveltekit-noscroll
               >
-                <span class="setting-icon"><Icon name={item.name} size={22} /></span>
+                <span class="setting-icon"
+                  ><Icon name={item.name === "Usage" ? "Traffic" : item.name} size={22} /></span
+                >
                 <span
                   ><strong>{item.title}</strong><span class="muted small setting-description"
                     >{item.description}</span
@@ -1410,74 +1487,183 @@
               </a>
             {/each}
           </div>
-        {:else if tab === "Receive"}<h1>Receive files</h1>
-          <p class="muted">
-            Anyone with your receive link can send you encrypted files within the server’s limits.
-          </p>
+        {:else if tab === "Receive"}
+          <div class="heading">
+            <h1 title={receiveId && !receiveCreating ? receiveTitle : undefined}>
+              {receiveId && !receiveCreating ? receiveTitle : "Receive files"}
+            </h1>
+            {#if receiveId && !receiveCreating && !receiveUnavailable}<button
+                disabled={busy}
+                onclick={() => beginRename("slots", receiveId, receiveInfo?.title)}>Rename</button
+              >{/if}
+          </div>
           {#if receiveUnavailable}<p class="notice" role="status">
-              This receive link has expired or was revoked. Create a new link to get more files.
-            </p>{:else if receiveUrl}<LinkCard
-              url={receiveUrl}
-              label="Receive link — share it with someone to get files."
-            /><button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
-              ><Icon name="Refresh" size={17} />Refresh received files</button
+              This receive link is no longer available.
+            </p>{/if}
+          {#if !receiveId || receiveCreating || receiveUnavailable}
+            <form
+              class="receive-create"
+              onsubmit={(event) => {
+                event.preventDefault();
+                void createReceive();
+              }}
+            >
+              <label
+                >Link title (optional)<input
+                  maxlength="400"
+                  bind:value={receiveName}
+                  placeholder="For example, Wedding photos"
+                /></label
+              >
+              <p class="muted small">Shown to people using this link.</p>
+              <OptionalLimit
+                bind:value={maxFiles}
+                disabled={busy}
+                label="Limit files accepted"
+                description="Unfinished uploads count. Deleting files does not restore the allowance."
+              />
+              <div class="actions">
+                <button class="primary" disabled={busy}
+                  >{busy ? "Creating link…" : "Create receive link"}</button
+                >
+                {#if receiveId && !receiveUnavailable}<button
+                    type="button"
+                    onclick={() => (receiveCreating = false)}>Cancel</button
+                  >{/if}
+              </div>
+            </form>
+          {:else}
+            {#if renameId === receiveId && renameKind === "slots"}<form
+                class="rename-form"
+                onsubmit={(event) => {
+                  event.preventDefault();
+                  void rename();
+                }}
+              >
+                <label>Link title<input maxlength="400" bind:value={renameValue} /></label>
+                <p class="muted small">Shown to people using this link.</p>
+                <div class="actions">
+                  <button class="primary" disabled={busy}>Save name</button><button
+                    type="button"
+                    disabled={busy}
+                    onclick={() => (renameId = "")}>Cancel</button
+                  >
+                </div>
+              </form>{/if}
+            {#if receiveNeedsKey}<p class="notice">
+                The private key is on the device that created this link.
+              </p>{/if}
+            {#if receiveInfo?.remaining_files != null}<p class="muted small">
+                {receiveInfo.remaining_files} files remaining
+              </p>{/if}
+            {#if receiveInfo?.receive_protocol !== 2 && receiveInfo}<p class="notice">
+                This older inbox is read-only. Create a new link to receive files.
+              </p>{/if}
+            {#if receiveId && !receiveUnavailable && ((receiveInfo?.summary.completed_files ?? 0) > 0 || receivePage > 1 || receiveInfo?.summary.state === "updating" || receiveError)}
+              <section aria-label="Received files" aria-busy={receiveLoading}>
+                <div class="heading">
+                  <div>
+                    <h2>Received files</h2>
+                    {#if receiveInfo?.summary.state === "updating"}<p class="muted small">
+                        Received file totals are updating.
+                      </p>
+                    {:else if receiveInfo}<p class="muted small">
+                        {receiveInfo.summary.completed_files} file{receiveInfo.summary
+                          .completed_files === 1
+                          ? ""
+                          : "s"} received
+                      </p>{/if}
+                  </div>
+                  <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
+                    ><Icon name="Refresh" size={17} />Refresh</button
+                  >
+                </div>
+                {#if receiveError}<p role="alert">{receiveError}</p>{/if}
+                {#if receiveInfo}
+                  {#if !received.length}<p class="muted">No files on this page.</p>{/if}
+                  {#each received as item (item.id)}{#if !receiveNeedsKey}<a
+                        class="received"
+                        href={item.url}
+                        >{item.count} file{item.count === 1 ? "" : "s"} · Save {item.count === 1
+                          ? "file"
+                          : "files"}</a
+                      >{:else}<p>
+                        {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating
+                        device
+                      </p>{/if}{/each}
+                  {#if receivePage > 1 || receiveNext}<nav
+                      class="inbox-pages"
+                      aria-label="Received files pages"
+                    >
+                      <button
+                        disabled={receiveLoading || !receivePrevious.length}
+                        onclick={() => turnReceived("previous")}>Previous</button
+                      >
+                      <span class="muted small">Page {receivePage}</span>
+                      <button
+                        disabled={receiveLoading || receiveNext === null}
+                        onclick={() => turnReceived("next")}>Next</button
+                      >
+                      {#if receivePage > 1}<button
+                          disabled={receiveLoading}
+                          onclick={() => turnReceived("first")}>First page</button
+                        >{/if}
+                    </nav>{/if}
+                  {#if receivePage > 1 && !receivePrevious.length}<p class="muted small">
+                      Earlier pages are available from First page.
+                    </p>{/if}
+                {/if}
+              </section>
+            {/if}
+            {#if receiveUrl}
+              {#if (receiveInfo?.summary.completed_files ?? 0) === 0}<LinkCard
+                  url={receiveUrl}
+                  label="Share this link to receive files"
+                />
+              {:else}<details class="receive-share" bind:open={receiveSharing}>
+                  <summary>Show QR / Share link</summary><LinkCard
+                    url={receiveUrl}
+                    label={receiveTitle}
+                  />
+                </details>{/if}
+            {/if}
+            {#if receiveInfo?.summary.state !== "updating" && (receiveInfo?.summary.completed_files ?? 0) === 0 && receivePage === 1 && !receiveError}<div
+                class="actions"
+              >
+                <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
+                  ><Icon name="Refresh" size={17} />Refresh</button
+                >
+              </div>{/if}
+            <details class="receive-details">
+              <summary>Details</summary>
+              <p>Expires {receiveInfo ? date(receiveInfo.expires_at) : "…"}</p>
+              {#if receiveInfo && receiveInfo.max_files > 0}<p>
+                  {receiveInfo.reserved_files} of {receiveInfo.max_files} file allowances used
+                </p>{/if}
+              <p class="muted small">ID: {receiveId}</p>
+            </details>
+            <button
+              class="new-inbox"
+              disabled={busy}
+              onclick={() => {
+                receiveCreating = true;
+                receiveName = "";
+                maxFiles = 0;
+              }}>Create another link</button
             >
           {/if}
-          {#if receiveInfo && !receiveUnavailable}
-            {#if receiveInfo.receive_protocol !== 2}<p class="notice">
-                This older inbox is read-only. Its original shared link may have allowed other
-                holders to read submissions. Create a new receive link for future files.
-              </p>{/if}
-            {#if receiveNeedsKey}<p class="notice">
-                This browser has no private key for this inbox. Use the device that created it to
-                save files. You can still view its status and revoke it.
-              </p>{/if}
-            <p class="muted small">
-              {receiveInfo.summary.state === "ready"
-                ? `${receiveInfo.summary.completed_files} completed files`
-                : "Received file totals are updating"} · {receiveInfo.remaining_files === null
-                ? `${receiveInfo.reserved_files} file allocations used · No creator file limit`
-                : `${receiveInfo.reserved_files} of ${receiveInfo.max_files} allowances used · ${receiveInfo.remaining_files} allocations remaining`}
-            </p>
-          {/if}
-          <label
-            >Link name (optional)<input
-              maxlength="200"
-              bind:value={receiveName}
-              placeholder="For example, Wedding photos"
-            /></label
-          >
-          <p class="muted small">The name stays in this browser and can be changed in History.</p>
-          <OptionalLimit
-            bind:value={maxFiles}
-            disabled={busy}
-            label="Limit files accepted"
-            description="Counts file allocations across every sender. Unfinished or abandoned uploads count; retries of the same upload do not. Deleting files does not restore this fixed limit."
-          />
-          <button class="primary" disabled={busy} onclick={createReceive}
-            >{receiveUrl
-              ? "Create another receive link"
-              : busy
-                ? "Creating link…"
-                : "Create receive link"}</button
-          >
         {:else if tab === "History"}<div class="heading">
             <h1>Your transfers</h1>
             <button disabled={busy || historyLoading} onclick={() => select("History")}
               ><Icon name="Refresh" size={17} />Refresh</button
             >
           </div>
-          <AccountUsage />
           <label
-            >Show<select bind:value={historyFilter}
+            >Show<select aria-label="History filter" value={historyFilter} onchange={filterHistory}
               ><option value="all">All transfers</option><option value="transfers">Sent</option
               ><option value="slots">Receive links</option></select
             ></label
           >
-          <p class="muted small">
-            Encryption keys stay on the device that created the link. This browser can reopen its
-            own links; transfers from other devices can still be revoked.
-          </p>
           {#if historyError}<p role="alert">
               {historyError} The displayed page may be out of date.
             </p>{/if}
@@ -1486,9 +1672,7 @@
             >
               {historyCursor || historyNext ? "No transfers on this page." : "No transfers yet."}
             </p>{/if}
-          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )]
-            .filter((item) => historyFilter === "all" || item.kind === historyFilter)
-            .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}<article
+          {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}<article
               class="resource"
               data-resource-id={item.id}
             >
@@ -1517,15 +1701,6 @@
                       ? `${receivedFileCount(item)} files received`
                       : `${resourceFileCount(item)} files · ${status(item)}`}
                 </p>
-                {#if item.kind === "slots" && item.receive_protocol === 2}<p class="muted small">
-                    {item.remaining_files == null
-                      ? `${item.reserved_files ?? 0} file allocations used · No creator file limit`
-                      : `${item.reserved_files ?? 0} of ${item.max_files} allowances used · ${item.remaining_files} allocations remaining`}
-                  </p>{:else if item.kind === "transfers" && item.max_downloads}<p
-                    class="muted small"
-                  >
-                    {item.max_downloads} download attempts per file
-                  </p>{/if}
                 <p class="muted small">
                   {labelFor(labels, item.kind, item.id).size
                     ? formatSize(labelFor(labels, item.kind, item.id).size ?? 0) + " · "
@@ -1533,20 +1708,21 @@
                       ? formatSize(item.total_size) + " stored · "
                       : ""}Expires {date(item.expires_at)}
                 </p>
-                {#if !links[item.id]}<p class="muted small">
-                    This device has no encryption key. Use the device that created the link to open
-                    or share it. You can still revoke it here.
+                {#if !links[item.id] && !downloadLinkExhausted(item)}<p class="muted small">
+                    Encryption key is on another device
                   </p>{/if}
               </div>
               <div class="actions">
+                {#if downloadLinkExhausted(item)}<a class="button" href="/?view=send"
+                    >New send link</a
+                  >{/if}
                 <button
                   onclick={() => {
-                    renameId = item.id;
-                    renameKind = item.kind;
-                    renameValue = labelFor(labels, item.kind, item.id).custom || "";
+                    beginRename(item.kind, item.id, item.title);
                   }}>Rename</button
                 >
-                {#if links[item.id]}<button onclick={() => copy(links[item.id])}
+                {#if links[item.id] && !downloadLinkExhausted(item)}<button
+                    onclick={() => copy(links[item.id])}
                     ><Icon name="Copy" size={17} />Copy link</button
                   >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
                     >{/if}{/if}{#if item.kind === "slots"}<button
@@ -1562,8 +1738,13 @@
                 >
               </div>
               <details>
-                <summary>Technical details</summary>
+                <summary>Details</summary>
                 <p>ID: {item.id}</p>
+                {#if item.kind === "slots" && item.max_files}<p>
+                    {item.reserved_files} of {item.max_files} file allowances used
+                  </p>{:else if item.kind === "transfers" && item.max_downloads}<p>
+                    {item.max_downloads} download attempts per file
+                  </p>{/if}
               </details>
               {#if renameId === item.id && renameKind === item.kind}<form
                   class="rename-form"
@@ -1572,11 +1753,9 @@
                     rename();
                   }}
                 >
-                  <label
-                    >Name on this device<input bind:value={renameValue} maxlength="200" /></label
-                  >
+                  <label>Link title<input bind:value={renameValue} maxlength="400" /></label>
                   <p class="muted small">
-                    Only saved in this browser. Leave empty to restore the automatic title.
+                    Shown to people using this link. Leave empty to clear it.
                   </p>
                   <button class="primary">Save name</button><button
                     type="button"
@@ -1584,11 +1763,6 @@
                   >
                 </form>{/if}
             </article>{/each}
-          {#if ![...transfers.map( (t) => ({ ...t, kind: "transfers" }), ), ...slots.map( (t) => ({ ...t, kind: "slots" }), )].some((item) => historyFilter === "all" || item.kind === historyFilter) && (transfers.length || slots.length)}<p
-              class="empty"
-            >
-              No transfers in this filter on this page.
-            </p>{/if}
           {#if historyPage > 1 || historyNext}<nav class="history-pages" aria-label="History pages">
               <button
                 disabled={busy || historyLoading || !historyPrevious.length}
@@ -1872,52 +2046,32 @@
             <button class="primary" disabled={busy}>Create account</button>
           </form>
         {/if}
-        {#if tab === "Receive" && receiveId && !receiveUnavailable}
-          <section aria-label="Received files" aria-busy={receiveLoading}>
-            <div class="heading">
-              <h2>Received files</h2>
-              <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
-                >Refresh</button
-              >
-            </div>
-            {#if receiveError}<p role="alert">{receiveError}</p>{/if}
-            {#if receiveInfo}
-              {#if !received.length}<p class="muted">
-                  No completed submissions on this page. Arrivals update automatically.
-                </p>{/if}
-              {#each received as item (item.id)}{#if !receiveNeedsKey}<a
-                    class="received"
-                    href={item.url}>{item.count} file{item.count === 1 ? "" : "s"} · Save files</a
-                  >{:else}<p>
-                    {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating device
-                  </p>{/if}{/each}
-              <nav class="inbox-pages" aria-label="Received files pages">
-                <button
-                  disabled={receiveLoading || !receivePrevious.length}
-                  onclick={() => turnReceived("previous")}>Previous</button
-                >
-                <span class="muted small">Page {receivePage}</span>
-                <button
-                  disabled={receiveLoading || receiveNext === null}
-                  onclick={() => turnReceived("next")}>Next</button
-                >
-                {#if receivePage > 1}<button
-                    disabled={receiveLoading}
-                    onclick={() => turnReceived("first")}>First page</button
-                  >{/if}
-              </nav>
-              {#if receivePage > 1 && !receivePrevious.length}<p class="muted small">
-                  Earlier pages are available from First page.
-                </p>{/if}
-            {/if}
-          </section>
-        {/if}
       </section>
     </div>
   </div>
 {/if}
 
 <style>
+  .receive-create {
+    max-width: 38rem;
+  }
+  .receive-create > p {
+    margin: -0.5rem 0 0;
+  }
+  .receive-share,
+  .receive-details {
+    margin-top: 1rem;
+  }
+  .receive-share summary,
+  .receive-details summary {
+    cursor: pointer;
+    min-height: 44px;
+    padding: 0.65rem 0;
+  }
+  .new-inbox {
+    margin-top: 1rem;
+  }
+
   .inbox-pages {
     display: flex;
     flex-wrap: wrap;
@@ -2108,6 +2262,12 @@
   }
   .heading h1 {
     margin-bottom: 0;
+    flex: 1;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
   .settings-list {
     display: grid;
@@ -2242,7 +2402,7 @@
     }
     .sidebar {
       position: static;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       display: flex;
       flex-direction: column-reverse;
     }

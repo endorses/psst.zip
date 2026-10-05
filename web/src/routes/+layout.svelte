@@ -13,7 +13,10 @@
   });
 </script>
 
-<div class="app" class:workspace-shell={$page.url.pathname === "/"}>
+<div
+  class="app"
+  class:workspace-shell={$page.url.pathname === "/" || $page.url.searchParams.has("inbox")}
+>
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
     <a href="/" data-sveltekit-reload class="logo" aria-label={`${BRAND} home`}>
@@ -43,8 +46,13 @@
     {#key $page.url.pathname}{@render children()}{/key}
   </main>
   <footer>
-    Files are encrypted on your device. Use trusted HTTPS and client software: this website depends
-    on the server that delivers it. Encryption does not verify the sender or make a file safe.
+    <details class="encryption-details">
+      <summary>Encrypted on your device</summary>
+      <p>
+        Use trusted HTTPS and client software: this website depends on the server that delivers it.
+        Encryption does not verify the sender or make a file safe.
+      </p>
+    </details>
     {#key $page.url.origin}<AbuseContact
         origin={$page.url.origin}
         pathname={$page.url.pathname}
@@ -59,6 +67,8 @@
     min-height: 100dvh;
   }
   .http-notice {
+    padding: 0 0.8rem;
+    margin-top: 0;
     margin-bottom: 1rem;
     font-size: 0.85rem;
   }
@@ -140,7 +150,19 @@
     font-size: 0.8rem;
     color: var(--muted);
   }
+  .encryption-details summary {
+    cursor: pointer;
+    display: inline-block;
+    padding: 0.5rem;
+  }
+  .encryption-details p {
+    max-width: 46rem;
+    margin: 0.5rem auto;
+  }
   @media (max-width: 600px) {
+    main {
+      padding-top: 1rem;
+    }
     .tagline {
       display: none;
     }

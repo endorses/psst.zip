@@ -342,9 +342,9 @@ test("receive cap rejects oversized batches and a device without its private key
   });
   await page.reload();
   await expect(
-    page.getByText("This browser has no private key for this inbox.", { exact: false }),
+    page.getByText("The private key is on the device that created this link.", { exact: false }),
   ).toBeVisible();
-  await expect(page.getByText(/0 allocations remaining/)).toBeVisible();
+  await expect(page.getByText(/0 files remaining/)).toBeVisible();
   await expect(page.getByRole("link", { name: /Save files/ })).toHaveCount(0);
   await page.goto(`/d/${info.transfers[0].transfer_id}?inbox=${slot}`);
   await expect(page.getByRole("alert")).toContainText("This browser has no private key");

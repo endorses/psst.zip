@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 
 data class TransferDetailUiState(
     val transferId: String = "",
+    val title: String? = null,
     val type: String = "send",
     val status: String = "pending",
     val fileCount: Int = 0,
@@ -94,6 +95,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                         _uiState.value =
                             TransferDetailUiState(
                                 transferId = row.id,
+                                title = row.sharedTitle ?: row.title,
                                 type = row.type,
                                 status = row.status,
                                 fileCount = row.fileCount,
@@ -115,6 +117,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                 _uiState.value =
                     TransferDetailUiState(
                         transferId = row.id,
+                        title = row.sharedTitle ?: row.title,
                         type = row.type,
                         status = row.status,
                         fileCount = row.fileCount,
@@ -154,6 +157,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                         _uiState.value =
                             _uiState.value.copy(
                                 status = refreshed.status,
+                                title = refreshed.sharedTitle ?: refreshed.title,
                                 fileCount = refreshed.fileCount,
                                 totalSize = refreshed.totalSize,
                                 expiresAt =

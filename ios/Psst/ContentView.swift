@@ -40,7 +40,7 @@ struct ContentView: View {
             }
             .tabItem { Label("Scan", systemImage: "qrcode.viewfinder") }.tag(1)
             HomeView(receiving: true).tabItem { Label("Receive", systemImage: "square.and.arrow.down") }.tag(2)
-            HistoryView(filter: $historyFilter).tabItem { Label("History", systemImage: "clock") }.tag(3)
+            HistoryView(filter: $historyFilter, onSend: { selectedTab = 0 }).tabItem { Label("History", systemImage: "clock") }.tag(3)
         }
         .modifier(PsstStyle())
         .safeAreaInset(edge: .top) {

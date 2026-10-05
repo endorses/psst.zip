@@ -119,6 +119,7 @@ func (s *Server) Router() http.Handler {
 		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/transfers", s.createTransfer)
 		r.With(s.requireTransferRead).Get("/transfers/{transferID}", s.getTransfer)
 		r.Delete("/transfers/{transferID}", s.deleteTransfer)
+		r.With(s.requireRegularUser).Patch("/transfers/{transferID}/title", s.renameTransferTitle)
 		r.With(s.requireUpload, s.requirePublicTransfers).Post("/transfers/{transferID}/complete", s.completeTransfer)
 		r.With(s.requireTransferRead).Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
 		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
@@ -141,6 +142,7 @@ func (s *Server) Router() http.Handler {
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}/inbox", s.getInboxPage)
 		r.With(s.requireInboxOwner).Get("/slots/{slotID}/transfers/{transferID}/membership", s.inboxTransferMembership)
 		r.Delete("/slots/{slotID}", s.deleteSlot)
+		r.With(s.requireRegularUser).Patch("/slots/{slotID}/title", s.renameSlotTitle)
 		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)
 
 		r.Get("/slots/{slotID}/availability", s.slotAvailability)

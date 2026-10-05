@@ -41,6 +41,7 @@ data class FileInfo(val uri: Uri, val name: String, val size: Long, val mimeType
 
 data class SendUiState(
     val files: List<FileInfo> = emptyList(),
+    val sharedTitle: String = "",
     val isUploading: Boolean = false,
     val uploadProgress: Float = 0f,
     val isPreparing: Boolean = false,
@@ -64,6 +65,10 @@ data class SendUiState(
 }
 
 class SendViewModel(application: Application) : AndroidViewModel(application) {
+    fun setSharedTitle(value: String) {
+        if (!_uiState.value.isUploading) _uiState.update { it.copy(sharedTitle = value) }
+    }
+
     fun setMaxDownloads(value: String) {
         if (!_uiState.value.isUploading && !_uiState.value.linkPolicyLocked)
             _uiState.update { it.copy(maxDownloadsInput = value.take(11), error = null) }
@@ -221,7 +226,11 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
 
                     // Create transfer
                     val maxDownloads = selectedLimit
-                    val transfer = client.transfers.create(maxDownloads)
+                    val transfer =
+                        client.transfers.create(
+                            maxDownloads,
+                            zip.psst.shared.model.LinkTitle.normalize(_uiState.value.sharedTitle),
+                        )
                     createdTransferId = transfer.id
                     deletionToken = transfer.deleteToken
                     if (app.prefs.historyAccess.value == access)
@@ -243,6 +252,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                 deletionToken = transfer.deleteToken,
                                 accountId = accountId,
                                 automaticTitle = files.firstOrNull()?.name,
+                                sharedTitle = transfer.title,
                                 maxDownloads = maxDownloads,
                             )
                         )
@@ -455,6 +465,7 @@ internal fun restoreSendDraft(previous: SendUiState, recovery: SelectionRecovery
     else
         SendUiState(
             files = previous.files,
+            sharedTitle = previous.sharedTitle,
             maxDownloadsInput = previous.maxDownloadsInput,
             downloadLimitEnabled = previous.downloadLimitEnabled,
             linkPolicyLocked = previous.linkPolicyLocked,

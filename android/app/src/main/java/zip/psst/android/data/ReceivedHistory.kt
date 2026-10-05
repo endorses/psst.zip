@@ -44,10 +44,12 @@ internal fun mergeSentHistory(
         expiresAt = parseHistoryExpiry(transfer.expiresAt) ?: current.expiresAt,
         status = sentHistoryStatus(transfer, current.status),
         maxDownloads = transfer.maxDownloads,
+        sharedTitle = transfer.title,
     )
 
 internal fun sentHistoryStatus(transfer: Transfer, previousStatus: String? = null): String =
     when {
+        transfer.status == TransferStatus.EXHAUSTED -> "exhausted"
         previousStatus == "downloaded" || transfer.downloadedAt != null -> "downloaded"
         previousStatus == "download_started" || transfer.downloadCount > 0 -> "download_started"
         previousStatus == "failed" && transfer.status == TransferStatus.PENDING -> "failed"
@@ -117,6 +119,7 @@ internal fun historyStatusLabel(type: String, status: String): String =
         "waiting" -> "Waiting for files"
         "pending" -> "In progress"
         "failed" -> "Upload failed"
+        "exhausted" -> "Download limit reached"
         "expired" -> "Expired"
         "unavailable" -> "Expired or revoked"
         else -> "Unknown"

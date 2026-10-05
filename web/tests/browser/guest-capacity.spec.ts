@@ -36,9 +36,8 @@ test("accumulated picker additions include empty-file overhead and retain prior 
     return route.fulfill({ json: v });
   });
   await open(page);
-  await expect(page.getByRole("region", { name: "Upload availability" })).toContainText(
-    "Up to 2 files",
-  );
+  await expect(page.getByLabel("Choose files")).toBeVisible();
+  await expect(page.getByLabel("Upload availability")).toHaveCount(0);
   await page.getByLabel("Choose files").setInputFiles(file("first.bin", 1));
   await page.getByLabel("Choose files").setInputFiles(file("empty.bin", 0));
   await expect(page.locator(".file-list li")).toHaveCount(2);
@@ -54,7 +53,7 @@ test("accumulated picker additions include empty-file overhead and retain prior 
   await expect(page.locator(".file-list li")).toHaveCount(1);
   expect(reads).toBeGreaterThanOrEqual(7);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole("button", { name: "Refresh availability" }).focus();
+  await page.getByRole("button", { name: "Remove empty.bin", exact: true }).focus();
   await page.screenshot({ path: testInfo.outputPath("guest-capacity-mobile.png"), fullPage: true });
 });
 
@@ -80,16 +79,17 @@ test("unknown, unavailable and malformed refreshed capacity keep the selection a
     ),
   );
   await open(page);
-  const panel = page.getByRole("region", { name: "Upload availability" });
-  await expect(panel).toContainText("Upload space could not be checked");
+  const panel = page.getByLabel("Upload availability", { exact: true });
+  await expect(panel).toContainText("Could not check availability");
   response = v;
-  await panel.getByRole("button", { name: "Refresh availability" }).click();
+  await panel.getByRole("button", { name: "Refresh" }).click();
   await page.getByLabel("Choose files").setInputFiles(file("keep.bin", 20));
   const send = page.getByRole("button", { name: "Send files", exact: true });
   await expect(send).toBeEnabled();
   offline = true;
-  await panel.getByRole("button", { name: "Refresh availability" }).click();
-  await expect(panel).toContainText("snapshot may be stale");
+  // A new selection performs a fresh check, preserving the prior files on failure.
+  await page.getByLabel("Choose files").setInputFiles(file("offline.bin", 0));
+  await expect(panel).toContainText("Could not check availability");
   await expect(send).toBeDisabled();
   await expect(page.getByRole("alert")).not.toContainText("DO_NOT_DISPLAY");
   offline = false;
@@ -112,13 +112,13 @@ test("unknown, unavailable and malformed refreshed capacity keep the selection a
     { ...v, upload_capacity: { ...v.upload_capacity, available_files: -1 } },
     { ...v, recipient_public_key: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI" },
   ]) {
-    await panel.getByRole("button", { name: "Refresh availability" }).click();
+    await panel.getByRole("button", { name: "Refresh" }).click();
     await expect(send).toBeDisabled();
     await expect(page.locator(".file-list li")).toHaveCount(1);
-    await expect(panel).toContainText("snapshot may be stale");
+    await expect(panel).toContainText("Could not check availability");
   }
   response = v;
-  await panel.getByRole("button", { name: "Refresh availability" }).click();
+  await panel.getByRole("button", { name: "Refresh" }).click();
   await expect(send).toBeEnabled();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
@@ -152,21 +152,25 @@ test("a final fresh preflight blocks allocation, while an authoritative allocati
   await page.getByRole("button", { name: "Send files", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("exceed the space currently available");
   expect(posts).toBe(0);
-  const refresh = page.getByRole("button", { name: "Refresh availability" });
-  response = v;
-  await refresh.click();
+  async function refreshSelection() {
+    response = v;
+    await expect(page.locator(".file-list li")).toHaveCount(1);
+    await page.getByRole("button", { name: "Remove keep.bin", exact: true }).click();
+    await page.getByLabel("Choose files").setInputFiles(file("keep.bin", 20));
+    await expect(page.getByRole("button", { name: "Retry upload", exact: true })).toBeEnabled();
+  }
+  await refreshSelection();
   response = { ...v, upload_capacity: { ...v.upload_capacity, manifest_reserve_bytes: 128 } };
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("file details exceed");
   expect(posts).toBe(0);
-  response = v;
-  await refresh.click();
+  await refreshSelection();
   configLimit = 10;
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Files must be no larger");
   expect(posts).toBe(0);
   configLimit = 1024 ** 2;
-  await refresh.click();
+  await refreshSelection();
   await page.getByRole("button", { name: "Retry upload", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("storage or object limit");
   expect(posts).toBe(1);

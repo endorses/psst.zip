@@ -29,6 +29,7 @@ fun TransferDetailScreen(
     encryptionKey: String,
     type: String,
     onBack: () -> Unit,
+    onCreateReplacement: () -> Unit = {},
     viewModel: TransferDetailViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -69,11 +70,15 @@ fun TransferDetailScreen(
             AccountIndicator()
             if (state.isLoading) CircularProgressIndicator()
             else {
+                state.title?.let { Text(it, style = MaterialTheme.typography.headlineSmall) }
                 Text(
                     historyStatusLabel(state.type, state.status),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (state.shareUrl.isNotBlank())
+                if (
+                    state.shareUrl.isNotBlank() &&
+                        state.status !in listOf("exhausted", "unavailable", "expired", "revoked")
+                )
                     LinkPanel(state.shareUrl) {
                         Text(
                             stringResource(
@@ -85,9 +90,12 @@ fun TransferDetailScreen(
                         )
                         ExpiryCountdown(state.expiresAt)
                     }
-                if (state.maxDownloads > 0)
+                if (state.status == "exhausted") {
+                    Text("This link is closed.")
+                    Button(onClick = onCreateReplacement) { Text("Create replacement link") }
+                } else if (state.maxDownloads > 0)
                     Text(
-                        "Limit: ${state.maxDownloads} download attempts per file. ${state.exhaustedFiles} of ${state.fileCount} files have no attempts remaining. Interrupted downloads and retries count."
+                        "${state.exhaustedFiles} of ${state.fileCount} files have reached their download limit."
                     )
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.offline) Text(stringResource(R.string.offline_retained))

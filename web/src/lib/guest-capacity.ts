@@ -1,6 +1,7 @@
 import { wireSize, FILE_CHUNK_SIZE } from "./chunked-files.ts";
 import type { FileManifestEntry } from "./crypto.ts";
 import { assertFileSize, MAX_FILE_BYTES } from "./limits.ts";
+import { validSharedTitle } from "./link-title.ts";
 
 export interface GuestCapacity {
   checked_at: string;
@@ -12,6 +13,7 @@ export interface GuestCapacity {
 }
 export interface SlotAvailability {
   id: string;
+  title?: string | null;
   receive_protocol: number;
   recipient_public_key: string;
   max_files: number;
@@ -58,6 +60,7 @@ export function validateSlotAvailability(value: unknown, slotId: string): SlotAv
   if (
     !v ||
     v.id !== slotId ||
+    !validSharedTitle(v.title) ||
     v.receive_protocol !== 2 ||
     typeof v.recipient_public_key !== "string" ||
     !/^[A-Za-z0-9_-]{43}$/.test(v.recipient_public_key) ||

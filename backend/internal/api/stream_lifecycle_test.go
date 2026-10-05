@@ -151,6 +151,10 @@ func TestExhaustedCleanupRetainsPayloadUntilFinalReaderCloses(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("download did not begin")
 	}
+	closed := downloadStatus(t, env, id)
+	if closed.Status != "exhausted" || closed.DownloadedAt != nil {
+		t.Fatalf("last reader did not close link independently of saving: %+v", closed)
+	}
 	sweep(t, env)
 	if !store.HasReaders(id) {
 		t.Fatal("reader lease missing")

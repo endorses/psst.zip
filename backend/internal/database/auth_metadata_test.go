@@ -317,7 +317,9 @@ func TestAuthMetadataCleanupUsesExpiryIndexes(t *testing.T) {
 
 func TestAuthMetadataExpiredPairingTreesCannotBlockSessionRotation(t *testing.T) {
 	q, u := authMetadataUser(t)
-	now := time.Now().UTC()
+	// Simulate a slow fixture deterministically without sleeping. Retirement
+	// happens at login time, after this initial population timestamp.
+	now := time.Now().UTC().Add(-5 * time.Second)
 	seedMetadataSessions(t, q, u, 32, now.Add(-time.Hour))
 	tx, err := q.db.Begin()
 	if err != nil {
@@ -347,7 +349,10 @@ func TestAuthMetadataExpiredPairingTreesCannotBlockSessionRotation(t *testing.T)
 		t.Fatal("expired rows blocked capacity rotation", list, err)
 	}
 	old, _, err := q.SessionByHash([]byte("session-0000"))
-	if err == nil && now.Before(old.ExpiresAt) {
+	// Fixture population can take seconds under race instrumentation. Compare
+	// against the current verification time, as authentication does, rather than
+	// the stale pre-population timestamp (retirement is relative to login time).
+	if err == nil && time.Now().Before(old.ExpiresAt) {
 		t.Fatal("earliest active session retained")
 	}
 	if got := countAuthRows(t, q, "pairings"); got != 1024-2*MaxAuthPairingsPerUser {

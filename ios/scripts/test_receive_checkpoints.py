@@ -25,6 +25,7 @@ def main():
             "HistoryJSONStream",
             "ReceiveHistoryStream",
             "TransferRecord",
+            "SharedLinkTitle",
             "ReceiveCheckpoint",
             "ReceiveCheckpointStorage",
         ):
@@ -32,9 +33,7 @@ def main():
         fixture = ROOT / "scripts/receive_checkpoint_harness"
         crypto = work / "Sources/CryptoKit"
         crypto.mkdir()
-        shutil.copy2(
-            ROOT / "scripts/guest_store_harness/CryptoKit.swift", crypto
-        )
+        shutil.copy2(ROOT / "scripts/guest_store_harness/CryptoKit.swift", crypto)
         shutil.copy2(fixture / "BoundaryStubs.swift", sources)
         (tests / "ReceiveCheckpointTests.swift").write_text(
             (ROOT / "PsstTests/ReceiveCheckpointTests.swift")
@@ -58,8 +57,7 @@ def main():
         (sqlite / "module.modulemap").write_text(
             'module SQLite3 [system] {\n header "sqlite3.h"\n link "sqlite3"\n export *\n}\n'
         )
-        (work / "Package.swift").write_text(
-            """// swift-tools-version:5.9
+        (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
 let package = Package(name: "ReceiveCheckpointHarness", targets: [
     .systemLibrary(name: "SQLite3"),
@@ -67,8 +65,7 @@ let package = Package(name: "ReceiveCheckpointHarness", targets: [
     .target(name: "ReceiveCheckpointHarness", dependencies: ["SQLite3", "CryptoKit"]),
     .testTarget(name: "ReceiveCheckpointHarnessTests", dependencies: ["ReceiveCheckpointHarness", "SQLite3"])
 ])
-"""
-        )
+""")
         subprocess.run(
             [
                 "docker",

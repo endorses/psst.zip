@@ -22,6 +22,8 @@ struct ScanReceiveView: View {
     @State private var pasted = ""
     @State private var error: String?
     @State private var uploadLink: ParsedUrl?
+    @State private var uploadPresented = false
+    @State private var uploadTitle: String?
     @State private var uploadLimit: Int64?
     @State private var capacityMessage = "Checking receive capacity…"
     @State private var capacityReady = false
@@ -35,31 +37,49 @@ struct ScanReceiveView: View {
     @State private var redownload: GuestDownload?
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    inputControls
-                    if let error {
-                        Text(error).foregroundStyle(PsstTheme.error)
-                    }
-                    if let message = model.error {
-                        Text(message).foregroundStyle(PsstTheme.error)
-                    }
-                    if let message = store.error {
-                        Text(message).foregroundStyle(PsstTheme.error)
-                    }
-                    if let reportContext, model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil {
-                        AbuseReportButton(context: reportContext).id(reportContext.id)
-                    }
-                    pairingPanel
+            Group {
+                if uploadPresented, uploadLink != nil {
                     uploadPanel
-                    progressPanel
-                    if let id = model.currentID, let record = try? store.find(id) {
-                        GuestDownloadDetail(record: record)
-                        Button("View in History", action: onHistory)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            if uploadLink != nil {
+                                Button(model.uploadComplete ? "Return to sent files" : "Return to send files") { uploadPresented = true }.buttonStyle(PrimaryAction())
+                            }
+                            inputControls
+                            if let error {
+                                Text(error).foregroundStyle(PsstTheme.error)
+                            }
+                            if let message = model.error {
+                                Text(message).foregroundStyle(PsstTheme.error)
+                            }
+                            if let message = store.error {
+                                Text(message).foregroundStyle(PsstTheme.error)
+                            }
+                            if let reportContext, model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil {
+                                AbuseReportButton(context: reportContext).id(reportContext.id)
+                            }
+                            pairingPanel
+                            progressPanel
+                            if let id = model.currentID, let record = try? store.find(id) {
+                                GuestDownloadDetail(record: record)
+                                Button("View in History", action: onHistory)
+                            }
+                        }.padding().frame(maxWidth: 620)
                     }
-                }.padding().frame(maxWidth: 620)
+                }
             }
-            .navigationTitle("Scan QR code")
+            .navigationTitle(uploadPresented ? "Send files" : "Scan QR code")
+            .toolbar {
+                if uploadPresented {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Back") {
+                            uploadPresented = false
+                            cameraEnabled = false
+                        }
+                    }
+                }
+            }
             .onAppear { visible = true }
             .onDisappear { visible = false }
             .fileImporter(isPresented: $imagePicking, allowedContentTypes: [.image]) { result in
@@ -106,13 +126,7 @@ struct ScanReceiveView: View {
             .accessibilityLabel("QR camera preview")
         } else {
             Button("Scan again") {
-                model.resetPresentation()
-                uploadLink = nil
-                pairingRaw = nil
-                clearUploadSelection()
-                error = nil
-                reportContext = nil
-                cameraEnabled = true
+                resetScan()
             }.disabled(model.active || pairing)
         }
         Text("Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received.")
@@ -168,46 +182,73 @@ struct ScanReceiveView: View {
     @ViewBuilder private var uploadPanel: some View {
         if let uploadLink {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Send to this receive link").font(.headline)
-                Text(uploadLink.origin).textSelection(.enabled)
-                Text("Choose files to send to the owner of this link.")
-                if let uploadLimit {
-                    Text("Up to " + ByteCountFormatter.string(fromByteCount: uploadLimit, countStyle: .binary) + " per file.").font(.footnote)
-                }
-                Text(capacityMessage).font(.footnote).accessibilityAddTraits(.updatesFrequently)
-                Button("Refresh capacity") { refreshCapacity() }
-                    .disabled(model.active || checkingCapacity)
-                Button(selected.isEmpty ? "Choose files" : "Add files") { picking = true }
-                    .disabled(model.active || checkingCapacity || model.uploadComplete)
-                ForEach(selected, id: \.self) { url in
-                    HStack {
-                        Text(url.lastPathComponent).lineLimit(2)
-                        Spacer()
-                        Button {
-                            selected.removeAll { $0 == url }
-                            refreshCapacity()
-                        } label: {
-                            Image(systemName: "xmark.circle")
+                Text(uploadTitle ?? "Send files").font(.title2.bold())
+                Text(uploadLink.origin).font(.caption).textSelection(.enabled)
+                if uploadLink.origin.hasPrefix("http://") { Text("HTTP connection").font(.caption).foregroundStyle(PsstTheme.warning) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if model.uploadComplete { Label("Files sent", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success) }
+                        if let error { Text(error).foregroundStyle(PsstTheme.error) }
+                        if let error = model.error { Text(error).foregroundStyle(PsstTheme.error) }
+                        progressPanel
+                        if selected.isEmpty {
+                            ContentUnavailableView("Choose files", systemImage: "doc.badge.plus", description: Text("Send files to the owner of this link."))
                         }
-                        .accessibilityLabel("Remove " + url.lastPathComponent)
-                        .disabled(model.active)
-                    }
+                        ForEach(selected, id: \.self) { url in
+                            HStack {
+                                Image(systemName: "doc")
+                                Text(url.lastPathComponent).lineLimit(2)
+                                Spacer()
+                                if !model.uploadComplete {
+                                    Button {
+                                        selected.removeAll { $0 == url }
+                                        refreshCapacity()
+                                    } label: {
+                                        Image(systemName: "xmark.circle")
+                                    }
+                                    .accessibilityLabel("Remove " + url.lastPathComponent).disabled(model.active)
+                                }
+                            }.padding(.vertical, 8)
+                        }
+                        if model.cleanupPending { Text("Unfinished upload cleanup will retry when connected.").font(.footnote) }
+                        DisclosureGroup("Details & help") {
+                            if let uploadLimit { Text("Up to " + ByteCountFormatter.string(fromByteCount: uploadLimit, countStyle: .binary) + " per file.").font(.footnote) }
+                            if let reportContext { AbuseReportButton(context: reportContext).id(reportContext.id) }
+                            Button("History", action: onHistory)
+                            Button("Scan again") { resetScan() }.disabled(model.active)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(maxHeight: .infinity)
+            }.padding().frame(maxWidth: 620, maxHeight: .infinity, alignment: .topLeading)
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 10) {
+                        if !model.uploadComplete {
+                            Text(capacityMessage).font(.caption).foregroundStyle(capacityReady ? PsstTheme.secondary : PsstTheme.warning)
+                            if !capacityReady { Button("Retry capacity check") { refreshCapacity() }.disabled(model.active || checkingCapacity) }
+                            HStack {
+                                Button("Add files") { picking = true }.buttonStyle(.bordered).disabled(model.active || checkingCapacity)
+                                Button("Send files") { model.send(selected, to: uploadLink) }.buttonStyle(PrimaryAction())
+                                    .disabled(selected.isEmpty || !capacityReady || checkingCapacity || model.active)
+                            }
+                        } else {
+                            Button("Scan again") { resetScan() }.buttonStyle(PrimaryAction())
+                        }
+                    }.padding().background(PsstTheme.surface)
                 }
-                Button("Send files") { model.send(selected, to: uploadLink) }
-                    .buttonStyle(PrimaryAction()).disabled(selected.isEmpty || !capacityReady || checkingCapacity || model.active || model.uploadComplete)
-                if model.uploadComplete {
-                    Label("Files sent", systemImage: "checkmark.circle")
-                }
-                if model.cleanupPending {
-                    Text("Partial server files will be removed when the connection is restored.").font(.footnote)
-                }
-                Button("Close receive link") {
-                    self.uploadLink = nil
-                    reportContext = nil
-                    clearUploadSelection()
-                }.disabled(model.active)
-            }
         }
+    }
+
+    private func resetScan() {
+        guard !model.active, !pairing else { return }
+        model.resetPresentation()
+        uploadLink = nil
+        uploadPresented = false
+        uploadTitle = nil
+        pairingRaw = nil
+        clearUploadSelection()
+        error = nil
+        reportContext = nil
+        cameraEnabled = true
     }
 
     @ViewBuilder private var progressPanel: some View {
@@ -233,6 +274,7 @@ struct ScanReceiveView: View {
         error = nil
         pairingRaw = nil
         uploadLink = nil
+        uploadPresented = false
         clearUploadSelection()
         reportContext = AbuseReportContext.fromLink(raw)
         guard let input = ScanInputClassifier.shared.classify(raw: raw) else {
@@ -255,6 +297,8 @@ struct ScanReceiveView: View {
             }
         case .upload:
             uploadLink = input.link
+            uploadPresented = input.link != nil
+            cameraEnabled = false
             if let link = input.link { reportContext = AbuseReportContext(origin: link.origin, resourceType: "slot", resourceID: link.id) }
             refreshCapacity()
         case .pairing:
@@ -269,6 +313,7 @@ struct ScanReceiveView: View {
         checkingCapacity = false
         capacityReady = false
         uploadLimit = nil
+        uploadTitle = nil
         selected = []
         capacityMessage = "Checking receive capacity…"
     }
@@ -298,18 +343,19 @@ struct ScanReceiveView: View {
                 do { sizes = candidate.isEmpty ? [] : try BufferedUpload.sizes(candidate, limit: Int(limit)) } catch { throw GuestUploadSelectionError.invalidFiles }
                 let availability = try await client.slots.availability(slotId: link.id)
                 guard capacityRequest == request else { return }
+                uploadTitle = try SharedLinkTitle.normalize(availability.title)
                 try GuestUploadPreflight.validate(availability, link: link, urls: candidate, sizes: sizes)
                 guard let capacity = availability.uploadCapacity,
-                    let files = capacity.availableFiles, let bytes = capacity.availableWireBytes
+                    let files = capacity.availableFiles, capacity.availableWireBytes != nil
                 else { throw GuestUploadSelectionError.unavailable }
                 selected = candidate
                 capacityReady = true
-                capacityMessage =
-                    "Available for this upload: \(files.int64Value) files · " + ByteCountFormatter.string(fromByteCount: bytes.int64Value, countStyle: .binary)
-                    + " encrypted data. Capacity is checked again before sending."
+                capacityMessage = "Up to \(files.int64Value) files · " + ByteCountFormatter.string(fromByteCount: limit, countStyle: .binary) + " per file"
             } catch {
                 guard capacityRequest == request else { return }
-                capacityMessage = (error as? GuestUploadSelectionError)?.localizedDescription ?? GuestUploadSelectionError.unavailable.localizedDescription
+                capacityMessage =
+                    (error as? GuestUploadSelectionError)?.localizedDescription ?? TransferIncident.from(error)?.localizedDescription
+                    ?? GuestUploadSelectionError.unavailable.localizedDescription
             }
         }
     }

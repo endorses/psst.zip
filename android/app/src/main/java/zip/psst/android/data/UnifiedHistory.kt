@@ -32,7 +32,16 @@ fun unifiedHistory(
                 else -> true
             }
         }
-        .sortedWith(compareByDescending<HistoryRow> { it.createdAt }.thenBy { it.key })
+        .sortedWith(
+            compareByDescending<HistoryRow> { it.createdAt }
+                .thenByDescending {
+                    when (it) {
+                        is HistoryRow.Owned -> "owned:${it.value.id}"
+                        is HistoryRow.Downloaded -> "downloaded:${it.value.identity}"
+                    }
+                }
+                .thenBy { it.key }
+        )
 
 /** Display only: persisted manifest names remain untouched for authentication and resume checks. */
 internal fun receivedFilenameLabel(name: String): String =
@@ -45,9 +54,10 @@ internal fun automaticHistoryTitle(firstName: String?, count: Int): String? =
     }
 
 internal fun historyTitle(entry: TransferHistoryEntity): String =
-    entry.title?.takeIf { it.isNotBlank() }
+    entry.sharedTitle?.takeIf { it.isNotBlank() }
+        ?: entry.title?.takeIf { it.isNotBlank() }
         ?: automaticHistoryTitle(entry.automaticTitle, entry.fileCount)
-        ?: "${entry.fileCount} ${if (entry.fileCount == 1) "file" else "files"} · ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(entry.createdAt))}"
+        ?: if (entry.type == "sent") "Sent files" else "Receive link"
 
 /** Keep the filename extension/count visible, while accessibility exposes the full original. */
 internal fun compactHistoryTitle(title: String, limit: Int = 64): String {

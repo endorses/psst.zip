@@ -104,7 +104,8 @@ complete. See [storage recovery](storage-recovery.md) for those coverage limits.
 Resource and administrator-user queries accept `limit` (1–100) and an opaque
 `after` cursor, returning `next_cursor` or null. The web UI loads one 50-entry
 page at a time. Android and iOS also browse one server page at a time and keep
-local links/downloads in independently indexed pages. First/Previous/Next controls
+local links/downloads in indexed streams merged into one bounded All list.
+Type filters query their matching source. First/Previous/Next controls
 retain at most 100 previous cursors while allowing further forward traversal.
 Page merges preserve names, keys and save checkpoints; absence from a page is
 not evidence of deletion. Failed or obsolete requests retain the current page.

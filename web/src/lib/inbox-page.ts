@@ -1,11 +1,13 @@
 import { base64urlDecode, base64urlEncode } from "./crypto.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
+import { validSharedTitle } from "./link-title.ts";
 
 export const INBOX_PAGE_SIZE = 50;
 export const INBOX_PREVIOUS_WINDOW = 100;
 export const inboxUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface InboxPage {
   id: string;
+  title?: string | null;
   status: "waiting" | "has_uploads";
   expires_at: string;
   created_at: string;
@@ -47,6 +49,7 @@ export function validateInboxPage(value: unknown, slotId: string, after = ""): I
   const p = value as InboxPage;
   if (
     p.id !== slotId ||
+    !validSharedTitle(p.title) ||
     !["waiting", "has_uploads"].includes(p.status) ||
     p.paginated !== true ||
     !timestamp(p.expires_at) ||

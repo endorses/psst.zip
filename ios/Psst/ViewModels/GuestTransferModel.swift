@@ -121,6 +121,10 @@ final class GuestTransferModel {
             stage = "Inspecting transfer"
             let transfer = try await client.transfers.get(transferId: record.transferID)
             guard transfer.id.lowercased() == record.transferID.lowercased() else { throw GuestError.invalidManifest }
+            record.sharedTitle = try SharedLinkTitle.normalize(transfer.title)
+            record.exhausted = transfer.status == .exhausted
+            try store.update(record)
+            if record.exhausted == true { throw GuestError.downloadLimit }
             guard transfer.status == .complete else { throw GuestError.notReady }
             try Task.checkCancellation()
             let encrypted = try await client.transfers.downloadManifest(transferId: record.transferID)
@@ -239,6 +243,8 @@ final class GuestTransferModel {
                 var record = try store.find(requested.id)
             else { return }
             record.remainingDownloads = Self.remainingAttempts(transfer)
+            record.sharedTitle = try SharedLinkTitle.normalize(transfer.title)
+            record.exhausted = transfer.status == .exhausted
             try store.update(record)
         } catch { /* Keep last known counters; a network failure is not proof of exhaustion. */  }
     }

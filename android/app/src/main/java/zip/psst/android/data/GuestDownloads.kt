@@ -41,6 +41,7 @@ data class GuestDownload(
     val pending: SavedGuestFile? = null,
     val complete: Boolean = false,
     val receiptPending: Boolean = false,
+    val sharedTitle: String? = null,
 )
 
 @Serializable

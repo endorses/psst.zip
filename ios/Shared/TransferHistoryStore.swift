@@ -185,12 +185,23 @@ import Foundation
             values = records.map { $0.preservingLocalName(from: existing[$0.localID]) }
         }
     }
-    func rename(_ record: TransferRecord, name: String, session: DeviceSession) throws {
-        guard record.belongs(to: session), session.canTransfer, SecretStore.session == session else { throw AccountError.changed }
-        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    func rename(_ record: TransferRecord, name: String, session: DeviceSession) async throws {
+        guard record.belongs(to: session), session.canTransfer, SecretStore.session == session, UUID(uuidString: record.id) != nil else { throw AccountError.changed }
+        let title = try SharedLinkTitle.normalize(name)
+        let path = (record.isSlot == true ? "slots/" : "transfers/") + record.id + "/title"
+        let data = try await AccountHTTP.request(
+            server: session.serverURL, path: path, method: "PATCH", token: session.token,
+            body: ["title": title ?? ""], maximumBytes: 4096, timeout: 10)
+        struct Reply: Decodable {
+            let title: String?
+            enum CodingKeys: String, CodingKey { case title }
+            init(from decoder: Decoder) throws { title = try decoder.container(keyedBy: CodingKeys.self).decode(String?.self, forKey: .title) }
+        }
+        let saved = try SharedLinkTitle.normalize(JSONDecoder().decode(Reply.self, from: data).title)
+        guard saved == title, SecretStore.session == session, !Task.isCancelled else { throw AccountError.changed }
         try mutate(ids: [record.localID]) { values in
             guard !values.isEmpty else { return }
-            values[0].customTitle = normalized.isEmpty ? nil : String(normalized.prefix(200))
+            values[0].sharedTitle = saved
         }
     }
     func remove(_ record: TransferRecord) throws {

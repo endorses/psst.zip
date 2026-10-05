@@ -39,6 +39,7 @@ import kotlinx.serialization.json.Json
 
 data class ScanState(
     val origin: String = "",
+    val sharedTitle: String? = null,
     val reportReference: AbuseReportReference? = null,
     val kind: ScanInputKind? = null,
     val busy: Boolean = false,
@@ -381,6 +382,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     var exhaustedBlobIds = emptySet<String>()
                     run {
                         val transfer = client.transfers.get(record.transferId)
+                        if (transfer.status == TransferStatus.EXHAUSTED)
+                            throw IllegalStateException(
+                                "Download limit reached. Saved local copies remain available."
+                            )
                         require(
                             transfer.id == record.transferId &&
                                 transfer.status == TransferStatus.COMPLETE
@@ -411,7 +416,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         require(record.saved.isEmpty() || record.files == manifest.files) {
                             "The file list changed after some files were saved"
                         }
-                        record = record.copy(files = manifest.files)
+                        record = record.copy(files = manifest.files, sharedTitle = transfer.title)
                         store.save(record)
                     }
                     if (
@@ -736,6 +741,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.copy(
                         busy = true,
+                        error = null,
                         stage = "Checking receive link",
                         uploadCapacity = null,
                         uploadCapacityMessage = "Checking receive capacity…",
@@ -787,9 +793,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                 "Capacity is unavailable or out of date. Refresh before sending; your files are still selected."
                         )
                     }
-                    error(
-                        e.message ?: "Receive capacity could not be checked. Refresh and try again."
-                    )
+                    error(zip.psst.android.data.receiveCapacityError(e))
                 } finally {
                     client.close()
                     _state.update { it.copy(busy = false) }
@@ -842,6 +846,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             }
         _state.update {
             it.copy(
+                sharedTitle = policy.title,
                 maxUploadFiles = policy.maxFiles,
                 remainingUploadFiles = policy.remainingFiles,
                 maxFileBytes = limit,

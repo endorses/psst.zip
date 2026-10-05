@@ -1,7 +1,7 @@
 import Foundation
 
 enum TransferDirection: String, Codable { case sent, received }
-enum TransferState: String, Codable { case inProgress, complete, expired, failed, downloaded, started, saved, revoked }
+enum TransferState: String, Codable { case inProgress, complete, expired, failed, downloaded, started, saved, revoked, exhausted }
 
 /// Optional fields preserve decoding of installed users' original history.
 struct TransferRecord: Identifiable, Codable {
@@ -17,6 +17,7 @@ struct TransferRecord: Identifiable, Codable {
     var ownerID: String? = nil
     var title: String? = nil
     var customTitle: String? = nil
+    var sharedTitle: String? = nil
     var isSlot: Bool? = nil
     // Legacy import fields only. Normal storage moves them to indexed checkpoints.
     var savedFiles: [String: String]? = nil
@@ -48,6 +49,7 @@ struct TransferRecord: Identifiable, Codable {
         case .saved: return String(localized: "Files saved locally")
         case .expired: return String(localized: "Expired")
         case .revoked: return String(localized: "Revoked")
+        case .exhausted: return String(localized: "Download limit reached")
         case .failed: return String(localized: "Upload stopped")
         }
     }
@@ -82,14 +84,17 @@ struct TransferRecord: Identifiable, Codable {
             : String(localized: "No optional download limit")
     }
 
+    var linkActive: Bool { !isExpired && state != .revoked && state != .exhausted }
+
     var displayTitle: String {
+        if let sharedTitle, !sharedTitle.isEmpty { return sharedTitle }
         if let name = customTitle, !name.isEmpty {
             return name
         }
         if let title, !title.isEmpty {
             return fileCount > 1 ? title + " + \(fileCount - 1) files" : title
         }
-        return (isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files")) + " · " + createdAt.formatted(date: .abbreviated, time: .shortened)
+        return isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files")
     }
 
     var isExpired: Bool {

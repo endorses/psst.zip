@@ -17,10 +17,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import zip.psst.shared.model.Transfer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 @Entity(
     tableName = "transfer_history",
-    indices = [Index(value = ["accountId", "originScope", "createdAt", "id"])],
+    indices =
+        [
+            Index(value = ["accountId", "originScope", "createdAt", "id"]),
+            Index(value = ["accountId", "originScope", "type", "createdAt", "id"]),
+        ],
 )
 data class TransferHistoryEntity(
     @PrimaryKey val id: String,
@@ -36,6 +41,7 @@ data class TransferHistoryEntity(
     val accountId: String? = null,
     val title: String? = null,
     val automaticTitle: String? = null,
+    val sharedTitle: String? = null,
     @ColumnInfo(defaultValue = "''") val originScope: String = localHistoryScope(serverUrl),
     @ColumnInfo(defaultValue = "0") val summaryUpdating: Boolean = false,
     @ColumnInfo(defaultValue = "'pending'") val checkpointState: String = "ready",
@@ -64,6 +70,30 @@ interface TransferHistoryDao : InboxCheckpointQueries {
 
     @Query("SELECT EXISTS(SELECT 1 FROM transfer_history WHERE accountId IS NULL LIMIT 1)")
     fun hasLegacy(): Flow<Boolean>
+
+    @Query(ACCOUNT_FILTERED_PAGE_SQL)
+    suspend fun filteredDeviceHistoryPage(
+        accountId: String,
+        originScope: String,
+        kind: String,
+        beforeTime: Long,
+        beforeId: String,
+    ): List<TransferHistoryEntity>
+
+    suspend fun deviceHistoryPage(
+        accountId: String,
+        originScope: String,
+        kind: String,
+        beforeTime: Long,
+        beforeId: String,
+    ): List<TransferHistoryEntity> =
+        if (kind.isEmpty()) observeLocalPage(accountId, originScope, beforeTime, beforeId).first()
+        else filteredDeviceHistoryPage(accountId, originScope, kind, beforeTime, beforeId)
+
+    @Query(
+        "UPDATE transfer_history SET sharedTitle=:title,title=NULL WHERE id=:id AND accountId=:accountId AND originScope=:originScope"
+    )
+    suspend fun saveSharedTitle(id: String, accountId: String, originScope: String, title: String?)
 
     @Query(
         "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC"
@@ -269,13 +299,21 @@ interface TransferHistoryDao : InboxCheckpointQueries {
             InboxFileCheckpoint::class,
             InboxLegacyCheckpoint::class,
         ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transferHistoryDao(): TransferHistoryDao
 
     companion object {
+        val MIGRATION_10_11 =
+            object : Migration(10, 11) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE transfer_history ADD COLUMN sharedTitle TEXT")
+                    db.execSQL(ACCOUNT_FILTERED_INDEX_SQL)
+                }
+            }
+
         val MIGRATION_9_10 =
             object : Migration(9, 10) {
                 override fun migrate(db: SupportSQLiteDatabase) {
@@ -368,6 +406,7 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
                 )
                 .build()
         }

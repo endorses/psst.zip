@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +70,7 @@ fun SendScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var settings by remember { mutableStateOf(false) }
     var confirmStop by remember { mutableStateOf(false) }
     var leaveAfterStop by remember { mutableStateOf(false) }
     val requestBack = {
@@ -98,6 +101,37 @@ fun SendScreen(
                     Text(stringResource(R.string.keep_uploading))
                 }
             },
+        )
+
+    if (settings)
+        AlertDialog(
+            onDismissRequest = { settings = false },
+            title = { Text("Link settings") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = state.sharedTitle,
+                        onValueChange = viewModel::setSharedTitle,
+                        label = { Text("Link title (optional)") },
+                        supportingText = { Text("Shown to people using this link") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    LinkLimits(
+                        enabled = state.downloadLimitEnabled,
+                        value = state.maxDownloadsInput,
+                        editable = !state.linkPolicyLocked,
+                        label = "Maximum downloads per file",
+                        help = "Each started download counts, including interrupted downloads.",
+                        onEnabledChange = viewModel::setDownloadLimitEnabled,
+                        onValueChange = viewModel::setMaxDownloads,
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } },
         )
 
     LaunchedEffect(Unit) { viewModel.refreshLimit() }
@@ -150,15 +184,13 @@ fun SendScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             AccountIndicator()
             if (!state.isUploading)
-                LinkLimits(
-                    enabled = state.downloadLimitEnabled,
-                    value = state.maxDownloadsInput,
-                    editable = !state.linkPolicyLocked,
-                    label = "Maximum downloads per file",
-                    help = "Each started download counts, including interrupted downloads.",
-                    onEnabledChange = viewModel::setDownloadLimitEnabled,
-                    onValueChange = viewModel::setMaxDownloads,
-                )
+                TextButton(onClick = { settings = true }) {
+                    Text(
+                        if (state.sharedTitle.isBlank() && !state.downloadLimitEnabled)
+                            "Link settings · title and limits"
+                        else "Link settings · edit title or limits"
+                    )
+                }
             Text(
                 state.maxFileBytes?.let {
                     "Up to ${formatFileSize(it)} per file. Files are encrypted automatically."
@@ -167,8 +199,9 @@ fun SendScreen(
             )
             if (state.files.isNotEmpty())
                 Text(
-                    stringResource(
-                        R.string.selected_files,
+                    pluralStringResource(
+                        R.plurals.selected_file_summary,
+                        state.files.size,
                         state.files.size,
                         formatFileSize(state.files.sumOf { it.size }),
                     ),

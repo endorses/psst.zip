@@ -8,8 +8,16 @@ import (
 )
 
 // CreateReceiveSlot persists immutable submission policy in the same allocation.
-func (q *Queries) CreateReceiveSlot(id string, expires time.Time, hash []byte, owner string, protocol int, publicKey string, maxFiles int) error {
-	return q.allocationExec(0, false, &expires, `INSERT INTO slots(id,status,expires_at,delete_token_hash,owner_id,receive_protocol,recipient_public_key,max_files) VALUES(?,'waiting',?,?,?,?,?,?)`, id, expires.UTC(), hash, optionalOwner([]string{owner}), protocol, publicKey, maxFiles)
+func (q *Queries) CreateReceiveSlot(id string, expires time.Time, hash []byte, owner string, protocol int, publicKey string, maxFiles int, titles ...*string) error {
+	var title *string
+	if len(titles) > 0 {
+		title = titles[0]
+	}
+	normalized, err := NormalizeLinkTitle(title)
+	if err != nil {
+		return err
+	}
+	return q.allocationExec(0, false, &expires, `INSERT INTO slots(id,status,expires_at,delete_token_hash,owner_id,receive_protocol,recipient_public_key,max_files,title) VALUES(?,'waiting',?,?,?,?,?,?,?)`, id, expires.UTC(), hash, optionalOwner([]string{owner}), protocol, publicKey, maxFiles, normalized)
 }
 func (q *Queries) CompletedSlotFiles(slot string) (int64, error) {
 	var count int64

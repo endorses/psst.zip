@@ -1,8 +1,10 @@
 package zip.psst.android.ui.screens
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,8 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -24,12 +26,14 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -42,13 +46,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -64,8 +68,9 @@ import zip.psst.android.viewmodel.ScanViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HistoryScreen(
     onTransferClick: (TransferHistoryEntity) -> Unit,
@@ -82,18 +87,23 @@ fun HistoryScreen(
     val pageState by viewModel.pageState.collectAsState()
     val deviceHistory by viewModel.deviceHistory.collectAsState()
     val legacyCount by viewModel.legacyCount.collectAsState()
-    val localPager by viewModel.localPager.collectAsState()
-    val localNext by viewModel.localNext.collectAsState()
-    val localLoading by viewModel.localLoading.collectAsState()
-    val localIssue by viewModel.localIssue.collectAsState()
     val offline by viewModel.offline.collectAsState()
     val accountIssue by viewModel.accountIssue.collectAsState()
     val transferIssue by viewModel.transferIssue.collectAsState()
-    var filter by remember { mutableStateOf(initialFilter) }
+    val filter by viewModel.filter.collectAsState()
+    val mergedRows by viewModel.deviceRows.collectAsState()
+    val mergedNext by viewModel.deviceNext.collectAsState()
+    val mergedLoading by viewModel.deviceLoading.collectAsState()
+    val mergedIssue by viewModel.deviceIssue.collectAsState()
+    val importing by viewModel.deviceImporting.collectAsState()
+    val importErrors by viewModel.deviceImportErrors.collectAsState()
     val downloads by guest.state.collectAsState()
     val guestPage by guest.historyPage.collectAsState()
-    val history =
-        unifiedHistory(allHistory, if (deviceHistory) downloads.history else emptyList(), filter)
+    val history = if (deviceHistory) mergedRows else unifiedHistory(allHistory, emptyList(), "all")
+    val listState = remember(deviceHistory, filter) { LazyListState() }
+    val scope = rememberCoroutineScope()
+    var sourceMenu by remember { mutableStateOf(false) }
+    var filterMenu by remember { mutableStateOf(false) }
     var removal by remember { mutableStateOf<GuestDownload?>(null) }
     removal?.let { record ->
         AlertDialog(
@@ -106,6 +116,7 @@ fun HistoryScreen(
                 TextButton(
                     onClick = {
                         guest.remove(record)
+                        viewModel.refreshDeviceHistory()
                         removal = null
                     }
                 ) {
@@ -121,15 +132,13 @@ fun HistoryScreen(
     renaming?.let { entry ->
         AlertDialog(
             onDismissRequest = { renaming = null },
-            title = { Text("Rename on this device") },
+            title = { Text("Rename link") },
             text = {
                 Column {
-                    Text(
-                        "This name is stored only on this device. Clear it to restore the automatic title."
-                    )
+                    Text("Shown to people using this link. Clear it to remove the shared title.")
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it.take(200) },
+                        onValueChange = { name = it },
                         label = { Text("Name") },
                         singleLine = true,
                     )
@@ -219,6 +228,7 @@ fun HistoryScreen(
         )
     }
     LaunchedEffect(initialFilter) {
+        viewModel.setFilter(initialFilter)
         if (initialFilter == "downloaded") viewModel.setDeviceHistory(true)
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -249,7 +259,12 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.history)) },
                 actions = {
-                    TextButton(onClick = viewModel::refresh) {
+                    TextButton(
+                        onClick = {
+                            viewModel.refreshNewest()
+                            scope.launch { listState.scrollToItem(0) }
+                        }
+                    ) {
                         Text(stringResource(R.string.refresh))
                     }
                 },
@@ -266,164 +281,70 @@ fun HistoryScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             AccountIndicator(Modifier.padding(horizontal = 16.dp))
-            Row(
-                Modifier.padding(horizontal = 16.dp),
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
-                    selected = !deviceHistory,
-                    onClick = {
-                        viewModel.setDeviceHistory(false)
-                        if (filter == "downloaded") filter = "all"
-                    },
-                    label = { Text("On the server") },
-                )
-                FilterChip(
-                    selected = deviceHistory,
-                    onClick = { viewModel.setDeviceHistory(true) },
-                    label = { Text("On this device") },
-                )
-            }
-            if (!deviceHistory) {
-                Text(
-                    "Page ${pageState.pager.number} · filters apply to this page",
-                    Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Row(
-                    Modifier.padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TextButton(
-                        onClick = viewModel::firstPage,
-                        enabled = !pageState.loading && pageState.pager.cursor != null,
-                    ) {
-                        Text("First")
+                Box {
+                    OutlinedButton(onClick = { sourceMenu = true }) {
+                        Text(if (deviceHistory) "On this device" else "Server history")
                     }
-                    TextButton(
-                        onClick = viewModel::previousPage,
-                        enabled = !pageState.loading && pageState.pager.previous.isNotEmpty(),
-                    ) {
-                        Text("Previous")
-                    }
-                    TextButton(
-                        onClick = viewModel::nextPage,
-                        enabled = !pageState.loading && pageState.page?.nextCursor != null,
-                    ) {
-                        Text("Next")
-                    }
-                }
-                if (pageState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            } else
-                Text(
-                    "Saved downloads and retained local records. Server status may be out of date.",
-                    Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            Row(
-                Modifier.fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf(
-                        "all" to "All",
-                        "sent" to "Sent",
-                        "received" to "Receive links",
-                        "downloaded" to "Downloaded",
-                    )
-                    .forEach { (value, label) ->
-                        FilterChip(
-                            selected = filter == value,
+                    DropdownMenu(expanded = sourceMenu, onDismissRequest = { sourceMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Server history") },
                             onClick = {
-                                filter = value
-                                if (value == "downloaded") viewModel.setDeviceHistory(true)
+                                sourceMenu = false
+                                viewModel.setDeviceHistory(false)
+                                if (filter == "downloaded") viewModel.setFilter("all")
                             },
-                            label = { Text(label) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("On this device") },
+                            onClick = {
+                                sourceMenu = false
+                                viewModel.setDeviceHistory(true)
+                            },
                         )
                     }
+                }
+                Box {
+                    val filters =
+                        listOf(
+                            "all" to "All",
+                            "sent" to "Sent",
+                            "received" to "Receive links",
+                            "downloaded" to "Downloaded",
+                        )
+                    OutlinedButton(onClick = { filterMenu = true }) {
+                        Text("Filter: " + filters.first { it.first == filter }.second)
+                    }
+                    DropdownMenu(expanded = filterMenu, onDismissRequest = { filterMenu = false }) {
+                        filters.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    filterMenu = false
+                                    viewModel.setFilter(value)
+                                },
+                            )
+                        }
+                    }
+                }
             }
-            if (deviceHistory) {
+            if (mergedLoading || pageState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            mergedIssue?.let {
+                Text(it, Modifier.padding(16.dp))
+                TextButton(onClick = viewModel::refreshDeviceHistory) { Text("Retry") }
+            }
+            if (deviceHistory && importing)
+                TextButton(onClick = viewModel::refreshDeviceHistory, enabled = !mergedLoading) {
+                    Text("Continue importing older downloads")
+                }
+            if (deviceHistory && importErrors)
                 Text(
-                    "Local account records · page ${localPager.number}",
-                    Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    "Some older metadata needs recovery. Original records, keys and saved files are retained.",
+                    Modifier.padding(16.dp),
                 )
-                Row {
-                    TextButton(
-                        onClick = viewModel::firstLocalPage,
-                        enabled = !localLoading && localPager.cursor != null,
-                    ) {
-                        Text("First")
-                    }
-                    TextButton(
-                        onClick = viewModel::previousLocalPage,
-                        enabled = !localLoading && localPager.previous.isNotEmpty(),
-                    ) {
-                        Text("Previous")
-                    }
-                    TextButton(
-                        onClick = viewModel::nextLocalPage,
-                        enabled = !localLoading && localNext != null,
-                    ) {
-                        Text("Next")
-                    }
-                }
-            }
-            if (deviceHistory && localLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (deviceHistory)
-                localIssue?.let {
-                    Text(it, Modifier.padding(horizontal = 16.dp))
-                    TextButton(onClick = viewModel::retryLocalPage) { Text("Retry") }
-                }
-            if (deviceHistory && (filter == "all" || filter == "downloaded")) {
-                Text(
-                    "Downloads · page ${guestPage.pager.number} · filters apply to shown pages",
-                    Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Row {
-                    TextButton(
-                        onClick = guest::firstHistoryPage,
-                        enabled = !guestPage.loading && guestPage.pager.cursor != null,
-                    ) {
-                        Text("First")
-                    }
-                    TextButton(
-                        onClick = guest::previousHistoryPage,
-                        enabled = !guestPage.loading && guestPage.pager.previous.isNotEmpty(),
-                    ) {
-                        Text("Previous")
-                    }
-                    TextButton(
-                        onClick = guest::nextHistoryPage,
-                        enabled = !guestPage.loading && guestPage.next != null,
-                    ) {
-                        Text("Next")
-                    }
-                }
-                if (guestPage.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (guestPage.importing) {
-                    Text(
-                        "Older downloads are still being indexed. Imported records remain available; return to First to see newer arrivals.",
-                        Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    TextButton(onClick = guest::refreshHistory, enabled = !guestPage.loading) {
-                        Text("Continue importing older downloads")
-                    }
-                }
-                if (guestPage.importErrors)
-                    Text(
-                        "Some older metadata could not be imported. Original records and key files have been retained; saved files remain in Downloads/psst.zip.",
-                        Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                guestPage.error?.let {
-                    Text(it, Modifier.padding(horizontal = 16.dp))
-                    TextButton(onClick = guest::refreshHistory) { Text("Retry") }
-                }
-            }
             if (deviceHistory && legacyCount > 0)
                 Text(
                     "Pre-account records are retained. Manage pre-account server resources from the administrator website.",
@@ -476,9 +397,28 @@ fun HistoryScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (deviceHistory && mergedNext != null)
+                        TextButton(
+                            onClick = viewModel::moreDeviceHistory,
+                            enabled = !mergedLoading,
+                        ) {
+                            Text("Load more")
+                        }
+                    if (!deviceHistory && pageState.page?.nextCursor != null)
+                        TextButton(onClick = viewModel::nextPage, enabled = !pageState.loading) {
+                            Text("Next")
+                        }
+                    if (!deviceHistory && pageState.pager.previous.isNotEmpty())
+                        TextButton(
+                            onClick = viewModel::previousPage,
+                            enabled = !pageState.loading,
+                        ) {
+                            Text("Previous")
+                        }
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -491,7 +431,7 @@ fun HistoryScreen(
                                     onDelete = { confirmDeletion = row.value },
                                     onRename = {
                                         renaming = row.value
-                                        name = row.value.title.orEmpty()
+                                        name = row.value.sharedTitle ?: row.value.title.orEmpty()
                                     },
                                     isDeleting = row.value.id in deletingIds,
                                     canManage = row.value.accountId != null,
@@ -525,6 +465,44 @@ fun HistoryScreen(
                                     onClick = { onDownloadClick(row.value) },
                                     onRemove = { removal = row.value },
                                 )
+                        }
+                    }
+                    item {
+                        if (deviceHistory && mergedNext != null)
+                            TextButton(
+                                onClick = viewModel::moreDeviceHistory,
+                                enabled = !mergedLoading,
+                            ) {
+                                Text("Load more")
+                            }
+                        if (
+                            !deviceHistory &&
+                                (pageState.pager.previous.isNotEmpty() ||
+                                    pageState.page?.nextCursor != null)
+                        ) {
+                            Row {
+                                if (pageState.pager.cursor != null)
+                                    TextButton(
+                                        onClick = viewModel::firstPage,
+                                        enabled = !pageState.loading,
+                                    ) {
+                                        Text("First")
+                                    }
+                                if (pageState.pager.previous.isNotEmpty())
+                                    TextButton(
+                                        onClick = viewModel::previousPage,
+                                        enabled = !pageState.loading,
+                                    ) {
+                                        Text("Previous")
+                                    }
+                                if (pageState.page?.nextCursor != null)
+                                    TextButton(
+                                        onClick = viewModel::nextPage,
+                                        enabled = !pageState.loading,
+                                    ) {
+                                        Text("Next")
+                                    }
+                            }
                         }
                     }
                 }
@@ -570,14 +548,7 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                val fullTitle =
-                    if (
-                        serverCount != null &&
-                            entity.title.isNullOrBlank() &&
-                            entity.automaticTitle.isNullOrBlank()
-                    )
-                        "$serverCount files · ${formatTimestamp(entity.createdAt)}"
-                    else historyTitle(entity)
+                val fullTitle = historyTitle(entity)
                 Text(
                     text = compactHistoryTitle(fullTitle),
                     modifier = Modifier.semantics { contentDescription = fullTitle },
@@ -587,7 +558,8 @@ private fun HistoryItem(
                     text =
                         (if (entity.summaryUpdating)
                             "Counts updating · last known ${entity.fileCount} file(s)"
-                        else "${serverCount ?: entity.fileCount.toLong()} file(s)") +
+                        else
+                            "${formatTimestamp(entity.createdAt)} · ${serverCount ?: entity.fileCount.toLong()} files") +
                             if (serverSize != null) {
                                 " · ${formatFileSize(serverSize)} encrypted"
                             } else if (entity.totalSize > 0) {
@@ -598,13 +570,6 @@ private fun HistoryItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                zip.psst.android.data.historyLinkPolicyLabel(entity)?.let { policy ->
-                    Text(
-                        policy,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
                 if (!canManage)
                     Text(
                         "Pre-account record. Manage server links from the administrator website.",
@@ -624,13 +589,6 @@ private fun HistoryItem(
                     )
                 }
                 Text(
-                    text = formatTimestamp(entity.createdAt),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
                     text = historyStatusLabel(entity.type, entity.status),
                     style = MaterialTheme.typography.labelSmall,
                     color =
@@ -649,7 +607,7 @@ private fun HistoryItem(
             if (canManage)
                 Column {
                     IconButton(onClick = onRename, enabled = !isDeleting) {
-                        Icon(Icons.Default.Edit, "Rename on this device", Modifier.size(20.dp))
+                        Icon(Icons.Default.Edit, "Rename link", Modifier.size(20.dp))
                     }
                     IconButton(onClick = onDelete, enabled = !isDeleting) {
                         if (isDeleting) {
@@ -703,7 +661,11 @@ private fun DownloadHistoryItem(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     compactHistoryTitle(
-                        automaticHistoryTitle(record.files.firstOrNull()?.name, record.files.size)
+                        record.sharedTitle
+                            ?: automaticHistoryTitle(
+                                record.files.firstOrNull()?.name,
+                                record.files.size,
+                            )
                             ?: "Downloaded transfer"
                     ),
                     modifier =

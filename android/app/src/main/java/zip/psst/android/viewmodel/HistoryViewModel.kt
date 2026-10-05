@@ -4,10 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.data.*
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.InboxPager
-import zip.psst.android.data.LocalHistoryCursor
-import zip.psst.android.data.LocalHistoryPager
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.localHistoryScope
 import zip.psst.android.data.revokeHistoryEntry
@@ -27,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -39,18 +37,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class HistoryDeletionError(val id: String, val message: String)
-
-private data class LocalHistoryRequest(
-    val pager: LocalHistoryPager = LocalHistoryPager(),
-    val revision: Long = 0,
-)
-
-private data class LocalHistorySelection(
-    val state: AccountHistoryPageState,
-    val access: HistoryAccess,
-    val device: Boolean,
-    val local: LocalHistoryPager,
-)
 
 data class AccountHistoryPageState(
     val access: HistoryAccess? = null,
@@ -64,6 +50,132 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     private val app = application as PsstApplication
     private val dao = app.database.transferHistoryDao()
+    private val downloads = GuestDownloadStore(app)
+    val filter = MutableStateFlow("all")
+    val deviceRows = MutableStateFlow<List<HistoryRow>>(emptyList())
+    val deviceNext = MutableStateFlow<MergedHistoryCursor?>(null)
+    val deviceLoading = MutableStateFlow(false)
+    val deviceIssue = MutableStateFlow<String?>(null)
+    val deviceImporting = MutableStateFlow(false)
+    val deviceImportErrors = MutableStateFlow(false)
+    private var deviceCursor = MergedHistoryCursor()
+    private var deviceJob: Job? = null
+    private var deviceRevision = 0L
+
+    fun setFilter(value: String) {
+        if (filter.value == value) return
+        filter.value = value
+        if (value == "downloaded") _deviceHistory.value = true
+        deviceCursor = MergedHistoryCursor()
+        deviceRows.value = emptyList()
+        deviceNext.value = null
+        _pageState.value = AccountHistoryPageState()
+        revision++
+        refreshJob?.cancel()
+        if (_deviceHistory.value) loadDeviceHistory() else if (visible) startPolling()
+    }
+
+    fun firstDevicePage() {
+        deviceCursor = MergedHistoryCursor()
+        loadDeviceHistory()
+    }
+
+    fun moreDeviceHistory() {
+        deviceNext.value?.let {
+            deviceCursor = it
+            loadDeviceHistory()
+        }
+    }
+
+    fun refreshDeviceHistory() = loadDeviceHistory()
+
+    fun refreshNewest() {
+        if (_deviceHistory.value) firstDevicePage() else firstPage()
+    }
+
+    private fun loadDeviceHistory() {
+        deviceJob?.cancel()
+        val access = app.prefs.historyAccess.value
+        val selected = filter.value
+        val cursor = deviceCursor
+        val requestRevision = ++deviceRevision
+        deviceLoading.value = true
+        deviceIssue.value = null
+        deviceJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val kind =
+                        when (selected) {
+                            "sent" -> "sent"
+                            "received" -> "received"
+                            else -> ""
+                        }
+                    val account =
+                        if (
+                            selected != "downloaded" &&
+                                access.accountId != null &&
+                                !access.isAdmin &&
+                                !access.mustChangePassword
+                        )
+                            dao.deviceHistoryPage(
+                                access.accountId,
+                                localHistoryScope(access.serverUrl),
+                                kind,
+                                cursor.account?.createdAt ?: Long.MAX_VALUE,
+                                cursor.account?.id ?: "\uffff",
+                            )
+                        else emptyList()
+                    val guest =
+                        if (selected == "all" || selected == "downloaded") {
+                            downloads.importLegacyBatch()
+                            downloads.page(cursor.downloads)
+                        } else null
+                    val page =
+                        mergeHistoryPage(
+                            account,
+                            guest?.records.orEmpty(),
+                            cursor,
+                            account.size > 50,
+                            guest?.next != null,
+                            guest?.next,
+                        )
+                    if (
+                        !isActive ||
+                            requestRevision != deviceRevision ||
+                            app.prefs.historyAccess.value != access ||
+                            filter.value != selected ||
+                            !_deviceHistory.value
+                    )
+                        return@launch
+                    deviceRows.value = page.rows
+                    deviceNext.value = page.next
+                    deviceImporting.value = guest?.importing == true
+                    deviceImportErrors.value = guest?.importErrors == true
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    if (
+                        requestRevision == deviceRevision &&
+                            app.prefs.historyAccess.value == access &&
+                            filter.value == selected
+                    )
+                        deviceIssue.value =
+                            "Local history could not be read. Saved files and records are retained. Retry."
+                } finally {
+                    if (
+                        requestRevision == deviceRevision &&
+                            app.prefs.historyAccess.value == access &&
+                            filter.value == selected
+                    )
+                        deviceLoading.value = false
+                }
+            }
+    }
+
+    override fun onCleared() {
+        downloads.close()
+        super.onCleared()
+    }
 
     private val _pageState = MutableStateFlow(AccountHistoryPageState())
     val pageState = _pageState.asStateFlow()
@@ -71,55 +183,13 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     val deviceHistory = _deviceHistory.asStateFlow()
     val legacyCount = MutableStateFlow(0)
     val currentAccess = app.prefs.historyAccess
-    val localPager = MutableStateFlow(LocalHistoryPager())
-    private val localRequest = MutableStateFlow(LocalHistoryRequest())
-    val localLoading = MutableStateFlow(false)
-    val localIssue = MutableStateFlow<String?>(null)
-    val localNext = MutableStateFlow<LocalHistoryCursor?>(null)
     val history: StateFlow<List<TransferHistoryEntity>> =
-        combine(_pageState, app.prefs.historyAccess, _deviceHistory, localRequest) {
-                page,
-                access,
-                device,
-                local ->
-                LocalHistorySelection(page, access, device, local.pager)
+        combine(_pageState, app.prefs.historyAccess, _deviceHistory) { page, access, device ->
+                Triple(page, access, device)
             }
-            .flatMapLatest { (state, access, device, local) ->
-                if (
-                    device &&
-                        access.accountId != null &&
-                        !access.isAdmin &&
-                        !access.mustChangePassword
-                ) {
-                    val cursor = local.cursor
-                    combine(
-                            dao.observeLocalPage(
-                                access.accountId,
-                                localHistoryScope(access.serverUrl),
-                                cursor?.createdAt ?: Long.MAX_VALUE,
-                                cursor?.id ?: "\uffff",
-                            ),
-                            dao.hasLegacy(),
-                        ) { rows, legacy ->
-                            if (app.prefs.historyAccess.value != access) return@combine emptyList()
-                            localPager.value = local
-                            localLoading.value = false
-                            localIssue.value = null
-                            legacyCount.value = if (legacy) 1 else 0
-                            localNext.value =
-                                rows
-                                    .take(50)
-                                    .lastOrNull()
-                                    ?.takeIf { rows.size > 50 }
-                                    ?.let { LocalHistoryCursor(it.createdAt, it.id) }
-                            rows.take(50)
-                        }
-                        .catch { error ->
-                            if (error is CancellationException) throw error
-                            localLoading.value = false
-                            localIssue.value =
-                                "Local account history could not be read. The current page has been retained. Retry."
-                        }
+            .flatMapLatest { (state, access, device) ->
+                if (device) {
+                    flowOf(emptyList())
                 } else {
                     val ids =
                         state.page
@@ -163,11 +233,11 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 revision++
                 _pageState.value = AccountHistoryPageState()
                 legacyCount.value = 0
-                localPager.value = LocalHistoryPager()
-                localRequest.value = LocalHistoryRequest()
-                localLoading.value = false
-                localIssue.value = null
-                localNext.value = null
+                deviceJob?.cancel()
+                deviceCursor = MergedHistoryCursor()
+                deviceRows.value = emptyList()
+                deviceNext.value = null
+                if (_deviceHistory.value) loadDeviceHistory()
                 deleteJobs.values.toList().forEach { it.cancel() }
                 _deletionError.value = null
                 accountIssue.value = null
@@ -180,15 +250,27 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     fun rename(entry: TransferHistoryEntity, title: String) {
         val access = app.prefs.historyAccess.value
         if (!access.permits(entry) || entry.accountId == null) return
-        viewModelScope.launch {
-            if (app.prefs.historyAccess.value == access)
-                dao.rename(
-                    entry.id,
-                    entry.serverUrl,
-                    entry.accountId,
-                    entry.type,
-                    title.trim().take(200).ifEmpty { null },
+        viewModelScope.launch(Dispatchers.IO) {
+            val client =
+                ApiClient(
+                    ServerConfig(entry.serverUrl),
+                    sessionToken = app.prefs.getSessionToken(entry.serverUrl),
                 )
+            try {
+                val normalized = zip.psst.shared.model.LinkTitle.normalize(title)
+                val result =
+                    if (entry.type == "received") client.slots.renameTitle(entry.id, normalized)
+                    else client.transfers.renameTitle(entry.id, normalized)
+                if (app.prefs.historyAccess.value != access) return@launch
+                dao.saveSharedTitle(entry.id, entry.accountId, entry.originScope, result.title)
+                if (_deviceHistory.value) loadDeviceHistory() else if (visible) startPolling()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                transferIssue.value = error.message ?: "Could not rename this link. Retry."
+            } finally {
+                client.close()
+            }
         }
     }
 
@@ -197,26 +279,13 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         revision++
         refreshJob?.cancel()
         _pageState.update { it.copy(loading = false) }
-        if (!value && visible) startPolling()
-    }
-
-    fun firstLocalPage() = navigateLocal(LocalHistoryPager())
-
-    fun previousLocalPage() {
-        if (localPager.value.previous.isNotEmpty()) navigateLocal(localPager.value.back())
-    }
-
-    fun nextLocalPage() {
-        localNext.value?.let { navigateLocal(localPager.value.next(it)) }
-    }
-
-    fun retryLocalPage() = navigateLocal(localPager.value)
-
-    private fun navigateLocal(target: LocalHistoryPager) {
-        if (localLoading.value) return
-        localLoading.value = true
-        localIssue.value = null
-        localRequest.value = LocalHistoryRequest(target, localRequest.value.revision + 1)
+        deviceJob?.cancel()
+        deviceRevision++
+        deviceCursor = MergedHistoryCursor()
+        deviceRows.value = emptyList()
+        deviceNext.value = null
+        _pageState.value = AccountHistoryPageState()
+        if (value) loadDeviceHistory() else if (visible) startPolling()
     }
 
     fun firstPage() = navigate(InboxPager())
@@ -244,7 +313,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
 
     fun refresh() {
         visible = true
-        if (!_deviceHistory.value) startPolling()
+        if (!_deviceHistory.value) startPolling() else loadDeviceHistory()
     }
 
     private fun startPolling(firstTarget: InboxPager? = null) {
@@ -271,7 +340,16 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     val client = ApiClient(ServerConfig(access.serverUrl), sessionToken = token)
                     var failed = false
                     try {
-                        val page = client.auth.resourcesPage(pager.cursor, 50)
+                        val page =
+                            client.auth.resourcesPage(
+                                pager.cursor,
+                                50,
+                                when (filter.value) {
+                                    "sent" -> "transfer"
+                                    "received" -> "slot"
+                                    else -> null
+                                },
+                            )
                         if (!current()) return@launch
                         require(page.nextCursor == null || page.nextCursor !in pager.previous) {
                             "The server repeated a History page"
@@ -361,6 +439,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     _deletingIds.update { it - id }
                     deleteJobs.remove(id)
                     if (visible && !_deviceHistory.value) startPolling()
+                    else if (_deviceHistory.value) loadDeviceHistory()
                 }
             }
     }

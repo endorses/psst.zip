@@ -2,6 +2,21 @@ package zip.psst.android.data
 
 /** In-memory exact checkpoint operations shared by DAO contract tests. */
 abstract class CheckpointTestDao : TransferHistoryDao {
+    override suspend fun filteredDeviceHistoryPage(
+        accountId: String,
+        originScope: String,
+        kind: String,
+        beforeTime: Long,
+        beforeId: String,
+    ): List<TransferHistoryEntity> = emptyList()
+
+    override suspend fun saveSharedTitle(
+        id: String,
+        accountId: String,
+        originScope: String,
+        title: String?,
+    ) = Unit
+
     override suspend fun writeStatus(id: String, status: String) =
         error("Test overrides updateStatus")
 

@@ -56,12 +56,12 @@ test("empty filtered pages stay navigable, totals remain global, and only the vi
   });
   await open(page);
   const panel = page.getByRole("region", { name: "Received files", exact: true });
-  await expect(panel.getByRole("link", { name: "1 file · Save files", exact: true })).toBeVisible();
-  await expect(page.getByText(/151 completed files/)).toBeVisible();
+  await expect(panel.getByRole("link", { name: "1 file · Save file", exact: true })).toBeVisible();
+  await expect(page.getByText(/151 files received/)).toBeVisible();
   expect(reads).toEqual([""]);
   await panel.getByRole("button", { name: "Next", exact: true }).click();
   await expect(panel.getByText("Page 2", { exact: true })).toBeVisible();
-  await expect(panel.getByText(/No completed submissions on this page/)).toBeVisible();
+  await expect(panel.getByText(/No files on this page/)).toBeVisible();
   await expect(panel.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
   await expect(page.getByText(/Received file totals are updating/)).toBeVisible();
   arrivals = true;
@@ -92,7 +92,7 @@ test("a failed or malformed next page preserves prior entries and cursor", async
     await panel.getByRole("button", { name: "Next", exact: true }).click();
     await expect(panel.getByRole("alert")).toContainText("Could not refresh");
     await expect(
-      panel.getByRole("link", { name: "1 file · Save files", exact: true }),
+      panel.getByRole("link", { name: "1 file · Save file", exact: true }),
     ).toBeVisible();
     await expect(panel.getByText("Page 1", { exact: true })).toBeVisible();
   }
@@ -119,7 +119,7 @@ test("an old inbox 404 cannot clear a newly opened inbox", async ({ page }) => {
     dispatchEvent(new PopStateEvent("popstate"));
   }, other);
   release();
-  await expect(page.getByText(/151 completed files/)).toBeVisible();
+  await expect(page.getByText(/151 files received/)).toBeVisible();
   await expect(page.getByText(/This receive link has expired/)).toHaveCount(0);
 });
 
@@ -184,7 +184,7 @@ authenticatedTest(
     await page.goto(`/?view=receive&slot=${slotID}`);
     const panel = page.getByRole("region", { name: "Received files", exact: true });
     await expect(panel.getByRole("link")).toHaveCount(50);
-    await expect(page.getByText(/1 completed files/)).toBeVisible();
+    await expect(page.getByText(/1 file received/)).toBeVisible();
     await panel.getByRole("button", { name: "Next", exact: true }).click();
     await expect(panel.getByText("Page 2", { exact: true })).toBeVisible();
     await expect(panel.getByRole("link")).toHaveCount(50);
@@ -192,10 +192,22 @@ authenticatedTest(
     await expect(panel.getByText("Page 3", { exact: true })).toBeVisible();
     await expect(panel.getByRole("link")).toHaveCount(1);
     await expect(panel.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
-    await panel.getByRole("link", { name: "1 file · Save files", exact: true }).click();
+    await panel.getByRole("link", { name: "1 file · Save file", exact: true }).click();
     await expect(page.getByText("later-page.txt", { exact: true })).toBeVisible();
+    const checkpoint = await page.evaluate(() => {
+      const raw = sessionStorage.getItem("psst.inbox-return");
+      return raw ? JSON.parse(raw) : null;
+    });
+    expect(checkpoint).toMatchObject({ inbox: slotID, page: 3 });
+    expect(checkpoint.previous).toHaveLength(2);
     const saved = page.waitForEvent("download");
     await page.getByRole("button", { name: "Save file", exact: true }).click();
     expect(await readFile((await (await saved).path())!)).toEqual(contents);
+    await page.getByRole("link", { name: "Back to received files" }).click();
+    await expect(panel.getByText("Page 3", { exact: true })).toBeVisible();
+    await expect(
+      panel.getByRole("link", { name: "1 file · Save file", exact: true }),
+    ).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Previous", exact: true })).toBeEnabled();
   },
 );

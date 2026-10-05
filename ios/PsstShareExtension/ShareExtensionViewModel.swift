@@ -11,6 +11,7 @@ final class ShareExtensionViewModel {
     var cancelRequested = false
     var limitEnabled = false
     var limitValue = "1"
+    var sharedTitle = ""
     var fileCount: Int {
         files.count
     }
@@ -39,9 +40,14 @@ final class ShareExtensionViewModel {
             error = String(localized: "The account changed. Share the files again to choose this account.")
             return
         }
+        do { _ = try SharedLinkTitle.normalize(sharedTitle) } catch {
+            self.error = error.localizedDescription
+            return
+        }
         originAccount = config.accountID
         if send == nil {
-            send = SendViewModel(fileURLs: files, serverConfig: config, historyStore: history, limit: BufferedUpload.maxFileBytes, maxDownloads: maxDownloads)
+            send = SendViewModel(
+                fileURLs: files, serverConfig: config, historyStore: history, limit: BufferedUpload.maxFileBytes, maxDownloads: maxDownloads, sharedTitle: sharedTitle)
         }
         send?.start()
     }

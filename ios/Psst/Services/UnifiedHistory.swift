@@ -1,9 +1,15 @@
 import Foundation
 
-enum HistoryFilter: String, CaseIterable { case all = "All", sent = "Sent", receive = "Receive links", downloaded = "Downloaded" }
+enum HistoryFilter: String, CaseIterable {
+    case all = "All"
+    case sent = "Sent"
+    case receive = "Receive links"
+    case downloaded = "Downloaded"
+}
 
 enum HistoryEntry: Identifiable {
-    case account(TransferRecord), downloaded(GuestDownload)
+    case account(TransferRecord)
+    case downloaded(GuestDownload)
     var id: String {
         switch self {
         case let .account(record): "account|\(record.isSlot == true ? "slot" : "send")|\(record.vaultID)"
@@ -11,8 +17,19 @@ enum HistoryEntry: Identifiable {
         }
     }
 
+    // Match each indexed source's id tie-breaker; UI identity includes a type prefix.
+    var localOrderKey: String {
+        switch self {
+        case let .account(record): "account|" + record.localID
+        case let .downloaded(record): "download|" + record.id
+        }
+    }
+
     var date: Date {
-        switch self { case let .account(record): record.createdAt; case let .downloaded(record): record.createdAt }
+        switch self {
+        case let .account(record): record.createdAt
+        case let .downloaded(record): record.createdAt
+        }
     }
 
     static func combine(account: [TransferRecord], downloads: [GuestDownload], session: DeviceSession?, filter: HistoryFilter) -> [HistoryEntry] {

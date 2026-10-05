@@ -7,13 +7,13 @@ struct HistoryView: View {
     @Environment(GuestDownloadStore.self) private var guests
     @Environment(GuestTransferModel.self) private var guestTransfer
     @Binding var filter: HistoryFilter
+    var onSend: () -> Void = {}
     @State private var removing: GuestDownload?
     @State private var deleting: TransferRecord?
     @State private var failedDeletion: TransferRecord?
     @State private var error: String?
     @State private var page = HistoryPageViewModel()
-    @State private var devicePage = DeviceHistoryPageViewModel()
-    @State private var guestPage = GuestHistoryPageViewModel()
+    @State private var devicePage = MergedDeviceHistoryViewModel()
     @State private var showDevice = false
     @State private var sessionGeneration = UUID()
     @State private var visible = false
@@ -25,11 +25,8 @@ struct HistoryView: View {
     }
 
     private var records: [HistoryEntry] {
-        let owned = deviceMode ? (devicePage.session == config.session ? devicePage.records : []) : (page.loadedSession == config.session ? page.records : [])
-        return HistoryEntry.combine(
-            account: owned,
-            downloads: deviceMode ? guestPage.records : [], session: config.session, filter: filter
-        )
+        if deviceMode { return devicePage.session == config.session ? devicePage.records : [] }
+        return (page.loadedSession == config.session ? page.records : []).map(HistoryEntry.account)
     }
 
     private var working: Bool {
@@ -45,58 +42,6 @@ struct HistoryView: View {
                         Text("On this device").tag(true)
                     }.pickerStyle(.segmented).disabled(working)
                 }
-                if deviceMode {
-                    Text("Links and files remembered on this device. Open an item to check its current server status.").font(.footnote).foregroundStyle(PsstTheme.secondary)
-                    if config.session?.canTransfer == true && filter != .downloaded {
-                        HStack {
-                            Text("Links page \(devicePage.number)")
-                            Spacer()
-                            Button("Previous") { navigateLocal(back: true) }.disabled(working || !devicePage.canGoBack)
-                            Button("Next") { navigateLocal(back: false) }.disabled(working || devicePage.next == nil)
-                        }
-                        if devicePage.number > 1 {
-                            Button("First links page") {
-                                if let session = config.session {
-                                    devicePage.first(history: history, session: session)
-                                }
-                            }.disabled(working)
-                        }
-                        if let error = devicePage.error {
-                            Text(error).foregroundStyle(PsstTheme.error)
-                        }
-                    }
-                    if filter == .all || filter == .downloaded {
-                        HStack {
-                            Text("Downloads page \(guestPage.number)")
-                            Spacer()
-                            Button("Previous") { guestPage.backward(store: guests) }.disabled(working || !guestPage.canGoBack)
-                            Button("Next") { guestPage.forward(store: guests) }.disabled(working || guestPage.next == nil)
-                        }
-                        if guestPage.number > 1 {
-                            Button("First downloads page") { guestPage.first(store: guests) }.disabled(working)
-                        }
-                        if let error = guestPage.error ?? guests.error {
-                            Text(error).foregroundStyle(PsstTheme.error)
-                        }
-                        if guests.hasPendingReceipts {
-                            Button("Retry delivery confirmations") { Task { await guests.flushReceipts() } }.disabled(working)
-                        }
-                    }
-                } else {
-                    HStack {
-                        Text("Page \(page.window.number)")
-                        Spacer()
-                        if page.loading {
-                            ProgressView()
-                        }
-                        Button("Previous") { navigate(.previous) }.disabled(working || !page.window.canGoBack)
-                        Button("Next") { navigate(.next) }.disabled(working || page.window.nextCursor == nil)
-                    }
-                    if page.window.number > 1 {
-                        Button("First page") { navigate(.first) }.disabled(working)
-                    }
-                    Text("Filters apply to this page.").font(.caption).foregroundStyle(PsstTheme.secondary)
-                }
                 Picker("History filter", selection: $filter) {
                     ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.menu)
@@ -107,12 +52,6 @@ struct HistoryView: View {
                 }
                 if page.stale, !deviceMode {
                     Label("Offline — showing last known status", systemImage: "wifi.slash").foregroundStyle(PsstTheme.warning)
-                }
-                if let lastUpdated = page.lastUpdated, !deviceMode {
-                    HStack {
-                        Text("Last updated")
-                        Text(lastUpdated, style: .relative)
-                    }.font(.caption)
                 }
                 if records.isEmpty {
                     ContentUnavailableView(
@@ -131,14 +70,16 @@ struct HistoryView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Downloaded", systemImage: "arrow.down.doc").font(.caption)
-                                Text((record.files.first.map { GuestFiles.displayName($0.name) } ?? "File transfer") + (record.files.count > 1 ? " + \(record.files.count - 1) files" : "")).font(
+                                Text(
+                                    record.sharedTitle
+                                        ?? ((record.files.first.map { GuestFiles.displayName($0.name) } ?? "File transfer")
+                                            + (record.files.count > 1 ? " + \(record.files.count - 1) files" : ""))
+                                ).font(
                                     .headline
                                 )
                                 .lineLimit(1).truncationMode(.middle)
-                                Text("\(record.files.count) files · " + ByteCountFormatter.string(fromByteCount: record.files.reduce(Int64(0)) { $0 + $1.size }, countStyle: .file))
+                                Text(record.createdAt.formatted(date: .abbreviated, time: .omitted) + " · \(record.files.count) files")
                                     .font(.caption)
-                                Text(record.origin).font(.caption).lineLimit(2)
-                                Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
                                 Text(record.complete ? "Saved on this device" : "Partially saved").font(.subheadline)
                             }
                         }.swipeActions {
@@ -146,7 +87,7 @@ struct HistoryView: View {
                         }
                     case let .account(record):
                         NavigationLink {
-                            HistoryDetail(record: record)
+                            HistoryDetail(onSend: onSend, record: record)
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 if record.ownerID == nil {
@@ -154,33 +95,39 @@ struct HistoryView: View {
                                 }
                                 Label(record.isSlot == true ? "Receive link" : "Sent", systemImage: record.isSlot == true ? "tray.and.arrow.down" : "paperplane").font(.caption)
                                 Text(record.safeDisplayTitle).font(.headline).lineLimit(1).truncationMode(.middle).accessibilityLabel(record.safeDisplayTitle)
-                                Text(record.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
-                                Text(record.summary).font(.subheadline)
+                                Text(record.createdAt.formatted(date: .abbreviated, time: .omitted) + " · " + record.summary).font(.caption)
                                 Text(record.statusText).font(.caption)
-                                if let policy = record.linkPolicySummary {
-                                    Text(policy).font(.caption).foregroundStyle(PsstTheme.secondary)
-                                }
-                                if let expiry = record.expiresAt {
-                                    HStack {
-                                        Text(LocalizedStringKey(record.isExpired ? "Expired" : "Expires"))
-                                        Text(expiry, style: .relative)
-                                    }.font(.caption)
-                                }
+
                             }.padding(.vertical, 4)
                         }.swipeActions { Button("Revoke and delete", role: .destructive) { deleting = record }.disabled(working) }
                             .contextMenu {
-                                Button("Rename on this device") {
-                                    renameText = record.customTitle ?? ""
+                                Button("Rename shared title") {
+                                    renameText = record.sharedTitle ?? record.customTitle ?? ""
                                     renaming = record
                                 }
                             }
                             .swipeActions(edge: .leading) {
                                 Button("Rename") {
-                                    renameText = record.customTitle ?? ""
+                                    renameText = record.sharedTitle ?? record.customTitle ?? ""
                                     renaming = record
                                 }
                             }
                     }
+                }
+                if deviceMode {
+                    if let message = devicePage.error ?? guests.error { Text(message).foregroundStyle(PsstTheme.error) }
+                    if devicePage.hasMore { Button("Load more") { devicePage.more(history: history, guests: guests) }.disabled(working) }
+                    if devicePage.trimmed { Button("Back to newest") { reloadLocal() }.disabled(working) }
+                    if guests.hasPendingReceipts { Button("Retry delivery confirmations") { Task { await guests.flushReceipts() } }.disabled(working) }
+                } else if page.window.canGoBack || page.window.nextCursor != nil {
+                    HStack {
+                        if page.window.canGoBack { Button("Previous") { navigate(.previous) } }
+                        Spacer()
+                        Text("Page \(page.window.number)").font(.caption)
+                        Spacer()
+                        if page.window.nextCursor != nil { Button("Next") { navigate(.next) } }
+                    }.disabled(working)
+                    if page.window.number > 1 { Button("First page") { navigate(.first) }.disabled(working) }
                 }
                 if let error {
                     Text(error).foregroundStyle(PsstTheme.error)
@@ -191,7 +138,7 @@ struct HistoryView: View {
             }
             .navigationTitle("History")
             .alert(
-                "Rename on this device",
+                "Rename shared title",
                 isPresented: Binding(
                     get: { renaming != nil },
                     set: {
@@ -204,13 +151,22 @@ struct HistoryView: View {
                 TextField("Name (optional)", text: $renameText)
                 Button("Save") {
                     if let record = renaming, let session = config.session {
-                        do { try history.rename(record, name: renameText, session: session) } catch { self.error = "Could not save the name. Check your account and retry." }
+                        let name = renameText
+                        busy = true
+                        Task {
+                            defer { busy = false }
+                            do { try await history.rename(record, name: name, session: session) } catch {
+                                if config.session == session {
+                                    self.error = (error as? SharedLinkTitle.Failure)?.localizedDescription ?? "Could not save the shared title. Reconnect and retry."
+                                }
+                            }
+                        }
                     }
                     renaming = nil
                 }
                 Button("Cancel", role: .cancel) { renaming = nil }
             } message: {
-                Text("Only this device uses this name. Leave it empty to restore the automatic title.")
+                Text("Shown to people using this link. Leave empty to clear the shared title.")
             }
             .confirmationDialog(
                 "Remove from history? Saved files remain and the sender’s link keeps working.",
@@ -256,7 +212,7 @@ struct HistoryView: View {
                     showDevice = true
                 }
                 history.reload()
-                reloadLocal()
+                if deviceMode { devicePage.resume(history: history, guests: guests, session: config.session, filter: filter) }
             }
             .onDisappear { visible = false }
             .task(id: "\(visible)-\(scenePhase)-\(sessionGeneration)-\(showDevice)") {
@@ -282,22 +238,26 @@ struct HistoryView: View {
                 if value == .downloaded {
                     showDevice = true
                 }
+                page.setFilter(value)
                 reloadLocal()
+                if !deviceMode { Task { _ = await refresh() } }
             }
             .onChange(of: showDevice) { _, value in
+                page.invalidate()
                 if !value, filter == .downloaded {
                     filter = .all
                 }
                 reloadLocal()
             }
             .onChange(of: guests.revision) {
-                _, _ in if deviceMode {
-                    guestPage.refresh(store: guests)
+                _, _ in
+                if deviceMode {
+                    devicePage.refreshVisible(history: history, guests: guests)
                 }
             }
             .onChange(of: history.revision) { _, _ in
                 if deviceMode {
-                    reloadLocal()
+                    devicePage.refreshVisible(history: history, guests: guests)
                 } else {
                     page.refreshLocal(history: history, session: config.session)
                 }
@@ -306,17 +266,8 @@ struct HistoryView: View {
     }
 
     private func reloadLocal() {
-        guestPage.refresh(store: guests)
-        devicePage.refresh(history: history, session: config.session, filter: filter)
-    }
-
-    private func navigateLocal(back: Bool) {
-        guard !working, let session = config.session else { return }
-        if back {
-            devicePage.backward(history: history, session: session)
-        } else {
-            devicePage.forward(history: history, session: session)
-        }
+        guard deviceMode else { return }
+        devicePage.first(history: history, guests: guests, session: config.session, filter: filter)
     }
 
     private enum Navigation { case previous, next, first }
@@ -338,6 +289,7 @@ struct HistoryView: View {
             return true
         }
         guard !working, let session = config.session, session.canTransfer, !config.needsSignIn else { return true }
+        page.setFilter(filter)
         return await page.refresh(history: history, session: session)
     }
 
@@ -365,6 +317,8 @@ struct HistoryView: View {
 }
 
 private struct HistoryDetail: View {
+    @Environment(\.dismiss) private var dismiss
+    var onSend: () -> Void = {}
     @Environment(TransferHistoryStore.self) private var history
     @Environment(ServerConfigManager.self) private var config
     @Environment(\.scenePhase) private var scenePhase
@@ -387,10 +341,17 @@ private struct HistoryDetail: View {
                     VStack(spacing: 16) {
                         Text(current.safeDisplayTitle).font(.headline)
                         Text(current.statusText)
-                        if let link = current.fullLink {
+                        if current.linkActive, let link = current.fullLink {
                             LinkCard(url: link)
-                        } else {
+                        } else if current.linkActive {
                             Text("This device does not have the encryption key. You can manage this item, but open its full link on the device that created it.")
+                        }
+                        if current.state == .exhausted {
+                            Text("Choose the original files to create a new send link.").font(.footnote)
+                            Button("Create replacement link") {
+                                dismiss()
+                                onSend()
+                            }.buttonStyle(PrimaryAction())
                         }
                         Text(current.summary)
                         if let limit = current.maxDownloads, limit > 0 {
@@ -417,7 +378,7 @@ private struct HistoryDetail: View {
             guard scenePhase == .active, record.isSlot != true else { return }
             var delay: UInt64 = 5
             while !Task.isCancelled, !config.needsSignIn, let session = config.session,
-                  record.canManage(as: session), current.state != .revoked, !current.isExpired
+                record.canManage(as: session), current.state != .revoked, !current.isExpired
             {
                 do {
                     try await history.refreshSend(record, session: session)
@@ -439,6 +400,7 @@ private struct HistoryDetail: View {
 /// Sanitize remotely supplied automatic names at presentation time, preserving local custom labels.
 extension TransferRecord {
     var safeDisplayTitle: String {
+        if let sharedTitle, !sharedTitle.isEmpty { return sharedTitle }
         if let customTitle, !customTitle.isEmpty {
             return customTitle
         }

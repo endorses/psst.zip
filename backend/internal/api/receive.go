@@ -52,6 +52,7 @@ func remainingFiles(slot *database.Slot) *int64 {
 	return &n
 }
 func (s *Server) slotPolicy(response *SlotResponse, slot *database.Slot, counts ...int64) error {
+	response.Title = slot.Title
 	response.ReceiveProtocol = slot.ReceiveProtocol
 	response.RecipientPublicKey = slot.RecipientPublicKey
 	response.MaxFiles = slot.MaxFiles
@@ -133,7 +134,7 @@ func (s *Server) slotAvailability(w http.ResponseWriter, r *http.Request) {
 		transferLimit = 20
 	}
 	remaining := remainingFiles(slot)
-	response := SlotAvailability{ID: id, Status: "waiting", ExpiresAt: slot.ExpiresAt, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, RemainingFiles: remaining, RemainingBytes: max(int64(0), bytesLimit-slot.ReservedBytes), RemainingTransfers: max(0, transferLimit-slot.UploadCount)}
+	response := SlotAvailability{Title: slot.Title, ID: id, Status: "waiting", ExpiresAt: slot.ExpiresAt, ReceiveProtocol: slot.ReceiveProtocol, RecipientPublicKey: slot.RecipientPublicKey, MaxFiles: slot.MaxFiles, RemainingFiles: remaining, RemainingBytes: max(int64(0), bytesLimit-slot.ReservedBytes), RemainingTransfers: max(0, transferLimit-slot.UploadCount)}
 	response.Available = slot.ReceiveProtocol == 2 && response.RemainingBytes > 0 && response.RemainingTransfers > 0 && (remaining == nil || *remaining > 0)
 	response.UploadCapacity = snapshot.Capacity
 	writeJSON(w, 200, response)

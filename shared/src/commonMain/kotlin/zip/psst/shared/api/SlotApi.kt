@@ -1,6 +1,7 @@
 package zip.psst.shared.api
 
 import zip.psst.shared.model.DropSlot
+import zip.psst.shared.model.LinkTitle
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.SlotAvailability
 import zip.psst.shared.model.Transfer
@@ -10,6 +11,7 @@ import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
@@ -29,6 +31,7 @@ private data class CreateReceiveRequest(
     val receive_protocol: Int = 2,
     val recipient_public_key: String,
     val max_files: Int,
+    val title: String?,
 )
 
 /** Represents a Server-Sent Event from the slot events endpoint. */
@@ -69,7 +72,11 @@ class SlotApi(
         throw IllegalArgumentException("A receive public key is required")
 
     @Throws(Exception::class)
-    suspend fun create(recipientPublicKey: String, maxFiles: Int): DropSlot {
+    suspend fun create(recipientPublicKey: String, maxFiles: Int): DropSlot =
+        create(recipientPublicKey, maxFiles, null)
+
+    @Throws(Exception::class)
+    suspend fun create(recipientPublicKey: String, maxFiles: Int, title: String?): DropSlot {
         require(maxFiles >= 0 && recipientPublicKey.matches(Regex("[A-Za-z0-9_-]{43}"))) {
             "Invalid receive link settings"
         }
@@ -82,11 +89,30 @@ class SlotApi(
                     CreateReceiveRequest(
                         recipient_public_key = recipientPublicKey,
                         max_files = maxFiles,
+                        title = LinkTitle.normalize(title),
                     )
                 )
             }
         response.checkAuthenticatedWrite()
-        return response.readControlJson(4096)
+        return response.readControlJson<DropSlot>(4096).also {
+            require(LinkTitle.normalize(it.title) == it.title)
+        }
+    }
+
+    @Throws(Exception::class)
+    suspend fun renameTitle(id: String, title: String?): LinkTitle {
+        require(UrlHelper.isResourceId(id))
+        val response =
+            httpClient.patch("${config.apiBaseUrl}/slots/$id/title") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+                contentType(ContentType.Application.Json)
+                setBody(LinkTitle(LinkTitle.normalize(title)))
+            }
+        response.checkAuthenticatedWrite()
+        return response.readControlJson<LinkTitle>(4096).also {
+            require(LinkTitle.normalize(it.title) == it.title)
+        }
     }
 
     /** Public submission policy excludes child identities and activity. Never sends a token. */
@@ -97,6 +123,7 @@ class SlotApi(
             .get("${config.apiBaseUrl}/slots/$slotId/availability") { expectSuccess = false }
             .readControlJson<SlotAvailability>(4096)
             .also {
+                require(LinkTitle.normalize(it.title) == it.title)
                 require(it.id == slotId) { "Receive link identity mismatch" }
                 it.uploadCapacity?.validate()
             }
@@ -153,7 +180,9 @@ class SlotApi(
                 }
             if (response.status.value == 401 && sessionToken != null)
                 throw AuthenticationRequiredException()
-            decodeInboxPage(response.readControlJson<JsonObject>(), slotId, after, limit)
+            decodeInboxPage(response.readControlJson<JsonObject>(), slotId, after, limit).also {
+                require(LinkTitle.normalize(it.title) == it.title)
+            }
         }
 
     /**

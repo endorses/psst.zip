@@ -11,6 +11,14 @@ final class HistoryPageViewModel {
     private(set) var stale = false
     private(set) var lastUpdated: Date?
     private var requestID = UUID()
+    private var kind: String?
+    func setFilter(_ filter: HistoryFilter) {
+        let next = filter == .sent ? "transfer" : filter == .receive ? "slot" : nil
+        if next != kind {
+            invalidate()
+            kind = next
+        }
+    }
 
     func invalidate() {
         requestID = UUID()
@@ -62,7 +70,7 @@ final class HistoryPageViewModel {
         defer { if requestID == id { loading = false } }
         func current() -> Bool { requestID == id && SecretStore.session == session && !Task.isCancelled }
         do {
-            let list = try await HistorySnapshot.load(after: target.cursor) { path in
+            let list = try await HistorySnapshot.load(after: target.cursor, kind: kind) { path in
                 try await AccountHTTP.request(server: session.serverURL, path: path, token: session.token, maximumBytes: HistorySnapshot.maximumBytes, timeout: 10)
             }
             guard current() else { return false }

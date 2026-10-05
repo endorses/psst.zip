@@ -116,10 +116,10 @@ func TestAdminResourceTotalsAcrossConnectionRestartAndBackfill(t *testing.T) {
 		t.Fatal(err)
 	}
 	until := time.Now().Add(time.Hour)
-	if err = q.CreateSlot("slot", until, nil, "owner"); err != nil {
+	if err = legacyCreateSlot(old, "slot", until, "owner"); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.CreateTransfer("child", until, 0, nil); err != nil {
+	if err = legacyCreateTransfer(old, "child", until); err != nil {
 		t.Fatal(err)
 	}
 	if err = q.CreateFile("file", "child", 45); err != nil {

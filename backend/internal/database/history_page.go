@@ -32,10 +32,11 @@ type historyCursor struct {
 	Created string `json:"created"`
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
+	Filter  string `json:"filter,omitempty"`
 }
 type historyCandidate struct{ kind, id, created string }
 
-func parseHistoryCursor(after, actor string, all bool) (*historyCursor, error) {
+func parseHistoryCursor(after, actor string, all bool, filter string) (*historyCursor, error) {
 	if after == "" {
 		return nil, nil
 	}
@@ -49,7 +50,7 @@ func parseHistoryCursor(after, actor string, all bool) (*historyCursor, error) {
 	var cursor historyCursor
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&cursor) != nil || decoder.Decode(new(any)) != io.EOF || cursor.Version != 1 || cursor.Actor != actor || cursor.All != all || cursor.ID == "" || !validAuditID(cursor.ID) || len(cursor.Created) == 0 || len(cursor.Created) > 64 || strings.ContainsAny(cursor.Created, "\x00\r\n") || (cursor.Kind != "transfer" && cursor.Kind != "slot") {
+	if decoder.Decode(&cursor) != nil || decoder.Decode(new(any)) != io.EOF || cursor.Version != 1 || cursor.Actor != actor || cursor.All != all || cursor.Filter != filter || cursor.ID == "" || !validAuditID(cursor.ID) || len(cursor.Created) == 0 || len(cursor.Created) > 64 || strings.ContainsAny(cursor.Created, "\x00\r\n") || (cursor.Kind != "transfer" && cursor.Kind != "slot") {
 		return nil, ErrInvalidPage
 	}
 	canonical, _ := json.Marshal(cursor)
@@ -97,12 +98,19 @@ func historySummary(known, files, completed, size sql.NullInt64) InboxSummary {
 // inspects at most limit resources. Receive children still consume a raw page
 // position; an empty result with a continuation is therefore meaningful.
 // All policy, ownership and derived totals are read in one cancellable snapshot.
-func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool, limit int, after string) (HistoryPage, error) {
+func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool, limit int, after string, kinds ...string) (HistoryPage, error) {
 	page := HistoryPage{Resources: []HistoryResource{}}
+	filter := ""
+	if len(kinds) > 0 {
+		filter = kinds[0]
+	}
+	if filter != "" && filter != "transfer" && filter != "slot" {
+		return page, ErrInvalidPage
+	}
 	if actor == "" || !validAuditID(actor) || limit < 1 || limit > 100 {
 		return page, ErrInvalidPage
 	}
-	cursor, err := parseHistoryCursor(after, actor, all)
+	cursor, err := parseHistoryCursor(after, actor, all, filter)
 	if err != nil {
 		return page, err
 	}
@@ -129,6 +137,9 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 	}
 	candidates := make([]historyCandidate, 0, 2*(limit+1))
 	for _, kind := range []string{"transfer", "slot"} {
+		if filter != "" && kind != filter {
+			continue
+		}
 		query, args := historyCandidatesQuery(kind, owner, cursor, limit)
 		rows, e := tx.QueryContext(ctx, query, args...)
 		if e != nil {
@@ -165,7 +176,7 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 	if len(candidates) > limit {
 		candidates = candidates[:limit]
 		last := candidates[len(candidates)-1]
-		raw, _ := json.Marshal(historyCursor{Version: 1, Actor: actor, All: all, Created: last.created, ID: last.id, Kind: last.kind})
+		raw, _ := json.Marshal(historyCursor{Version: 1, Actor: actor, All: all, Created: last.created, ID: last.id, Kind: last.kind, Filter: filter})
 		next := base64.RawURLEncoding.EncodeToString(raw)
 		if len(next) > 512 {
 			return page, errors.New("invalid history cursor size")
@@ -187,11 +198,11 @@ func (q *Queries) AccountHistoryPage(ctx context.Context, actor string, all bool
 		if candidate.kind == "transfer" {
 			item.Transfer = &Transfer{}
 			t := item.Transfer
-			err = tx.QueryRowContext(ctx, `SELECT t.id,t.status,t.expires_at,t.max_downloads,t.download_count,t.created_at,t.completed_at,t.downloaded_at,COALESCE(t.owner_id,''),EXISTS(SELECT 1 FROM manifests WHERE transfer_id=t.id),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM transfers t LEFT JOIN admin_resource_totals c ON c.kind='transfer' AND c.resource_id=t.id WHERE t.id=?`, candidate.id).Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &item.OwnerID, &item.HasManifest, &known, &files, &completed, &size)
+			err = tx.QueryRowContext(ctx, `SELECT t.id,t.status,t.expires_at,t.max_downloads,t.download_count,t.created_at,t.completed_at,t.downloaded_at,t.title,`+exhaustedSQL("t")+`,COALESCE(t.owner_id,''),EXISTS(SELECT 1 FROM manifests WHERE transfer_id=t.id),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM transfers t LEFT JOIN admin_resource_totals c ON c.kind='transfer' AND c.resource_id=t.id WHERE t.id=?`, candidate.id).Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.Title, &t.Exhausted, &item.OwnerID, &item.HasManifest, &known, &files, &completed, &size)
 		} else {
 			item.Slot = &Slot{}
 			s := item.Slot
-			err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.created_at,s.receive_protocol,CASE WHEN length(s.recipient_public_key)<=128 THEN s.recipient_public_key ELSE NULL END,s.max_files,s.reserved_files,COALESCE(s.owner_id,''),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM slots s LEFT JOIN admin_resource_totals c ON c.kind='slot' AND c.resource_id=s.id WHERE s.id=?`, candidate.id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &item.OwnerID, &known, &files, &completed, &size)
+			err = tx.QueryRowContext(ctx, `SELECT s.id,s.status,s.expires_at,s.created_at,s.receive_protocol,CASE WHEN length(s.recipient_public_key)<=128 THEN s.recipient_public_key ELSE NULL END,s.max_files,s.reserved_files,s.title,COALESCE(s.owner_id,''),c.inbox_known,c.file_count,c.completed_files,c.total_file_bytes FROM slots s LEFT JOIN admin_resource_totals c ON c.kind='slot' AND c.resource_id=s.id WHERE s.id=?`, candidate.id).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.Title, &item.OwnerID, &known, &files, &completed, &size)
 		}
 		if err != nil {
 			return page, err

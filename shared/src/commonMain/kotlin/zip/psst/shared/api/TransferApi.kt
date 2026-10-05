@@ -1,5 +1,6 @@
 package zip.psst.shared.api
 
+import zip.psst.shared.model.LinkTitle
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.Transfer
 import zip.psst.shared.model.TransferLimits
@@ -7,6 +8,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
@@ -17,6 +19,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
 
 /** API operations for file transfers (send flow). */
 class TransferApi(
@@ -48,17 +51,38 @@ class TransferApi(
     @Throws(Exception::class) suspend fun create(): Transfer = create(0)
 
     @Throws(Exception::class)
-    suspend fun create(maxDownloads: Int): Transfer {
+    suspend fun create(maxDownloads: Int): Transfer = create(maxDownloads, null)
+
+    @Throws(Exception::class)
+    suspend fun create(maxDownloads: Int, title: String?): Transfer {
         require(maxDownloads >= 0) { "Invalid download limit" }
         val response =
             httpClient.post("${config.apiBaseUrl}/transfers") {
                 expectSuccess = false
                 sessionToken?.let { bearerAuth(it) }
                 contentType(ContentType.Application.Json)
-                setBody(mapOf("max_downloads" to maxDownloads))
+                setBody(CreateTitledTransfer(maxDownloads, LinkTitle.normalize(title)))
             }
         response.checkAuthenticatedWrite()
-        return response.readControlJson(4096)
+        return response.readControlJson<Transfer>(4096).also {
+            require(LinkTitle.normalize(it.title) == it.title)
+        }
+    }
+
+    @Throws(Exception::class)
+    suspend fun renameTitle(id: String, title: String?): LinkTitle {
+        require(zip.psst.shared.model.UrlHelper.isResourceId(id))
+        val response =
+            httpClient.patch("${config.apiBaseUrl}/transfers/$id/title") {
+                expectSuccess = false
+                sessionToken?.let { bearerAuth(it) }
+                contentType(ContentType.Application.Json)
+                setBody(LinkTitle(LinkTitle.normalize(title)))
+            }
+        response.checkAuthenticatedWrite()
+        return response.readControlJson<LinkTitle>(4096).also {
+            require(LinkTitle.normalize(it.title) == it.title)
+        }
     }
 
     /** Revoke the link and stored uploads. Missing resources are already revoked. */
@@ -82,6 +106,7 @@ class TransferApi(
         if (response.status.value == 401 && sessionToken != null)
             throw AuthenticationRequiredException()
         return response.readControlJson<Transfer>().also {
+            require(LinkTitle.normalize(it.title) == it.title)
             require(it.id == transferId) { "The server returned details for a different transfer" }
         }
     }
@@ -291,3 +316,5 @@ class TransferApi(
                 }
             }
 }
+
+@Serializable private data class CreateTitledTransfer(val max_downloads: Int, val title: String?)

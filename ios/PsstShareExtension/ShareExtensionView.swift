@@ -11,8 +11,13 @@ struct ShareExtensionView: View {
                     Text(viewModel.config.indicator).font(.caption)
                     Text(viewModel.config.limitDescription + " Files are encrypted in chunks.")
                         .font(.footnote).foregroundStyle(PsstTheme.secondary)
-                    Text(String(format: String(localized: "%lld files · %@"), Int64(viewModel.fileCount), ByteCountFormatter.string(fromByteCount: viewModel.totalSize, countStyle: .file)))
+                    Text(
+                        String(
+                            format: String(localized: "%lld files · %@"), Int64(viewModel.fileCount),
+                            ByteCountFormatter.string(fromByteCount: viewModel.totalSize, countStyle: .file)))
                     if viewModel.send == nil {
+                        TextField("Shared title (optional)", text: $viewModel.sharedTitle).textFieldStyle(.roundedBorder)
+                        Text("Shown to people using this link.").font(.caption).foregroundStyle(PsstTheme.secondary)
                         LinkLimitControl(receiving: false, enabled: $viewModel.limitEnabled, value: $viewModel.limitValue)
                     }
                     if !viewModel.config.isConfigured || viewModel.config.needsSignIn {
@@ -20,17 +25,25 @@ struct ShareExtensionView: View {
                     } else if let send = viewModel.send {
                         switch send.state {
                         case .idle: Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction())
-                        case .encrypting: ProgressView("Preparing files")
+                        case .encrypting:
+                            ProgressView("Preparing files")
                             Text(verbatim: send.currentFile).font(.caption)
                         case let .uploading(value):
                             ProgressView("Uploading", value: value)
                             if let progress = send.progress {
                                 Text(verbatim: progress.name).font(.caption)
-                                Text(ByteCountFormatter.string(fromByteCount: progress.sent, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: progress.total, countStyle: .file)).font(.caption)
+                                Text(
+                                    ByteCountFormatter.string(fromByteCount: progress.sent, countStyle: .file) + " / "
+                                        + ByteCountFormatter.string(fromByteCount: progress.total, countStyle: .file)
+                                ).font(.caption)
                             }
                         case .complete:
-                            Label("Ready to download", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
-                            if let link = send.shareURL {
+                            if let title = send.record?.sharedTitle { Text(title).font(.headline) }
+                            Label(send.record?.statusText ?? "Ready to download", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+                            if send.record?.state == .exhausted {
+                                Button("Create replacement link") { viewModel.send = nil }.buttonStyle(PrimaryAction())
+                            }
+                            if send.record?.linkActive != false, let link = send.shareURL {
                                 LinkCard(url: link)
                             }
                         case let .failed(message):
@@ -39,7 +52,8 @@ struct ShareExtensionView: View {
                             DisclosureGroup("Sign in again") { LoginFields() }
                         }
                     } else {
-                        Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction()).disabled(viewModel.files.isEmpty || LinkLimit.parse(viewModel.limitValue, enabled: viewModel.limitEnabled) == nil)
+                        Button("Send files") { viewModel.start() }.buttonStyle(PrimaryAction()).disabled(
+                            viewModel.files.isEmpty || LinkLimit.parse(viewModel.limitValue, enabled: viewModel.limitEnabled) == nil)
                     }
                     if let error = viewModel.error {
                         Text(error).foregroundStyle(PsstTheme.error)
@@ -50,13 +64,15 @@ struct ShareExtensionView: View {
             .navigationTitle("psst.zip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") {
-                    if viewModel.active {
-                        viewModel.cancelRequested = true
-                    } else {
-                        onCancel()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if viewModel.active {
+                            viewModel.cancelRequested = true
+                        } else {
+                            onCancel()
+                        }
                     }
-                } }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     if viewModel.send?.state == .complete {
                         Button("Done") { onComplete() }
@@ -64,15 +80,19 @@ struct ShareExtensionView: View {
                 }
             }
             .confirmationDialog("Stop upload?", isPresented: $viewModel.cancelRequested, titleVisibility: .visible) {
-                Button("Stop", role: .destructive) { viewModel.cancel()
+                Button("Stop", role: .destructive) {
+                    viewModel.cancel()
                     onCancel()
                 }
                 Button("Keep going", role: .cancel) {}
-            } message: { Text("The upload will stop when this extension closes. Unfinished uploads stay in History so you can revoke them.") }
+            } message: {
+                Text("The upload will stop when this extension closes. Unfinished uploads stay in History so you can revoke them.")
+            }
             .task {
                 while !Task.isCancelled {
                     viewModel.config.reload()
                     await viewModel.config.refreshAccount()
+                    await viewModel.send?.refreshLinkStatus()
                     do { try await Task.sleep(for: .seconds(3)) } catch { return }
                 }
             }

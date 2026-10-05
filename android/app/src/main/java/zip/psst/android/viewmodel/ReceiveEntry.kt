@@ -17,6 +17,7 @@ internal fun restoreReceiveEntry(
     val canDecrypt = key?.size == 32 && privateKeyAvailable
     return ReceiveUiState(
         slotId = row.id,
+        localName = row.sharedTitle ?: row.title.orEmpty(),
         encryptionKey = row.encryptionKey,
         keyUnavailable = !canDecrypt,
         uploadUrl =

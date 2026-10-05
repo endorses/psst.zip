@@ -22,6 +22,8 @@ export interface Session {
 }
 export interface Resource {
   id: string;
+  title?: string | null;
+  inactive_reason?: string | null;
   status?: string;
   file_count?: number | null;
   download_count?: number;

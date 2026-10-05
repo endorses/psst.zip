@@ -10,39 +10,44 @@ import (
 
 // CreateTransferRequest is the body for POST /api/v1/transfers.
 type CreateTransferRequest struct {
-	ExpiresInSeconds int `json:"expires_in_seconds,omitempty"`
-	MaxDownloads     int `json:"max_downloads,omitempty"`
+	Title            *string `json:"title"`
+	ExpiresInSeconds int     `json:"expires_in_seconds,omitempty"`
+	MaxDownloads     int     `json:"max_downloads,omitempty"`
 }
 
 // CreateSlotRequest is the body for POST /api/v1/slots.
 type CreateSlotRequest struct {
-	ReceiveProtocol    int    `json:"receive_protocol,omitempty"`
-	RecipientPublicKey string `json:"recipient_public_key,omitempty"`
-	MaxFiles           int    `json:"max_files,omitempty"`
-	ExpiresInSeconds   int    `json:"expires_in_seconds,omitempty"`
+	Title              *string `json:"title"`
+	ReceiveProtocol    int     `json:"receive_protocol,omitempty"`
+	RecipientPublicKey string  `json:"recipient_public_key,omitempty"`
+	MaxFiles           int     `json:"max_files,omitempty"`
+	ExpiresInSeconds   int     `json:"expires_in_seconds,omitempty"`
 }
 
 // --- Response types ---
 
 // TransferResponse is returned when querying a transfer.
 type TransferResponse struct {
-	Files         []FileInfo `json:"files"`
-	OwnerID       string     `json:"owner_id,omitempty"`
-	ID            string     `json:"id"`
-	Status        string     `json:"status"`
-	FileCount     int        `json:"file_count"`
-	TotalSize     int64      `json:"total_size"`
-	HasManifest   bool       `json:"has_manifest"`
-	ExpiresAt     time.Time  `json:"expires_at"`
-	MaxDownloads  int        `json:"max_downloads"`
-	DownloadCount int        `json:"download_count"`
-	CreatedAt     time.Time  `json:"created_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	DownloadedAt  *time.Time `json:"downloaded_at"`
+	InactiveReason *string    `json:"inactive_reason,omitempty"`
+	Title          *string    `json:"title"`
+	Files          []FileInfo `json:"files"`
+	OwnerID        string     `json:"owner_id,omitempty"`
+	ID             string     `json:"id"`
+	Status         string     `json:"status"`
+	FileCount      int        `json:"file_count"`
+	TotalSize      int64      `json:"total_size"`
+	HasManifest    bool       `json:"has_manifest"`
+	ExpiresAt      time.Time  `json:"expires_at"`
+	MaxDownloads   int        `json:"max_downloads"`
+	DownloadCount  int        `json:"download_count"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	DownloadedAt   *time.Time `json:"downloaded_at"`
 }
 
 // CreateTransferResponse is returned by POST /api/v1/transfers.
 type CreateTransferResponse struct {
+	Title       *string   `json:"title"`
 	ID          string    `json:"id"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	DeleteToken string    `json:"delete_token"`
@@ -60,6 +65,7 @@ type FileInfo struct {
 
 // SlotResponse is returned when querying a slot.
 type SlotResponse struct {
+	Title              *string            `json:"title"`
 	FileCount          *int64             `json:"file_count,omitempty"`
 	ReceiveProtocol    int                `json:"receive_protocol"`
 	RecipientPublicKey string             `json:"recipient_public_key"`
@@ -85,6 +91,7 @@ type SlotTransferInfo struct {
 
 // CreateSlotResponse is returned by POST /api/v1/slots.
 type CreateSlotResponse struct {
+	Title       *string   `json:"title"`
 	ID          string    `json:"id"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	DeleteToken string    `json:"delete_token"`
@@ -97,6 +104,7 @@ type ErrorResponse struct {
 
 // SlotAvailability exposes submission policy, never private inbox history.
 type SlotAvailability struct {
+	Title              *string                      `json:"title"`
 	UploadCapacity     database.GuestUploadCapacity `json:"upload_capacity"`
 	ID                 string                       `json:"id"`
 	Status             string                       `json:"status"`

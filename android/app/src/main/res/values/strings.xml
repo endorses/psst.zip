@@ -35,6 +35,22 @@
     <string name="uploading_file">Uploading %1$s</string>
     <string name="upload_bytes">%1$s of %2$s uploaded</string>
     <string name="selected_files">%1$d files · %2$s</string>
+    <plurals name="selected_file_summary">
+        <item quantity="one">%1$d file · %2$s</item>
+        <item quantity="other">%1$d files · %2$s</item>
+    </plurals>
+    <plurals name="files_selected_count">
+        <item quantity="one">%1$d file selected</item>
+        <item quantity="other">%1$d files selected</item>
+    </plurals>
+    <plurals name="file_count_label">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="received_file_count">
+        <item quantity="one">%1$d file received</item>
+        <item quantity="other">%1$d files received</item>
+    </plurals>
     <string name="stop_upload">Stop upload?</string>
     <string name="stop_upload_explanation">This cancels the upload and attempts to remove unfinished server files. If cleanup fails, you can revoke them from History.</string>
     <string name="stop">Stop upload</string>

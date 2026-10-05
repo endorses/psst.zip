@@ -33,6 +33,8 @@ class InboxCheckpointSqlTest {
             )
             INBOX_CHECKPOINT_SCHEMA.forEach { db.exec(it) }
             HISTORY_LINK_POLICY_SCHEMA.forEach { db.exec(it) }
+            HISTORY_SHARED_TITLE_SCHEMA.forEach { db.exec(it) }
+            assertNull(db.value("SELECT sharedTitle FROM transfer_history"))
             assertNull(db.value("SELECT maxFiles FROM transfer_history"))
             assertNull(db.value("SELECT reservedFiles FROM transfer_history"))
             assertEquals(original, db.value("SELECT receivedTransfersJson FROM transfer_history"))

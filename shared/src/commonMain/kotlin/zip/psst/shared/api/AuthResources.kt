@@ -25,6 +25,8 @@ data class AuthResourceTransfer(
     @SerialName("download_count") val downloadCount: Int = 0,
     @SerialName("downloaded_at") val downloadedAt: String? = null,
     @SerialName("max_downloads") val maxDownloads: Int? = null,
+    val title: String? = null,
+    @SerialName("inactive_reason") val inactiveReason: String? = null,
 )
 
 @Serializable
@@ -40,6 +42,7 @@ data class AuthResourceSlot(
     val summary: InboxSummary? = null,
     @SerialName("max_files") val maxFiles: Int? = null,
     @SerialName("reserved_files") val reservedFiles: Long? = null,
+    val title: String? = null,
 )
 
 @Serializable

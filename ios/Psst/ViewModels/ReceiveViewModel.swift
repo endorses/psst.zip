@@ -41,7 +41,7 @@ final class ReceiveViewModel {
     var canGoPrevious: Bool { canBrowse && pageWindow.canGoBack }
 
     var uploadURL: String? {
-        record?.receiveProtocol == 2 ? record?.fullLink : nil
+        record?.receiveProtocol == 2 && record?.linkActive == true ? record?.fullLink : nil
     }
 
     var expiresAt: Date? {
@@ -76,7 +76,7 @@ final class ReceiveViewModel {
         self.serverConfig = serverConfig
         self.historyStore = historyStore
         self.record = record
-        self.localName = localName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.localName = localName
         self.maxFiles = maxFiles
         if let record {
             state = .waiting
@@ -104,13 +104,13 @@ final class ReceiveViewModel {
             let keys = ReceiveCrypto.generateKeyPair()
             let publicKey = keys.publicKey.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(
                 of: "=", with: "")
-            let slot = try await client.slots.create(recipientPublicKey: publicKey, maxFiles: maxFiles)
+            let slot = try await client.slots.create(recipientPublicKey: publicKey, maxFiles: maxFiles, title: try SharedLinkTitle.normalize(localName))
             guard UUID(uuidString: slot.id) != nil else { throw AccountError.request }
             let link = UrlHelper.shared.buildReceiveUrl(baseUrl: session.serverURL, slotId: slot.id, publicKey: keys.publicKey.toKotlinByteArray())
             var entry = TransferRecord(
                 id: slot.id, direction: .received, state: .inProgress, createdAt: Date(),
                 expiresAt: ServerTimestamp.parse(slot.expiresAt), fileCount: 0,
-                totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, customTitle: localName?.isEmpty == false ? String(localName!.prefix(200)) : nil,
+                totalSize: 0, shareURL: nil, serverURL: session.serverURL, ownerID: session.userID, sharedTitle: try SharedLinkTitle.normalize(localName),
                 isSlot: true, receiveProtocol: 0, maxFiles: Int(maxFiles), reservedFiles: 0)
             allocation = (session.serverURL, slot.id, slot.deleteToken ?? session.token, entry.vaultID)
             record = entry
@@ -156,6 +156,14 @@ final class ReceiveViewModel {
                         ? String(localized: "Could not create a receive link. Sign in or reconnect, then retry creating it.")
                         : String(localized: "Receive link creation stopped. Its record remains in History so you can revoke it.")))
         }
+    }
+
+    func rename(_ title: String) async throws {
+        guard let record else { return }
+        let session = try serverConfig.requireSession()
+        try await historyStore.rename(record, name: title, session: session)
+        try serverConfig.check(session)
+        self.record = try historyStore.record(record.localID)
     }
 
     private func isSaved(_ transfer: SlotTransfer, in entry: TransferRecord) -> Bool {
@@ -224,6 +232,7 @@ final class ReceiveViewModel {
             let total = status.summary?.ready == true ? status.summary?.completedFiles?.int64Value : nil
             if let total { updated.fileCount = Int(clamping: total) }
             updated.serverSummaryKnown = status.summary?.ready == true
+            updated.sharedTitle = try SharedLinkTitle.normalize(status.title)
             updated.receiveProtocol = Int(status.receiveProtocol)
             updated.maxFiles = Int(status.maxFiles)
             updated.reservedFiles = status.reservedFiles

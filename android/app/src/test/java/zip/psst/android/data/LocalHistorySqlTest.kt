@@ -29,6 +29,53 @@ class LocalHistorySqlTest {
         }
 
     @Test
+    fun filterSeeksMatchingRowsBeyondFirstPageAndKeepsAccountScope() =
+        database().use { db ->
+            db.exec(
+                "CREATE TABLE transfer_history(id TEXT PRIMARY KEY,accountId TEXT,originScope TEXT,type TEXT,createdAt INTEGER)"
+            )
+            db.exec(ACCOUNT_FILTERED_INDEX_SQL)
+            repeat(150) {
+                db.exec(
+                    "INSERT INTO transfer_history VALUES(?,?,?,?,?)",
+                    "id-$it",
+                    "owner",
+                    "https://host",
+                    if (it < 10) "received" else "sent",
+                    it,
+                )
+            }
+            db.exec(
+                "INSERT INTO transfer_history VALUES('foreign','other','https://host','received',999)"
+            )
+            val sql =
+                ACCOUNT_FILTERED_PAGE_SQL.replace(HISTORY_METADATA_PROJECTION, "id,type")
+                    .replace(":accountId", "?")
+                    .replace(":originScope", "?")
+                    .replace(":kind", "?")
+                    .replace(":beforeTime", "?")
+                    .replace(":beforeId", "?")
+            val rows = db.query(sql, "owner", "https://host", "received", Long.MAX_VALUE, "\uffff")
+            assertEquals(10, rows.size)
+            assertTrue(rows.all { it[1] == "received" && it[0] != "foreign" })
+            val plan =
+                db.query(
+                        "EXPLAIN QUERY PLAN $sql",
+                        "owner",
+                        "https://host",
+                        "received",
+                        Long.MAX_VALUE,
+                        "\uffff",
+                    )
+                    .flatten()
+                    .joinToString()
+            assertTrue(
+                plan.contains("index_transfer_history_accountId_originScope_type_createdAt_id")
+            )
+            assertFalse(plan.contains("TEMP B-TREE"))
+        }
+
+    @Test
     fun accountMigrationAndSeekKeepKeysReceiptsAndAccountIsolation() =
         database().use { db ->
             db.exec(

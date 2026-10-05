@@ -1,7 +1,7 @@
 <script lang="ts">
   import { TrafficLimitError, detectTransferStop } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
-  import { beforeNavigate } from "$app/navigation";
+  import { beforeNavigate, goto } from "$app/navigation";
   import { BRAND } from "$lib/brand";
   import { page } from "$app/stores";
   import { onMount, onDestroy } from "svelte";
@@ -21,13 +21,15 @@
   import type { Manifest, FileManifestEntry } from "$lib/crypto";
   import { zipSync } from "fflate";
 
-  import { assertFileSize, MAX_ZIP_BYTES, MAX_BUFFERED_BYTES } from "$lib/limits";
+  import { assertFileSize, MAX_ZIP_BYTES } from "$lib/limits";
 
   import { decryptFileStream } from "$lib/chunked-files";
   import { createSaveSink, cleanAbandonedDownloads, LARGE_SAVE_MESSAGE } from "$lib/file-save";
   import { safeFilename, zipEntryName } from "$lib/filenames";
   import { validateDownload } from "$lib/download-validation";
-  import { DESTINATION_SPACE_NOTICE, ReceiveStorageError } from "$lib/recipient-policy";
+  import { ReceiveStorageError } from "$lib/recipient-policy";
+  import { downloadLinkExhausted, DOWNLOAD_LINK_CLOSED } from "$lib/link-title";
+  import DownloadContext from "$lib/components/DownloadContext.svelte";
 
   type Status = "loading" | "ready" | "downloading" | "error";
 
@@ -48,6 +50,31 @@
   let keyStr = $state("");
   let inboxId = $state("");
   let transferInfo = $state<TransferInfo | null>(null);
+  let ownerUser = $state<User | null>(null);
+  let signingOut = $state(false);
+  let departureApproved = false;
+  let metadataGeneration = 0;
+  const returnUrl = $derived(inboxId ? `/?view=receive&slot=${encodeURIComponent(inboxId)}` : "/");
+  async function logout() {
+    if (signingOut) return;
+    if (saving && !confirm("Stop saving and sign out? Files already saved will remain.")) return;
+    controller?.abort();
+    signingOut = true;
+    try {
+      await accountRequest("/auth/logout", "POST");
+      try {
+        localStorage.setItem("psst.auth-change", String(Date.now()));
+      } catch {}
+      ownerUser = null;
+      departureApproved = true;
+      await goto("/");
+    } catch {
+      errorMessage = "Could not sign out. Check your connection and try again.";
+    } finally {
+      signingOut = false;
+      departureApproved = false;
+    }
+  }
   let downloadProgress = $state<Record<string, number>>({});
   let downloadedFileIds = $state<string[]>([]);
   let confirmation = $state<"idle" | "sending" | "confirmed" | "failed">("idle");
@@ -63,6 +90,7 @@
   beforeNavigate(({ willUnload, cancel }) => {
     if (
       !willUnload &&
+      !departureApproved &&
       saving &&
       !confirm("Stop saving and leave? Files already saved will remain.")
     )
@@ -89,6 +117,7 @@
       if (inboxId) {
         if (!/^[0-9a-f-]{36}$/i.test(inboxId)) throw new Error("Invalid inbox");
         const { user } = await accountRequest<{ user: User }>("/auth/me");
+        ownerUser = user;
         const pair = loadReceiveKey(user.id, inboxId);
         if (!pair)
           throw new Error(
@@ -104,6 +133,7 @@
           if (membership.recipient_public_key !== (await exportKey(pair.publicKey)))
             throw new Error("This file does not match the expected inbox.");
           transferInfo = await getTransferInfo(transferId, loadController.signal);
+          if (downloadLinkExhausted(transferInfo)) throw new Error(DOWNLOAD_LINK_CLOSED);
           const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
           const envelope = decodeReceiveEnvelope(new Uint8Array(encryptedManifestData));
           const key = await openSubmissionKey(
@@ -124,6 +154,7 @@
         }
       } else {
         transferInfo = await getTransferInfo(transferId, loadController.signal);
+        if (downloadLinkExhausted(transferInfo)) throw new Error(DOWNLOAD_LINK_CLOSED);
         const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
         manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
       }
@@ -132,6 +163,8 @@
     } catch (err) {
       status = "error";
       if (err instanceof TrafficLimitError || err instanceof TransferStateError) {
+        errorMessage = err.message;
+      } else if (err instanceof Error && err.message === DOWNLOAD_LINK_CLOSED) {
         errorMessage = err.message;
       } else if (
         err instanceof Error &&
@@ -225,12 +258,13 @@
       // The aborted payload signal must not abort the control refresh: even
       // an interrupted response consumes a download attempt. Never retry data.
       if (!disposed) {
-        transferInfo = await getTransferInfo(transferId, loadController.signal)
+        const generation = ++metadataGeneration;
+        void getTransferInfo(transferId, loadController.signal)
           .then((fresh) => {
             if (manifest) validateDownload(fresh, transferId, manifest);
-            return fresh;
+            if (!disposed && generation === metadataGeneration) transferInfo = fresh;
           })
-          .catch(() => transferInfo);
+          .catch(() => {});
       }
     }
   }
@@ -332,125 +366,117 @@
 
 <svelte:window onbeforeunload={unload} />
 <svelte:head>
-  <title>Save files · {BRAND}</title>
+  <title
+    >{transferInfo?.title || (manifest?.files.length === 1 ? "Save file" : "Save files")} · {BRAND}</title
+  >
 </svelte:head>
 
-{#if status === "loading"}
-  <section class="center">
-    <div class="spinner"></div>
-    <p>Loading transfer...</p>
-  </section>
-{:else if status === "error"}
-  <section class="center">
-    <h1>Cannot open files</h1>
-    <p class="error" role="alert">{errorMessage}</p>
-    <button
-      onclick={() => {
-        status = "loading";
-        void load();
-      }}><Icon name="Refresh" size={18} />Reconnect</button
-    >
-  </section>
-{:else if status === "downloading"}
-  <section class="center">
-    <div class="spinner"></div>
-    <p>Saving {currentFile} · {formatSize(downloadBytes)} received</p>
-    <button onclick={() => controller?.abort()}>Cancel saving</button>
-  </section>
-{:else if manifest}
-  <section>
-    <h1>Save files</h1>
-    <p class="subtitle">
-      {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
-      {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
-    </p>
-    <p class="muted small">{DESTINATION_SPACE_NOTICE}</p>
-    {#if transferInfo?.max_downloads}<p class="muted small">
-        Each file permits {transferInfo.max_downloads} download attempts. Interrupted downloads and retries
-        count.
-      </p>{/if}
-
-    {#if manifest.files.some((entry) => entry.size > MAX_BUFFERED_BYTES)}<p class="muted small">
-        Large files save directly to disk where your browser supports it. HTTPS may be required; the
-        mobile app can also save them.
-      </p>{/if}
-    <ul class="file-list">
-      {#each manifest.files as entry}
-        <li>
-          <div class="file-info">
-            <span class="file-name">{entry.name}</span>
-            <span class="file-size">{formatSize(entry.size)}</span>
-            {#if transferInfo?.files?.find((file) => file.id === entry.blob_id)?.remaining_downloads != null}<span
-                class="muted small"
-              >
-                {#if transferInfo.files.find((file) => file.id === entry.blob_id)?.remaining_downloads === 0}
-                  Download limit reached
-                {:else}
-                  · {transferInfo.files.find((file) => file.id === entry.blob_id)
-                    ?.remaining_downloads} attempts remaining
-                {/if}</span
-              >{/if}
-          </div>
-          <button
-            class="btn"
-            onclick={() => downloadSingleFile(entry)}
-            disabled={Object.keys(downloadProgress).length > 0 ||
-              transferInfo?.files?.find((file) => file.id === entry.blob_id)
-                ?.remaining_downloads === 0}
-          >
-            <Icon name="Download" size={18} />
-            {#if entry.blob_id in downloadProgress}
-              {downloadProgress[entry.blob_id]}%
-            {:else}
-              {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save file"}
-            {/if}
-          </button>
-        </li>
-      {/each}
-    </ul>
-
-    {#if manifest.files.length > 1}
-      <p class="muted small">
-        {#if transferInfo?.files?.some((file) => file.remaining_downloads === 0)}
-          ZIP is unavailable because one or more files reached their download limit. Save the
-          available files individually.
-        {:else}
-          ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
-        {/if}
-      </p>
-      <button
-        class="primary"
-        disabled={Object.keys(downloadProgress).length > 0 ||
-          transferInfo?.files?.some((file) => file.remaining_downloads === 0) ||
-          manifest.files.reduce((n, f) => n + f.size, 0) > MAX_ZIP_BYTES}
-        onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
-      >
-    {/if}
-
-    {#if Object.keys(downloadProgress).length}<button onclick={() => controller?.abort()}
-        >Cancel saving</button
-      >{/if}
-    {#if errorMessage}
+<DownloadContext user={ownerUser} {inboxId} {returnUrl} {signingOut} onlogout={logout}>
+  {#if status === "loading"}
+    <section class="center">
+      <div class="spinner"></div>
+      <p>Loading transfer...</p>
+    </section>
+  {:else if status === "error"}
+    <section class="center">
+      <h1>Cannot open files</h1>
       <p class="error" role="alert">{errorMessage}</p>
-    {/if}
+      <button
+        onclick={() => {
+          status = "loading";
+          void load();
+        }}><Icon name="Refresh" size={18} />Reconnect</button
+      >
+    </section>
+  {:else if status === "downloading"}
+    <section class="center">
+      <div class="spinner"></div>
+      <p>Saving {currentFile} · {formatSize(downloadBytes)} received</p>
+      <button onclick={() => controller?.abort()}>Cancel saving</button>
+    </section>
+  {:else if manifest}
+    <section>
+      <h1>{transferInfo?.title || (manifest.files.length === 1 ? "Save file" : "Save files")}</h1>
+      <p class="subtitle">
+        {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
+        {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
+      </p>
+      <ul class="file-list">
+        {#each manifest.files as entry}
+          <li>
+            <div class="file-info">
+              <span class="file-name">{entry.name}</span>
+              <span class="file-size">{formatSize(entry.size)}</span>
+              {#if transferInfo?.files?.find((file) => file.id === entry.blob_id)?.remaining_downloads != null}<span
+                  class="muted small"
+                >
+                  {#if transferInfo.files.find((file) => file.id === entry.blob_id)?.remaining_downloads === 0}
+                    Download limit reached
+                  {:else}
+                    · {transferInfo.files.find((file) => file.id === entry.blob_id)
+                      ?.remaining_downloads} attempts remaining
+                  {/if}</span
+                >{/if}
+            </div>
+            <button
+              class="btn"
+              onclick={() => downloadSingleFile(entry)}
+              disabled={Object.keys(downloadProgress).length > 0 ||
+                transferInfo?.files?.find((file) => file.id === entry.blob_id)
+                  ?.remaining_downloads === 0}
+            >
+              <Icon name="Download" size={18} />
+              {#if entry.blob_id in downloadProgress}
+                {downloadProgress[entry.blob_id]}%
+              {:else}
+                {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save file"}
+              {/if}
+            </button>
+          </li>
+        {/each}
+      </ul>
 
-    {#if allFilesDownloaded}
-      <div class="download-confirmation" role="status">
-        <p>All files handed to your browser. Check its Downloads list for saved files.</p>
-        {#if confirmation === "sending"}
-          <p>Notifying the sender...</p>
-        {:else if confirmation === "confirmed"}
-          <p>Sender notified.</p>
-        {:else if confirmation === "failed"}
-          <p>Files downloaded, but the sender could not be notified.</p>
-          <button class="btn" onclick={confirmDownload}
-            ><Icon name="Refresh" size={18} />Retry confirmation</button
-          >
-        {/if}
-      </div>
-    {/if}
-  </section>
-{/if}
+      {#if manifest.files.length > 1}
+        <p class="muted small">
+          {#if transferInfo?.files?.some((file) => file.remaining_downloads === 0)}
+            ZIP is unavailable because one or more files reached their download limit. Save the
+            available files individually.
+          {:else}
+            ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
+          {/if}
+        </p>
+        <button
+          class="primary"
+          disabled={Object.keys(downloadProgress).length > 0 ||
+            transferInfo?.files?.some((file) => file.remaining_downloads === 0) ||
+            manifest.files.reduce((n, f) => n + f.size, 0) > MAX_ZIP_BYTES}
+          onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
+        >
+      {/if}
+
+      {#if saving}<button onclick={() => controller?.abort()}>Cancel saving</button>{/if}
+      {#if errorMessage}
+        <p class="error" role="alert">{errorMessage}</p>
+      {/if}
+
+      {#if allFilesDownloaded}
+        <div class="download-confirmation" role="status">
+          <p>All files handed to your browser. Check its Downloads list for saved files.</p>
+          {#if confirmation === "sending"}
+            <p>Notifying the sender...</p>
+          {:else if confirmation === "confirmed"}
+            <p>Sender notified.</p>
+          {:else if confirmation === "failed"}
+            <p>Files downloaded, but the sender could not be notified.</p>
+            <button class="btn" onclick={confirmDownload}
+              ><Icon name="Refresh" size={18} />Retry confirmation</button
+            >
+          {/if}
+        </div>
+      {/if}
+    </section>
+  {/if}
+</DownloadContext>
 
 <style>
   .download-confirmation {

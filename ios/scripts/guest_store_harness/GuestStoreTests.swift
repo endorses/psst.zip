@@ -29,6 +29,26 @@ final class GuestStoreTests: XCTestCase {
         return record
     }
 
+    func testSharedTitleSnapshotAndExhaustionSurviveRestartWithoutRenamingSavedFiles() async throws {
+        let root = try directory()
+        let tested = GuestDownloadStore(root: root)
+        await tested.finishMigration()
+        var record = try intent(root, tested, name: "title-snapshot")
+        record.files[0].saved = true
+        record.complete = true
+        record.sharedTitle = "Trip photos 🌄"
+        record.exhausted = true
+        try tested.update(record)
+        let restarted = GuestDownloadStore(root: root)
+        await restarted.finishMigration()
+        let restored = try XCTUnwrap(restarted.find(record.id))
+        XCTAssertEqual(restored.sharedTitle, "Trip photos 🌄")
+        XCTAssertEqual(restored.exhausted, true)
+        XCTAssertEqual(restored.files.first?.name, "file.txt")
+        XCTAssertEqual(restored.files.first?.relativePath, "title-snapshot.txt")
+        XCTAssertNotNil(restored.files.first.flatMap { restarted.url($0) })
+    }
+
     func testSnapshotMigrationResumesThenPagesOnlyGuestRows() async throws {
         struct Receipt: Codable {
             let origin: String

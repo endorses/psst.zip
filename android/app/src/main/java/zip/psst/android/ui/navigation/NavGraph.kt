@@ -24,6 +24,7 @@ import zip.psst.android.ui.screens.ScanScreen
 import zip.psst.android.ui.screens.SendScreen
 import zip.psst.android.ui.screens.ServerConfigScreen
 import zip.psst.android.ui.screens.SettingsScreen
+import zip.psst.android.ui.screens.TrafficUsageScreen
 import zip.psst.android.ui.screens.TransferDetailScreen
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.shared.api.ApiClient
@@ -40,6 +41,7 @@ object Routes {
     const val SCAN = "scan"
     const val DOWNLOAD_DETAIL = "download_detail"
     const val SETTINGS = "settings"
+    const val USAGE = "usage"
     const val DOWNLOADED_HISTORY = "history_downloaded"
 
     fun transferDetail(transferId: String, encryptionKey: String, type: String): String {
@@ -147,8 +149,11 @@ fun PsstNavGraph(
             )
         }
 
+        composable(Routes.USAGE) { TrafficUsageScreen(onBack = { navController.popBackStack() }) }
+
         composable(Routes.SETTINGS) {
             SettingsScreen(
+                onUsage = { navController.navigate(Routes.USAGE) },
                 onBack = { navController.popBackStack() },
                 onAccount = {
                     intendedRoute = Routes.HOME
@@ -235,6 +240,9 @@ fun PsstNavGraph(
                     transferId = transferId,
                     encryptionKey = encryptionKey,
                     type = type,
+                    onCreateReplacement = {
+                        navController.navigate(authenticatedRoute(Routes.SEND))
+                    },
                     onBack = { navController.popBackStack() },
                 )
         }

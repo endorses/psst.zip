@@ -211,7 +211,10 @@ func TestInboxTotalsHistoricalMigrationAndBoundedRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer closeFixture(t, old)
-	for version, migration := range migrations[:len(migrations)-1] {
+	for version, migration := range migrations {
+		if strings.Contains(migration, "ADD COLUMN inbox_known") {
+			break
+		}
 		if _, err = old.Exec(migration); err != nil {
 			t.Fatal(err)
 		}
@@ -223,10 +226,10 @@ func TestInboxTotalsHistoricalMigrationAndBoundedRebuild(t *testing.T) {
 	}
 	q := NewQueries(old)
 	until := time.Now().Add(time.Hour)
-	if err = q.CreateSlot("inbox", until, nil); err != nil {
+	if err = legacyCreateSlot(old, "inbox", until, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.CreateTransfer("child", until, 0, nil); err != nil {
+	if err = legacyCreateTransfer(old, "child", until); err != nil {
 		t.Fatal(err)
 	}
 	if err = q.LinkSlotTransfer("inbox", "child"); err != nil {

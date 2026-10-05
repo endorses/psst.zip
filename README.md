@@ -58,8 +58,10 @@ can prevent retrying an unfinished file. Direct receiving supports up to 100
 files, with the upload limit chosen by the server administrator (25 MiB by default). See the [native verification workflow](docs/testing/scan-to-receive.md)
 for disposable interoperability fixtures and platform checks.
 
-Link screens put the QR and **Copy link** / **Share** actions first; expand details
-to inspect the complete URL. Missing encryption keys on another device are
+Empty receive links show the QR and **Copy link** / **Share** actions first.
+After files arrive, the inbox puts received files and saving first; **Show QR / Share link**
+keeps the invitation available. Expand details to inspect the complete URL.
+Missing encryption keys on another device are
 explained on the corresponding history entry. Revoking a link prevents further
 requests, but does not remove copies someone already saved.
 
@@ -245,10 +247,20 @@ Signing out hides account history, and signing into a different account does not
 expose the previous account's links or encryption keys. Admin accounts no longer
 open personal mobile History; older records are preserved locally without being
 reassigned. Native downloaded files remain available independently of server
-login. Sent and receive-link entries can be renamed locally, and receive-link
-creation offers an optional name. Names apply only on this device/browser and are
-scoped to the account, server, type and resource ID; they are never sent to the
-server. Clearing a custom name restores the filename/type/date fallback.
+login. Sent and receive-link entries support an optional shared title at creation
+or through **Rename** in History. Explicit titles are readable by the server and
+people using the link; they also appear on other signed-in devices. Private
+filenames are never automatically published as titles. Renaming or clearing a
+title leaves the URL and encryption keys unchanged. Existing local names remain
+local fallbacks until explicitly saved as shared titles; downloaded records keep
+a title snapshot for offline access. See [shared link titles](docs/security/shared-link-titles.md).
+
+On-device **All** History merges account records and downloaded files into one
+chronological list with one **Load more** control. Type filters query the matching
+records rather than only the current page. Single-page lists hide pagination.
+Once every file in a limited send link has used its download attempts, the link
+closes automatically. Already admitted final downloads can finish; an interrupted
+attempt still counts and does not imply successful saving.
 
 ## Manual build
 

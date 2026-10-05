@@ -79,13 +79,13 @@ func (q *Queries) OwnerInboxPage(ctx context.Context, slotID, owner string, limi
 	}
 	defer func() { _ = tx.Rollback() }()
 	s := out.Slot
-	query := `SELECT id,status,expires_at,created_at,receive_protocol,CASE WHEN length(recipient_public_key)<=128 THEN recipient_public_key ELSE NULL END,max_files,reserved_files,reserved_bytes,upload_count FROM slots WHERE id=?`
+	query := `SELECT id,status,expires_at,created_at,receive_protocol,CASE WHEN length(recipient_public_key)<=128 THEN recipient_public_key ELSE NULL END,max_files,reserved_files,reserved_bytes,upload_count,title FROM slots WHERE id=?`
 	args := []any{slotID}
 	if owner != "" {
 		query += ` AND owner_id=? AND EXISTS(SELECT 1 FROM users WHERE id=slots.owner_id AND disabled=0 AND role='user' AND must_change_password=0)`
 		args = append(args, owner)
 	}
-	err = tx.QueryRowContext(ctx, query, args...).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount)
+	err = tx.QueryRowContext(ctx, query, args...).Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount, &s.Title)
 	if err != nil {
 		return out, err
 	}

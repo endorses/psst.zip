@@ -18,7 +18,9 @@ struct GuestDownloadDetail: View {
             if let context = AbuseReportContext(origin: current.origin, resourceType: "transfer", resourceID: current.transferID) {
                 AbuseReportButton(context: context).id(context.id)
             }
-            Text("Downloaded files").font(.title2.bold())
+            Text(current.sharedTitle ?? (current.complete ? (current.files.count == 1 ? "Saved file" : "Saved files") : (current.files.count == 1 ? "Save file" : "Save files")))
+                .font(.title2.bold())
+            if current.exhausted == true { Text("Download limit reached. Saved copies remain available.").font(.footnote) }
             Text("Files → psst.zip → Received").font(.footnote)
             if let consent = model.pendingConsent, consent.record.id == current.id {
                 if consent.unavailableCount > 0 {
@@ -56,13 +58,14 @@ struct GuestDownloadDetail: View {
                         } label: {
                             Image(systemName: "doc.viewfinder").frame(minWidth: 44, minHeight: 44)
                         }.accessibilityLabel("Open " + GuestFiles.displayName(file.name))
-                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Share " + GuestFiles.displayName(file.name))
+                        ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel(
+                            "Share " + GuestFiles.displayName(file.name))
                     } else {
                         Text("Not saved").font(.caption)
                     }
                 }
             }
-            if model.pendingConsent == nil, current.files.isEmpty || current.files.contains(where: { store.url($0) == nil }) {
+            if model.pendingConsent == nil, current.exhausted != true, current.files.isEmpty || current.files.contains(where: { store.url($0) == nil }) {
                 Button(store.requiresRedownloadConsent(current) ? "Download missing files" : "Resume receiving") {
                     if store.requiresRedownloadConsent(current) {
                         redownload = true

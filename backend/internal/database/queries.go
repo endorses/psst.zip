@@ -12,6 +12,8 @@ import (
 
 // Transfer represents a row in the transfers table.
 type Transfer struct {
+	Title            *string
+	Exhausted        bool
 	ID               string
 	PendingExpiresAt sql.NullTime
 	Status           string
@@ -38,6 +40,7 @@ type File struct {
 
 // Slot represents a row in the slots table.
 type Slot struct {
+	Title              *string
 	ReceiveProtocol    int
 	RecipientPublicKey string
 	MaxFiles           int
@@ -81,7 +84,11 @@ func NewQueries(db *sql.DB) *Queries {
 // --- Transfers ---
 
 func (q *Queries) CreateTransfer(id string, expiresAt time.Time, maxDownloads int, deleteTokenHash []byte, owner ...string) error {
-	return q.allocationExec(0, false, &expiresAt, `INSERT INTO transfers (id,status,expires_at,max_downloads,delete_token_hash,owner_id) VALUES (?,'pending',?,?,?,?)`, id, expiresAt.UTC(), maxDownloads, deleteTokenHash, optionalOwner(owner))
+	ownerID := ""
+	if len(owner) > 0 {
+		ownerID = owner[0]
+	}
+	return q.CreateTransferWithTitle(id, expiresAt, maxDownloads, deleteTokenHash, ownerID, nil)
 }
 
 func (q *Queries) GetTransfer(id string) (*Transfer, error) {
@@ -90,10 +97,10 @@ func (q *Queries) GetTransfer(id string) (*Transfer, error) {
 
 func (q *Queries) GetTransferContext(ctx context.Context, id string) (*Transfer, error) {
 	row := q.db.QueryRowContext(ctx,
-		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash,pending_expires_at FROM transfers WHERE id = ?`, id,
+		`SELECT id, status, expires_at, max_downloads, download_count, created_at, completed_at, downloaded_at, delete_token_hash,pending_expires_at,COALESCE(title,(SELECT s.title FROM slots s JOIN slot_transfers st ON st.slot_id=s.id WHERE st.transfer_id=transfers.id)),`+exhaustedSQL("transfers")+` FROM transfers WHERE id = ?`, id,
 	)
 	t := &Transfer{}
-	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash, &t.PendingExpiresAt); err != nil {
+	if err := row.Scan(&t.ID, &t.Status, &t.ExpiresAt, &t.MaxDownloads, &t.DownloadCount, &t.CreatedAt, &t.CompletedAt, &t.DownloadedAt, &t.DeleteTokenHash, &t.PendingExpiresAt, &t.Title, &t.Exhausted); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -326,10 +333,10 @@ func (q *Queries) CreateSlot(id string, expiresAt time.Time, deleteTokenHash []b
 
 func (q *Queries) GetSlot(id string) (*Slot, error) {
 	row := q.db.QueryRow(
-		`SELECT id, status, expires_at, created_at, delete_token_hash,receive_protocol,recipient_public_key,max_files,reserved_files,reserved_bytes,upload_count FROM slots WHERE id = ?`, id,
+		`SELECT id, status, expires_at, created_at, delete_token_hash,receive_protocol,recipient_public_key,max_files,reserved_files,reserved_bytes,upload_count,title FROM slots WHERE id = ?`, id,
 	)
 	s := &Slot{}
-	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.DeleteTokenHash, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount); err != nil {
+	if err := row.Scan(&s.ID, &s.Status, &s.ExpiresAt, &s.CreatedAt, &s.DeleteTokenHash, &s.ReceiveProtocol, &s.RecipientPublicKey, &s.MaxFiles, &s.ReservedFiles, &s.ReservedBytes, &s.UploadCount, &s.Title); err != nil {
 		return nil, err
 	}
 	return s, nil

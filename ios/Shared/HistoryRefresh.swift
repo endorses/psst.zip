@@ -26,7 +26,10 @@ extension TransferHistoryStore {
             }
             for transfer in list.transfers {
                 var record = base(transfer.id, slot: false, created: transfer.created_at, expires: transfer.expires_at)
-                if transfer.status == "expired" {
+                record.sharedTitle = transfer.title
+                if transfer.status == "exhausted" {
+                    record.state = .exhausted
+                } else if transfer.status == "expired" {
                     record.state = .expired
                 } else if transfer.status == "revoked" {
                     record.state = .revoked
@@ -48,6 +51,7 @@ extension TransferHistoryStore {
             }
             for slot in list.slots {
                 var record = base(slot.id, slot: true, created: slot.created_at, expires: slot.expires_at)
+                record.sharedTitle = slot.title
                 record.receiveProtocol = slot.receive_protocol
                 record.maxFiles = slot.max_files
                 record.reservedFiles = slot.reserved_files
@@ -75,6 +79,7 @@ extension TransferHistoryStore {
             struct Status: Decodable {
                 let id: String
                 let status: String
+                let title: String?
                 let file_count: Int
                 let download_count: Int
                 let downloaded_at: String?
@@ -82,15 +87,19 @@ extension TransferHistoryStore {
             }
             let status = try JSONDecoder().decode(Status.self, from: data)
             guard status.id == record.id, status.file_count >= 0, status.file_count <= 100, status.download_count >= 0, status.max_downloads >= 0,
-                ["pending", "complete", "expired", "revoked"].contains(status.status)
+                ["pending", "complete", "expired", "revoked", "exhausted"].contains(status.status)
             else { throw AccountError.request }
+            let sharedTitle = try SharedLinkTitle.normalize(status.title)
             guard SecretStore.session == session, !Task.isCancelled else { throw AccountError.changed }
             try mutate(ids: [record.localID]) { values in
                 guard let index = values.firstIndex(where: { $0.localID == record.localID }) else { return }
+                values[index].sharedTitle = sharedTitle
                 values[index].fileCount = status.file_count
                 values[index].serverSummaryKnown = true
                 values[index].maxDownloads = status.max_downloads
-                if status.status == "revoked" {
+                if status.status == "exhausted" {
+                    values[index].state = .exhausted
+                } else if status.status == "revoked" {
                     values[index].state = .revoked
                 } else if status.status == "expired" {
                     values[index].state = .expired
