@@ -316,3 +316,44 @@ summary {
   height: 3rem;
   margin-top: auto;
 }
+
+/* Appearance and language retain native selects with the same visual states. */
+.header-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--muted);
+}
+.header-picker select {
+  width: auto;
+  max-width: 10rem;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  margin: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.header-picker select:not(:disabled):hover,
+.header-picker select:not(:disabled):focus-visible {
+  background: var(--hover);
+}
+.header-picker select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-pane {
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: 1rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  min-width: 0;
+}
+.admin-pane[hidden] {
+  display: none;
+}

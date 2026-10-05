@@ -8,6 +8,10 @@ test("persisted administrator contact reaches an anonymous recipient without lin
   await page.goto("/?view=server");
   await authenticate(page, adminCredentials);
   await page.getByRole("link", { name: "Server settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Page sections" })
+    .getByRole("link", { name: "Abuse reports", exact: true })
+    .click();
   const contact = page.getByLabel("Public contact email (optional)");
   await contact.fill("reports+browser@example.com");
   await page.getByRole("button", { name: "Save abuse contact", exact: true }).click();

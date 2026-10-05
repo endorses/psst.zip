@@ -3,7 +3,6 @@
     message as m,
     t,
     calendarDate,
-    date,
     number,
     errorText,
     translate,
@@ -11,6 +10,9 @@
   } from "$lib/i18n";
 
   import { onMount } from "svelte";
+  import { page } from "$app/state";
+  import { selectedAdminSection } from "$lib/admin-section";
+  import AdminSectionNav from "./AdminSectionNav.svelte";
   import TrafficBudgetSettings from "./TrafficBudgetSettings.svelte";
   import { accountRequest, AccountError } from "$lib/account";
   import { formatSize } from "$lib/upload-job.svelte";
@@ -24,11 +26,25 @@
     allowance = $state<number | undefined>(),
     day = $state(1),
     basis = $state<"outbound" | "combined">("outbound");
+  const sections = [
+    { id: "usage", label: m("usage") },
+    { id: "limits", label: m("adminLimits") },
+    { id: "monitoring", label: m("adminMonitoring") },
+  ];
+  const section = $derived(
+    selectedAdminSection(page.url, ["usage", "limits", "monitoring"], "usage"),
+  );
+  let limitsMounted = $state(false);
+  $effect(() => {
+    if (page.url.searchParams.get("view") === "traffic" && section === "limits")
+      limitsMounted = true;
+  });
   let disposed = false;
   const peak = $derived(
     Math.max(1, ...(report?.days.map((d) => Math.max(d.uploaded_bytes, d.downloaded_bytes)) ?? [])),
   );
-  async function load() {
+  let monitoringInitialized = false;
+  async function load(refreshMonitoring = false) {
     busy = true;
     error = "";
     try {
@@ -39,12 +55,15 @@
       report = next;
       from = next.range.from;
       to = next.range.to;
-      allowance =
-        next.settings.allowance_bytes === null
-          ? undefined
-          : next.settings.allowance_bytes / 1024 ** 3;
-      day = next.settings.cycle_start_day;
-      basis = next.settings.basis;
+      if (!monitoringInitialized || refreshMonitoring) {
+        allowance =
+          next.settings.allowance_bytes === null
+            ? undefined
+            : next.settings.allowance_bytes / 1024 ** 3;
+        day = next.settings.cycle_start_day;
+        basis = next.settings.basis;
+        monitoringInitialized = true;
+      }
     } catch (e) {
       if (!disposed)
         error =
@@ -68,7 +87,7 @@
         cycle_start_day: day,
         basis,
       });
-      await load();
+      await load(true);
       notice = m("trafficAllowanceSavedItMonitorsUsageAndDoesNot");
     } catch (e) {
       error = e instanceof Error ? errorText(e) : m("couldNotSaveSettings");
@@ -86,199 +105,216 @@
 
 <h1>{$t(m("traffic"))}</h1>
 <p class="muted">{$t(m("applicationTransferTrafficUTC"))}</p>
-<TrafficBudgetSettings />
+<AdminSectionNav view="traffic" active={section} items={sections} />
 {#if error}<p class="error" role="alert">
     {$t(error)}
     {$t(report ? m("thePreviousMeasurementsRemainBelowAndMayBeStale") : "")}
   </p>{/if}
 {#if notice}<p role="status" class="notice">{$t(notice)}</p>{/if}
-{#if report}
-  {#if report.status !== "ok"}<p class="error" role="alert">
-      {$t(m("trafficAccountingIsDegradedTheseMeasurementsMayBeIncomplete"))}
-    </p>{/if}
-  <p class="muted small">
-    {$t(m("measuredSince"))}
-    {$t(utcTime(report.recording_started_at))}
-    {$t(m("updated"))}
-    {$t(utcTime(report.updated_at))}{$t(m("earlierActivityIsNotIncludedTheFirstBillingPeriod"))}
-  </p>
-  <div class="metrics">
-    <article>
-      <span>{$t(m("today"))}</span><strong>{$t(formatSize(report.today.total_bytes))}</strong><small
-        >{$t(m("combinedTraffic"))}</small
-      >
-    </article>
-    <article>
-      <span>{$t(m("thisCalendarMonth"))}</span><strong
-        >{$t(formatSize(report.month.total_bytes))}</strong
-      ><small>{$t(m("combinedTraffic"))}</small>
-    </article>
-    <article>
-      <span>{$t(m("measuredLifetime"))}</span><strong
-        >{$t(formatSize(report.lifetime.total_bytes))}</strong
-      ><small>{$t(m("combinedTraffic"))}</small>
-    </article>
-  </div>
-  <h2>{$t(m("currentBillingCycle"))}</h2>
-  <p>
-    {$t(utcTime(report.cycle.start))}
-    {$t(m("to"))}
-    {$t(utcTime(report.cycle.end))}
-    {$t(m("endExclusiveUTC"))}
-  </p>
-  <p>
-    <strong>{$t(formatSize(report.cycle.counted_bytes))}</strong>
-    {$t(m("used_9e43a"))}
-    {$t(report.settings.basis === "outbound" ? m("outboundOnly") : m("uploadAndDownloadCombined"))}
-  </p>
-  {#if report.settings.allowance_bytes !== null}<progress
-      aria-label={$t(m("trafficAllowanceUsed"))}
-      max={report.settings.allowance_bytes || 1}
-      value={Math.min(report.cycle.counted_bytes, report.settings.allowance_bytes || 1)}
-    ></progress>
-    <p>
-      {$t(formatSize(Math.max(0, report.cycle.remaining_bytes ?? 0)))}
-      {$t(m("remainingOf"))}
-      {$t(formatSize(report.settings.allowance_bytes))}{$t(
-        report.cycle.counted_bytes > report.settings.allowance_bytes ? m("allowanceExceeded") : "",
-      )}
-    </p>{:else}<p class="muted">{$t(m("noAllowanceConfigured"))}</p>{/if}
-{/if}
-<form
-  class="range"
-  onsubmit={(e) => {
-    e.preventDefault();
-    void load();
-  }}
->
-  <label
-    >{$t(m("fromUTC"))}<input
-      type="date"
-      required
-      min={report?.history_retained_from}
-      bind:value={from}
-    /></label
-  ><label
-    >{$t(m("throughUTCInclusive"))}<input
-      type="date"
-      required
-      min={from && from > (report?.history_retained_from ?? "")
-        ? from
-        : report?.history_retained_from}
-      bind:value={to}
-    /></label
-  ><button disabled={busy}>{$t(busy ? m("loading") : m("showTraffic"))}</button>
-</form>
-{#if report}
-  <p class="muted small">
-    {$t(m("dailyDetailsAreRetainedFor"))}
-    {$t(report.history_retention_days)}
-    {$t(m("daysFrom"))}
-    {$t(calendarDate(report.history_retained_from))}
-    {$t(m("utcChooseUpToDaysAtATimeMeasured"))}
-  </p>
-  <h2>{$t(m("selectedPeriod"))}</h2>
-  <p class="muted">
-    {$t(calendarDate(report.range.from))}
-    {$t(m("through"))}
-    {$t(calendarDate(report.range.to))}
-    {$t(m("inclusiveUTC"))}
-  </p>
-  <p>
-    {$t(m("uploaded"))}
-    {$t(formatSize(report.totals.uploaded_bytes))}
-    {$t(m("downloaded"))}
-    {$t(formatSize(report.totals.downloaded_bytes))}
-    {$t(m("combined"))}
-    {$t(formatSize(report.totals.total_bytes))}
-  </p>
-  <div
-    class="chart"
-    style:gap={$t(report.days.length <= 31 ? "3px" : "0")}
-    role="img"
-    aria-label={$t(m("dailyUploadedAndDownloadedTrafficExactByteValuesAre"))}
-  >
-    {#each report.days as point}<div
-        class="bar-pair"
-        title={$t(
-          translate(
-            m("chartDailyBytes", {
-              date: calendarDate(point.date),
-              uploaded: point.uploaded_bytes,
-              downloaded: point.downloaded_bytes,
-            }),
-          ),
-        )}
-      >
-        <span class="upload" style:height={$t(`${(100 * point.uploaded_bytes) / peak}%`)}
-        ></span><span
-          class="download"
-          style:height={$t(`${(100 * point.downloaded_bytes) / peak}%`)}
-        ></span>
-      </div>{/each}
-  </div>
-  <p class="legend">
-    <span>{$t(m("uploaded_29b1d"))}</span><span>{$t(m("downloaded_e0bc2"))}</span>
-  </p>
-  <details>
-    <summary>{$t(m("dailyTrafficDataExactBytes"))}</summary>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus lets arrow keys scroll all data columns.) -->
-    <div class="table-scroll" role="region" aria-label={$t(m("dailyTrafficData"))} tabindex="0">
-      <table>
-        <caption>{$t(m("dailyApplicationTrafficInUTC"))}</caption><thead
-          ><tr
-            ><th>{$t(m("date"))}</th><th>{$t(m("uploadedBytes"))}</th><th
-              >{$t(m("downloadedBytes"))}</th
-            ><th>{$t(m("combinedBytes"))}</th></tr
-          ></thead
-        ><tbody
-          >{#each report.days as point}<tr
-              ><th>{$t(calendarDate(point.date))}</th><td>{$t(number(point.uploaded_bytes))}</td><td
-                >{$t(number(point.downloaded_bytes))}</td
-              ><td>{$t(number(point.total_bytes))}</td></tr
-            >{/each}</tbody
-        >
-      </table>
+<section hidden={section !== "usage"}>
+  {#if report}
+    {#if report.status !== "ok"}<p class="error" role="alert">
+        {$t(m("trafficAccountingIsDegradedTheseMeasurementsMayBeIncomplete"))}
+      </p>{/if}
+    <p class="muted small">
+      {$t(m("measuredSince"))}
+      {$t(utcTime(report.recording_started_at))}
+      {$t(m("updated"))}
+      {$t(utcTime(report.updated_at))}{$t(m("earlierActivityIsNotIncludedTheFirstBillingPeriod"))}
+    </p>
+    <div class="metrics">
+      <article>
+        <span>{$t(m("today"))}</span><strong>{$t(formatSize(report.today.total_bytes))}</strong
+        ><small>{$t(m("combinedTraffic"))}</small>
+      </article>
+      <article>
+        <span>{$t(m("thisCalendarMonth"))}</span><strong
+          >{$t(formatSize(report.month.total_bytes))}</strong
+        ><small>{$t(m("combinedTraffic"))}</small>
+      </article>
+      <article>
+        <span>{$t(m("measuredLifetime"))}</span><strong
+          >{$t(formatSize(report.lifetime.total_bytes))}</strong
+        ><small>{$t(m("combinedTraffic"))}</small>
+      </article>
     </div>
-  </details>
-  <h2>{$t(m("monitoringAllowanceSettings"))}</h2>
-  <form onsubmit={save}>
+    <h2>{$t(m("currentBillingCycle"))}</h2>
+    <p>
+      {$t(utcTime(report.cycle.start))}
+      {$t(m("to"))}
+      {$t(utcTime(report.cycle.end))}
+      {$t(m("endExclusiveUTC"))}
+    </p>
+    <p>
+      <strong>{$t(formatSize(report.cycle.counted_bytes))}</strong>
+      {$t(m("used_9e43a"))}
+      {$t(
+        report.settings.basis === "outbound" ? m("outboundOnly") : m("uploadAndDownloadCombined"),
+      )}
+    </p>
+    {#if report.settings.allowance_bytes !== null}<progress
+        aria-label={$t(m("trafficAllowanceUsed"))}
+        max={report.settings.allowance_bytes || 1}
+        value={Math.min(report.cycle.counted_bytes, report.settings.allowance_bytes || 1)}
+      ></progress>
+      <p>
+        {$t(formatSize(Math.max(0, report.cycle.remaining_bytes ?? 0)))}
+        {$t(m("remainingOf"))}
+        {$t(formatSize(report.settings.allowance_bytes))}{$t(
+          report.cycle.counted_bytes > report.settings.allowance_bytes
+            ? m("allowanceExceeded")
+            : "",
+        )}
+      </p>{:else}<p class="muted">{$t(m("noAllowanceConfigured"))}</p>{/if}
+  {/if}
+  <form
+    class="range"
+    onsubmit={(e) => {
+      e.preventDefault();
+      void load();
+    }}
+  >
     <label
-      >{$t(m("allowanceGiBOptional"))}<input
-        type="number"
-        min="0.001"
-        step="any"
-        bind:value={allowance}
+      >{$t(m("fromUTC"))}<input
+        type="date"
+        required
+        min={report?.history_retained_from}
+        bind:value={from}
       /></label
     ><label
-      >{$t(m("cycleStartsOnDayUTC"))}<input
-        type="number"
-        min="1"
-        max="31"
-        step="1"
+      >{$t(m("throughUTCInclusive"))}<input
+        type="date"
         required
-        bind:value={day}
+        min={from && from > (report?.history_retained_from ?? "")
+          ? from
+          : report?.history_retained_from}
+        bind:value={to}
       /></label
-    >
-    <p class="muted small">{$t(m("ifThisDayIsMissingInAShorterMonth"))}</p>
-    <label
-      >{$t(m("countTowardAllowance"))}<select bind:value={basis}
-        ><option value="outbound">{$t(m("outboundDownloadsOnly"))}</option><option value="combined"
-          >{$t(m("uploadsAndDownloads"))}</option
-        ></select
-      ></label
-    ><button class="primary" disabled={busy}>{$t(m("saveTrafficSettings"))}</button>
+    ><button disabled={busy}>{$t(busy ? m("loading") : m("showTraffic"))}</button>
   </form>
-{/if}
-<p class="muted small">
-  {$t(measurementExplanation)}
-  {$t(m("theMonitoringAllowanceDoesNotBlockTransfersEnforcedBudgets"))}
-</p>
-{#if !report}<button onclick={load} disabled={busy}
-    >{$t(busy ? m("loadingTraffic") : m("retryTraffic"))}</button
-  >{/if}
+  {#if report}
+    <p class="muted small">
+      {$t(m("dailyDetailsAreRetainedFor"))}
+      {$t(report.history_retention_days)}
+      {$t(m("daysFrom"))}
+      {$t(calendarDate(report.history_retained_from))}
+      {$t(m("utcChooseUpToDaysAtATimeMeasured"))}
+    </p>
+    <h2>{$t(m("selectedPeriod"))}</h2>
+    <p class="muted">
+      {$t(calendarDate(report.range.from))}
+      {$t(m("through"))}
+      {$t(calendarDate(report.range.to))}
+      {$t(m("inclusiveUTC"))}
+    </p>
+    <p>
+      {$t(m("uploaded"))}
+      {$t(formatSize(report.totals.uploaded_bytes))}
+      {$t(m("downloaded"))}
+      {$t(formatSize(report.totals.downloaded_bytes))}
+      {$t(m("combined"))}
+      {$t(formatSize(report.totals.total_bytes))}
+    </p>
+    <div
+      class="chart"
+      style:gap={$t(report.days.length <= 31 ? "3px" : "0")}
+      role="img"
+      aria-label={$t(m("dailyUploadedAndDownloadedTrafficExactByteValuesAre"))}
+    >
+      {#each report.days as point}<div
+          class="bar-pair"
+          title={$t(
+            translate(
+              m("chartDailyBytes", {
+                date: calendarDate(point.date),
+                uploaded: point.uploaded_bytes,
+                downloaded: point.downloaded_bytes,
+              }),
+            ),
+          )}
+        >
+          <span class="upload" style:height={$t(`${(100 * point.uploaded_bytes) / peak}%`)}
+          ></span><span
+            class="download"
+            style:height={$t(`${(100 * point.downloaded_bytes) / peak}%`)}
+          ></span>
+        </div>{/each}
+    </div>
+    <p class="legend">
+      <span>{$t(m("uploaded_29b1d"))}</span><span>{$t(m("downloaded_e0bc2"))}</span>
+    </p>
+    <details>
+      <summary>{$t(m("dailyTrafficDataExactBytes"))}</summary>
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus lets arrow keys scroll all data columns.) -->
+      <div class="table-scroll" role="region" aria-label={$t(m("dailyTrafficData"))} tabindex="0">
+        <table>
+          <caption>{$t(m("dailyApplicationTrafficInUTC"))}</caption><thead
+            ><tr
+              ><th>{$t(m("date"))}</th><th>{$t(m("uploadedBytes"))}</th><th
+                >{$t(m("downloadedBytes"))}</th
+              ><th>{$t(m("combinedBytes"))}</th></tr
+            ></thead
+          ><tbody
+            >{#each report.days as point}<tr
+                ><th>{$t(calendarDate(point.date))}</th><td>{$t(number(point.uploaded_bytes))}</td
+                ><td>{$t(number(point.downloaded_bytes))}</td><td
+                  >{$t(number(point.total_bytes))}</td
+                ></tr
+              >{/each}</tbody
+          >
+        </table>
+      </div>
+    </details>
+  {/if}
+  <p class="muted small">{$t(measurementExplanation)}</p>
+  {#if !report}<button onclick={() => void load()} disabled={busy}
+      >{$t(busy ? m("loadingTraffic") : m("retryTraffic"))}</button
+    >{/if}
+</section>
+<section hidden={section !== "limits"}>
+  {#if limitsMounted}<TrafficBudgetSettings />{/if}
+</section>
+<section hidden={section !== "monitoring"}>
+  {#if report}
+    <h2>{$t(m("monitoringAllowanceSettings"))}</h2>
+    <form onsubmit={save}>
+      <label
+        >{$t(m("allowanceGiBOptional"))}<input
+          type="number"
+          min="0.001"
+          step="any"
+          bind:value={allowance}
+        /></label
+      ><label
+        >{$t(m("cycleStartsOnDayUTC"))}<input
+          type="number"
+          min="1"
+          max="31"
+          step="1"
+          required
+          bind:value={day}
+        /></label
+      >
+      <p class="muted small">{$t(m("ifThisDayIsMissingInAShorterMonth"))}</p>
+      <label
+        >{$t(m("countTowardAllowance"))}<select bind:value={basis}
+          ><option value="outbound">{$t(m("outboundDownloadsOnly"))}</option><option
+            value="combined">{$t(m("uploadsAndDownloads"))}</option
+          ></select
+        ></label
+      ><button class="primary" disabled={busy}>{$t(m("saveTrafficSettings"))}</button>
+    </form>
+  {/if}
+  <p class="muted small">{$t(m("theMonitoringAllowanceDoesNotBlockTransfersEnforcedBudgets"))}</p>
+  {#if !report}<button onclick={() => void load()} disabled={busy}
+      >{$t(busy ? m("loadingTraffic") : m("retryTraffic"))}</button
+    >{/if}
+</section>
 
 <style>
+  section[hidden] {
+    display: none;
+  }
   .metrics {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

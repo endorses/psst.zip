@@ -1130,5 +1130,12 @@
   "activityPageCount": {
     "one": "Seite {page} · {count} Eintrag",
     "other": "Seite {page} · {count} Einträge"
-  }
+  },
+  "adminPageSections": "Seitenbereiche",
+  "adminUploads": "Datei-Uploads",
+  "adminPublicTransfers": "Öffentliche Übertragungen",
+  "adminAbuseReports": "Missbrauchsmeldungen",
+  "adminLimits": "Traffic-Limits",
+  "adminMonitoring": "Verbrauchsmessung",
+  "adminServerSettingsDescription": "Upload-Limits, Speicher und öffentlicher Zugriff."
 }

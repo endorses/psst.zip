@@ -39,7 +39,7 @@ test("pause and resume require explicit scope confirmation and reload persistent
       json: { public_transfers_paused: paused, updated_at: "2026-10-04T00:00:00Z" },
     });
   });
-  await page.goto("/?view=server");
+  await page.goto("/?view=server&section=access");
   const controls = page.getByRole("region", { name: "Public transfer control" });
   await controls.getByRole("button", { name: "Pause public transfers", exact: true }).click();
   const confirmation = page.getByRole("dialog");
@@ -52,12 +52,38 @@ test("pause and resume require explicit scope confirmation and reload persistent
   await expect(controls).toContainText("Public transfers are paused");
   await page.reload();
   await expect(controls).toContainText("Public transfers are paused");
+  await page
+    .getByRole("navigation", { name: "Page sections", exact: true })
+    .getByRole("link", { name: "Uploads", exact: true })
+    .click();
   await expect(page.getByLabel("Maximum file size (MiB)")).toBeEnabled();
+  await page
+    .getByRole("navigation", { name: "Page sections", exact: true })
+    .getByRole("link", { name: "Public transfers", exact: true })
+    .click();
   await controls.getByRole("button", { name: "Resume public transfers", exact: true }).click();
   await expect(confirmation).toContainText("Revoked links stay revoked");
   await confirmation.getByRole("button", { name: "Resume public transfers", exact: true }).click();
   await expect(controls).toContainText("Public transfers are enabled");
   expect(changes).toEqual([true, false]);
+});
+
+test("leaving public transfer controls closes an unsaved confirmation", async ({ page }) => {
+  await session(page);
+  await page.route("**/api/v1/admin/incident-state", (route) =>
+    route.fulfill({ json: { public_transfers_paused: false, updated_at: "2026-10-04T00:00:00Z" } }),
+  );
+  await page.goto("/?view=server");
+  await page
+    .getByRole("navigation", { name: "Page sections" })
+    .getByRole("link", { name: "Public transfers", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Pause public transfers", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Maximum file size (MiB)")).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
 });
 
 test("ordinary login disable and account incident shutdown show and send distinct scopes", async ({
@@ -166,7 +192,7 @@ test("a paused public download stays loginless and makes only the user-requested
     return route.fulfill({ status: 503, json: { code: "public_transfers_paused" } });
   });
   await page.goto(`/d/${id}#${Buffer.from(key).toString("base64url")}`);
-  await expect(page.getByRole("heading", { name: "Save files", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Save file", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save file", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Public transfers are paused");
   await expect(page.getByRole("alert")).toContainText("retry manually");

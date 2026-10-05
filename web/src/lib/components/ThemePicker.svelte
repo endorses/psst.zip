@@ -33,7 +33,7 @@
   });
 </script>
 
-<div class="theme-picker">
+<div class="theme-picker header-picker">
   <Icon
     name={appearance === "light" ? "Sun" : appearance === "dark" ? "Moon" : "Monitor"}
     size={18}
@@ -49,26 +49,3 @@
     <option value="dark">{$t(m("dark"))}</option>
   </select>
 </div>
-
-<style>
-  .theme-picker {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-shrink: 0;
-    color: var(--muted);
-  }
-  select {
-    width: auto;
-    min-height: 44px;
-    padding: 0.4rem 0.6rem;
-    border-color: transparent;
-    background: transparent;
-    color: var(--text);
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-  select:hover {
-    background: var(--hover);
-  }
-</style>

@@ -1100,4 +1100,11 @@ export interface MessageArguments {
   sizeMiB: { size: MessageArgument };
   remainingAttemptsCount: { count: MessageArgument };
   activityPageCount: { count: MessageArgument; page: MessageArgument };
+  adminPageSections: never;
+  adminUploads: never;
+  adminPublicTransfers: never;
+  adminAbuseReports: never;
+  adminLimits: never;
+  adminMonitoring: never;
+  adminServerSettingsDescription: never;
 }

@@ -9,7 +9,7 @@ async function admin(page: Page) {
     route.fulfill({ json: { user: { id: "admin", role: "admin", username: "admin" } } }),
   );
   const totals = { uploaded_bytes: 0, downloaded_bytes: 0, total_bytes: 0 };
-  await page.route("**/api/v1/admin/traffic", (route) =>
+  await page.route(/\/api\/v1\/admin\/traffic(?:\?.*)?$/, (route) =>
     route.fulfill({
       json: {
         recording_started_at: "2026-10-01T00:00:00Z",
@@ -53,12 +53,12 @@ test("enforcement is separate from monitoring and persists accepted settings", a
     }
     return route.fulfill({ json: trafficSnapshot(policy) });
   });
-  await page.goto("/?view=traffic");
+  await page.goto("/?view=traffic&section=limits");
   const section = page.getByRole("region", { name: "Transfer traffic enforcement" });
   await expect(
     section.getByLabel("Enforce transfer traffic budget", { exact: true }),
   ).not.toBeChecked();
-  await expect(page.getByLabel("Allowance (GiB, optional)")).toHaveValue("20");
+  await expect(page.getByLabel("Allowance (GiB, optional)")).not.toBeVisible();
   await section.getByLabel("Enforce transfer traffic budget", { exact: true }).check();
   await section.getByLabel("Server traffic budget (GiB)", { exact: true }).fill("50");
   await section.getByLabel("Default account traffic budget (GiB)", { exact: true }).fill("3");
@@ -82,7 +82,7 @@ test("enforcement is separate from monitoring and persists accepted settings", a
   await expect(
     section.getByLabel("Enforce transfer traffic budget", { exact: true }),
   ).toBeChecked();
-  await expect(page.getByLabel("Allowance (GiB, optional)")).toHaveValue("20");
+  await expect(page.getByLabel("Allowance (GiB, optional)")).not.toBeVisible();
   await expect(section).toContainText("cannot cap or predict the provider's bill");
   await page.setViewportSize({ width: 320, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -90,6 +90,11 @@ test("enforcement is separate from monitoring and persists accepted settings", a
     path: test.info().outputPath("traffic-budget-phone.png"),
     fullPage: true,
   });
+  await page.getByRole("link", { name: "Monitoring", exact: true }).click();
+  await expect(page).toHaveURL(/view=traffic&section=monitoring/);
+  await expect(page.getByLabel("Allowance (GiB, optional)")).toHaveValue("20");
+  await expect(section).not.toBeVisible();
+  expect([writes, monitorWrites]).toEqual([1, 0]);
 });
 
 test("exhaustion keeps recovery and failed-save drafts usable", async ({ page }) => {
@@ -103,7 +108,7 @@ test("exhaustion keeps recovery and failed-save drafts usable", async ({ page })
       ? route.fulfill({ status: 503, json: { error: "Policy store unavailable" } })
       : route.fulfill({ json: snapshot }),
   );
-  await page.goto("/?view=traffic");
+  await page.goto("/?view=traffic&section=limits");
   const section = page.getByRole("region", { name: "Transfer traffic enforcement" });
   await expect(section).toContainText("traffic budget is exhausted");
   await section.getByLabel("Server traffic budget (GiB)", { exact: true }).fill("150");
@@ -114,6 +119,62 @@ test("exhaustion keeps recovery and failed-save drafts usable", async ({ page })
   );
   await expect(page.getByRole("link", { name: "Users", exact: true })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Server settings", exact: true })).toBeEnabled();
+});
+
+test("traffic sections retain drafts and range without repeated reads or implicit writes", async ({
+  page,
+}) => {
+  await admin(page);
+  let policyReads = 0,
+    trafficReads = 0,
+    monitorWrites = 0,
+    policyWrites = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/v1/admin/traffic") trafficReads++;
+  });
+  await page.route("**/api/v1/admin/traffic/settings", (route) => {
+    monitorWrites++;
+    return route.fulfill({ json: {} });
+  });
+  await page.route("**/api/v1/admin/traffic-policy", (route) => {
+    if (route.request().method() === "PATCH") policyWrites++;
+    else policyReads++;
+    return route.fulfill({ json: trafficSnapshot(trafficPolicy) });
+  });
+  const nav = page.getByRole("link", { name: "Limits", exact: true });
+  await page.goto("/?view=traffic&section=usage");
+  await expect(page.getByText("Measured lifetime", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Allowance (GiB, optional)")).not.toBeVisible();
+  expect(policyReads).toBe(0);
+  const from = page.getByLabel("From (UTC)", { exact: true });
+  await from.fill("2026-09-15");
+  await nav.click();
+  const enforcement = page.getByRole("region", { name: "Transfer traffic enforcement" });
+  const serverBudget = enforcement.getByLabel("Server traffic budget (GiB)", { exact: true });
+  await serverBudget.fill("87");
+  expect(policyReads).toBe(1);
+  await page.getByRole("link", { name: "Monitoring", exact: true }).click();
+  const allowance = page.getByLabel("Allowance (GiB, optional)", { exact: true });
+  await allowance.fill("42");
+  await expect(enforcement).not.toBeVisible();
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
+  await expect(from).toHaveValue("2026-09-15");
+  await expect(allowance).not.toBeVisible();
+  await nav.click();
+  await expect(serverBudget).toHaveValue("87");
+  // Locale changes re-render messages without remounting settings or fetching policy again.
+  const budgetInput = page.locator(".aligned-fields input").first();
+  await page.locator(".language-picker select").selectOption("de");
+  await expect(budgetInput).toHaveValue("87");
+  await page.locator(".language-picker select").selectOption("en");
+  await page.getByRole("link", { name: "Monitoring", exact: true }).click();
+  await expect(allowance).toHaveValue("42");
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
+  await page.getByRole("button", { name: "Show traffic", exact: true }).click();
+  await expect(from).toHaveValue("2026-10-01");
+  await page.getByRole("link", { name: "Monitoring", exact: true }).click();
+  await expect(allowance).toHaveValue("42");
+  expect([trafficReads, policyReads, policyWrites, monitorWrites]).toEqual([2, 1, 0, 0]);
 });
 
 test("account overrides load lazily and null restores inheritance", async ({ page }) => {
@@ -184,6 +245,7 @@ test("own usage is one lazy scoped request without administrator policy", async 
     });
   });
   await page.goto("/?view=settings");
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
   await page.getByText("Account traffic budget and usage", { exact: true }).click();
   await expect(page.getByText("Budget enforcement is on.", { exact: false })).toBeVisible();
   expect([reads, adminReads]).toEqual([1, 0]);
@@ -278,7 +340,7 @@ for (const language of ["en", "de"] as const) {
       route.fulfill({ json: trafficSnapshot(trafficPolicy) }),
     );
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await page.goto("/?view=traffic");
+    await page.goto("/?view=traffic&section=limits");
     const languagePicker = page.locator(".language-picker");
     await expect(languagePicker.locator("select")).toBeEnabled();
     await languagePicker.locator("select").selectOption(language);

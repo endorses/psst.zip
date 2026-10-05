@@ -1130,5 +1130,12 @@
   "activityPageCount": {
     "one": "Page {page} · {count} entry",
     "other": "Page {page} · {count} entries"
-  }
+  },
+  "adminPageSections": "Page sections",
+  "adminUploads": "Uploads",
+  "adminPublicTransfers": "Public transfers",
+  "adminAbuseReports": "Abuse reports",
+  "adminLimits": "Limits",
+  "adminMonitoring": "Monitoring",
+  "adminServerSettingsDescription": "Upload limits, storage and public access."
 }

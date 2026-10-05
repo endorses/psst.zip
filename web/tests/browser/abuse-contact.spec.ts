@@ -80,7 +80,7 @@ test("admin publishes and clears contact, while failed writes retain draft", asy
     }
     return route.fulfill({ json: { email: saved } });
   });
-  await page.goto("/?view=server");
+  await page.goto("/?view=server&section=reports");
   const field = page.getByLabel("Public contact email (optional)");
   await field.fill("abuse@example.com");
   await page.getByRole("button", { name: "Save abuse contact", exact: true }).click();

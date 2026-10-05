@@ -48,7 +48,7 @@ test("administrator sees reservations and can lower quota without hiding existin
     }
     return route.fulfill({ json: { policy, usage: resourceUsage } });
   });
-  await page.goto("/?view=server");
+  await page.goto("/?view=server&section=storage");
   const usage = page.getByLabel("Server resource usage");
   await expect(usage).toContainText("1 GiB");
   await expect(usage).toContainText("1 MiB");
@@ -84,13 +84,21 @@ test("resource-policy failure leaves existing administrator upload settings usab
   await page.route("**/api/v1/admin/settings", (route) =>
     route.fulfill({ json: { max_file_size: route.request().postDataJSON().max_file_size } }),
   );
-  await page.goto("/?view=server");
+  await page.goto("/?view=server&section=storage");
   await expect(page.getByRole("alert")).toContainText(
     "Other server settings and recovery actions remain available",
   );
+  await page
+    .getByRole("navigation", { name: "Page sections", exact: true })
+    .getByRole("link", { name: "Uploads", exact: true })
+    .click();
   await page.getByLabel("Maximum file size (MiB)").fill("16");
   await page.getByRole("button", { name: "Save file limit" }).click();
   await expect(page.getByRole("status")).toContainText("File limit saved");
+  await page
+    .getByRole("navigation", { name: "Page sections", exact: true })
+    .getByRole("link", { name: "Storage", exact: true })
+    .click();
   await expect(page.getByRole("button", { name: "Retry loading resource policy" })).toBeEnabled();
 });
 
@@ -99,11 +107,19 @@ test("ordinary account sees its usage and public policy without administrator co
 }) => {
   await session(page);
   await page.goto("/");
-  await expect(page.getByText(/Server policy: 2 GiB reserved storage per account/)).toBeVisible();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
   await page.getByText("Account storage and resource usage", { exact: true }).click();
   await expect(page.getByLabel("Account resource usage")).toContainText("1 GiB");
-  await expect(page.getByLabel("Account resource usage")).toContainText("1000");
+  await expect(
+    page
+      .getByLabel("Account resource usage")
+      .locator("dl > div")
+      .filter({ has: page.getByText("Storage quota", { exact: true }) }),
+  ).toContainText("2 GiB");
+  await expect(
+    page.getByLabel("Account resource usage").getByRole("row", { name: /Files/ }),
+  ).toContainText("1,000");
   await expect(page.getByLabel("Server storage (MiB)", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save resource policy" })).toHaveCount(0);
 });
@@ -144,7 +160,8 @@ test("history navigation fetches one bounded page and retains it on a failed nex
   await expect(page.locator(`[data-resource-id="${first}"]`)).toBeVisible();
   expect(calls.every((cursor) => cursor === "")).toBe(true);
   await page.getByRole("button", { name: "Older transfers" }).click();
-  await expect(page.getByRole("alert")).toContainText("Next page unavailable");
+  await expect(page.getByRole("alert")).toContainText("The server is currently unavailable");
+  await expect(page.getByRole("alert")).not.toContainText("Next page unavailable");
   await expect(page.locator(`[data-resource-id="${first}"]`)).toBeVisible();
   fail = false;
   await page.getByRole("button", { name: "Older transfers" }).click();
@@ -331,7 +348,7 @@ for (const state of ["ready", "blocked", "unknown"] as const) {
         },
       }),
     );
-    await page.goto("/?view=settings");
+    await page.goto("/?view=usage");
     await page.getByText("Account storage and resource usage", { exact: true }).click();
     const capacity = page.getByLabel("Current upload capacity");
     await expect(capacity).toContainText(

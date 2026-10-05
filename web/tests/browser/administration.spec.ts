@@ -84,6 +84,9 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole("link", { name: "Traffic", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Traffic", exact: true })).toBeVisible();
+  await expect(page.getByText("Measured lifetime", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Allowance (GiB, optional)", { exact: true })).not.toBeVisible();
+  await page.getByRole("link", { name: "Monitoring", exact: true }).click();
   await page.getByLabel("Allowance (GiB, optional)", { exact: true }).fill("20");
   await page.getByLabel("Cycle starts on day (UTC)", { exact: true }).fill("31");
   await page.getByLabel("Count toward allowance").selectOption("combined");
@@ -92,6 +95,7 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
   await page.reload();
   await expect(page.getByLabel("Allowance (GiB, optional)")).toHaveValue("20");
   await expect(page.getByLabel("Cycle starts on day (UTC)", { exact: true })).toHaveValue("31");
+  await page.getByRole("link", { name: "Limits", exact: true }).click();
   const enforcement = page.getByRole("region", { name: "Transfer traffic enforcement" });
   await expect(
     enforcement.getByLabel("Enforce transfer traffic budget", { exact: true }),
@@ -113,6 +117,7 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
     .getByRole("button", { name: "Save transfer traffic policy", exact: true })
     .click();
   expect((await policySaved).ok()).toBe(true);
+  await page.getByRole("link", { name: "Usage", exact: true }).click();
   await page.getByText("Daily traffic data (exact bytes)", { exact: true }).click();
   await expect(page.getByRole("table")).toBeVisible();
   await page.evaluate(() => {

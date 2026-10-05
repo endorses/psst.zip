@@ -24,15 +24,11 @@
   import PasswordChange from "$lib/components/PasswordChange.svelte";
   import AdminOverview from "$lib/components/AdminOverview.svelte";
   import AdminResources from "$lib/components/AdminResources.svelte";
-  import TrafficPanel from "$lib/components/TrafficPanel.svelte";
+  import AdminSettingsWorkspace from "$lib/components/AdminSettingsWorkspace.svelte";
   import SecurityEvents from "$lib/components/SecurityEvents.svelte";
   import { labelFor, labelKey, compactTitle, type HistoryLabels } from "$lib/history-labels";
-  import ServerSettings from "$lib/components/ServerSettings.svelte";
-  import AbuseContactSettings from "$lib/components/AbuseContactSettings.svelte";
-  import ResourcePolicySettings from "$lib/components/ResourcePolicySettings.svelte";
   import AccountUsage from "$lib/components/AccountUsage.svelte";
   import AccountTraffic from "$lib/components/AccountTraffic.svelte";
-  import PublicTransferControl from "$lib/components/PublicTransferControl.svelte";
   import IncidentConfirmDialog from "$lib/components/IncidentConfirmDialog.svelte";
   import { loadResourcePage, loadUsersPage, HISTORY_PREVIOUS_WINDOW } from "$lib/resource-history";
   import { resourceFileCount, receivedFileCount } from "$lib/account";
@@ -1494,17 +1490,13 @@
               />
             </div>{/key}{/if}
         {#if tab === "Scan"}<ScanPanel authorize={authorizeScanner} />{/if}
+        {#if user.role === "admin"}{#key user.id}<AdminSettingsWorkspace
+              activePage={tab}
+            />{/key}{/if}
         {#if tab === "Overview"}<AdminOverview />
         {:else if tab === "Resources" && user.role === "admin"}{#key user.id}<AdminResources
             />{/key}
-        {:else if tab === "Traffic"}<TrafficPanel />
         {:else if tab === "Security" && user.role === "admin"}{#key user.id}<SecurityEvents />{/key}
-        {:else if tab === "Server"}<h1>{$t(m("serverSettings"))}</h1>
-          <p><a href="/?view=resources">{$t(m("inspectResourcesAndCleanup"))}</a></p>
-          <PublicTransferControl />
-          <ServerSettings />
-          <AbuseContactSettings />
-          <ResourcePolicySettings />
         {:else if tab === "Usage" && user.role === "user"}
           <a href="/?view=settings" class="back-link">{$t(m("settings_e1124"))}</a>
           <h1>{$t(m("usage"))}</h1>
