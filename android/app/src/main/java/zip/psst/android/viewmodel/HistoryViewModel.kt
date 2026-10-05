@@ -49,7 +49,15 @@ data class AccountHistoryPageState(
     val pager: InboxPager = InboxPager(),
     val page: AuthResources? = null,
     val loading: Boolean = false,
-)
+) {
+    /** Missing disk data and pending private-row enrichment must never be presented as empty. */
+    fun isKnownEmptyFor(currentAccess: HistoryAccess): Boolean =
+        access == currentAccess &&
+            !currentAccess.accountId.isNullOrBlank() &&
+            !currentAccess.isAdmin &&
+            !currentAccess.mustChangePassword &&
+            page?.let { it.transfers.isEmpty() && it.slots.isEmpty() } == true
+}
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
@@ -81,6 +89,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val downloads = GuestDownloadStore(app)
     val filter = MutableStateFlow("all")
     val deviceRows = MutableStateFlow<List<HistoryRow>>(emptyList())
+    val deviceHydratedAccess = MutableStateFlow<HistoryAccess?>(null)
     val deviceNext = MutableStateFlow<MergedHistoryCursor?>(null)
     val deviceLoading = MutableStateFlow(false)
     val deviceIssue = MutableStateFlow<UiText?>(null)
@@ -96,6 +105,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         if (value == "downloaded") _deviceHistory.value = true
         deviceCursor = MergedHistoryCursor()
         deviceRows.value = emptyList()
+        deviceHydratedAccess.value = null
         deviceNext.value = null
         _pageState.value = AccountHistoryPageState()
         revision++
@@ -176,6 +186,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     )
                         return@launch
                     deviceRows.value = page.rows
+                    deviceHydratedAccess.value = access
                     deviceNext.value = page.next
                     deviceImporting.value = guest?.importing == true
                     deviceImportErrors.value = guest?.importErrors == true
@@ -296,6 +307,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 deviceJob?.cancel()
                 deviceCursor = MergedHistoryCursor()
                 deviceRows.value = emptyList()
+                deviceHydratedAccess.value = null
                 deviceNext.value = null
                 if (_deviceHistory.value) loadDeviceHistory()
                 deleteJobs.values.toList().forEach { it.cancel() }
@@ -353,6 +365,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         deviceRevision++
         deviceCursor = MergedHistoryCursor()
         deviceRows.value = emptyList()
+        deviceHydratedAccess.value = null
         deviceNext.value = null
         _pageState.value = AccountHistoryPageState()
         if (value) loadDeviceHistory() else if (visible) startPolling()

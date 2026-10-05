@@ -81,8 +81,10 @@ fun HistoryScreen(
 ) {
     val loadedHistory by viewModel.history.collectAsState()
     val currentAccess by viewModel.currentAccess.collectAsState()
-    val allHistory = loadedHistory.filter(currentAccess::permits)
     val pageState by viewModel.pageState.collectAsState()
+    val allHistory =
+        if (pageState.access == currentAccess) loadedHistory.filter(currentAccess::permits)
+        else emptyList()
     val deviceHistory by viewModel.deviceHistory.collectAsState()
     val legacyCount by viewModel.legacyCount.collectAsState()
     val offline by viewModel.offline.collectAsState()
@@ -90,6 +92,7 @@ fun HistoryScreen(
     val transferIssue by viewModel.transferIssue.collectAsState()
     val filter by viewModel.filter.collectAsState()
     val mergedRows by viewModel.deviceRows.collectAsState()
+    val deviceHydratedAccess by viewModel.deviceHydratedAccess.collectAsState()
     val mergedNext by viewModel.deviceNext.collectAsState()
     val mergedLoading by viewModel.deviceLoading.collectAsState()
     val mergedIssue by viewModel.deviceIssue.collectAsState()
@@ -97,7 +100,10 @@ fun HistoryScreen(
     val importErrors by viewModel.deviceImportErrors.collectAsState()
     val downloads by guest.state.collectAsState()
     val guestPage by guest.historyPage.collectAsState()
-    val history = if (deviceHistory) mergedRows else unifiedHistory(allHistory, emptyList(), "all")
+    val history =
+        if (deviceHistory) {
+            if (deviceHydratedAccess == currentAccess) mergedRows else emptyList()
+        } else unifiedHistory(allHistory, emptyList(), "all")
     val listState = remember(deviceHistory, filter) { LazyListState() }
     val scope = rememberCoroutineScope()
     var sourceMenu by remember { mutableStateOf(false) }
@@ -409,7 +415,10 @@ fun HistoryScreen(
                     Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
-            if (history.isEmpty()) {
+            val knownEmpty =
+                if (deviceHistory) deviceHydratedAccess == currentAccess
+                else pageState.isKnownEmptyFor(currentAccess)
+            if (history.isEmpty() && knownEmpty) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,

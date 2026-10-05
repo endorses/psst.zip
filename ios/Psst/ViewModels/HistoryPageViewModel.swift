@@ -72,6 +72,9 @@ final class HistoryPageViewModel {
         session == loadedSession && session != nil
             && identities.contains(record.id + (record.isSlot == true ? "|slot" : "|transfer"))
     }
+    func hasLoadedPage(for session: DeviceSession?) -> Bool {
+        session != nil && loadedSession == session
+    }
     func refreshLocal(history: TransferHistoryStore, session: DeviceSession?) {
         guard let session, loadedSession == session else { return }
         showCache(history: history, session: session, target: window)

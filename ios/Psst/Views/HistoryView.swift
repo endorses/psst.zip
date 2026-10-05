@@ -34,6 +34,11 @@ struct HistoryView: View {
     private var working: Bool {
         busy || page.loading
     }
+    private var hasLoadedHistory: Bool {
+        deviceMode
+            ? devicePage.loaded && devicePage.session == config.session
+            : page.hasLoadedPage(for: config.session)
+    }
 
     var body: some View {
         NavigationStack {
@@ -60,7 +65,7 @@ struct HistoryView: View {
                     Label(L10n.text("Offline — showing last known status"), systemImage: "wifi.slash")
                         .foregroundStyle(PsstTheme.warning)
                 }
-                if records.isEmpty {
+                if hasLoadedHistory, records.isEmpty {
                     ContentUnavailableView(
                         L10n.text(deviceMode ? "No transfers yet" : "No entries on this page"),
                         systemImage: "clock",

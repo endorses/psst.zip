@@ -9,6 +9,18 @@ import org.junit.Test
 
 class LocalizationTest {
     @Test
+    fun transferProgressFormatsBothSizesWithoutChangingByteCounts() {
+        val transferred = 16_777_456L
+        val total = 24_428_863L
+        val caption = transferSizeProgress(transferred, total)
+        assertEquals("16 MiB / 23.3 MiB", caption.english())
+        assertEquals("16 MiB / 23,3 MiB", caption.localized("de"))
+        assertEquals(listOf(UiByteCount(transferred), UiByteCount(total)), caption.arguments)
+        assertEquals("1 KiB / 2 KiB", transferSizeProgress(1024, 2048).english())
+        assertEquals("16 MiB / ?", transferSizeProgress(transferred, null).localized("de"))
+    }
+
+    @Test
     fun systemSelectsFirstSupportedRegionalLanguageAndFallsBack() {
         assertEquals(
             "de",

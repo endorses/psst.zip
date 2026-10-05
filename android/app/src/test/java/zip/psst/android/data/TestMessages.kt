@@ -1,6 +1,8 @@
 package zip.psst.android.data
 
 import zip.psst.android.R
+import zip.psst.android.i18n.UiByteCount
+import zip.psst.android.i18n.UiFormatting
 import zip.psst.android.i18n.UiText
 import java.io.File
 import java.util.Locale
@@ -45,7 +47,17 @@ fun UiText?.localized(language: String): String? {
                     .first { it.attributes?.getNamedItem("quantity")?.nodeValue == category }
                     .textContent
         }
-        val args = arguments.map { if (it is UiText) it.localized(language) else it }.toTypedArray()
+        val args =
+            arguments
+                .map {
+                    when (it) {
+                        is UiText -> it.localized(language)
+                        is UiByteCount ->
+                            UiFormatting.bytes(it.bytes, Locale.forLanguageTag(language))
+                        else -> it
+                    }
+                }
+                .toTypedArray()
         return String.format(
             Locale.forLanguageTag(language),
             text.replace("\\'", "'").replace("\\n", "\n"),

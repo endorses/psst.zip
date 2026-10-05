@@ -20,11 +20,11 @@ processes; the extension writes private history but never starts a feed poller.
       atomic batch/cursor rollback and replay, old revisions, resets, scoped
       reads, eviction, retained device records, concurrent app/extension writers,
       and schema-3 upgrade preserving metadata while correcting descending ties.
-- [x] `python3 ios/scripts/test_history_sync.py`: 25 tests passed; production metadata cache
+- [x] `python3 ios/scripts/test_history_sync.py`: 26 tests passed; production metadata cache
       reconciliation and `HistoryPageViewModel` compiled in Swift with offline
       network/Keychain/private-record boundaries. Cached rows precede a suspended
       HTTP reply; cancellation rejects it; changed and removed rows reconcile
-      without deleting retained device history. Seventeen model/cache tests cover actual
+      without deleting retained device history. Eighteen model/cache tests cover actual
       cancellation, coalescing, quiet feeds, legacy snapshots, reset with 100 new
       arrivals, exact server-issued pagination anchors, account isolation,
       corruption recovery, offline expiry and later snapshots preserving the
@@ -34,7 +34,8 @@ processes; the extension writes private history but never starts a feed poller.
       cannot bypass, more than 50 equal-timestamp mixed-kind arrivals followed by
       successive pagination, scheduling from the latest manual/mutation/filter
       completion, a failed mutation spanning a routine deadline without stopping
-      polling, and finite cooldown overflow/reconstruction. Eight parser tests include the frozen backend fixture,
+      polling, finite cooldown overflow/reconstruction, and unknown versus known
+      empty state before hydration or on an offline cache miss. Eight parser tests include the frozen backend fixture,
       required nullable summary round trips, deadlines and `Retry-After`.
 - [x] `python3 ios/scripts/check_sources.py`: source/project gates passed only,
       including routine refresh bypassing the view's mutation busy state while
@@ -42,6 +43,9 @@ processes; the extension writes private history but never starts a feed poller.
 - [x] `python3 ios/scripts/check_localization.py`: 398 keys and 19 plural messages
       passed in English/German, including both permission bundles; no new
       presentation strings.
+- [x] `python3 ios/scripts/test_localization.py`: 14 tests passed, including both
+      transferred and total sizes using localized English/German KB/MB/GB values.
+      Scan, account-send and share-extension progress retain the existing formatter.
 
 These results were recorded on 2026-10-05. The database suite also covers the
 2,000-row account budget, 10,000-row global budget and 500-scope global state
@@ -114,6 +118,9 @@ Remove the two task-owned derived-data directories after recording the results.
       uploads and foreground app sync, including protected/low-storage failure.
 - [ ] Change English/German and light/dark appearance without a cursor reset or
       history fetch. Verify cached expiry disables expired actions offline.
+- [ ] Open History with cached entries, an empty authoritative page and an
+      offline cache miss. Unknown hydration must not flash an empty message or
+      insert a shifting progress bar; switching accounts must not show old rows.
 - [ ] Verify live permission checks reject disabled sessions, administrator roles
       and required password changes despite cached rows.
 

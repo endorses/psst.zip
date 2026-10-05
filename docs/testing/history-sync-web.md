@@ -81,3 +81,13 @@ npx playwright test tests/browser/history-sync-live.spec.ts
 Run these from `web/`. Do not run the production build while a Playwright dev
 server is using `.svelte-kit`; finish browser tests first. The fixtures remove
 owned backend databases, binary and files when the server shuts down.
+
+## Receive action label follow-up, 2026-10-05
+
+Received submissions link to their file view, so their action now reads “View
+files” / “Dateien ansehen.” The link destination and actual save buttons are
+unchanged. `tests/browser/inbox-pages.spec.ts` passed three browser scenarios,
+including switching English/German without refetching the inbox and preserving
+pagination/error handling. Its opt-in 101-submission integration scenario was
+not run in this focused label check. Type checking returned zero errors/warnings
+and the web localization check passed.

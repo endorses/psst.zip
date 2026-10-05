@@ -1636,7 +1636,7 @@
                         class="received"
                         href={item.url}
                         >{$t(m("fileCount", { count: item.count }))}
-                        · {$t(item.count === 1 ? m("saveFile") : m("saveFiles"))}</a
+                        · {$t(m("viewFiles"))}</a
                       >{:else}<p>
                         {$t(m("fileCount", { count: item.count }))}
                         {$t(m("privateKeyIsOnTheCreatingDevice"))}

@@ -51,6 +51,48 @@ permission for Gradle cache locks and emulator/ADB local sockets. The Java path
 is environment-specific. A normal development machine can use its configured
 Java installation and omit `--offline` when dependencies are not cached.
 
+## History hydration and readable progress follow-up
+
+The history screen previously treated the initial empty flow as an empty history
+before the asynchronous Room read and private-record enrichment had resolved.
+Empty-state presentation now requires an authoritative empty page for the current
+server/account, or completed device-history hydration for that same scope.
+Unresolved rows remain neutral without a shifting progress bar. Cached nonempty
+page facts cannot show an empty state while their enriched rows are still pending.
+QR transfer captions use the existing localized byte-size formatter for both
+transferred and total sizes; numeric progress ratios are unchanged.
+
+Results recorded on 2026-10-05 for this follow-up:
+
+- [x] Android JVM unit suite: 156 tests, zero failures/errors/skips. Added
+      unknown-versus-empty and matching-scope presentation regressions and exact
+      English/German readable-progress formatting checks.
+- [x] Debug app and instrumentation APKs rebuilt successfully.
+- [x] Android localization inventory check passed after classifying the existing
+      internal SQL and diagnostic literals: 514 strings, 26 plural groups and
+      128 explicit internal exceptions. The checker itself is unchanged.
+- [x] Focused production ViewModel instrumentation on a fresh disposable API
+      36.1 x86_64 emulator: `OK (1 test)` in 22.66 seconds. The extended scenario
+      verifies cached facts before a blocked HTTP reply, replacement ViewModel
+      hydration, and a nonempty page while its enrichment flow remains empty.
+      Its foreground-only polling and coalescing assertions also passed.
+
+```sh
+JAVA_HOME=/opt/android-studio/jbr ./android/gradlew -p android \
+  :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest \
+  --offline --no-daemon --max-workers=1
+adb -s emulator-5560 shell am instrument -w \
+  -e disposableStorage true \
+  -e class zip.psst.android.data.HistorySyncLifecycleDeviceTest#cachePrecedesResponseAndOnlyVisibleServerHistoryPolls \
+  zip.psst.android.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+This follow-up changed no shared Kotlin source; the shared 171-test result above
+remains the prior implementation gate. The eleven-case instrumentation suite was
+not rerun for this UI fix. The focused scenario exercises production ViewModel
+and Room state, not Compose rendering or actual navigation gestures; those
+checks remain pending below.
+
 ## Disposable emulator scenarios
 
 Use a fresh disposable AVD, not an AVD containing real account/device history.

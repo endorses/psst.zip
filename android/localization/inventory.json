@@ -6523,5 +6523,17 @@
       "android/app/src/main/java/zip/psst/android/data/LinkHistoryLabel.kt:21"
     ],
     "translator_note": "Use informal du. Keep interpolated filenames, user titles, usernames, URLs and numeric wire values unchanged. Translate the full plural sentence; one and other required."
+  },
+  "transfer_size_progress": {
+    "english": {
+      "string": "%1$s / %2$s"
+    },
+    "purpose": "Transferred size and total size during file download. Both arguments are already formatted with localized numbers and appropriate units.",
+    "arguments": ["1:s", "2:s"],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/i18n/UiText.kt:118"
+    ],
+    "translator_note": "Preserve positional argument indexes and types. Both values already contain their localized units; do not append bytes or another unit."
   }
 }

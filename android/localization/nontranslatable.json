@@ -513,6 +513,136 @@
       "file": "android/app/src/main/java/zip/psst/android/viewmodel/ReceiveViewModel.kt",
       "literal": "Your account or inbox page changed",
       "reason": "Coroutine cancellation diagnostic; cancellation is not shown as an error."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "CREATE INDEX IF NOT EXISTS index_history_server_facts_scope_createdAt_id ON history_server_facts(scope,createdAt,id)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "CREATE INDEX IF NOT EXISTS index_history_server_facts_scope_kind_createdAt_id ON history_server_facts(scope,kind,createdAt,id)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "CREATE TABLE IF NOT EXISTS history_cached_windows (scope TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT NOT NULL,generation TEXT NOT NULL,floorTime INTEGER NOT NULL,floorId TEXT NOT NULL,beforeTime INTEGER NOT NULL,beforeId TEXT NOT NULL,nextCursor TEXT,legacyPage TEXT,serverAfter TEXT,PRIMARY KEY(scope,kind,cursor))",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "CREATE TABLE IF NOT EXISTS history_server_facts (scope TEXT NOT NULL,kind TEXT NOT NULL,id TEXT NOT NULL,generation TEXT NOT NULL,revision INTEGER NOT NULL,createdAt INTEGER NOT NULL,body TEXT NOT NULL,removed INTEGER NOT NULL,PRIMARY KEY(scope,kind,id))",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "CREATE TABLE IF NOT EXISTS history_sync_state (scope TEXT NOT NULL PRIMARY KEY,generation TEXT NOT NULL,cursor TEXT NOT NULL)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_cached_windows",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_cached_windows WHERE legacyPage IS NOT NULL AND rowid IN (SELECT rowid FROM history_cached_windows WHERE legacyPage IS NOT NULL ORDER BY rowid DESC LIMIT -1 OFFSET 20)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_cached_windows WHERE rowid IN (SELECT rowid FROM history_cached_windows ORDER BY rowid DESC LIMIT -1 OFFSET 1000)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_cached_windows WHERE scope=:scope",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_cached_windows WHERE scope=:scope AND cursor!=''",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_server_facts WHERE rowid IN (SELECT rowid FROM history_server_facts ORDER BY removed ASC,createdAt DESC,id DESC LIMIT -1 OFFSET 10000)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_server_facts WHERE rowid IN (SELECT rowid FROM history_server_facts WHERE scope=:scope ORDER BY removed ASC,createdAt DESC,id DESC LIMIT -1 OFFSET 2000)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_server_facts WHERE scope=:scope",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_sync_state",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_sync_state WHERE scope NOT IN (SELECT DISTINCT scope FROM history_cached_windows)",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "DELETE FROM history_sync_state WHERE scope=:scope",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "History metadata is too large",
+      "reason": "Internal history cache validation/recovery diagnostic. HistoryViewModel catches it and presents a localized safe error; this raw text is not displayed."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "History scope changed",
+      "reason": "Coroutine cancellation diagnostic; canceled history work is not presented as an error."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "Invalid disposable history cache",
+      "reason": "Internal history cache validation/recovery diagnostic. HistoryViewModel catches it and presents a localized safe error; this raw text is not displayed."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "Missing creation time",
+      "reason": "Internal history cache validation/recovery diagnostic. HistoryViewModel catches it and presents a localized safe error; this raw text is not displayed."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "SELECT * FROM history_cached_windows WHERE scope=:scope AND kind=:kind AND cursor=:cursor",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "SELECT * FROM history_server_facts WHERE scope=:scope AND kind=:kind AND id=:id",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "SELECT * FROM history_server_facts WHERE scope=:scope AND removed=0 AND (:kind='' OR kind=:kind) AND (createdAt>:floorTime OR (createdAt=:floorTime AND id>=:floorId)) AND (createdAt<:beforeTime OR (createdAt=:beforeTime AND id<:beforeId)) ORDER BY createdAt DESC,id DESC LIMIT 51",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistorySyncCache.kt",
+      "literal": "SELECT * FROM history_sync_state WHERE scope=:scope",
+      "reason": "Room/SQLite statement for disposable history metadata; schema, column and SQL tokens are internal storage identifiers, never displayed or translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/viewmodel/HistoryViewModel.kt",
+      "literal": "History account changed",
+      "reason": "Coroutine cancellation diagnostic; canceled history work is not presented as an error."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/viewmodel/HistoryViewModel.kt",
+      "literal": "History coverage was evicted",
+      "reason": "Internal history cache validation/recovery diagnostic. HistoryViewModel catches it and presents a localized safe error; this raw text is not displayed."
     }
   ]
 }

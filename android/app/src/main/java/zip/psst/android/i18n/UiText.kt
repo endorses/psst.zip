@@ -114,3 +114,10 @@ fun userText(value: String): UiText = UiText(0, literal = value)
 
 fun displayBytes(value: Long): String =
     UiFormatting.bytes(value, UiStrings.context().resources.configuration.locales[0])
+
+fun transferSizeProgress(transferred: Long, total: Long?): UiText =
+    message(
+        zip.psst.android.R.string.transfer_size_progress,
+        UiByteCount(transferred),
+        total?.let(::UiByteCount) ?: "?",
+    )

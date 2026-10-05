@@ -56,8 +56,13 @@ test("empty filtered pages stay navigable, totals remain global, and only the vi
   });
   await open(page);
   const panel = page.getByRole("region", { name: "Received files", exact: true });
-  await expect(panel.getByRole("link", { name: "1 file · Save file", exact: true })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "1 file · View files", exact: true })).toBeVisible();
   await expect(page.getByText(/151 files received/)).toBeVisible();
+  await page.locator(".language-picker select").selectOption("de");
+  await expect(
+    page.getByRole("link", { name: "1 Datei · Dateien ansehen", exact: true }),
+  ).toBeVisible();
+  await page.locator(".language-picker select").selectOption("en");
   expect(reads).toEqual([""]);
   await panel.getByRole("button", { name: "Next", exact: true }).click();
   await expect(panel.getByText("Page 2", { exact: true })).toBeVisible();
@@ -65,7 +70,7 @@ test("empty filtered pages stay navigable, totals remain global, and only the vi
   await expect(panel.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
   await expect(page.getByText(/Received file totals are updating/)).toBeVisible();
   arrivals = true;
-  await expect(panel.getByRole("link", { name: "3 files · Save files", exact: true })).toBeVisible({
+  await expect(panel.getByRole("link", { name: "3 files · View files", exact: true })).toBeVisible({
     timeout: 10000,
   });
   expect(reads.slice(1).every((c) => c === inboxCursor(1))).toBe(true);
@@ -92,7 +97,7 @@ test("a failed or malformed next page preserves prior entries and cursor", async
     await panel.getByRole("button", { name: "Next", exact: true }).click();
     await expect(panel.getByRole("alert")).toContainText("Could not refresh");
     await expect(
-      panel.getByRole("link", { name: "1 file · Save file", exact: true }),
+      panel.getByRole("link", { name: "1 file · View files", exact: true }),
     ).toBeVisible();
     await expect(panel.getByText("Page 1", { exact: true })).toBeVisible();
   }
@@ -192,7 +197,7 @@ authenticatedTest(
     await expect(panel.getByText("Page 3", { exact: true })).toBeVisible();
     await expect(panel.getByRole("link")).toHaveCount(1);
     await expect(panel.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
-    await panel.getByRole("link", { name: "1 file · Save file", exact: true }).click();
+    await panel.getByRole("link", { name: "1 file · View files", exact: true }).click();
     await expect(page.getByText("later-page.txt", { exact: true })).toBeVisible();
     const checkpoint = await page.evaluate(() => {
       const raw = sessionStorage.getItem("psst.inbox-return");
@@ -206,7 +211,7 @@ authenticatedTest(
     await page.getByRole("link", { name: "Back to received files" }).click();
     await expect(panel.getByText("Page 3", { exact: true })).toBeVisible();
     await expect(
-      panel.getByRole("link", { name: "1 file · Save file", exact: true }),
+      panel.getByRole("link", { name: "1 file · View files", exact: true }),
     ).toBeVisible();
     await expect(panel.getByRole("button", { name: "Previous", exact: true })).toBeEnabled();
   },

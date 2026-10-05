@@ -53,9 +53,15 @@ import XCTest
             let gate = Gate()
             AccountHTTP.handler = { _ in try await gate.wait() }
             let model = HistoryPageViewModel()
+            XCTAssertFalse(model.hasLoadedPage(for: session), "Unhydrated history is unknown, not empty")
             let task = Task { await model.refresh(history: history, session: session) }
             while !(await gate.ready()) { await Task.yield() }
             XCTAssertEqual(model.records.first?.sharedTitle, "Original")
+            XCTAssertTrue(model.hasLoadedPage(for: session), "Cached history is known before HTTP finishes")
+            XCTAssertFalse(model.hasLoadedPage(for: nil))
+            var another = session
+            another.userID = "77777777-7777-4777-8777-777777777777"
+            XCTAssertFalse(model.hasLoadedPage(for: another), "Hydration must remain account-scoped")
             XCTAssertTrue(model.loading)
             model.cancel()
             await gate.finish()
@@ -64,6 +70,34 @@ import XCTest
             XCTAssertFalse(model.loading)
             XCTAssertEqual(try history.historySyncState(session: session)?.cursor, "one")
         }
+        func testAuthoritativeEmptyPageIsKnownButOfflineCacheMissRemainsUnknown() async throws {
+            let history = try store()
+            let session = DeviceSession()
+            SecretStore.session = session
+            let model = HistoryPageViewModel()
+            AccountHTTP.handler = { _ in throw URLError(.notConnectedToInternet) }
+            _ = await model.refresh(history: history, session: session)
+            XCTAssertFalse(model.hasLoadedPage(for: session))
+            XCTAssertTrue(model.records.isEmpty)
+            XCTAssertTrue(model.stale)
+            let generation = self.generation
+            AccountHTTP.handler = { path in
+                if path == "config" { return Data(#"{"history_sync_version":1}"#.utf8) }
+                if path.hasPrefix("auth/resources") {
+                    return Data(
+                        "{\"paginated\":true,\"transfers\":[],\"slots\":[],\"next_cursor\":null,\"sync_cursor\":\"one\",\"generation\":\"\(generation)\"}"
+                            .utf8)
+                }
+                return Data(
+                    "{\"version\":1,\"generation\":\"\(generation)\",\"changes\":[],\"next_cursor\":\"one\",\"has_more\":false}".utf8)
+            }
+            _ = await model.refresh(history: history, session: session)
+            XCTAssertTrue(model.hasLoadedPage(for: session))
+            XCTAssertTrue(model.records.isEmpty)
+            model.invalidate()
+            XCTAssertFalse(model.hasLoadedPage(for: session))
+        }
+
         func testQuietRefreshUsesOnlyFeedAndMutationRefreshesCoalesce() async throws {
             let history = try store()
             let session = DeviceSession()

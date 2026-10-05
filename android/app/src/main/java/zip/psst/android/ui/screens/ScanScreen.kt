@@ -245,13 +245,7 @@ fun ScanScreen(
                     if (
                         state.stage == ScanStage.DOWNLOADING || state.stage == ScanStage.UPLOADING
                     ) {
-                        Text(
-                            tr(
-                                R.string.l_1_s_2_s_bytes_975e83,
-                                (state.bytes),
-                                (state.totalBytes ?: "?"),
-                            )
-                        )
+                        Text(transferSizeProgress(state.bytes, state.totalBytes).text())
                         LinearProgressIndicator(
                             progress = {
                                 (state.bytes.toFloat() / (state.totalBytes ?: 1).coerceAtLeast(1))

@@ -185,6 +185,23 @@ manual_refresh = history_view[
     )
 ]
 assert "guard !working" in manual_refresh
+assert "if hasLoadedHistory, records.isEmpty" in history_view
+assert "devicePage.loaded && devicePage.session == config.session" in history_view
+assert "page.hasLoadedPage(for: config.session)" in history_view
+for path in (
+    "Psst/Views/ScanReceiveView.swift",
+    "Psst/Views/TransferDetailView.swift",
+    "PsstShareExtension/ShareExtensionView.swift",
+):
+    progress_source = read(path)
+    assert (
+        "L10n.bytes(model.bytes)" in progress_source
+        or "L10n.bytes(progress.sent)" in progress_source
+    )
+    assert (
+        "L10n.bytes(model.total)" in progress_source
+        or "L10n.bytes(progress.total)" in progress_source
+    )
 assert "localName: receiveName" in read("Psst/Views/HomeView.swift")
 for name in (
     "testHistoryMigrationPersistenceAndRefreshKeepLocalNameWithoutTypeCollision",

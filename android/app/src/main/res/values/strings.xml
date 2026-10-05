@@ -34,6 +34,7 @@
     <string name="preparing_files">Preparing files…</string>
     <string name="uploading_file">Uploading %1$s</string>
     <string name="upload_bytes">%1$s of %2$s uploaded</string>
+    <string name="transfer_size_progress">%1$s / %2$s</string>
     <string name="selected_files">%1$d files · %2$s</string>
     <plurals name="selected_file_summary">
         <item quantity="one">%1$d file · %2$s</item>

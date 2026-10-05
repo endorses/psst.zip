@@ -84,6 +84,7 @@ class HistorySyncLifecycleDeviceTest {
         lateinit var model: HistoryViewModel
         instrumentation.runOnMainSync {
             model = HistoryViewModel(app)
+            assertFalse(model.pageState.value.isKnownEmptyFor(access))
             model.refresh()
         }
         fun await(condition: () -> Boolean) {
@@ -215,6 +216,7 @@ class HistorySyncLifecycleDeviceTest {
                 "Cached page must be visible while first response is blocked",
                 model.pageState.value.page,
             )
+            assertFalse(model.pageState.value.isKnownEmptyFor(access))
             await { model.history.value.size == 1 }
             assertTrue(model.history.value.single().encryptionKey.isBlank())
             assertNull(app.database.transferHistoryDao().getById(model.history.value.single().id))
@@ -241,6 +243,20 @@ class HistorySyncLifecycleDeviceTest {
             }
             Thread.sleep(1000)
             assertEquals(stopped, requests.get())
+            instrumentation.runOnMainSync {
+                model.stopRefreshing()
+                model = HistoryViewModel(app)
+                assertFalse(
+                    "Warm reopen is unresolved until the Room page arrives",
+                    model.pageState.value.isKnownEmptyFor(access),
+                )
+                model.refresh()
+            }
+            await { requests.get() == stopped + 1 }
+            assertNotNull(model.pageState.value.page)
+            assertFalse(model.pageState.value.isKnownEmptyFor(access))
+            // No private-enrichment subscriber exists for this new model yet.
+            assertTrue(model.history.value.isEmpty())
         } finally {
             instrumentation.runOnMainSync { model.stopRefreshing() }
             gate.countDown()

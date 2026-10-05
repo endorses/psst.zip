@@ -34,6 +34,7 @@
     <string name="preparing_files">Dateien werden vorbereitet…</string>
     <string name="uploading_file">%1$s wird hochgeladen</string>
     <string name="upload_bytes">%1$s von %2$s hochgeladen</string>
+    <string name="transfer_size_progress">%1$s / %2$s</string>
     <string name="selected_files">%1$d Dateien · %2$s</string>
     <string name="stop_upload">Upload stoppen?</string>
     <string name="stop_upload_explanation">Der Upload wird abgebrochen und unvollständige Serverdateien werden entfernt. Falls das fehlschlägt, kannst du sie im Verlauf widerrufen.</string>

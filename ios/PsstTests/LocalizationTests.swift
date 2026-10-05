@@ -1,6 +1,7 @@
 import Foundation
-@testable import Psst
 import XCTest
+
+@testable import Psst
 
 final class LocalizationTests: XCTestCase {
     private var previousLanguage = AppLanguage.system
@@ -22,7 +23,8 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(AppLanguage.resolve(.system, preferred: ["de_AT"]), "de")
         XCTAssertEqual(AppLanguage.resolve(.en, preferred: ["de-DE"]), "en")
         XCTAssertEqual(AppLanguage.resolve(.de, preferred: []), "de")
-        XCTAssertEqual(AppLanguage.effectiveLocale(.system, preferred: ["fr_FR", "de_CH"], current: Locale(identifier: "fr_FR")).identifier, "de_CH")
+        XCTAssertEqual(
+            AppLanguage.effectiveLocale(.system, preferred: ["fr_FR", "de_CH"], current: Locale(identifier: "fr_FR")).identifier, "de_CH")
         XCTAssertEqual(AppLanguage.effectiveLocale(.de, preferred: [], current: Locale(identifier: "de_AT")).identifier, "de_AT")
     }
 
@@ -60,6 +62,20 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(L10n.text("psst.zip"), "psst.zip")
     }
 
+    func testTransferProgressUsesLocalizedSizesForBothValues() {
+        for (identifier, expected) in [("en_US", "1.5 KB / 2.5 MB"), ("de_DE", "1,5 KB / 2,5 MB")] {
+            let locale = Locale(identifier: identifier)
+            XCTAssertEqual(L10n.bytes(1_500, locale: locale) + " / " + L10n.bytes(2_500_000, locale: locale), expected)
+        }
+        XCTAssertEqual(
+            L10n.bytes(0, locale: Locale(identifier: "de_DE")) + " / " + L10n.bytes(5_000_000_000, locale: Locale(identifier: "de_DE")),
+            "0 B / 5 GB")
+        LanguageSettings.shared.preference = .de
+        XCTAssertEqual(L10n.bytes(1_500_000) + " / " + L10n.bytes(2_500_000), "1,5 MB / 2,5 MB")
+        LanguageSettings.shared.preference = .en
+        XCTAssertEqual(L10n.bytes(1_500_000) + " / " + L10n.bytes(2_500_000), "1.5 MB / 2.5 MB")
+    }
+
     func testDeferredErrorChangesLanguageWithoutChangingIdentityOrUserData() throws {
         LanguageSettings.shared.preference = .en
         let userValue = "Settings"
@@ -80,7 +96,9 @@ final class LocalizationTests: XCTestCase {
     }
 
     func testHistoryAndReportLocalizeWithoutChangingCapabilitiesOrUserTitles() throws {
-        var record = TransferRecord(id: "stable", direction: .sent, state: .complete, createdAt: Date(), fileCount: 1, totalSize: 1536, shareURL: "https://example.test/d/stable#secret", sharedTitle: "Settings")
+        var record = TransferRecord(
+            id: "stable", direction: .sent, state: .complete, createdAt: Date(), fileCount: 1, totalSize: 1536,
+            shareURL: "https://example.test/d/stable#secret", sharedTitle: "Settings")
         LanguageSettings.shared.preference = .de
         XCTAssertEqual(record.displayTitle, "Settings")
         XCTAssertEqual(record.statusText, "Bereit zum Herunterladen")
@@ -92,7 +110,8 @@ final class LocalizationTests: XCTestCase {
         record.isSlot = true
         record.title = nil
         XCTAssertEqual(record.displayTitle, "Empfangslink")
-        let context = try XCTUnwrap(AbuseReportContext(origin: "https://example.test", resourceType: "slot", resourceID: "12345678-1234-1234-1234-123456789abc"))
+        let context = try XCTUnwrap(
+            AbuseReportContext(origin: "https://example.test", resourceType: "slot", resourceID: "12345678-1234-1234-1234-123456789abc"))
         XCTAssertTrue(context.text.contains("Ressourcentyp: slot"))
         XCTAssertTrue(context.text.contains("12345678-1234-1234-1234-123456789abc"))
         let mail = try XCTUnwrap(context.mailURL(contact: "abuse@example.test"))
@@ -134,7 +153,8 @@ final class LocalizationTests: XCTestCase {
             XCTAssertEqual($0 as? LocalUploadFailure, .invalidSelection)
         }
         XCTAssertEqual(L10n.failure(LocalUploadFailure.fileTooLarge(limitBytes: Int64.max), fallback: fallback), fallback)
-        let arbitrary = NSError(domain: "Psst", code: 1, userInfo: [NSLocalizedDescriptionKey: "secret remote prose https://example.test/#secret"])
+        let arbitrary = NSError(
+            domain: "Psst", code: 1, userInfo: [NSLocalizedDescriptionKey: "secret remote prose https://example.test/#secret"])
         XCTAssertEqual(L10n.failure(arbitrary, fallback: fallback), fallback)
     }
 
