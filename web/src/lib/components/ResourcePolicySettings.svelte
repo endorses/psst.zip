@@ -95,7 +95,7 @@
           disabled={busy}
         >
           <legend>{$t(group.label)}</legend>
-          <div class="fields">
+          <div class="aligned-fields">
             {#each policyFields.filter((field) => field.group === group.id) as field}<label>
                 {$t(field.label)}<input
                   type="number"
@@ -131,13 +131,7 @@
     border-radius: 0.5rem;
     min-width: 0;
   }
-  .fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-    gap: 1rem;
-  }
   label {
-    display: block;
     font-size: 0.9rem;
   }
   input {

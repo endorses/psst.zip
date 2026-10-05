@@ -115,7 +115,7 @@
             m("enforceTransferTrafficBudget"),
           )}</label
         >
-        <div class="fields">
+        <div class="aligned-fields">
           <label
             >{$t(m("serverTrafficBudgetGiB"))}<input
               type="number"
@@ -156,7 +156,7 @@
       </fieldset>
       <fieldset disabled={busy}>
         <legend>{$t(m("bandwidthAndConcurrentStreams"))}</legend>
-        <div class="fields">
+        <div class="aligned-fields">
           <label
             >{$t(m("uploadBandwidthMiBS"))}<input
               type="number"
@@ -219,13 +219,7 @@
     border: 1px solid var(--divider);
     border-radius: 0.5rem;
   }
-  .fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-    gap: 1rem;
-  }
   label {
-    display: block;
     font-size: 0.9rem;
   }
   input,

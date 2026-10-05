@@ -35,7 +35,7 @@ struct HomeView: View {
                     ScrollView {
                         VStack(spacing: 20) {
                             HStack {
-                                Image("BrandSymbol").resizable().scaledToFit().frame(width: 40, height: 40).accessibilityHidden(true)
+                                Image("BrandSymbol").resizable().scaledToFit().frame(width: 50, height: 50).accessibilityHidden(true)
                                 Text(L10n.text("psst.zip")).font(.largeTitle.bold())
                             }
                             Text(

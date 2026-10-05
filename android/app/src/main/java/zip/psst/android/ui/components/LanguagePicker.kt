@@ -2,12 +2,20 @@ package zip.psst.android.ui.components
 
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
 import zip.psst.android.R
 import zip.psst.android.data.AppLanguage
@@ -27,7 +35,12 @@ fun LanguagePicker() {
         }
     Box(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.language_value, label(language)))
+            Text(
+                stringResource(R.string.language_value, label(language)),
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             AppLanguage.entries.forEach { option ->
@@ -38,6 +51,10 @@ fun LanguagePicker() {
                             LocaleListCompat.forLanguageTags(option.tag)
                         )
                         expanded = false
+                    },
+                    modifier = Modifier.semantics { selected = language == option },
+                    trailingIcon = {
+                        if (language == option) Icon(Icons.Default.Check, contentDescription = null)
                     },
                 )
             }

@@ -298,3 +298,21 @@ summary {
     scroll-behavior: auto !important;
   }
 }
+
+/* Shared rows keep controls aligned when translated labels wrap. */
+.aligned-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem;
+}
+.aligned-fields > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.aligned-fields > label > input,
+.aligned-fields > label > select {
+  height: 3rem;
+  margin-top: auto;
+}

@@ -311,11 +311,12 @@ exactly before/after; LAN and loopback shell/CSP/API-code checks passed. A real
 LAN browser verified German initial resolution, English override/persistence
 across reload, and switching back to German.
 
-The final debug APK is
+The debug APK recorded at localization closure was
 `android/app/build/outputs/apk/debug/app-debug.apk` (24,428,503 bytes), SHA-256
 `99396bf991f3c3325458614d4a7c818fd584a7e1776f7db807d56e05184f51cd`.
-Code, resources, contributor documentation and this completed plan are committed
-together.
+This checksum records that delivery; later fixes may rebuild the APK at the
+same path. Code, resources, contributor documentation and this completed plan
+were committed together.
 
 ## Platform references
 

@@ -63,7 +63,7 @@ fun HomeScreen(
                         Icon(
                             painterResource(R.drawable.brand_symbol),
                             null,
-                            Modifier.size(32.dp),
+                            Modifier.size(40.dp),
                             tint = androidx.compose.ui.graphics.Color.Unspecified,
                         )
                         Text(stringResource(R.string.app_name))

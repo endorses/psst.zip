@@ -145,6 +145,7 @@ final class ServerConfigManager {
         try await validate(server: server)
         let data = try await AccountHTTP.request(server: server, path: "auth/pairings/redeem", method: "POST",
                                                  body: ["code": code.code, "device_name": UIDevice.current.name])
+        try Task.checkCancellation()
         guard SecretStore.session == previous else { throw AccountError.changed }
         try await install(data, server: server)
     }
@@ -157,9 +158,11 @@ final class ServerConfigManager {
         let client = ApiClient(config: ServerConfig(baseUrl: server), httpClient: HttpClientFactoryKt.createPlatformHttpClient())
         defer { client.close() }
         try await client.validateServer()
+        try Task.checkCancellation()
     }
 
     private func install(_ data: Data, server: String) async throws {
+        try Task.checkCancellation()
         struct Response: Decodable {
             struct User: Decodable { let id: String
                 let username: String

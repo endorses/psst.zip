@@ -151,6 +151,13 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    /** Leaving a screen must never wait for validation or deliver a late navigation callback. */
+    fun cancelPendingOperation() {
+        version++
+        operation?.cancel()
+        _uiState.value = _uiState.value.copy(isTesting = false)
+    }
+
     fun onUrlChange(url: String) {
         version++
         operation?.cancel()

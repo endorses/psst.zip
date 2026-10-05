@@ -28,6 +28,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 android/localization/check_resources.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_scanner_navigation.py
 go -C backend test ./internal/api -count=1
 ```
 
@@ -47,6 +48,12 @@ and a list with no supported language.
 - [ ] Check German and English at narrow phone widths, enlarged text and both
       appearances. Keep primary actions visible, QR codes readable and navigation
       labels usable without horizontal page overflow.
+- [ ] Compare English/German administrator forms with wrapped labels. Controls
+      in the same row must remain aligned; narrow screens must stack without
+      page overflow. Language and appearance controls must remain distinguishable.
+- [ ] Open the native scanner with an unreachable configured server, then return
+      immediately to Home using toolbar and system Back. Pending account or
+      capacity checks must not prevent leaving or reopen the scanner afterward.
 - [ ] Check keyboard, TalkBack/VoiceOver labels and password visibility. Native
       camera/network permission prompts must use the intended OS language.
 - [ ] Switch languages while files are selected, a login or administrator form is

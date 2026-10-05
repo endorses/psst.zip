@@ -28,7 +28,8 @@ struct ScanReceiveView: View {
     @State private var capacityMessage = "Checking receive capacity…"
     @State private var capacityReady = false
     @State private var checkingCapacity = false
-    @State private var capacityRequest = UUID()
+    @State private var capacityRequest = ScannerRequestLifetime()
+    @State private var pairingRequest = ScannerRequestLifetime()
     @State private var pairingRaw: String?
     @State private var pairingServer = ""
     @State private var pairing = false
@@ -44,7 +45,12 @@ struct ScanReceiveView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             if uploadLink != nil {
-                                Button(L10n.text(model.uploadComplete ? "Return to sent files" : "Return to send files")) { uploadPresented = true }.buttonStyle(PrimaryAction())
+                                Button(L10n.text(model.uploadComplete ? "Return to sent files" : "Return to send files")) {
+                                    uploadPresented = true
+                                    if !capacityReady, !model.uploadComplete {
+                                        refreshCapacity()
+                                    }
+                                }.buttonStyle(PrimaryAction())
                             }
                             inputControls
                             if let error {
@@ -74,6 +80,7 @@ struct ScanReceiveView: View {
                 if uploadPresented {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(L10n.text("Back")) {
+                            stopPreflight()
                             uploadPresented = false
                             cameraEnabled = false
                         }
@@ -81,7 +88,12 @@ struct ScanReceiveView: View {
                 }
             }
             .onAppear { visible = true }
-            .onDisappear { visible = false }
+            .onDisappear { visible = false; stopPreflight() }
+            .onChange(of: isSelected) { _, selected in
+                if !selected {
+                    stopPreflight()
+                }
+            }
             .fileImporter(isPresented: $imagePicking, allowedContentTypes: [.image]) { result in
                 do {
                     guard let url = try result.get().first else { return }
@@ -165,13 +177,22 @@ struct ScanReceiveView: View {
                 Text(L10n.text(config.isConfigured ? "Connecting will replace the active account on this device." : "Connect to this server using its single-use login code."))
                 Button(L10n.text("Connect to this server")) {
                     pairing = true
-                    Task {
+                    let request = pairingRequest.begin()
+                    let task = Task {
+                        guard pairingRequest.isCurrent(request) else { return }
                         defer {
-                            pairing = false
-                            pairingRaw = nil
+                            if pairingRequest.isCurrent(request) {
+                                pairing = false
+                                pairingRaw = nil
+                                pairingRequest.finish(request)
+                            }
                         }
-                        do { try await config.pair(raw: raw) } catch { self.error = "This login code could not be used. Generate a fresh code and check the connection." }
+                        do { try await config.pair(raw: raw) } catch {
+                            guard pairingRequest.isCurrent(request) else { return }
+                            self.error = "This login code could not be used. Generate a fresh code and check the connection."
+                        }
                     }
+                    pairingRequest.attach(task, request: request)
                 }.buttonStyle(PrimaryAction()).disabled(pairing)
                 Button(L10n.text("Cancel")) { pairingRaw = nil }.disabled(pairing)
             }
@@ -332,7 +353,7 @@ struct ScanReceiveView: View {
     }
 
     private func clearUploadSelection() {
-        capacityRequest = UUID()
+        capacityRequest.cancel()
         checkingCapacity = false
         capacityReady = false
         uploadLimit = nil
@@ -341,10 +362,16 @@ struct ScanReceiveView: View {
         capacityMessage = "Checking receive capacity…"
     }
 
+    private func stopPreflight() {
+        capacityRequest.cancel()
+        pairingRequest.cancel()
+        checkingCapacity = false
+        pairing = false
+    }
+
     private func refreshCapacity(adding additions: [URL] = []) {
         guard let link = uploadLink, !model.active else { return }
-        let request = UUID()
-        capacityRequest = request
+        let request = capacityRequest.begin()
         checkingCapacity = true
         capacityReady = false
         error = nil
@@ -355,23 +382,26 @@ struct ScanReceiveView: View {
                 files.append(url)
             }
         }
-        Task { @MainActor in
+        let task = Task { @MainActor in
+            guard capacityRequest.isCurrent(request) else { return }
             defer {
-                if capacityRequest == request {
+                if capacityRequest.isCurrent(request) {
                     checkingCapacity = false
+                    capacityRequest.finish(request)
                 }
             }
             do {
                 let client = try ApiClient.companion.anonymous(origin: link.origin)
+                capacityRequest.attachTransport(request: request) { client.close() }
                 defer { client.close() }
                 let limit = try await client.limits.get().maxFileSize
-                guard capacityRequest == request else { return }
+                guard capacityRequest.isCurrent(request) else { return }
                 guard limit > 0, limit <= Int64(BufferedUpload.maxFileBytes) else { throw GuestUploadSelectionError.unavailable }
                 uploadLimit = limit
                 let sizes: [Int64]
                 do { sizes = candidate.isEmpty ? [] : try BufferedUpload.sizes(candidate, limit: Int(limit)) } catch { throw GuestUploadSelectionError.invalidFiles }
                 let availability = try await client.slots.availability(slotId: link.id)
-                guard capacityRequest == request else { return }
+                guard capacityRequest.isCurrent(request) else { return }
                 uploadTitle = try SharedLinkTitle.normalize(availability.title)
                 try GuestUploadPreflight.validate(availability, link: link, urls: candidate, sizes: sizes)
                 guard let capacity = availability.uploadCapacity,
@@ -381,11 +411,12 @@ struct ScanReceiveView: View {
                 capacityReady = true
                 capacityMessage = L10n.typedFormat("Up to %lld files · %@ per file", .integer(Int64(files.int64Value)), .byteCount(limit, binary: true))
             } catch {
-                guard capacityRequest == request else { return }
+                guard capacityRequest.isCurrent(request) else { return }
                 capacityMessage = L10n.failure(error, fallback:
                     (error as? GuestUploadSelectionError)?.localizedDescription ?? TransferIncident.from(error)?.localizedDescription
                         ?? GuestUploadSelectionError.unavailable.localizedDescription)
             }
         }
+        capacityRequest.attach(task, request: request)
     }
 }

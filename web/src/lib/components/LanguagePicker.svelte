@@ -1,8 +1,10 @@
 <script lang="ts">
+  import Icon from "./Icon.svelte";
   import { preference, languageReady, chooseLanguage, t, message as m } from "$lib/i18n";
 </script>
 
 <label class="language-picker">
+  <Icon name="Languages" size={18} />
   <span class="sr-only">{$t(m("language"))}</span>
   <select
     disabled={!$languageReady}
@@ -27,16 +29,20 @@
     white-space: nowrap;
   }
   .language-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--muted);
     margin: 0;
   }
   select {
     width: auto;
     max-width: 10rem;
-    padding: 0.55rem 1.8rem 0.55rem 0.6rem;
+    padding: 0.4rem 0.6rem;
     margin: 0;
     background-color: transparent;
     border-color: transparent;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
   }
   select:hover,
   select:focus-visible {

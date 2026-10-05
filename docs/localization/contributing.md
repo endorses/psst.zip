@@ -33,6 +33,12 @@ transfers, consume another download allowance or discard selected files.
 | Sign in / Sign out     | Anmelden / Abmelden       | Account access.                                       |
 | Download limit reached | Download-Limit erreicht   | An inactive link; do not display an expiry countdown. |
 
+For network accounting, use **Datenverkehr** rather than standalone Verkehr.
+Use **Traffic-Budget** and **Traffic-Limits** for the corresponding administrator
+controls, **Verbrauch** for measured usage and **Datenkontingent/Kontingent** for
+an allowance. Avoid Verkehrsbudget, Verkehrsgrenzen and Verkehrsregeln, which
+suggest road traffic. Keep terminology consistent across the web UI and apps.
+
 Language names remain English and Deutsch rather than translated country names
 or flags. The product name remains **psst.zip**.
 

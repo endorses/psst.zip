@@ -268,3 +268,87 @@ for (const code of [
     expect([payloads, auth]).toEqual([2, 0]);
   });
 }
+
+for (const language of ["en", "de"] as const) {
+  test(`traffic settings align wrapped labels and distinguish selectors in ${language}`, async ({
+    page,
+  }, info) => {
+    await admin(page);
+    await page.route("**/api/v1/admin/traffic-policy", (route) =>
+      route.fulfill({ json: trafficSnapshot(trafficPolicy) }),
+    );
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.goto("/?view=traffic");
+    const languagePicker = page.locator(".language-picker");
+    await expect(languagePicker.locator("select")).toBeEnabled();
+    await languagePicker.locator("select").selectOption(language);
+    await expect(languagePicker.locator("svg")).toBeVisible();
+    await expect(languagePicker.locator("svg")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator(".theme-picker svg")).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = "125%";
+    });
+    const section = page.getByRole("region", {
+      name: language === "de" ? "Traffic-Limits für Übertragungen" : "Transfer traffic enforcement",
+      exact: true,
+    });
+    await expect(section.locator(".aligned-fields")).toHaveCount(2);
+    const alignment = await section.locator(".aligned-fields").evaluateAll((groups) => {
+      let pairedRows = 0;
+      for (const group of groups) {
+        const rows = new Map<number, number[]>();
+        for (const label of group.querySelectorAll(":scope > label")) {
+          const control = label.querySelector("input, select")!;
+          const row = Math.round(label.getBoundingClientRect().top);
+          const positions = rows.get(row) ?? [];
+          positions.push(control.getBoundingClientRect().top);
+          rows.set(row, positions);
+        }
+        for (const positions of rows.values()) {
+          if (positions.length > 1) pairedRows++;
+          if (Math.max(...positions) - Math.min(...positions) > 1)
+            return { aligned: false, pairedRows, positions };
+        }
+      }
+      return { aligned: true, pairedRows };
+    });
+    expect(alignment.aligned, JSON.stringify(alignment)).toBe(true);
+    expect(alignment.pairedRows).toBeGreaterThan(0);
+    if (language === "de") {
+      await expect(section).toContainText("Traffic-Budget des Servers (GiB)");
+      await expect(section).not.toContainText("Verkehrsbudget");
+    }
+    const firstInput = section.locator(".aligned-fields input").first();
+    await firstInput.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(firstInput).toHaveCSS("outline-width", "3px");
+    const budgetBasis = section.locator(".aligned-fields select").first();
+    await budgetBasis.focus();
+    await expect(budgetBasis).toHaveCSS("outline-width", "3px");
+    const textFits = await section
+      .locator(".aligned-fields input, .aligned-fields select")
+      .evaluateAll((controls) =>
+        controls.every((control) => {
+          const style = getComputedStyle(control);
+          const lineHeight =
+            Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2;
+          return (
+            control.clientHeight -
+              Number.parseFloat(style.paddingTop) -
+              Number.parseFloat(style.paddingBottom) >=
+            lineHeight - 1
+          );
+        }),
+      );
+    expect(textFits).toBe(true);
+    await section.screenshot({ path: info.outputPath(`traffic-fields-${language}.png`) });
+    await page.setViewportSize({ width: 320, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: info.outputPath(`traffic-fields-mobile-${language}.png`),
+      fullPage: true,
+    });
+  });
+}

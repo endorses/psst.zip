@@ -111,27 +111,26 @@ fun ScanScreen(
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
+    fun leave() {
+        account.cancelPendingOperation()
+        viewModel.cancel()
+        onBack()
+    }
     fun back() {
-        if (!accountState.isTesting) {
-            if (
-                state.busy &&
-                    state.stage in
-                        listOf(
-                            ScanStage.INSPECTING,
-                            ScanStage.DOWNLOADING,
-                            ScanStage.DECRYPTING,
-                            ScanStage.SAVING,
-                            ScanStage.PREPARING,
-                            ScanStage.ENCRYPTING,
-                            ScanStage.UPLOADING,
-                        )
-            )
-                stopConfirmation = true
-            else {
-                viewModel.cancel()
-                onBack()
-            }
-        }
+        if (
+            state.busy &&
+                state.stage in
+                    listOf(
+                        ScanStage.DOWNLOADING,
+                        ScanStage.DECRYPTING,
+                        ScanStage.SAVING,
+                        ScanStage.PREPARING,
+                        ScanStage.ENCRYPTING,
+                        ScanStage.UPLOADING,
+                    )
+        )
+            stopConfirmation = true
+        else leave()
     }
     BackHandler { back() }
     fun openFile(file: SavedGuestFile, share: Boolean) {
@@ -612,8 +611,7 @@ fun ScanScreen(
                 TextButton(
                     onClick = {
                         stopConfirmation = false
-                        viewModel.cancel()
-                        onBack()
+                        leave()
                     }
                 ) {
                     Text(tr(R.string.l_stop_transfer_d0b705))

@@ -223,6 +223,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancel() {
+        stopAvailabilityRefresh()
+        capacityExpiry?.cancel()
         job?.cancel()
         _state.update { it.copy(downloadConsent = null) }
     }
