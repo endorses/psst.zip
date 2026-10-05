@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
 
@@ -37,14 +39,14 @@
     size={18}
   />
   <select
-    aria-label="Appearance"
+    aria-label={$t(m("appearance"))}
     disabled={!ready}
     value={appearance}
     onchange={(event) => choose(event.currentTarget.value)}
   >
-    <option value="system">System</option>
-    <option value="light">Light</option>
-    <option value="dark">Dark</option>
+    <option value="system">{$t(m("system"))}</option>
+    <option value="light">{$t(m("light"))}</option>
+    <option value="dark">{$t(m("dark"))}</option>
   </select>
 </div>
 

@@ -1,11 +1,12 @@
+import { message as m, LocalizedError, type DisplayText } from "./i18n/index.ts";
 export interface IncidentState {
   public_transfers_paused: boolean;
   updated_at: string;
 }
 
-export class TransferStateError extends Error {
+export class TransferStateError extends LocalizedError {
   code: "public_transfers_paused" | "resource_revoked";
-  constructor(code: "public_transfers_paused" | "resource_revoked", message: string) {
+  constructor(code: "public_transfers_paused" | "resource_revoked", message: DisplayText) {
     super(message);
     this.code = code;
   }
@@ -13,15 +14,9 @@ export class TransferStateError extends Error {
 
 export function transferStateError(code: unknown): TransferStateError | null {
   if (code === "public_transfers_paused")
-    return new TransferStateError(
-      code,
-      "Public transfers are paused by this server's administrator. Wait until transfers resume, then retry manually.",
-    );
+    return new TransferStateError(code, m("publicTransfersArePausedByThisServerSAdministrator"));
   if (code === "resource_revoked")
-    return new TransferStateError(
-      code,
-      "This transfer was revoked. Ask the sender for a new link.",
-    );
+    return new TransferStateError(code, m("thisTransferWasRevokedAskTheSenderForA"));
   return null;
 }
 
@@ -51,8 +46,6 @@ export function validateIncidentState(value: unknown): IncidentState {
     typeof state.public_transfers_paused !== "boolean" ||
     typeof state.updated_at !== "string"
   )
-    throw new Error(
-      "The server returned an unsupported transfer-pause state. Refresh before changing it.",
-    );
+    throw new LocalizedError(m("theServerReturnedAnUnsupportedTransferPauseStateRefresh"));
   return state;
 }

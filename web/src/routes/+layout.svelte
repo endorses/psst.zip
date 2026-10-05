@@ -1,8 +1,12 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { page } from "$app/stores";
   import type { Snippet } from "svelte";
   import { onMount } from "svelte";
   import "$lib/theme.css";
+  import { initializeLanguage } from "$lib/i18n";
+  import LanguagePicker from "$lib/components/LanguagePicker.svelte";
   import ThemePicker from "$lib/components/ThemePicker.svelte";
   import AbuseContact from "$lib/components/AbuseContact.svelte";
   import { BRAND } from "$lib/brand";
@@ -10,6 +14,7 @@
   let httpWarning = $state(false);
   onMount(() => {
     httpWarning = location.protocol === "http:";
+    return initializeLanguage();
   });
 </script>
 
@@ -17,10 +22,16 @@
   class="app"
   class:workspace-shell={$page.url.pathname === "/" || $page.url.searchParams.has("inbox")}
 >
-  <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#main">{$t(m("skipToContent"))}</a>
   <header>
-    <a href="/" data-sveltekit-reload class="logo" aria-label={`${BRAND} home`}>
-      <img class="brand-light" src="/brand/logo-light.svg" alt={BRAND} width="168" height="42" />
+    <a href="/" data-sveltekit-reload class="logo" aria-label={$t(m("valueHome", { arg0: BRAND }))}>
+      <img
+        class="brand-light"
+        src="/brand/logo-light.svg"
+        alt={$t(BRAND)}
+        width="168"
+        height="42"
+      />
       <img
         class="brand-dark"
         src="/brand/logo-dark.svg"
@@ -31,27 +42,22 @@
       />
     </a>
     <div class="header-tools">
-      <span class="tagline muted small">Quietly share something.</span>
+      <span class="tagline muted small">{$t(m("quietlyShareSomething"))}</span>
       <ThemePicker />
+      <LanguagePicker />
     </div>
   </header>
   <main id="main">
     {#if httpWarning}<details class="notice http-notice" role="note">
-        <summary>This connection uses HTTP. Use trusted HTTPS.</summary>
-        <p>
-          Other people on the network can change this page and access files or account credentials.
-          Use trusted HTTPS for sensitive files.
-        </p>
+        <summary>{$t(m("thisConnectionUsesHTTPUseTrustedHTTPS"))}</summary>
+        <p>{$t(m("otherPeopleOnTheNetworkCanChangeThisPage"))}</p>
       </details>{/if}
     {#key $page.url.pathname}{@render children()}{/key}
   </main>
   <footer>
     <details class="encryption-details">
-      <summary>Encrypted on your device</summary>
-      <p>
-        Use trusted HTTPS and client software: this website depends on the server that delivers it.
-        Encryption does not verify the sender or make a file safe.
-      </p>
+      <summary>{$t(m("encryptedOnYourDevice"))}</summary>
+      <p>{$t(m("useTrustedHTTPSAndClientSoftwareThisWebsiteDepends"))}</p>
     </details>
     {#key $page.url.origin}<AbuseContact
         origin={$page.url.origin}
@@ -88,7 +94,8 @@
   .header-tools {
     display: flex;
     align-items: center;
-    gap: 1.25rem;
+    gap: 0.65rem;
+    flex-wrap: wrap;
   }
   .logo {
     font-weight: 750;
@@ -160,6 +167,17 @@
     margin: 0.5rem auto;
   }
   @media (max-width: 600px) {
+    header {
+      padding: 0.75rem 1rem;
+      gap: 0.4rem;
+    }
+    .logo img {
+      width: 104px;
+      height: 30px;
+    }
+    .header-tools {
+      gap: 0.25rem;
+    }
     main {
       padding-top: 1rem;
     }

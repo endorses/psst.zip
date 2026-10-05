@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   let {
     title,
@@ -9,11 +11,11 @@
     oncancel,
     onconfirm,
   }: {
-    title: string;
-    description: string;
-    action: string;
+    title: DisplayText;
+    description: DisplayText;
+    action: DisplayText;
     busy?: boolean;
-    error?: string;
+    error?: DisplayText;
     oncancel: () => void;
     onconfirm: () => void;
   } = $props();
@@ -41,14 +43,14 @@
     if (!busy) oncancel();
   }}
 >
-  <h2 id="incident-confirm-title">{title}</h2>
-  <p id="incident-confirm-description">{description}</p>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  <h2 id="incident-confirm-title">{$t(title)}</h2>
+  <p id="incident-confirm-description">{$t(description)}</p>
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
   <div class="actions">
-    <button disabled={busy} onclick={oncancel}>Cancel</button><button
+    <button disabled={busy} onclick={oncancel}>{$t(m("cancel"))}</button><button
       class="danger"
       disabled={busy}
-      onclick={onconfirm}>{busy ? "Applying…" : action}</button
+      onclick={onconfirm}>{$t(busy ? m("applying") : action)}</button
     >
   </div>
 </dialog>

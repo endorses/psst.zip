@@ -21,7 +21,8 @@ struct ReceiveConsent {
 @MainActor
 final class GuestTransferModel {
     private(set) var active = false
-    private(set) var stage = ""
+    enum Stage: String { case idle = "", saved = "Saved", inspecting = "Inspecting transfer", decrypting = "Decrypting file list", ready = "Ready to receive", downloading = "Downloading", saving = "Saving", availableSaved = "Available files saved", stopped = "Stopped", failed = "Could not finish receiving", preparingUpload = "Preparing upload", encrypting = "Encrypting", uploading = "Uploading", sent = "Files sent", uploadStopped = "Upload stopped" }
+    private(set) var stage = Stage.idle
     private(set) var bytes: Int64 = 0
     private(set) var total: Int64 = 0
     private(set) var fileNumber = 0
@@ -95,7 +96,7 @@ final class GuestTransferModel {
             return
         }
         if record.complete, record.files.allSatisfy({ store.url($0) != nil }) {
-            stage = "Saved"
+            stage = .saved
             task = Task { await store.flushReceipts() }
             return
         }
@@ -118,24 +119,27 @@ final class GuestTransferModel {
             try await store.reconcile(original.id)
             record = try store.find(original.id) ?? original
             guard let key = SecretStore.read(record.keyReference), key.count == 32 else { throw GuestError.missingKey }
-            stage = "Inspecting transfer"
+            stage = .inspecting
             let transfer = try await client.transfers.get(transferId: record.transferID)
             guard transfer.id.lowercased() == record.transferID.lowercased() else { throw GuestError.invalidManifest }
             record.sharedTitle = try SharedLinkTitle.normalize(transfer.title)
             record.exhausted = transfer.status == .exhausted
             try store.update(record)
-            if record.exhausted == true { throw GuestError.downloadLimit }
+            if record.exhausted == true {
+                throw GuestError.downloadLimit
+            }
             guard transfer.status == .complete else { throw GuestError.notReady }
             try Task.checkCancellation()
             let encrypted = try await client.transfers.downloadManifest(transferId: record.transferID)
-            stage = "Decrypting file list"
+            stage = .decrypting
             let plain = try GuestFiles.decrypt(encrypted.toData(), key: key)
             guard let manifest = ManifestSerializer.decode(json: String(decoding: plain, as: UTF8.self)) else { throw GuestError.invalidManifest }
             _ = try ManifestValidator.shared.validateForTransfer(manifest: manifest, transfer: transfer)
             let incoming = try manifest.files.map {
                 try GuestFile(
                     id: $0.blobId, name: GuestFiles.filename($0.name), size: $0.size, mime: $0.mimeType, encoding: $0.encoding, chunkSize: $0.chunkSize,
-                    encryptionID: $0.encryptionId)
+                    encryptionID: $0.encryptionId
+                )
             }
             let totalBytes = try ReceiveSafety.total(incoming.map(\.size))
             if record.files.isEmpty {
@@ -161,8 +165,9 @@ final class GuestTransferModel {
                 pendingConsent = try ReceiveConsent(
                     record: record, manifest: incoming,
                     total: ReceiveSafety.total(eligible.map(\.size)), allowRedownload: allowRedownload,
-                    availableOnly: !unavailable.isEmpty, unavailableCount: unavailable.count)
-                stage = "Ready to receive"
+                    availableOnly: !unavailable.isEmpty, unavailableCount: unavailable.count
+                )
+                stage = .ready
                 return
             }
             let remaining = try ReceiveSafety.total(eligible.map(\.size))
@@ -181,23 +186,24 @@ final class GuestTransferModel {
                 fileNumber = index + 1
                 bytes = 0
                 total = file.size
-                stage = "Downloading"
+                stage = .downloading
                 let metadata = FileMetadata(
                     name: file.name, size: file.size, mimeType: file.mime, blobId: file.id,
-                    encoding: file.encoding, chunkSize: file.chunkSize, encryptionId: file.encryptionID)
+                    encoding: file.encoding, chunkSize: file.chunkSize, encryptionId: file.encryptionID
+                )
                 let temporary = try await StreamedFiles.receive(client: client, transferID: record.transferID, file: metadata, key: key.toKotlinByteArray()) { received in
                     guard self.run == identifier, self.active, self.fileNumber == index + 1 else { return }
                     self.bytes = received
                 }
                 defer { try? FileManager.default.removeItem(at: temporary) }
                 try Task.checkCancellation()
-                stage = "Saving"
+                stage = .saving
                 try store.publish(temporary, index: index, record: &record)
             }
             try Task.checkCancellation()
             guard !record.files.isEmpty else { throw GuestError.invalidManifest }
             guard record.files.allSatisfy({ store.url($0) != nil }) else {
-                stage = "Available files saved"
+                stage = .availableSaved
                 error = GuestError.downloadLimit.localizedDescription
                 await refreshAttempts(record)
                 return
@@ -207,20 +213,21 @@ final class GuestTransferModel {
             record.complete = true
             record.receiptPending = !record.receiptDelivered
             try store.update(record)
-            stage = "Saved"
+            stage = .saved
             await store.flushReceipts()
         } catch {
             let incident = await TransferTrafficRecovery.inspect(
                 error, server: record.origin,
                 resource: .transfer, id: record.transferID,
-                direction: .download)
+                direction: .download
+            )
             if !Task.isCancelled {
                 await refreshAttempts(record)
             }
-            stage = Task.isCancelled ? "Stopped" : "Could not finish receiving"
-            self.error =
+            stage = Task.isCancelled ? .stopped : .failed
+            self.error = L10n.failure(error, fallback:
                 incident?.localizedDescription ?? (error as? ReceiveSafetyError)?.localizedDescription ?? (error as? GuestError)?.localizedDescription
-                ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file."
+                    ?? "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file.")
         }
     }
 
@@ -240,13 +247,13 @@ final class GuestTransferModel {
             defer { client.close() }
             let transfer = try await client.transfers.get(transferId: requested.transferID)
             guard transfer.id == requested.transferID,
-                var record = try store.find(requested.id)
+                  var record = try store.find(requested.id)
             else { return }
             record.remainingDownloads = Self.remainingAttempts(transfer)
             record.sharedTitle = try SharedLinkTitle.normalize(transfer.title)
             record.exhausted = transfer.status == .exhausted
             try store.update(record)
-        } catch { /* Keep last known counters; a network failure is not proof of exhaustion. */  }
+        } catch { /* Keep last known counters; a network failure is not proof of exhaustion. */ }
     }
 
     func send(_ urls: [URL], to link: ParsedUrl) {
@@ -277,7 +284,7 @@ final class GuestTransferModel {
             defer { anonymous.close() }
             let limit = try await Int(anonymous.limits.get().maxFileSize)
             let sizes = try BufferedUpload.sizes(urls, limit: limit)
-            stage = "Preparing upload"
+            stage = .preparingUpload
             client = anonymous
             // Refresh after sizing the entire batch, immediately before server allocation.
             let availability = try await anonymous.slots.availability(slotId: link.id)
@@ -296,13 +303,14 @@ final class GuestTransferModel {
             let wrappedKey = try ReceiveCrypto.sealSubmissionKey(key.toData(), publicKey: link.key.toData(), slotID: link.id, transferID: transfer.id)
             let metadata = try await BufferedUpload.send(
                 fileURLs: urls, client: scoped, transferId: transfer.id, key: key,
-                limit: limit, expectedSizes: sizes, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = "Encrypting" },
+                limit: limit, expectedSizes: sizes, check: { try Task.checkCancellation() }, preparing: { _ in self.stage = .encrypting },
                 progress: { progress in
                     guard self.run == identifier, self.active, self.task?.isCancelled != true else { return }
-                    self.stage = "Uploading"
+                    self.stage = .uploading
                     self.bytes = progress.sent
                     self.total = progress.total
-                })
+                }
+            )
             let manifest = try ManifestSerializer.encode(manifest: Manifest(files: metadata))
             let nonce = try CryptoProvider.shared.generateNonce()
             let encrypted = try CryptoProvider.shared.encrypt(key: key, nonce: nonce, plaintext: Data(manifest.utf8).toKotlinByteArray())
@@ -314,20 +322,21 @@ final class GuestTransferModel {
             try GuestUploadCleanup.remove(origin: link.origin, transferID: transfer.id)
             allocation = nil
             uploadComplete = true
-            stage = "Files sent"
+            stage = .sent
         } catch {
-            stage = "Upload stopped"
+            stage = .uploadStopped
             let incident = await TransferTrafficRecovery.inspect(
                 error, server: link.origin,
                 resource: allocation == nil ? .slot : .transfer,
                 id: allocation?.0 ?? link.id, direction: .upload,
-                token: allocation?.1)
-            self.error =
+                token: allocation?.1
+            )
+            self.error = L10n.failure(error, fallback:
                 (error as? GuestUploadSelectionError)?.localizedDescription ?? incident?.localizedDescription
-                ?? "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry."
+                    ?? "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry.")
             if finished {
                 uploadComplete = true
-                stage = "Files sent"
+                stage = .sent
                 self.error = nil
                 return
             }
@@ -340,7 +349,7 @@ final class GuestTransferModel {
                     try? GuestUploadCleanup.remove(origin: origin, transferID: allocation.0)
                     if finalized {
                         uploadComplete = true
-                        stage = "Files sent"
+                        stage = .sent
                         self.error = nil
                     }
                 }
@@ -358,6 +367,7 @@ enum GuestUploadCleanup {
         let transferID: String
         let capability: String
     }
+
     private static let storage = DeviceRetryStorage(kind: "guest-upload-cleanup")
     private static var flushing = false
     static var activeID: String?
@@ -365,9 +375,11 @@ enum GuestUploadCleanup {
     private static func reference(origin: String, transferID: String) -> String {
         "guest-upload-cleanup-v2:" + DeviceRetryQueue.identity([origin, transferID])
     }
+
     private static func job(origin: String, transferID: String) -> DeviceRetryQueue.Job {
         .init(origin: origin, transferID: transferID, keyReference: reference(origin: origin, transferID: transferID))
     }
+
     private static func saveCapability(_ capability: String, reference: String) throws {
         guard !capability.isEmpty, capability.utf8.count <= 8192 else { throw AccountError.storage }
         let bytes = Data(capability.utf8)
@@ -377,6 +389,7 @@ enum GuestUploadCleanup {
             try SecretStore.write(bytes, name: reference)
         }
     }
+
     static func enqueue(origin: String, transferID: String, capability: String) throws {
         do {
             let record = job(origin: origin, transferID: transferID)
@@ -389,6 +402,7 @@ enum GuestUploadCleanup {
             throw error
         }
     }
+
     static func remove(origin: String, transferID: String) throws {
         do {
             let record = job(origin: origin, transferID: transferID)
@@ -440,8 +454,11 @@ enum GuestUploadCleanup {
                     prepare: { data, record in
                         let old = try JSONDecoder().decode(Entry.self, from: data)
                         try saveCapability(old.capability, reference: record.keyReference!)
-                    })
-                if complete { break }
+                    }
+                )
+                if complete {
+                    break
+                }
                 await Task.yield()
             }
             DeviceRetryStatus.shared.importingCleanup = false
@@ -457,9 +474,9 @@ enum GuestUploadCleanup {
                 attempted += 1
                 do {
                     guard let reference = entry.keyReference,
-                        reference == self.reference(origin: entry.origin, transferID: entry.transferID),
-                        let bytes = try SecretStore.readStrict(reference), bytes.count <= 8192,
-                        let capability = String(data: bytes, encoding: .utf8), !capability.isEmpty
+                          reference == self.reference(origin: entry.origin, transferID: entry.transferID),
+                          let bytes = try SecretStore.readStrict(reference), bytes.count <= 8192,
+                          let capability = String(data: bytes, encoding: .utf8), !capability.isEmpty
                     else { throw AccountError.storage }
                     _ = try await attempt(origin: entry.origin, transferID: entry.transferID, capability: capability)
                     try remove(origin: entry.origin, transferID: entry.transferID)
@@ -471,8 +488,8 @@ enum GuestUploadCleanup {
             }
             DeviceRetryStatus.shared.cleanupError =
                 entries.hadInvalidJobs
-                ? "Some saved cleanup records could not be read. They are preserved; other cleanup will continue. Restore local storage or retry."
-                : unavailable ? "Some unfinished upload cleanup is still pending. Check the connection and device storage, then retry." : nil
+                    ? "Some saved cleanup records could not be read. They are preserved; other cleanup will continue. Restore local storage or retry."
+                    : unavailable ? "Some unfinished upload cleanup is still pending. Check the connection and device storage, then retry." : nil
         } catch is CancellationError {
             // A later foreground pass resumes committed migration and retries.
         } catch { DeviceRetryStatus.shared.cleanupError = storageMessage }

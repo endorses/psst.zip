@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.model.FileMetadata
 
 /** Consent binds the owner, inbox, and every authenticated encrypted child manifest. */
@@ -21,12 +23,14 @@ internal object InboxDownloadPreflight {
         savedIds: Set<String>,
         manifestFingerprints: Map<String, String>,
     ): InboxDownloadConsent {
-        require(files.map { it.first }.toSet() == manifestFingerprints.keys)
+        uiRequire(files.map { it.first }.toSet() == manifestFingerprints.keys)
         val remaining = files.filterNot { (child, file) -> "$child/${file.blobId}" in savedIds }
         var bytes = 0L
         for ((_, file) in remaining) {
-            require(file.size >= 0 && file.size <= GuestDownloadPreflight.MAX_TOTAL_BYTES - bytes) {
-                "This inbox exceeds the supported download total of 1 TiB"
+            uiRequire(
+                file.size >= 0 && file.size <= GuestDownloadPreflight.MAX_TOTAL_BYTES - bytes
+            ) {
+                message(R.string.l_this_inbox_exceeds_the_supported_download_total_of_1_tib_57ed06)
             }
             bytes += file.size
         }

@@ -67,7 +67,7 @@ test("traffic failures use safe copy and only valid retry timestamps", () => {
   assert.equal(trafficLimitError("traffic_budget_exhausted", "<script>")?.retryAt, null);
   assert.match(
     trafficLimitError("traffic_budget_exhausted", "2026-11-01T00:00:00Z")!.message,
-    /2026-11-01 00:00:00 UTC/,
+    /Nov 1, 2026, 12:00 AM UTC/,
   );
   assert.match(trafficLimitError("traffic_accounting_unavailable")!.message, /retry manually/);
 });

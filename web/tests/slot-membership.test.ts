@@ -57,7 +57,7 @@ test("membership bounds success bodies and never reads arbitrary server error te
     response = new Response("private server error", { status });
     await assert.rejects(
       getSlotTransferMembership(slot, transfer),
-      new RegExp(`^Error: API ${status}$`),
+      (error: unknown) => error instanceof Error && "status" in error && error.status === status,
     );
   }
 });

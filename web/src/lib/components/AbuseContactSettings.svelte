@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { validAbuseEmail } from "$lib/abuse-contact";
   let email = $state(""),
     busy = $state(false),
     loaded = $state(false),
-    error = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let disposed = false;
   function responseEmail(value: { email: unknown }): string {
     if (value.email !== "" && !validAbuseEmail(value.email)) throw new Error();
@@ -22,8 +24,7 @@
         loaded = true;
       }
     } catch {
-      if (!disposed)
-        error = "Could not load the abuse contact. Retry when your connection is available.";
+      if (!disposed) error = m("couldNotLoadTheAbuseContactRetryWhenYour");
     } finally {
       if (!disposed) busy = false;
     }
@@ -33,7 +34,7 @@
     error = "";
     notice = "";
     if (email !== "" && !validAbuseEmail(email)) {
-      error = "Enter a single email address, or leave it blank to disable the contact.";
+      error = m("enterASingleEmailAddressOrLeaveItBlank");
       return;
     }
     busy = true;
@@ -43,13 +44,11 @@
       });
       if (!disposed) {
         email = responseEmail(value);
-        notice = email ? "Abuse contact published." : "Abuse contact disabled.";
+        notice = email ? m("abuseContactPublished") : m("abuseContactDisabled");
         window.dispatchEvent(new Event("psst:abuse-contact-changed"));
       }
     } catch {
-      if (!disposed)
-        error =
-          "Could not save the abuse contact. Check your connection and administrator session, then retry.";
+      if (!disposed) error = m("couldNotSaveTheAbuseContactCheckYourConnection");
     } finally {
       if (!disposed) busy = false;
     }
@@ -63,14 +62,10 @@
 </script>
 
 <section aria-labelledby="abuse-settings-title">
-  <h2 id="abuse-settings-title">Abuse contact</h2>
-  <p class="muted">
-    Publish an email address where people can report misuse of this server. This address will be
-    public. Reports are prepared in the person's own mail app; this server does not send or store
-    them.
-  </p>
+  <h2 id="abuse-settings-title">{$t(m("abuseContact"))}</h2>
+  <p class="muted">{$t(m("publishAnEmailAddressWherePeopleCanReportMisuse"))}</p>
   <form onsubmit={save}>
-    <label for="abuse-email">Public contact email (optional)</label>
+    <label for="abuse-email">{$t(m("publicContactEmailOptional"))}</label>
     <input
       id="abuse-email"
       type="email"
@@ -80,16 +75,16 @@
       bind:value={email}
       disabled={!loaded || busy}
     />
-    <p class="muted small">
-      Leave blank to disable. Use a dedicated address you are comfortable publishing.
-    </p>
+    <p class="muted small">{$t(m("leaveBlankToDisableUseADedicatedAddressYou"))}</p>
     <button class="primary" disabled={!loaded || busy}
-      >{busy ? "Please wait…" : "Save abuse contact"}</button
+      >{$t(busy ? m("pleaseWait") : m("saveAbuseContact"))}</button
     >
-    {#if !loaded && !busy}<button type="button" onclick={load}>Retry loading contact</button>{/if}
+    {#if !loaded && !busy}<button type="button" onclick={load}
+        >{$t(m("retryLoadingContact"))}</button
+      >{/if}
   </form>
-  {#if error}<p role="alert" class="error">{error}</p>{/if}
-  {#if notice}<p role="status" class="success">{notice}</p>{/if}
+  {#if error}<p role="alert" class="error">{$t(error)}</p>{/if}
+  {#if notice}<p role="status" class="success">{$t(notice)}</p>{/if}
 </section>
 
 <style>

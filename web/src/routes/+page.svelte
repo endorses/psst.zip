@@ -1,4 +1,17 @@
 <script lang="ts">
+  import { hasStatus } from "$lib/api-error";
+  import {
+    message as m,
+    t,
+    date,
+    number,
+    dateArgument,
+    LocalizedError,
+    errorText,
+    translate,
+    type DisplayText,
+  } from "$lib/i18n";
+
   import { onMount, untrack, tick } from "svelte";
   import { brandedQr } from "$lib/branded-qr";
   import { page } from "$app/stores";
@@ -81,7 +94,7 @@
   let sendActive = $state(false),
     showPassword = $state(false),
     historyFilter = $state("all"),
-    liveMessage = $state(""),
+    liveMessage = $state<DisplayText>(""),
     lastUpdated = $state(0);
   let pairingFlow = 0;
   let epoch = 0,
@@ -94,7 +107,7 @@
     renameValue = $state("");
   let pairingId = $state(""),
     pairingStatus = $state("pending"),
-    pairedDevice = $state("");
+    pairedDevice = $state<DisplayText>("");
   const destinations = [
     "Usage",
     "Resources",
@@ -114,21 +127,21 @@
   const adminDestinations = ["Overview", "Users", "Traffic", "Security", "Server"] as const;
   const mainDestinations = ["Send", "Receive", "Scan", "History", "Settings"] as const;
   const settingsDestinations = [
-    { name: "Usage", title: "Usage", description: "Storage and transfer traffic." },
+    { name: "Usage", title: m("usage"), description: m("storageAndTraffic") },
     {
       name: "Account",
-      title: "Account",
-      description: "Manage your password and account security.",
+      title: m("account"),
+      description: m("accountSecurityHelp"),
     },
     {
       name: "Devices",
-      title: "Connected devices",
-      description: "Connect the mobile app or manage signed-in devices.",
+      title: m("connectedDevices"),
+      description: m("connectedDevicesHelp"),
     },
     {
       name: "Users",
-      title: "Users",
-      description: "Create accounts and manage access to your server.",
+      title: m("users"),
+      description: m("createAccountsHelp"),
     },
   ] as const;
   function destinationUrl(next: string) {
@@ -157,8 +170,8 @@
     tab = $state<Tab>("Send");
   let username = $state(""),
     password = $state(""),
-    error = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let factorRequired = $state(false),
     loginRecovery = $state(false),
     loginCode = $state("");
@@ -211,7 +224,7 @@
     transfers = $state<Resource[]>([]),
     slots = $state<Resource[]>([]);
   let links = $state<Record<string, string>>({});
-  let localHistoryWarning = $state("");
+  let localHistoryWarning = $state<DisplayText>("");
   let localRetry = $state<(() => Promise<void>) | null>(null);
   let usersCursor = $state(""),
     usersNext = $state<string | null>(null),
@@ -221,13 +234,13 @@
     historyPrevious = $state<string[]>([]),
     historyLoading = $state(false),
     historyPage = $state(1),
-    historyError = $state("");
+    historyError = $state<DisplayText>("");
   let historyGeneration = 0;
   let historyRequest: AbortController | null = null;
   let receiveUrl = $state(""),
     receiveId = $state("");
   const receiveTitle = $derived(
-    receiveInfo?.title || labelFor(labels, "slots", receiveId).custom || "Receive files",
+    receiveInfo?.title || labelFor(labels, "slots", receiveId).custom || m("receiveFiles"),
   );
   let pairingQr = $state(""),
     pairingExpires = $state(""),
@@ -256,11 +269,11 @@
         try {
           const identity = await request<{ user: User }>("/auth/me");
           if (owner !== epoch || securityMutationActive || securityVersion !== securityEpoch)
-            throw new Error("Account changed");
+            throw new LocalizedError(m("accountChanged"));
           if (identity.user.id !== user?.id) {
             clearAccount();
-            error = "Your account changed in another tab. Sign in again.";
-            throw new Error("Account changed");
+            error = m("yourAccountChangedInAnotherTabSignInAgain");
+            throw new LocalizedError(m("accountChanged"));
           }
           if (
             identity.user.role !== user.role ||
@@ -273,7 +286,8 @@
             liveMessage = "";
           }
           if (!user.must_change_password && tab === "History" && !historyLoading) {
-            if (!(await refreshHistory(owner))) throw new Error("Could not refresh history");
+            if (!(await refreshHistory(owner)))
+              throw new LocalizedError(m("couldNotRefreshHistory"));
           }
           if (
             !user.must_change_password &&
@@ -297,7 +311,7 @@
               pairingStatus = result.status;
               if (result.status !== "pending") pairingQr = "";
               if (result.status === "connected") {
-                pairedDevice = result.device_name || "Phone";
+                pairedDevice = result.device_name || m("phone");
                 const devices = await request<SessionsResponse>("/auth/sessions");
                 if (owner === epoch) updateSessions(devices);
               }
@@ -311,10 +325,12 @@
         } catch (err) {
           if (owner === epoch && !securityMutationActive && securityVersion === securityEpoch) {
             failures++;
-            liveMessage = `Offline — last updated ${lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "not yet"}. Reconnecting…`;
+            liveMessage = m("offlineLastUpdatedValueReconnecting", {
+              arg0: lastUpdated ? dateArgument(lastUpdated) : m("notYet"),
+            });
             if (err instanceof AccountError && err.status === 401) {
               clearAccount(true);
-              error = "Your session ended. Sign in again.";
+              error = m("yourSessionEndedSignInAgain");
             }
           }
         } finally {
@@ -333,7 +349,7 @@
     function changed(event: StorageEvent) {
       if (event.key === "psst.auth-change" && (user || recoveryCodes.length || factorRequired)) {
         clearAccount();
-        error = "Your sign-in changed in another tab. Sign in again.";
+        error = m("yourSignInChangedInAnotherTabSignIn");
       }
     }
     document.addEventListener("visibilitychange", resume);
@@ -439,9 +455,7 @@
         result.next_cursor &&
         (result.next_cursor === historyCursor || historyPrevious.includes(result.next_cursor))
       )
-        throw new Error(
-          "This server returned a repeated history page. Refresh or contact its administrator.",
-        );
+        throw new LocalizedError(m("thisServerReturnedARepeatedHistoryPageRefreshOr"));
       if (direction) {
         historyPrevious =
           direction === "next"
@@ -459,15 +473,13 @@
       links = local?.links ?? {};
       labels = local?.labels ?? {};
       if (!localRetry)
-        localHistoryWarning = local
-          ? ""
-          : "Local links and names could not be loaded. Existing browser data is unchanged. Check storage permissions and free space, then refresh to retry.";
+        localHistoryWarning = local ? "" : m("localLinksAndNamesCouldNotBeLoadedExisting");
       historyError = "";
     } catch (cause) {
       if (!current()) return true;
       if (cause instanceof AccountError && cause.status === 401) {
         clearAccount(true);
-        error = "Your session ended. Sign in again.";
+        error = m("yourSessionEndedSignInAgain");
       } else historyError = message(cause);
       return false;
     } finally {
@@ -500,7 +512,7 @@
     receivePrevious = $state<string[]>([]),
     receivePage = $state(1),
     receiveLoading = $state(false),
-    receiveError = $state("");
+    receiveError = $state<DisplayText>("");
   let receiveGeneration = 0;
   let receiveRequest: AbortController | null = null;
   let receiveReturnScroll: number | null = null;
@@ -566,15 +578,13 @@
       // Keep the active invitation copyable when persistence is unavailable.
       receiveUrl = links[id] || receiveUrl;
       if (!localRetry)
-        localHistoryWarning = local
-          ? ""
-          : "Local links and names could not be loaded. Existing browser data is unchanged. Check storage permissions and free space, then refresh to retry.";
+        localHistoryWarning = local ? "" : m("localLinksAndNamesCouldNotBeLoadedExisting");
       if (
         direction === "next" &&
         slot.next_cursor &&
         (slot.next_cursor === receiveCursor || receivePrevious.includes(slot.next_cursor))
       )
-        throw new Error("Repeated inbox page");
+        throw new LocalizedError(m("repeatedInboxPage"));
       if (direction) {
         receivePrevious =
           direction === "next"
@@ -611,13 +621,11 @@
       }
     } catch (cause) {
       if (!current()) return;
-      if (cause instanceof Error && /API (404|410)(?:$|:)/.test(cause.message)) {
+      if (hasStatus(cause, 404, 410)) {
         receiveUnavailable = true;
         receiveInfo = null;
         received = [];
-      } else
-        receiveError =
-          "Could not refresh received files. The displayed page may be out of date. Retry to check again.";
+      } else receiveError = m("couldNotRefreshReceivedFilesTheDisplayedPageMay");
     } finally {
       if (generation === receiveGeneration) receiveLoading = false;
     }
@@ -640,12 +648,11 @@
         await request(`/auth/pairings/${id}`, "DELETE");
       } catch (err) {
         if (!(err instanceof AccountError && err.status === 409))
-          error =
-            "Could not cancel the code. It will expire automatically; retry from device settings.";
+          error = m("couldNotCancelTheCodeItWillExpireAutomatically");
       }
   }
   function message(err: unknown) {
-    return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+    return err instanceof Error ? errorText(err) : m("somethingWentWrongPleaseTryAgain");
   }
   function clearAccount(preserveSelection = false) {
     securityIdentityChanged();
@@ -729,7 +736,7 @@
       }
       if (err instanceof AccountError && err.status === 401 && user) {
         clearAccount(true);
-        error = "Your session ended. Sign in again.";
+        error = m("yourSessionEndedSignInAgain");
       }
     } finally {
       busy = false;
@@ -748,7 +755,7 @@
     try {
       localStorage.setItem("psst.auth-change", String(Date.now()));
     } catch {}
-    notice = codes ? "" : "Authenticator disabled. All sessions ended. Sign in again.";
+    notice = codes ? "" : m("authenticatorDisabledAllSessionsEndedSignInAgain");
   }
   async function login() {
     await act(async () => {
@@ -758,7 +765,7 @@
         result = await request<{ user: User }>("/auth/login", "POST", {
           username,
           password,
-          device_name: "Web browser",
+          device_name: translate(m("webBrowser")),
           session_type: "web",
           ...(factorRequired
             ? loginRecovery
@@ -774,7 +781,7 @@
             cause.code === "administrator_factor_invalid")
         ) {
           factorRequired = true;
-          error = cause.message;
+          error = errorText(cause);
           return;
         }
         if (
@@ -836,8 +843,7 @@
       localRetry = null;
     } catch {
       if (owner !== epoch || user?.id !== account) return;
-      localHistoryWarning =
-        "This link or its name could not be saved on this device. Copy the full link before leaving, or check browser storage permissions and space, then retry.";
+      localHistoryWarning = m("thisLinkOrItsNameCouldNotBeSaved");
       localRetry = retry;
     }
   }
@@ -848,7 +854,7 @@
       if (owner !== epoch || tab !== "Scan" || !user) return false;
       if (identity.user.id !== user.id) {
         clearAccount();
-        error = "Your account changed. Sign in again.";
+        error = m("yourAccountChangedSignInAgain");
         return false;
       }
       if (identity.user.role !== "user" || identity.user.must_change_password) {
@@ -861,8 +867,8 @@
       if (owner === epoch) {
         if (err instanceof AccountError && err.status === 401) {
           clearAccount();
-          error = "Your session ended. Sign in again.";
-        } else error = "Could not verify your session. Check your connection and try again.";
+          error = m("yourSessionEndedSignInAgain");
+        } else error = m("couldNotVerifyYourSessionCheckYourConnectionAnd");
       }
       return false;
     }
@@ -935,7 +941,7 @@
       const slot = await createSlot(publicKey, selectedMaxFiles, selectedTitle);
       try {
         if (owner !== epoch || user?.id !== account)
-          throw new Error("Your account changed. Create the receive link again.");
+          throw new LocalizedError(m("yourAccountChangedCreateTheReceiveLinkAgain"));
         storeReceiveKey(account, slot.id, pair);
       } catch (cause) {
         if (slot.delete_token)
@@ -956,9 +962,7 @@
       try {
         accepted = await getSlotInbox(slot.id);
       } catch {
-        throw new Error(
-          "Could not verify the new inbox. It remains in History for inspection or revocation. No receive link was shared.",
-        );
+        throw new LocalizedError(m("couldNotVerifyTheNewInboxItRemainsIn"));
       }
       if (
         accepted.receive_protocol !== 2 ||
@@ -979,8 +983,10 @@
           removeReceiveKey(account, slot.id);
           receiveId = "";
         }
-        throw new Error(
-          `This server did not accept the private inbox protocol or file limit. Ask its operator to update it.${removed ? " The unused inbox was removed." : " Revoke the unused inbox from History."}`,
+        throw new LocalizedError(
+          m("thisServerDidNotAcceptThePrivateInboxProtocol", {
+            arg0: removed ? m("unusedInboxRemoved") : m("unusedInboxRevoke"),
+          }),
         );
       }
       if (owner !== epoch || user?.id !== account) return;
@@ -1010,8 +1016,7 @@
         });
         if (owner !== epoch) return;
         users = users.map((item) => (item.id === result.user.id ? result.user : item));
-        notice =
-          "Sign-in disabled and sessions/pairings revoked. Existing public links remain active; use incident shutdown to revoke them.";
+        notice = m("signInDisabledAndSessionsPairingsRevokedExistingPublic");
       } else {
         const result = await request<{
           user: User;
@@ -1023,7 +1028,12 @@
         }>(`/admin/users/${target.account.id}/shutdown`, "POST", {});
         if (owner !== epoch) return;
         users = users.map((item) => (item.id === result.user.id ? result.user : item));
-        notice = `Incident shutdown applied: ${result.revoked_sessions} sessions, ${result.revoked_pairings} pairing grants, ${result.revoked_transfers} transfers and ${result.revoked_slots} receive links revoked. Server cleanup is pending. Downloaded copies remain. Re-enabling sign-in will not restore revoked links.`;
+        notice = m("incidentShutdownAppliedValueSessionsValuePairingGrantsValue", {
+          arg0: result.revoked_sessions,
+          arg1: result.revoked_pairings,
+          arg2: result.revoked_transfers,
+          arg3: result.revoked_slots,
+        });
       }
       accountAction = null;
     });
@@ -1054,8 +1064,7 @@
         if (target.kind === "slots") removeReceiveKey(account, target.id);
       } catch {
         if (owner === epoch && user?.id === account)
-          localHistoryWarning =
-            "The server link was revoked, but its local copy could not be removed. Refresh after checking browser storage.";
+          localHistoryWarning = m("theServerLinkWasRevokedButItsLocalCopy");
       }
       if (owner !== epoch || user?.id !== account) return;
       transfers = transfers.filter((t) => t.id !== target.id);
@@ -1063,7 +1072,7 @@
       delete links[target.id];
       links = { ...links };
       pendingDelete = null;
-      notice = "Link revoked and server files deleted.";
+      notice = m("linkRevokedAndServerFilesDeleted");
     });
   }
   async function changePassword(current: string, replacement: string) {
@@ -1073,7 +1082,7 @@
       try {
         localStorage.setItem("psst.auth-change", String(Date.now()));
       } catch {}
-      notice = "Password changed. Sign in with your new password.";
+      notice = m("passwordChangedSignInWithYourNewPassword");
     });
   }
   function historyTitle(item: Resource & { kind: "transfers" | "slots" }) {
@@ -1082,7 +1091,7 @@
       item.title ||
       label.custom ||
       label.title ||
-      (item.kind === "slots" ? "Receive link" : "Sent files")
+      (item.kind === "slots" ? m("receiveLink") : m("sentFiles"))
     );
   }
   async function rename() {
@@ -1108,7 +1117,7 @@
           labels = { ...labels, [labelKey(kind, id)]: label };
       } catch {
         if (owner === epoch && user?.id === account)
-          localHistoryWarning = "Title saved. Local history could not be updated.";
+          localHistoryWarning = m("titleSavedLocalHistoryCouldNotBeUpdated");
       }
       if (owner === epoch && user?.id === account && renameId === id && renameKind === kind)
         renameId = "";
@@ -1164,7 +1173,7 @@
   async function copy(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      notice = "Link copied.";
+      notice = m("linkCopied");
       return;
     } catch {
       /* LAN HTTP does not expose the Clipboard API. */
@@ -1182,50 +1191,70 @@
       /* Show a selectable link below. */
     }
     field.remove();
-    notice = copied ? "Link copied." : `Copy this link: ${value}`;
+    notice = copied ? m("linkCopied") : m("copyThisLinkValue", { arg0: value });
   }
-  function date(value: string) {
+  function expiry(value: string) {
     const remaining = Date.parse(value) - now;
     return remaining <= 0
-      ? "Expired"
+      ? m("expired")
       : remaining < 3600000
-        ? `in ${Math.ceil(remaining / 60000)} minutes`
-        : `in ${Math.ceil(remaining / 3600000)} hours`;
+        ? m("inValueMinutes", { arg0: Math.ceil(remaining / 60000) })
+        : m("inValueHours", { arg0: Math.ceil(remaining / 3600000) });
   }
   function status(item: Resource) {
-    if (Date.parse(item.expires_at) < now) return "Expired";
-    if (downloadLinkExhausted(item)) return "Download limit reached";
+    if (Date.parse(item.expires_at) < now) return m("expired");
+    if (downloadLinkExhausted(item)) return m("downloadLimitReached");
     return item.downloaded_at
-      ? "Downloaded"
+      ? m("downloaded")
       : item.status === "complete"
         ? item.download_count
-          ? "Download started"
-          : "Ready to download"
+          ? m("downloadStarted")
+          : m("readyToDownload")
         : item.status === "pending"
-          ? "Upload unfinished"
+          ? m("uploadUnfinished")
           : item.status === "revoked"
-            ? "Revoked"
-            : item.status || "Ready";
+            ? m("revoked")
+            : item.status || m("ready");
+  }
+  function tabLabel(value: string): DisplayText {
+    return (
+      (
+        {
+          Send: m("send"),
+          Receive: m("receive"),
+          Scan: m("scan"),
+          History: m("history"),
+          Settings: m("settings"),
+          Overview: m("overview"),
+          Users: m("users"),
+          Traffic: m("traffic"),
+          Security: m("security"),
+          Server: m("server"),
+          Resources: m("resources"),
+          Account: m("account"),
+          Devices: m("devices"),
+          Usage: m("usage"),
+        } as Record<string, DisplayText>
+      )[value] ?? value
+    );
   }
 </script>
 
-<svelte:head><title>{user ? tab : "Sign in"} · {BRAND}</title></svelte:head>
-{#if loading}<p role="status">Loading your account…</p>
+<svelte:head><title>{$t(user ? tabLabel(tab) : m("signIn"))} · {$t(BRAND)}</title></svelte:head>
+{#if loading}<p role="status">{$t(m("loadingYourAccount"))}</p>
 {:else if recoveryCodes.length}<RecoveryCodes
     codes={recoveryCodes}
     onacknowledge={() => {
       recoveryCodes = [];
-      notice =
-        "Recovery codes acknowledged. Sign in again using the next authenticator code or a recovery code.";
+      notice = m("recoveryCodesAcknowledged");
     }}
   />
 {:else if !user}
   <section class="panel login">
-    <h1>Sign in to {BRAND}</h1>
-    <p class="muted login-intro">Your private space to send and receive files.</p>
+    <h1>{$t(m("signInTo"))} {$t(BRAND)}</h1>
+    <p class="muted login-intro">{$t(m("yourPrivateSpaceToSendAndReceiveFiles"))}</p>
     {#if setupRequired}<p class="notice">
-        This server needs its first administrator. The server operator must configure ADMIN_USERNAME
-        and ADMIN_PASSWORD, then restart the server.
+        {$t(m("thisServerNeedsItsFirstAdministratorTheServerOperator"))}
       </p>
     {:else if factorRequired}<form
         onsubmit={(event) => {
@@ -1233,10 +1262,13 @@
           void login();
         }}
       >
-        <h2>Administrator verification</h2>
-        <p>Finish signing in as {username}. No session is created until your code is accepted.</p>
+        <h2>{$t(m("administratorVerification"))}</h2>
+        <p>
+          {$t(m("finishSigningInAs"))}
+          {$t(username)}{$t(m("noSessionIsCreatedUntilYourCodeIsAccepted"))}
+        </p>
         <label
-          >{loginRecovery ? "Recovery code" : "Authenticator code"}<input
+          >{$t(loginRecovery ? m("recoveryCode") : m("authenticatorCode"))}<input
             type="text"
             inputmode={loginRecovery ? "text" : "numeric"}
             autocomplete="one-time-code"
@@ -1256,12 +1288,13 @@
             loginRecovery = !loginRecovery;
             loginCode = "";
             error = "";
-          }}>{loginRecovery ? "Use authenticator code" : "Use a recovery code"}</button
+          }}>{$t(loginRecovery ? m("useAuthenticatorCode") : m("useARecoveryCode"))}</button
         >
-        <button class="primary" disabled={busy}>{busy ? "Verifying…" : "Verify and sign in"}</button
+        <button class="primary" disabled={busy}
+          >{$t(busy ? m("verifying") : m("verifyAndSignIn"))}</button
         >
         <button type="button" disabled={busy} onclick={cancelFactorLogin}
-          >Back to password sign-in</button
+          >{$t(m("backToPasswordSignIn"))}</button
         >
       </form>
     {:else}<form
@@ -1270,7 +1303,7 @@
           void login();
         }}
       >
-        <label for="login-username">Username</label>
+        <label for="login-username">{$t(m("username"))}</label>
         <input
           id="login-username"
           name="username"
@@ -1281,7 +1314,7 @@
           required
           disabled={busy}
         />
-        <label for="login-password">Password</label>
+        <label for="login-password">{$t(m("password"))}</label>
         <div class="password-field">
           <input
             id="login-password"
@@ -1295,7 +1328,7 @@
           <button
             class="password-visibility"
             type="button"
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={$t(showPassword ? m("hidePassword") : m("showPassword"))}
             aria-pressed={showPassword}
             aria-controls="login-password"
             onclick={() => (showPassword = !showPassword)}
@@ -1303,48 +1336,52 @@
           >
         </div>
         <button class="primary login-submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}<Icon name="Arrow" size={18} />
+          {$t(busy ? m("signingIn") : m("signIn"))}<Icon name="Arrow" size={18} />
         </button>
       </form>
       <p class="muted small login-help">
-        Need an account or password reset?<br />Contact your server administrator.
+        {$t(m("needAnAccountOrPasswordReset"))}<br />{$t(m("contactYourServerAdministrator"))}
       </p>{/if}
-    <p class="muted small login-note">People using your shared links do not need an account.</p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
+    <p class="muted small login-note">{$t(m("peopleUsingYourSharedLinksDoNotNeedAn"))}</p>
+    {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}{#if notice}<p
         class="notice"
         role="status"
       >
-        {notice}
+        {$t(notice)}
       </p>{/if}
   </section>
 {:else if user.must_change_password}
   <section class="panel login">
     <PasswordChange {busy} requiredChange onchange={changePassword} />
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
     <button
       disabled={busy}
       onclick={() =>
         act(async () => {
           await request("/auth/logout", "POST");
           clearAccount();
-        })}>Sign out</button
+        })}>{$t(m("signOut"))}</button
     >
   </section>
 {:else}
   <div class="workspace">
     <aside class="sidebar">
-      <p class="sidebar-label">{user.role === "admin" ? "Administration" : "Your workspace"}</p>
-      <nav class:admin-nav={user.role === "admin"} aria-label="Account navigation">
+      <p class="sidebar-label">
+        {$t(user.role === "admin" ? m("administration") : m("yourWorkspace"))}
+      </p>
+      <nav class:admin-nav={user.role === "admin"} aria-label={$t(m("accountNavigation"))}>
         {#each user.role === "admin" ? adminDestinations : mainDestinations as item}
           <a
             href={destinationUrl(item)}
-            aria-label={item === "Scan"
-              ? "Scan QR code"
-              : item === "Server"
-                ? "Server settings"
-                : item === "Security"
-                  ? "Security activity"
-                  : item}
+            aria-label={$t(
+              item === "Scan"
+                ? m("scanQRCode")
+                : item === "Server"
+                  ? m("serverSettings")
+                  : item === "Security"
+                    ? m("securityActivity")
+                    : tabLabel(item),
+            )}
             aria-current={tab === item
               ? "page"
               : (item === "Overview" && tab === "Resources") ||
@@ -1359,22 +1396,28 @@
           >
             <Icon name={item === "Scan" ? "QRCode" : item === "Server" ? "Settings" : item} /><span
               class="nav-label"
-              >{item === "Scan"
-                ? "Scan"
-                : item === "Server"
-                  ? "Server settings"
-                  : item === "Security"
-                    ? "Security activity"
-                    : item}</span
+              >{$t(
+                item === "Scan"
+                  ? m("scan")
+                  : item === "Server"
+                    ? m("serverSettings")
+                    : item === "Security"
+                      ? m("securityActivity")
+                      : tabLabel(item),
+              )}</span
             >
           </a>
         {/each}
       </nav>
-      <section class="account-bar" aria-label="Signed-in account">
+      <section class="account-bar" aria-label={$t(m("signedInAccount"))}>
         <div class="account-identity">
-          <span class="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
+          <span class="avatar" aria-hidden="true"
+            >{$t(user.username.slice(0, 1).toUpperCase())}</span
+          >
           <div class="identity">
-            <span class="small muted">Signed in as</span><strong>{user.username}</strong>
+            <span class="small muted">{$t(m("signedInAs"))}</span><strong
+              >{$t(user.username)}</strong
+            >
           </div>
         </div>
         <div class="account-actions">
@@ -1384,14 +1427,14 @@
                 class:active={tab === "Account"}
                 aria-current={tab === "Account" ? "page" : undefined}
               >
-                <Icon name="Account" size={17} />Account
+                <Icon name="Account" size={17} />{$t(m("account"))}
               </a>
               <a
                 href="/?view=devices"
                 class:active={tab === "Devices"}
                 aria-current={tab === "Devices" ? "page" : undefined}
               >
-                <Icon name="Devices" size={17} />Sessions
+                <Icon name="Devices" size={17} />{$t(m("sessions"))}
               </a>
             </div>{/if}
           <button
@@ -1405,7 +1448,7 @@
                   localStorage.setItem("psst.auth-change", String(Date.now()));
                 } catch {}
                 clearAccount();
-              })}><Icon name="SignOut" size={17} />Sign out</button
+              })}><Icon name="SignOut" size={17} />{$t(m("signOut"))}</button
           >
         </div>
       </section>
@@ -1413,30 +1456,31 @@
     <div class="workspace-content">
       {#if user.role === "admin"}{#key user.id}<AdministratorSecurityWarning /><RecentAuthentication
             onconfirmed={() => {
-              notice = "Identity confirmed. Review your pending action and submit it again.";
+              notice = m("identityConfirmedReview");
             }}
             onsessionended={() => {
               clearAccount();
-              error = "Your session ended. Sign in again.";
+              error = m("yourSessionEndedSignInAgain");
             }}
           />{/key}{/if}
-      {#if localHistoryWarning}<p class="notice" role="alert">{localHistoryWarning}</p>
-        {#if localRetry}<button onclick={() => localRetry?.()}>Retry saving link</button>{/if}{/if}
-      {#if error}<p class="error" role="alert">{error}</p>{/if}{#if notice}<p
+      {#if localHistoryWarning}<p class="notice" role="alert">{$t(localHistoryWarning)}</p>
+        {#if localRetry}<button onclick={() => localRetry?.()}>{$t(m("retrySavingLink"))}</button
+          >{/if}{/if}
+      {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}{#if notice}<p
           class="notice"
           role="status"
         >
-          {notice}
+          {$t(notice)}
         </p>{/if}
       {#if sendActive && tab !== "Send"}<p class="notice">
-          <button onclick={() => select("Send")}>Return to your transfer</button> Your selected files
-          and upload stay here.
+          <button onclick={() => select("Send")}>{$t(m("returnToYourTransfer"))}</button>
+          {$t(m("yourSelectedFilesAndUploadStayHere"))}
         </p>{/if}
       {#if liveMessage && (tab === "History" || tab === "Receive" || tab === "Devices")}<p
           role="status"
           class="notice"
         >
-          {liveMessage}
+          {$t(liveMessage)}
         </p>{/if}
       <section class="workspace-panel">
         {#if user.role === "user"}{#key user.id}<div hidden={tab !== "Send"}>
@@ -1455,23 +1499,23 @@
             />{/key}
         {:else if tab === "Traffic"}<TrafficPanel />
         {:else if tab === "Security" && user.role === "admin"}{#key user.id}<SecurityEvents />{/key}
-        {:else if tab === "Server"}<h1>Server settings</h1>
-          <p><a href="/?view=resources">Inspect resources and cleanup</a></p>
+        {:else if tab === "Server"}<h1>{$t(m("serverSettings"))}</h1>
+          <p><a href="/?view=resources">{$t(m("inspectResourcesAndCleanup"))}</a></p>
           <PublicTransferControl />
           <ServerSettings />
           <AbuseContactSettings />
           <ResourcePolicySettings />
         {:else if tab === "Usage" && user.role === "user"}
-          <a href="/?view=settings" class="back-link">← Settings</a>
-          <h1>Usage</h1>
+          <a href="/?view=settings" class="back-link">{$t(m("settings_e1124"))}</a>
+          <h1>{$t(m("usage"))}</h1>
           <AccountUsage /><AccountTraffic />
-        {:else if tab === "Settings"}<h1>Settings</h1>
-          <p class="muted">Your account, devices, and server access.</p>
+        {:else if tab === "Settings"}<h1>{$t(m("settings"))}</h1>
+          <p class="muted">{$t(m("yourAccountDevicesAndServerAccess"))}</p>
           <div class="settings-list">
             {#each settingsDestinations.filter((item) => item.name !== "Users" || user?.role === "admin") as item}
               <a
                 href={destinationUrl(item.name)}
-                aria-label={item.title}
+                aria-label={$t(item.title)}
                 data-sveltekit-keepfocus
                 data-sveltekit-noscroll
               >
@@ -1479,8 +1523,8 @@
                   ><Icon name={item.name === "Usage" ? "Traffic" : item.name} size={22} /></span
                 >
                 <span
-                  ><strong>{item.title}</strong><span class="muted small setting-description"
-                    >{item.description}</span
+                  ><strong>{$t(item.title)}</strong><span class="muted small setting-description"
+                    >{$t(item.description)}</span
                   ></span
                 >
                 <Icon name="Arrow" />
@@ -1489,16 +1533,17 @@
           </div>
         {:else if tab === "Receive"}
           <div class="heading">
-            <h1 title={receiveId && !receiveCreating ? receiveTitle : undefined}>
-              {receiveId && !receiveCreating ? receiveTitle : "Receive files"}
+            <h1 title={$t(receiveId && !receiveCreating ? receiveTitle : undefined)}>
+              {$t(receiveId && !receiveCreating ? receiveTitle : m("receiveFiles"))}
             </h1>
             {#if receiveId && !receiveCreating && !receiveUnavailable}<button
                 disabled={busy}
-                onclick={() => beginRename("slots", receiveId, receiveInfo?.title)}>Rename</button
+                onclick={() => beginRename("slots", receiveId, receiveInfo?.title)}
+                >{$t(m("rename"))}</button
               >{/if}
           </div>
           {#if receiveUnavailable}<p class="notice" role="status">
-              This receive link is no longer available.
+              {$t(m("thisReceiveLinkIsNoLongerAvailable"))}
             </p>{/if}
           {#if !receiveId || receiveCreating || receiveUnavailable}
             <form
@@ -1509,26 +1554,26 @@
               }}
             >
               <label
-                >Link title (optional)<input
+                >{$t(m("linkTitleOptional"))}<input
                   maxlength="400"
                   bind:value={receiveName}
-                  placeholder="For example, Wedding photos"
+                  placeholder={$t(m("forExampleWeddingPhotos"))}
                 /></label
               >
-              <p class="muted small">Shown to people using this link.</p>
+              <p class="muted small">{$t(m("shownToPeopleUsingThisLink"))}</p>
               <OptionalLimit
                 bind:value={maxFiles}
                 disabled={busy}
-                label="Limit files accepted"
-                description="Unfinished uploads count. Deleting files does not restore the allowance."
+                label={$t(m("limitFilesAccepted"))}
+                description={$t(m("unfinishedUploadsCountDeletingFilesDoesNotRestoreThe"))}
               />
               <div class="actions">
                 <button class="primary" disabled={busy}
-                  >{busy ? "Creating link…" : "Create receive link"}</button
+                  >{$t(busy ? m("creatingLink") : m("createReceiveLink"))}</button
                 >
                 {#if receiveId && !receiveUnavailable}<button
                     type="button"
-                    onclick={() => (receiveCreating = false)}>Cancel</button
+                    onclick={() => (receiveCreating = false)}>{$t(m("cancel"))}</button
                   >{/if}
               </div>
             </form>
@@ -1540,77 +1585,74 @@
                   void rename();
                 }}
               >
-                <label>Link title<input maxlength="400" bind:value={renameValue} /></label>
-                <p class="muted small">Shown to people using this link.</p>
+                <label>{$t(m("linkTitle"))}<input maxlength="400" bind:value={renameValue} /></label
+                >
+                <p class="muted small">{$t(m("shownToPeopleUsingThisLink"))}</p>
                 <div class="actions">
-                  <button class="primary" disabled={busy}>Save name</button><button
+                  <button class="primary" disabled={busy}>{$t(m("saveName"))}</button><button
                     type="button"
                     disabled={busy}
-                    onclick={() => (renameId = "")}>Cancel</button
+                    onclick={() => (renameId = "")}>{$t(m("cancel"))}</button
                   >
                 </div>
               </form>{/if}
             {#if receiveNeedsKey}<p class="notice">
-                The private key is on the device that created this link.
+                {$t(m("thePrivateKeyIsOnTheDeviceThatCreated"))}
               </p>{/if}
             {#if receiveInfo?.remaining_files != null}<p class="muted small">
-                {receiveInfo.remaining_files} files remaining
+                {$t(m("remainingFilesCount", { count: receiveInfo.remaining_files }))}
               </p>{/if}
             {#if receiveInfo?.receive_protocol !== 2 && receiveInfo}<p class="notice">
-                This older inbox is read-only. Create a new link to receive files.
+                {$t(m("thisOlderInboxIsReadOnlyCreateANew"))}
               </p>{/if}
             {#if receiveId && !receiveUnavailable && ((receiveInfo?.summary.completed_files ?? 0) > 0 || receivePage > 1 || receiveInfo?.summary.state === "updating" || receiveError)}
-              <section aria-label="Received files" aria-busy={receiveLoading}>
+              <section aria-label={$t(m("receivedFiles"))} aria-busy={receiveLoading}>
                 <div class="heading">
                   <div>
-                    <h2>Received files</h2>
+                    <h2>{$t(m("receivedFiles"))}</h2>
                     {#if receiveInfo?.summary.state === "updating"}<p class="muted small">
-                        Received file totals are updating.
+                        {$t(m("receivedFileTotalsAreUpdating"))}
                       </p>
                     {:else if receiveInfo}<p class="muted small">
-                        {receiveInfo.summary.completed_files} file{receiveInfo.summary
-                          .completed_files === 1
-                          ? ""
-                          : "s"} received
+                        {$t(m("receivedFileCount", { count: receiveInfo.summary.completed_files }))}
                       </p>{/if}
                   </div>
                   <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
-                    ><Icon name="Refresh" size={17} />Refresh</button
+                    ><Icon name="Refresh" size={17} />{$t(m("refresh"))}</button
                   >
                 </div>
-                {#if receiveError}<p role="alert">{receiveError}</p>{/if}
+                {#if receiveError}<p role="alert">{$t(receiveError)}</p>{/if}
                 {#if receiveInfo}
-                  {#if !received.length}<p class="muted">No files on this page.</p>{/if}
+                  {#if !received.length}<p class="muted">{$t(m("noFilesOnThisPage"))}</p>{/if}
                   {#each received as item (item.id)}{#if !receiveNeedsKey}<a
                         class="received"
                         href={item.url}
-                        >{item.count} file{item.count === 1 ? "" : "s"} · Save {item.count === 1
-                          ? "file"
-                          : "files"}</a
+                        >{$t(m("fileCount", { count: item.count }))}
+                        · {$t(item.count === 1 ? m("saveFile") : m("saveFiles"))}</a
                       >{:else}<p>
-                        {item.count} file{item.count === 1 ? "" : "s"} · Private key is on the creating
-                        device
+                        {$t(m("fileCount", { count: item.count }))}
+                        {$t(m("privateKeyIsOnTheCreatingDevice"))}
                       </p>{/if}{/each}
                   {#if receivePage > 1 || receiveNext}<nav
                       class="inbox-pages"
-                      aria-label="Received files pages"
+                      aria-label={$t(m("receivedFilesPages"))}
                     >
                       <button
                         disabled={receiveLoading || !receivePrevious.length}
-                        onclick={() => turnReceived("previous")}>Previous</button
+                        onclick={() => turnReceived("previous")}>{$t(m("previous"))}</button
                       >
-                      <span class="muted small">Page {receivePage}</span>
+                      <span class="muted small">{$t(m("page"))} {$t(receivePage)}</span>
                       <button
                         disabled={receiveLoading || receiveNext === null}
-                        onclick={() => turnReceived("next")}>Next</button
+                        onclick={() => turnReceived("next")}>{$t(m("next"))}</button
                       >
                       {#if receivePage > 1}<button
                           disabled={receiveLoading}
-                          onclick={() => turnReceived("first")}>First page</button
+                          onclick={() => turnReceived("first")}>{$t(m("firstPage"))}</button
                         >{/if}
                     </nav>{/if}
                   {#if receivePage > 1 && !receivePrevious.length}<p class="muted small">
-                      Earlier pages are available from First page.
+                      {$t(m("earlierPagesAreAvailableFromFirstPage"))}
                     </p>{/if}
                 {/if}
               </section>
@@ -1618,10 +1660,10 @@
             {#if receiveUrl}
               {#if (receiveInfo?.summary.completed_files ?? 0) === 0}<LinkCard
                   url={receiveUrl}
-                  label="Share this link to receive files"
+                  label={$t(m("shareThisLinkToReceiveFiles"))}
                 />
               {:else}<details class="receive-share" bind:open={receiveSharing}>
-                  <summary>Show QR / Share link</summary><LinkCard
+                  <summary>{$t(m("showQRShareLink"))}</summary><LinkCard
                     url={receiveUrl}
                     label={receiveTitle}
                   />
@@ -1631,16 +1673,21 @@
                 class="actions"
               >
                 <button disabled={busy || receiveLoading} onclick={() => checkReceived(receiveId)}
-                  ><Icon name="Refresh" size={17} />Refresh</button
+                  ><Icon name="Refresh" size={17} />{$t(m("refresh"))}</button
                 >
               </div>{/if}
             <details class="receive-details">
-              <summary>Details</summary>
-              <p>Expires {receiveInfo ? date(receiveInfo.expires_at) : "…"}</p>
+              <summary>{$t(m("details"))}</summary>
+              <p>{$t(m("expires"))} {$t(receiveInfo ? expiry(receiveInfo.expires_at) : "…")}</p>
               {#if receiveInfo && receiveInfo.max_files > 0}<p>
-                  {receiveInfo.reserved_files} of {receiveInfo.max_files} file allowances used
+                  {$t(
+                    m("fileAllowancesUsed", {
+                      used: receiveInfo.reserved_files,
+                      count: receiveInfo.max_files,
+                    }),
+                  )}
                 </p>{/if}
-              <p class="muted small">ID: {receiveId}</p>
+              <p class="muted small">{$t(m("id"))} {$t(receiveId)}</p>
             </details>
             <button
               class="new-inbox"
@@ -1649,28 +1696,33 @@
                 receiveCreating = true;
                 receiveName = "";
                 maxFiles = 0;
-              }}>Create another link</button
+              }}>{$t(m("createAnotherLink"))}</button
             >
           {/if}
         {:else if tab === "History"}<div class="heading">
-            <h1>Your transfers</h1>
+            <h1>{$t(m("yourTransfers"))}</h1>
             <button disabled={busy || historyLoading} onclick={() => select("History")}
-              ><Icon name="Refresh" size={17} />Refresh</button
+              ><Icon name="Refresh" size={17} />{$t(m("refresh"))}</button
             >
           </div>
           <label
-            >Show<select aria-label="History filter" value={historyFilter} onchange={filterHistory}
-              ><option value="all">All transfers</option><option value="transfers">Sent</option
-              ><option value="slots">Receive links</option></select
+            >{$t(m("show"))}<select
+              aria-label={$t(m("historyFilter"))}
+              value={historyFilter}
+              onchange={filterHistory}
+              ><option value="all">{$t(m("allTransfers"))}</option><option value="transfers"
+                >{$t(m("sent"))}</option
+              ><option value="slots">{$t(m("receiveLinks"))}</option></select
             ></label
           >
           {#if historyError}<p role="alert">
-              {historyError} The displayed page may be out of date.
+              {$t(historyError)}
+              {$t(m("theDisplayedPageMayBeOutOfDate"))}
             </p>{/if}
           {#if !historyLoading && !historyError && !transfers.length && !slots.length}<p
               class="empty"
             >
-              {historyCursor || historyNext ? "No transfers on this page." : "No transfers yet."}
+              {$t(historyCursor || historyNext ? m("noTransfersOnThisPage") : m("noTransfersYet"))}
             </p>{/if}
           {#each [...transfers.map( (t) => ({ ...t, kind: "transfers" as const }), ), ...slots.map( (s) => ({ ...s, kind: "slots" as const }), )].sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || "")) as item}
             {@const storedSize = labelFor(labels, item.kind, item.id).size || item.total_size || 0}
@@ -1681,69 +1733,81 @@
             <article class="resource" data-resource-id={item.id}>
               <div>
                 <span class="type-badge"
-                  ><Icon
-                    name={item.kind === "slots" ? "Receive" : "Send"}
-                    size={15}
-                  />{item.kind === "slots" ? "Receive link" : "Sent"}</span
+                  ><Icon name={item.kind === "slots" ? "Receive" : "Send"} size={15} />{$t(
+                    item.kind === "slots" ? m("receiveLink") : m("sent"),
+                  )}</span
                 >
-                <strong class="history-title" title={historyTitle(item)}
-                  >{#if compactTitle(historyTitle(item)) !== historyTitle(item)}<span
-                      aria-hidden="true">{compactTitle(historyTitle(item))}</span
-                    ><span class="sr-only">{historyTitle(item)}</span>{:else}{historyTitle(
-                      item,
+                <strong class="history-title" title={$t(historyTitle(item))}
+                  >{#if compactTitle($t(historyTitle(item))) !== $t(historyTitle(item))}<span
+                      aria-hidden="true">{$t(compactTitle($t(historyTitle(item))))}</span
+                    ><span class="sr-only">{$t(historyTitle(item))}</span>{:else}{$t(
+                      historyTitle(item),
                     )}{/if}</strong
                 >
                 {#if item.created_at}<p class="muted small">
-                    Created {new Date(item.created_at).toLocaleString()}
+                    {$t(m("created"))}
+                    {$t(date(item.created_at))}
                   </p>{/if}
                 <p>
-                  {(item.kind === "slots" ? receivedFileCount(item) : resourceFileCount(item)) ===
-                  null
-                    ? "File totals updating"
-                    : item.kind === "slots"
-                      ? `${receivedFileCount(item)} files received`
-                      : `${resourceFileCount(item)} files · ${status(item)}`}
+                  {$t(
+                    (item.kind === "slots" ? receivedFileCount(item) : resourceFileCount(item)) ===
+                      null
+                      ? m("fileTotalsUpdating")
+                      : item.kind === "slots"
+                        ? m("valueFilesReceived", { arg0: receivedFileCount(item) })
+                        : m("valueFilesValue", {
+                            arg0: resourceFileCount(item),
+                            arg1: status(item),
+                          }),
+                  )}
                 </p>
                 {#if storedSize || activeLink}<p class="muted small">
-                    {#if storedSize}{formatSize(storedSize)} stored{activeLink ? " · " : ""}{/if}
-                    {#if activeLink}Expires {date(item.expires_at)}{/if}
+                    {#if storedSize}{$t(formatSize(storedSize))}
+                      {$t(m("stored"))}{$t(activeLink ? " · " : "")}{/if}
+                    {#if activeLink}{$t(m("expires"))} {$t(expiry(item.expires_at))}{/if}
                   </p>{/if}
                 {#if !links[item.id] && !downloadLinkExhausted(item)}<p class="muted small">
-                    Encryption key is on another device
+                    {$t(m("encryptionKeyIsOnAnotherDevice"))}
                   </p>{/if}
               </div>
               <div class="actions">
                 {#if downloadLinkExhausted(item)}<a class="button" href="/?view=send"
-                    >New send link</a
+                    >{$t(m("newSendLink"))}</a
                   >{/if}
                 <button
                   onclick={() => {
                     beginRename(item.kind, item.id, item.title);
-                  }}>Rename</button
+                  }}>{$t(m("rename"))}</button
                 >
                 {#if links[item.id] && !downloadLinkExhausted(item)}<button
                     onclick={() => copy(links[item.id])}
-                    ><Icon name="Copy" size={17} />Copy link</button
-                  >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}>Open</a
+                    ><Icon name="Copy" size={17} />{$t(m("copyLink"))}</button
+                  >{#if item.kind === "transfers"}<a class="button" href={links[item.id]}
+                      >{$t(m("open"))}</a
                     >{/if}{/if}{#if item.kind === "slots"}<button
                     disabled={busy}
-                    onclick={() => openReceive(item.id)}>View files</button
+                    onclick={() => openReceive(item.id)}>{$t(m("viewFiles"))}</button
                   >{/if}<button
                   class="danger"
                   disabled={busy}
                   onclick={() => {
                     error = "";
                     pendingDelete = { id: item.id, kind: item.kind };
-                  }}><Icon name="Revoke" size={17} />Revoke</button
+                  }}><Icon name="Revoke" size={17} />{$t(m("revoke"))}</button
                 >
               </div>
               <details>
-                <summary>Details</summary>
-                <p>ID: {item.id}</p>
+                <summary>{$t(m("details"))}</summary>
+                <p>{$t(m("id"))} {$t(item.id)}</p>
                 {#if item.kind === "slots" && item.max_files}<p>
-                    {item.reserved_files} of {item.max_files} file allowances used
+                    {$t(
+                      m("fileAllowancesUsed", {
+                        used: item.reserved_files ?? 0,
+                        count: item.max_files,
+                      }),
+                    )}
                   </p>{:else if item.kind === "transfers" && item.max_downloads}<p>
-                    {item.max_downloads} download attempts per file
+                    {$t(m("downloadAttemptsPerFile", { count: item.max_downloads }))}
                   </p>{/if}
               </details>
               {#if renameId === item.id && renameKind === item.kind}<form
@@ -1753,29 +1817,32 @@
                     rename();
                   }}
                 >
-                  <label>Link title<input bind:value={renameValue} maxlength="400" /></label>
-                  <p class="muted small">
-                    Shown to people using this link. Leave empty to clear it.
-                  </p>
-                  <button class="primary">Save name</button><button
+                  <label
+                    >{$t(m("linkTitle"))}<input bind:value={renameValue} maxlength="400" /></label
+                  >
+                  <p class="muted small">{$t(m("shownToPeopleUsingThisLinkLeaveEmptyTo"))}</p>
+                  <button class="primary">{$t(m("saveName"))}</button><button
                     type="button"
-                    onclick={() => (renameId = "")}>Cancel</button
+                    onclick={() => (renameId = "")}>{$t(m("cancel"))}</button
                   >
                 </form>{/if}
             </article>{/each}
-          {#if historyPage > 1 || historyNext}<nav class="history-pages" aria-label="History pages">
+          {#if historyPage > 1 || historyNext}<nav
+              class="history-pages"
+              aria-label={$t(m("historyPages"))}
+            >
               <button
                 disabled={busy || historyLoading || !historyPrevious.length}
-                onclick={() => turnHistory("previous")}>Newer transfers</button
+                onclick={() => turnHistory("previous")}>{$t(m("newerTransfers"))}</button
               >
-              <span class="muted small">Page {historyPage}</span>
+              <span class="muted small">{$t(m("page"))} {$t(historyPage)}</span>
               <button
                 disabled={busy || historyLoading || !historyNext}
-                onclick={() => turnHistory("next")}>Older transfers</button
+                onclick={() => turnHistory("next")}>{$t(m("olderTransfers"))}</button
               >
               {#if historyPage > 1}<button
                   disabled={busy || historyLoading}
-                  onclick={() => turnHistory("first")}>First page</button
+                  onclick={() => turnHistory("first")}>{$t(m("firstPage"))}</button
                 >{/if}
             </nav>{/if}
           {#if pendingDelete}
@@ -1789,57 +1856,51 @@
         {:else if tab === "Devices"}<a
             class="back-link"
             href={user.role === "admin" ? "/?view=overview" : "/?view=settings"}
-            >← {user.role === "admin" ? "Overview" : "Back to Settings"}</a
+            >← {$t(user.role === "admin" ? m("overview") : m("backToSettings"))}</a
           >
-          {#if user.role === "user"}<h1>Connect mobile app</h1>
-            <p class="muted">
-              In the app’s server settings, choose Scan login QR code. Keep this code private: it
-              signs the scanning device in as you.
-            </p>
+          {#if user.role === "user"}<h1>{$t(m("connectMobileApp"))}</h1>
+            <p class="muted">{$t(m("inTheAppSServerSettingsChooseScanLogin"))}</p>
             {#if pairingStatus === "connected"}<p class="notice" role="status">
-                Phone connected: {pairedDevice}
+                {$t(m("phoneConnected"))}
+                {$t(pairedDevice)}
               </p>
             {:else if pairingQr && now < Date.parse(pairingExpires)}<section
-                aria-label="Connect mobile app"
+                aria-label={$t(m("connectMobileApp"))}
               >
-                <img class="qr" src={pairingQr} alt="Mobile app login QR code" />
+                <img class="qr" src={pairingQr} alt={$t(m("mobileAppLoginQRCode"))} />
                 <p>
-                  Single use · expires in {Math.max(
-                    0,
-                    Math.ceil((Date.parse(pairingExpires) - now) / 1000),
-                  )} seconds
+                  {$t(m("singleUseExpiresIn"))}
+                  {$t(Math.max(0, Math.ceil((Date.parse(pairingExpires) - now) / 1000)))}
+                  {$t(m("seconds"))}
                 </p>
-                <button onclick={cancelPair}>Cancel pairing</button>
+                <button onclick={cancelPair}>{$t(m("cancelPairing"))}</button>
               </section>
             {:else if pairingId}<p class="notice" role="status">
-                This code has expired. Generate a new code.
+                {$t(m("thisCodeHasExpiredGenerateANewCode"))}
               </p>{/if}
             <button class="primary" disabled={busy} onclick={pair}
-              ><Icon name="QRCode" size={18} />{pairingId
-                ? "Generate new code"
-                : "Show login QR code"}</button
+              ><Icon name="QRCode" size={18} />{$t(
+                pairingId ? m("generateNewCode") : m("showLoginQRCode"),
+              )}</button
             >
           {/if}
-          <h2>{user.role === "admin" ? "Signed-in sessions" : "Connected devices"}</h2>
-          <p class="muted">
-            Revoke a session to sign that device out. Up to 32 active sessions are allowed per
-            account. Signing in or connecting another device at the limit signs out an older
-            eligible session.
-          </p>
+          <h2>{$t(user.role === "admin" ? m("signedInSessions") : m("connectedDevices"))}</h2>
+          <p class="muted">{$t(m("revokeASessionToSignThatDeviceOutUp"))}</p>
           {#if sessionsLimited}<p class="notice" role="status">
-              Showing {sessions.length} of {totalActiveSessionsExact
-                ? ""
-                : "at least "}{totalActiveSessions} active sessions. Older sessions are being removed
-              to apply the session limit. Reload this page to check the remaining sessions.
+              {$t(m("showing"))}
+              {$t(sessions.length)}
+              {$t(m("of"))}
+              {$t(totalActiveSessionsExact ? "" : m("atLeast"))}{$t(totalActiveSessions)}
+              {$t(m("activeSessionsOlderSessionsAreBeingRemovedToApply"))}
             </p>{/if}
           {#each sessions as session}<article class="resource">
               <div>
                 <strong
-                  >{session.device_name || "Device"}{session.current
-                    ? " (this browser)"
-                    : ""}</strong
+                  >{$t(session.device_name || m("device"))}{$t(
+                    session.current ? m("thisBrowser") : "",
+                  )}</strong
                 >
-                <p class="muted small">Expires {date(session.expires_at)}</p>
+                <p class="muted small">{$t(m("expires"))} {$t(expiry(session.expires_at))}</p>
               </div>
               <button
                 class="danger"
@@ -1854,13 +1915,13 @@
                       const result = await request<SessionsResponse>("/auth/sessions");
                       if (owner === epoch) updateSessions(result);
                     }
-                  })}>Revoke session</button
+                  })}>{$t(m("revokeSession"))}</button
               >
             </article>{/each}
         {:else if tab === "Account"}<a
             class="back-link"
             href={user.role === "admin" ? "/?view=overview" : "/?view=settings"}
-            >← {user.role === "admin" ? "Overview" : "Back to Settings"}</a
+            >← {$t(user.role === "admin" ? m("overview") : m("backToSettings"))}</a
           >
           <PasswordChange busy={busy || securityMutationActive} onchange={changePassword} />
           {#if user.role === "admin"}{#key user.id}<AdministratorSecurity
@@ -1868,30 +1929,28 @@
                 onmutation={securityMutation}
               />{/key}{/if}
         {:else if tab === "Users"}
-          <h1>Manage users</h1>
-          <p class="muted">
-            Only administrators can create accounts. Disabling sign-in signs out devices and cancels
-            pairing grants; existing public links remain active. Incident shutdown also revokes all
-            of the account's links and schedules server-file cleanup.
-          </p>
-          {#if usersPrevious.length || usersNext}<nav aria-label="Account pages">
+          <h1>{$t(m("manageUsers"))}</h1>
+          <p class="muted">{$t(m("onlyAdministratorsCanCreateAccountsDisablingSignInSigns"))}</p>
+          {#if usersPrevious.length || usersNext}<nav aria-label={$t(m("accountPages"))}>
               <button disabled={busy || !usersPrevious.length} onclick={() => turnUsers("previous")}
-                >Previous accounts</button
+                >{$t(m("previousAccounts"))}</button
               >
-              <span class="muted small">Page {usersPrevious.length + 1}</span>
+              <span class="muted small">{$t(m("page"))} {$t(usersPrevious.length + 1)}</span>
               <button disabled={busy || !usersNext} onclick={() => turnUsers("next")}
-                >More accounts</button
+                >{$t(m("moreAccounts"))}</button
               >
             </nav>{/if}
           {#each users as account}<article class="resource">
               <div>
-                <strong>{account.username}</strong>
+                <strong>{$t(account.username)}</strong>
                 <p class="muted small">
-                  {account.role === "admin" ? "Administrator" : "User"} · {account.disabled
-                    ? "Disabled"
-                    : account.must_change_password
-                      ? "Password change required"
-                      : "Active"}
+                  {$t(account.role === "admin" ? m("administrator") : m("user"))} · {$t(
+                    account.disabled
+                      ? m("disabled")
+                      : account.must_change_password
+                        ? m("passwordChangeRequired")
+                        : m("active"),
+                  )}
                 </p>
               </div>
               <div class="actions">
@@ -1901,7 +1960,7 @@
                     resetId = account.id;
                     resetPassword = "";
                     resetConfirmation = "";
-                  }}>Reset password</button
+                  }}>{$t(m("resetPassword"))}</button
                 ><button
                   disabled={busy || account.id === user.id}
                   onclick={() => {
@@ -1918,7 +1977,7 @@
                       );
                       users = users.map((u) => (u.id === updated.user.id ? updated.user : u));
                     });
-                  }}>{account.disabled ? "Enable sign-in" : "Disable sign-in"}</button
+                  }}>{$t(account.disabled ? m("enableSignIn") : m("disableSignIn"))}</button
                 >
                 {#if account.role === "user"}<button
                     class="danger"
@@ -1926,7 +1985,7 @@
                     onclick={() => {
                       error = "";
                       accountAction = { account, mode: "shutdown" };
-                    }}>Incident shutdown</button
+                    }}>{$t(m("incidentShutdown"))}</button
                   >{/if}
               </div>
               {#if account.role === "user"}<AccountTraffic
@@ -1935,15 +1994,17 @@
                 />{/if}
             </article>{/each}
           {#if accountAction}<IncidentConfirmDialog
-              title={accountAction.mode === "disable"
-                ? `Disable sign-in for ${accountAction.account.username}?`
-                : `Shut down ${accountAction.account.username}'s transfers?`}
+              title={$t(
+                accountAction.mode === "disable"
+                  ? m("disableNamedAccount", { username: accountAction.account.username })
+                  : m("shutDownValueSTransfers", { arg0: accountAction.account.username }),
+              )}
               description={accountAction.mode === "disable"
-                ? "Disable future sign-in, revoke this account's sessions and cancel its pairing grants. Existing public receive and download links will keep working. To revoke those links too, cancel and choose Incident shutdown."
-                : "Disable this account, revoke all sessions and pairing grants, revoke every existing send and receive link, stop active transfers, and schedule deletion of its server files. Already downloaded copies remain. Re-enabling the account will not restore these links."}
+                ? m("disableFutureSignInRevokeThisAccountSSessions")
+                : m("disableThisAccountRevokeAllSessionsAndPairingGrants")}
               action={accountAction.mode === "disable"
-                ? "Disable sign-in only"
-                : "Shut down account and revoke all links"}
+                ? m("disableSignInOnly")
+                : m("shutDownAccountAndRevokeAllLinks")}
               {busy}
               {error}
               oncancel={() => {
@@ -1958,20 +2019,19 @@
                 e.preventDefault();
                 void act(async () => {
                   if (resetPassword !== resetConfirmation)
-                    throw new Error("The passwords do not match.");
+                    throw new LocalizedError(m("thePasswordsDoNotMatch"));
                   await request(`/admin/users/${resetId}`, "PATCH", { password: resetPassword });
                   const self = resetId === user?.id;
                   resetId = "";
                   resetPassword = "";
                   if (self) clearAccount();
-                  else
-                    notice =
-                      "Password reset. Existing sessions have been revoked. Regular users must replace their temporary password at next sign-in.";
+                  else notice = m("passwordResetNotice");
                 });
               }}
             >
               <label
-                >New password for {users.find((u) => u.id === resetId)?.username}<input
+                >{$t(m("newPasswordFor"))}
+                {$t(users.find((u) => u.id === resetId)?.username)}<input
                   type="password"
                   autocomplete="new-password"
                   minlength="12"
@@ -1979,7 +2039,7 @@
                   bind:value={resetPassword}
                 /></label
               ><label
-                >Confirm new password<input
+                >{$t(m("confirmNewPassword"))}<input
                   type="password"
                   autocomplete="new-password"
                   minlength="12"
@@ -1988,20 +2048,20 @@
                 /></label
               >
               <p class="muted small">
-                Regular users must replace this temporary password at their next sign-in. Existing
-                sessions are revoked.
+                {$t(m("regularUsersMustReplaceThisTemporaryPasswordAtTheir"))}
               </p>
-              <button class="primary" disabled={busy}>Save new password</button><button
+              <button class="primary" disabled={busy}>{$t(m("saveNewPassword"))}</button><button
                 type="button"
-                onclick={() => (resetId = "")}>Cancel</button
+                onclick={() => (resetId = "")}>{$t(m("cancel"))}</button
               >
             </form>{/if}
-          <h2>Create account</h2>
+          <h2>{$t(m("createAccount"))}</h2>
           <form
             onsubmit={(e) => {
               e.preventDefault();
               void act(async () => {
-                if (newPassword !== newConfirmation) throw new Error("The passwords do not match.");
+                if (newPassword !== newConfirmation)
+                  throw new LocalizedError(m("thePasswordsDoNotMatch"));
                 const result = await request<{ user: User }>("/admin/users", "POST", {
                   username: newUsername,
                   password: newPassword,
@@ -2011,13 +2071,18 @@
                 newUsername = "";
                 newPassword = "";
                 newConfirmation = "";
-                notice = "Account created. Share the credentials privately with its owner.";
+                notice = m("accountCreatedNotice");
               });
             }}
           >
-            <label>New username<input autocomplete="off" required bind:value={newUsername} /></label
+            <label
+              >{$t(m("newUsername"))}<input
+                autocomplete="off"
+                required
+                bind:value={newUsername}
+              /></label
             ><label
-              >Temporary password<input
+              >{$t(m("temporaryPassword"))}<input
                 type="password"
                 autocomplete="new-password"
                 minlength="12"
@@ -2025,7 +2090,7 @@
                 bind:value={newPassword}
               /></label
             ><label
-              >Confirm temporary password<input
+              >{$t(m("confirmTemporaryPassword"))}<input
                 type="password"
                 autocomplete="new-password"
                 minlength="12"
@@ -2033,17 +2098,14 @@
                 bind:value={newConfirmation}
               /></label
             ><label
-              >Role<select bind:value={newRole}
-                ><option value="user">User</option><option value="admin">Administrator</option
+              >{$t(m("role"))}<select bind:value={newRole}
+                ><option value="user">{$t(m("user"))}</option><option value="admin"
+                  >{$t(m("administrator"))}</option
                 ></select
               ></label
             >
-            <p class="muted small">
-              Use at least 12 characters. Regular users must replace this temporary password at
-              first sign-in. Administrators manage the server and cannot create transfers; their
-              accounts are exempt from the first-change requirement.
-            </p>
-            <button class="primary" disabled={busy}>Create account</button>
+            <p class="muted small">{$t(m("useAtLeastCharactersRegularUsersMustReplaceThis"))}</p>
+            <button class="primary" disabled={busy}>{$t(m("createAccount"))}</button>
           </form>
         {/if}
       </section>
@@ -2467,6 +2529,8 @@
       justify-content: flex-start;
     }
     nav.admin-nav .nav-label {
+      max-width: 100%;
+      overflow-wrap: anywhere;
       white-space: normal;
       text-align: center;
     }
@@ -2480,7 +2544,10 @@
       padding: 0.7rem 0.1rem;
     }
     .nav-label {
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      max-width: 100%;
+      text-align: center;
     }
     nav.admin-nav a {
       font-size: 0.7rem;

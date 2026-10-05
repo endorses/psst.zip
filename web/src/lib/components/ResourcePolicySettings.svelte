@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, date, number, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import {
@@ -12,9 +14,9 @@
   let snapshot = $state<ResourceSnapshot | null>(null),
     draft = $state<Partial<Record<keyof ResourcePolicy, number>>>({});
   let busy = $state(false),
-    error = $state(""),
-    notice = $state(""),
-    updated = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>(""),
+    updated = $state<number | null>(null);
   let disposed = false;
   function accept(value: unknown) {
     const next = validateResourceSnapshot(value);
@@ -23,7 +25,7 @@
     draft = Object.fromEntries(
       policyFields.map((field) => [field.key, next.policy[field.key] / field.factor]),
     );
-    updated = new Date().toLocaleString();
+    updated = Date.now();
   }
   async function load() {
     if (busy) return;
@@ -33,7 +35,7 @@
       accept(await accountRequest("/admin/resource-policy"));
     } catch (cause) {
       if (!disposed)
-        error = cause instanceof Error ? cause.message : "Could not load resource policy.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotLoadResourcePolicy");
     } finally {
       if (!disposed) busy = false;
     }
@@ -51,12 +53,10 @@
       );
       busy = true;
       accept(await accountRequest("/admin/resource-policy", "PATCH", policy));
-      if (!disposed)
-        notice =
-          "Resource policy saved. Lower quotas block new allocations without deleting existing data.";
+      if (!disposed) notice = m("resourcePolicySavedLowerQuotasBlockNewAllocationsWithout");
     } catch (cause) {
       if (!disposed)
-        error = cause instanceof Error ? cause.message : "Could not save resource policy.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotSaveResourcePolicy");
     } finally {
       if (!disposed) busy = false;
     }
@@ -70,30 +70,34 @@
 </script>
 
 <section aria-labelledby="resource-policy-heading">
-  <h2 id="resource-policy-heading">Storage and retention budgets</h2>
-  <p class="muted">
-    Server-wide and per-account limits apply together, including uploads through receive links.
-    Lowering quotas preserves existing data and administrative access; it can stop new allocations.
-  </p>
+  <h2 id="resource-policy-heading">{$t(m("storageAndRetentionBudgets"))}</h2>
+  <p class="muted">{$t(m("serverWideAndPerAccountLimitsApplyTogetherIncluding"))}</p>
   {#if error}<p role="alert" class="error">
-      {error}
-      {snapshot
-        ? "Previous usage may be stale. Unsaved values remain in the form."
-        : "Other server settings and recovery actions remain available."}
+      {$t(error)}
+      {$t(
+        snapshot
+          ? m("previousUsageMayBeStaleUnsavedValuesRemainIn")
+          : m("otherServerSettingsAndRecoveryActionsRemainAvailable"),
+      )}
     </p>{/if}
-  {#if notice}<p role="status" class="success">{notice}</p>{/if}
+  {#if notice}<p role="status" class="success">{$t(notice)}</p>{/if}
   <button disabled={busy} onclick={load}
-    >{snapshot ? "Refresh resource policy and usage" : "Retry loading resource policy"}</button
+    >{$t(snapshot ? m("refreshResourcePolicyAndUsage") : m("retryLoadingResourcePolicy"))}</button
   >
   {#if snapshot}
-    <p class="muted small">Usage last updated {updated}. Refresh after allocations or cleanup.</p>
+    <p class="muted small">
+      {$t(m("usageLastUpdated"))}
+      {$t(updated ? date(updated) : "")}{$t(m("refreshAfterAllocationsOrCleanup"))}
+    </p>
     <ResourceUsage {snapshot} scope="server" />
     <form onsubmit={save}>
-      {#each ["Storage", "Objects", "Retention", "Disk safety"] as group}<fieldset disabled={busy}>
-          <legend>{group}</legend>
+      {#each [{ id: "Storage", label: m("storage") }, { id: "Objects", label: m("objects") }, { id: "Retention", label: m("retention") }, { id: "disk-safety", label: m("diskSafety") }] as group}<fieldset
+          disabled={busy}
+        >
+          <legend>{$t(group.label)}</legend>
           <div class="fields">
-            {#each policyFields.filter((field) => field.group === group) as field}<label>
-                {field.label}<input
+            {#each policyFields.filter((field) => field.group === group.id) as field}<label>
+                {$t(field.label)}<input
                   type="number"
                   min={field.min}
                   max={field.max}
@@ -103,18 +107,16 @@
                 />
               </label>{/each}
           </div>
-          {#if group === "Retention"}<p class="muted small">
-              New links cannot outlive maximum retention. Incomplete uploads expire sooner according
-              to their separate lifetime.
+          {#if group.id === "Retention"}<p class="muted small">
+              {$t(m("newLinksCannotOutliveMaximumRetentionIncompleteUploadsExpire"))}
             </p>{/if}
-          {#if group === "Disk safety"}<p class="muted small">
-              Keep both the minimum byte reserve and percentage reserve free. Other processes can
-              consume disk space after admission, so uploads can still stop before filling the host.
+          {#if group.id === "disk-safety"}<p class="muted small">
+              {$t(m("keepBothTheMinimumByteReserveAndPercentageReserve"))}
             </p>{/if}
         </fieldset>{/each}
-      <button class="primary" disabled={busy}>Save resource policy</button>
+      <button class="primary" disabled={busy}>{$t(m("saveResourcePolicy"))}</button>
     </form>
-  {:else if busy}<p role="status">Loading resource policy…</p>{/if}
+  {:else if busy}<p role="status">{$t(m("loadingResourcePolicy"))}</p>{/if}
 </section>
 
 <style>

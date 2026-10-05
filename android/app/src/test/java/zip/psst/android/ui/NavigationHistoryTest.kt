@@ -39,7 +39,11 @@ class NavigationHistoryTest {
         assertEquals("id" to "key", completed.pendingCompletion())
         val consumed = completed.copy(completionConsumed = true)
         assertNull(consumed.pendingCompletion())
-        assertNull(consumed.copy(error = "status refresh failed").pendingCompletion())
+        assertNull(
+            consumed
+                .copy(error = zip.psst.android.i18n.userText("status refresh failed"))
+                .pendingCompletion()
+        )
         assertEquals("id", consumed.transferId)
         assertEquals("key", consumed.encryptionKey)
     }

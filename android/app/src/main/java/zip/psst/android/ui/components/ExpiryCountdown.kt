@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import zip.psst.android.R
+import zip.psst.android.i18n.plural
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
@@ -52,11 +53,11 @@ fun ExpiryCountdown(expiresAt: String?, modifier: Modifier = Modifier) {
             val minutes = (remainingSeconds % 3600) / 60
             val seconds = remainingSeconds % 60
             if (hours > 0) {
-                stringResource(R.string.expires_hours, hours)
+                plural(R.plurals.expiry_hours, (hours), (hours))
             } else if (minutes > 0) {
-                stringResource(R.string.expires_minutes, minutes)
+                plural(R.plurals.expiry_minutes, (minutes), (minutes))
             } else {
-                stringResource(R.string.expires_seconds, seconds)
+                plural(R.plurals.expiry_seconds, (seconds), (seconds))
             }
         }
 

@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { accountRequest } from "./account.ts";
 
 export interface StorageChecks {
@@ -37,6 +38,6 @@ export async function loadStorageChecks(signal?: AbortSignal): Promise<StorageCh
         !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value.last_scan_completed_at) ||
         !Number.isFinite(Date.parse(value.last_scan_completed_at))))
   )
-    throw new Error("Invalid file-check response");
+    throw new LocalizedError(m("invalidFileCheckResponse"));
   return value;
 }

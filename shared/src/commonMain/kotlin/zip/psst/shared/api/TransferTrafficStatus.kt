@@ -22,7 +22,7 @@ class TransferTrafficStatus(
 
 /** Remote EOF before the manifest's authenticated wire size, not a decryption failure. */
 class TransferDownloadInterruptedException :
-    IllegalArgumentException("The file download was interrupted")
+    ClientFailureException("The file download was interrupted", "download_interrupted")
 
 /** Only recognizable transport failures qualify; crypto, local IO and cancellation do not. */
 object TrafficFailureClassifier {

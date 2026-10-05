@@ -1,6 +1,8 @@
 name: Psst
 options:
   bundleIdPrefix: zip.psst
+  developmentLanguage: en
+  knownRegions: [en, de]
   deploymentTarget:
     iOS: "17.0"
 settings:

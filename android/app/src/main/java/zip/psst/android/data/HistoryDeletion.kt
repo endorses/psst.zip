@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.LinkDeletionException
 import zip.psst.shared.model.ServerConfig
@@ -13,18 +15,24 @@ suspend fun revokeHistoryEntry(
 ) {
     val row = dao.getById(id) ?: return
     val access = currentAccess()
-    require(access.permits(row)) { "This history entry belongs to another account or server" }
+    uiRequire(access.permits(row)) {
+        message(R.string.l_this_history_entry_belongs_to_another_account_or_server_132262)
+    }
     val client = clientFactory(ServerConfig(row.serverUrl))
     try {
-        require(currentAccess() == access) { "Your account changed. Open History again." }
+        uiRequire(currentAccess() == access) {
+            message(R.string.l_your_account_changed_open_history_again_a10d12)
+        }
         when (row.type) {
             "received",
             "receive" -> client.slots.delete(row.id, row.deletionToken)
             "sent",
             "send" -> client.transfers.delete(row.id, row.deletionToken)
-            else -> error("Unknown history entry type")
+            else -> error(message(R.string.l_unknown_history_entry_type_d90e5c))
         }
-        require(currentAccess() == access) { "Your account changed. Open History again." }
+        uiRequire(currentAccess() == access) {
+            message(R.string.l_your_account_changed_open_history_again_a10d12)
+        }
         dao.delete(id)
     } catch (error: LinkDeletionException) {
         if (

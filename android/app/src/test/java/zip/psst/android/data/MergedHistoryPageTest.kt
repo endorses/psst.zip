@@ -98,8 +98,11 @@ class MergedHistoryPageTest {
     @Test
     fun sharedTitlesOverrideLocalLabelsAndSnapshotSurvivesOfflineDecoding() {
         val row = owned("one", 1).copy(title = "Old local label")
-        assertEquals("Shared Unicode 🐈", historyTitle(row.copy(sharedTitle = "Shared Unicode 🐈")))
-        assertEquals("Old local label", historyTitle(row))
+        assertEquals(
+            "Shared Unicode 🐈",
+            historyTitle(row.copy(sharedTitle = "Shared Unicode 🐈")).english(),
+        )
+        assertEquals("Old local label", historyTitle(row).english())
         val snapshot = downloaded("two", 2).copy(sharedTitle = "Shared Unicode 🐈")
         assertEquals(
             snapshot.sharedTitle,
@@ -120,6 +123,6 @@ class MergedHistoryPageTest {
             "exhausted",
             mergeSentHistory(owned("one", 1).copy(status = "downloaded"), exhausted).status,
         )
-        assertEquals("Download limit reached", historyStatusLabel("sent", "exhausted"))
+        assertEquals("Download limit reached", historyStatusLabel("sent", "exhausted").english())
     }
 }

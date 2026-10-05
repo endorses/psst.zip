@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
 import zip.psst.shared.api.TrafficSnapshot
@@ -18,7 +20,7 @@ import kotlinx.coroutines.withTimeout
 data class TrafficUsageUiState(
     val loading: Boolean = false,
     val snapshot: TrafficSnapshot? = null,
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 class TrafficUsageViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,16 +51,23 @@ class TrafficUsageViewModel(application: Application) : AndroidViewModel(applica
                     if (prefs.historyAccess.value == access)
                         _state.value =
                             TrafficUsageUiState(
-                                error = "Traffic status timed out. Refresh to try again."
+                                error =
+                                    message(
+                                        R.string
+                                            .l_traffic_status_timed_out_refresh_to_try_again_60644d
+                                    )
                             )
                 } catch (e: Exception) {
                     if (prefs.historyAccess.value == access)
                         _state.value =
                             TrafficUsageUiState(
                                 error =
-                                    if (e is AuthenticationRequiredException) e.message
+                                    if (e is AuthenticationRequiredException) failureText(e)
                                     else
-                                        "Traffic status is unavailable. Refresh to try again; transfers still follow the server's limits."
+                                        message(
+                                            R.string
+                                                .l_traffic_status_is_unavailable_refresh_to_try_again_transfers_stil_5fc7a2
+                                        )
                             )
                 } finally {
                     client.close()

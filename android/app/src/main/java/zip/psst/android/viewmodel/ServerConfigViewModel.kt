@@ -5,6 +5,8 @@ import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthUser
 import zip.psst.shared.api.PairingCode
@@ -18,13 +20,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class ServerConfigUiState(
+    val pairingDraft: String? = null,
     val url: String = "",
     val username: String = "",
     val password: String = "",
     val mustChangePassword: Boolean = false,
     val newPassword: String = "",
     val confirmPassword: String = "",
-    val notice: String? = null,
+    val notice: UiText? = null,
     val signedInUsername: String? = null,
     val isTesting: Boolean = false,
     val testResult: TestResult? = null,
@@ -33,7 +36,7 @@ data class ServerConfigUiState(
 sealed interface TestResult {
     data object Success : TestResult
 
-    data class Error(val message: String) : TestResult
+    data class Error(val message: UiText) : TestResult
 }
 
 class ServerConfigViewModel(application: Application) : AndroidViewModel(application) {
@@ -70,7 +73,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     private fun acceptUser(user: AuthUser) {
         if (user.role == "admin") {
             prefs.clearSession()
-            error(ADMIN_MESSAGE)
+            throw UiFailureException(ADMIN_MESSAGE)
         }
         _uiState.value =
             _uiState.value.copy(
@@ -78,7 +81,10 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                 signedInUsername = user.username,
                 notice =
                     if (user.mustChangePassword)
-                        "Replace your temporary password before sending files or creating receive links."
+                        message(
+                            R.string
+                                .l_replace_your_temporary_password_before_sending_files_or_creating__98696c
+                        )
                     else null,
             )
     }
@@ -94,7 +100,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     fun replacePassword() = runOperation { client ->
         val state = _uiState.value
         passwordReplacementError(state.password, state.newPassword, state.confirmPassword)?.let {
-            error(it)
+            throw UiFailureException(it)
         }
         client.auth.changePassword(state.password, state.newPassword)
         prefs.clearSession()
@@ -105,11 +111,19 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                 password = "",
                 newPassword = "",
                 confirmPassword = "",
-                notice = "Password changed. Sign in with your new password to continue.",
+                notice =
+                    message(
+                        R.string
+                            .l_password_changed_sign_in_with_your_new_password_to_continue_e0333a
+                    ),
             )
     }
 
-    fun scanError(message: String) {
+    fun setPairingDraft(value: String?) {
+        _uiState.value = _uiState.value.copy(pairingDraft = value)
+    }
+
+    fun scanError(message: UiText) {
         _uiState.value = _uiState.value.copy(testResult = TestResult.Error(message))
     }
 
@@ -117,7 +131,11 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
         _uiState.value =
             _uiState.value.copy(
                 testResult =
-                    TestResult.Error("Scan a server login QR code from the web Settings page.")
+                    TestResult.Error(
+                        message(
+                            R.string.l_scan_a_server_login_qr_code_from_the_web_settings_page_5a0e74
+                        )
+                    )
             )
     }
 
@@ -164,8 +182,8 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
         val username = _uiState.value.username.trim()
         val password = _uiState.value.password
         runOperation(onSaved) { client ->
-            require(username.isNotBlank() && password.isNotBlank()) {
-                "Enter your username and password"
+            uiRequire(username.isNotBlank() && password.isNotBlank()) {
+                message(R.string.l_enter_your_username_and_password_775db6)
             }
             client.validateServer()
             val session = client.auth.login(username, password, deviceName())
@@ -177,7 +195,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                         authenticated.close()
                     }
                 }
-                error(ADMIN_MESSAGE)
+                throw UiFailureException(ADMIN_MESSAGE)
             }
             acceptUser(session.user)
             prefs.saveSession(
@@ -200,7 +218,10 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
             } catch (e: Exception) {
                 _uiState.value =
                     _uiState.value.copy(
-                        testResult = TestResult.Error(e.message ?: "Invalid pairing code")
+                        testResult =
+                            TestResult.Error(
+                                failureText(e) ?: message(R.string.l_invalid_pairing_code_fa05da)
+                            )
                     )
                 return
             }
@@ -216,7 +237,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                         authenticated.close()
                     }
                 }
-                error(ADMIN_MESSAGE)
+                throw UiFailureException(ADMIN_MESSAGE)
             }
             acceptUser(session.user)
             prefs.saveSession(
@@ -268,7 +289,7 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
             viewModelScope.launch {
                 var client: ApiClient? = null
                 try {
-                    require(url.isNotBlank()) { "Please enter a server URL" }
+                    uiRequire(url.isNotBlank()) { message(R.string.ui_server_url_not_configured) }
                     client = ApiClient(ServerConfig(url), sessionToken = prefs.getSessionToken(url))
                     action(client)
                     if (version != operationVersion) return@launch
@@ -284,7 +305,10 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                                 password = "",
                                 testResult =
                                     TestResult.Error(
-                                        "The server took too long to respond. Check your connection and try again."
+                                        message(
+                                            R.string
+                                                .l_the_server_took_too_long_to_respond_check_your_connection_and_try_7547a0
+                                        )
                                     ),
                             )
                     }
@@ -294,7 +318,11 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
                             _uiState.value.copy(
                                 isTesting = false,
                                 password = "",
-                                testResult = TestResult.Error(e.message ?: "Connection failed"),
+                                testResult =
+                                    TestResult.Error(
+                                        failureText(e)
+                                            ?: message(R.string.l_connection_failed_202caa)
+                                    ),
                             )
                 } finally {
                     client?.close()
@@ -303,8 +331,10 @@ class ServerConfigViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private companion object {
-        const val ADMIN_MESSAGE =
-            "Administrator accounts manage the server in the web UI. Sign in with a regular account to transfer files. Guest scanning remains available."
+        val ADMIN_MESSAGE =
+            message(
+                R.string.l_administrator_accounts_manage_the_server_in_the_web_ui_sign_in_wi_994cda
+            )
     }
 
     private fun deviceName(): String = "Android ${Build.MODEL}".take(100)
@@ -314,11 +344,12 @@ internal fun passwordReplacementError(
     current: String,
     replacement: String,
     confirmation: String,
-): String? =
+): UiText? =
     when {
         current.isBlank() || replacement.isBlank() ->
-            "Enter your temporary password and a new password"
-        replacement != confirmation -> "Passwords do not match"
-        replacement == current -> "Choose a password different from your temporary password"
+            message(R.string.l_enter_your_temporary_password_and_a_new_password_614110)
+        replacement != confirmation -> message(R.string.l_passwords_do_not_match_d69c3b)
+        replacement == current ->
+            message(R.string.l_choose_a_password_different_from_your_temporary_password_1051d5)
         else -> null // Strength and current-password verification remain server-side.
     }

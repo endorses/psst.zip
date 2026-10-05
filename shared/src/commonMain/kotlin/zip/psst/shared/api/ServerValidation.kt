@@ -18,19 +18,30 @@ import kotlinx.serialization.json.jsonPrimitive
 /** Read-only setup checks; neither transfers nor drop slots are created. */
 internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
     val raw = config.baseUrl
-    require(raw == raw.trim() && raw.none { it.isWhitespace() || it == '\\' }) {
+    clientRequire(
+        raw == raw.trim() && raw.none { it.isWhitespace() || it == '\\' },
+        "invalid_server_url",
+    ) {
         "Enter a clean http:// or https:// server address."
     }
-    require(Regex("^https?://[^/?#@]+/?$", RegexOption.IGNORE_CASE).matches(raw)) {
+    clientRequire(
+        Regex("^https?://[^/?#@]+/?$", RegexOption.IGNORE_CASE).matches(raw),
+        "invalid_server_url",
+    ) {
         "Enter the server origin only, without credentials, a path, query, or fragment."
     }
     val url =
         try {
             Url(raw)
         } catch (e: Exception) {
-            throw IllegalArgumentException("Enter a valid http:// or https:// server address.", e)
+            throw ClientFailureException(
+                "Enter a valid http:// or https:// server address.",
+                "invalid_server_url",
+            )
         }
-    require(url.host.isNotBlank() && url.port in 1..65535) { "Enter a valid server host and port." }
+    clientRequire(url.host.isNotBlank() && url.port in 1..65535, "invalid_server_url") {
+        "Enter a valid server host and port."
+    }
     try {
         val completed =
             withTimeoutOrNull(10_000L) {
@@ -42,11 +53,12 @@ internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
                         16 * 1024,
                     )
                 val identity = Json.parseToJsonElement(health).jsonObject
-                require(
+                clientRequire(
                     identity["service"]?.jsonPrimitive?.content == "psst.zip" &&
                         identity["api_version"]?.jsonPrimitive?.let {
                             !it.isString && it.intOrNull == 1
-                        } == true
+                        } == true,
+                    "server_api_unsupported",
                 ) {
                     "This address does not serve the supported psst.zip API (version 1)."
                 }
@@ -58,20 +70,26 @@ internal suspend fun validateServer(config: ServerConfig, client: HttpClient) {
                             "text/html",
                             512 * 1024,
                         )
-                    require(hasWebMarker(html)) {
+                    clientRequire(
+                        hasWebMarker(html),
+                        "server_web_missing",
+                        mapOf("route" to route),
+                    ) {
                         "The psst.zip web app is missing from /$route/. Deploy the web app and route its pages at this server origin."
                     }
                 }
                 true
             }
-        check(completed == true) {
+        clientCheck(completed == true, "server_validation_timeout") {
             "Server validation timed out. Check the address, network, and server availability."
         }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        throw IllegalStateException(
+        throw ClientStateFailureException(
             "Server validation failed. Check the server address, network, and API/web deployment. ${e.message.orEmpty()}",
+            (e as? ClientFailure)?.failureCode ?: "server_validation_failed",
+            (e as? ClientFailure)?.failureArguments ?: emptyMap(),
             e,
         )
     }
@@ -86,17 +104,23 @@ private suspend fun readSetupResponse(
     client
         .prepareGet(url) { expectSuccess = false }
         .execute { response ->
-            require(response.status.value == 200) {
+            clientRequire(
+                response.status.value == 200,
+                "server_endpoint_failed",
+                mapOf("status" to response.status.value.toString()),
+            ) {
                 "Setup endpoint returned HTTP ${response.status.value}."
             }
-            require(response.call.request.url == Url(url)) {
+            clientRequire(response.call.request.url == Url(url), "server_redirect") {
                 "Use the final server origin directly; setup endpoints must not redirect."
             }
-            require(
+            clientRequire(
                 response.headers[HttpHeaders.ContentType]
                     ?.substringBefore(';')
                     ?.trim()
-                    ?.lowercase() == contentType
+                    ?.lowercase() == contentType,
+                "server_content_type",
+                mapOf("content_type" to contentType),
             ) {
                 "Setup endpoint must return $contentType. Check API and web routing."
             }
@@ -107,7 +131,7 @@ private suspend fun readSetupResponse(
                 val count = channel.readAvailable(bytes, total, bytes.size - total)
                 if (count == -1) break
                 total += count
-                require(total <= maxBytes) {
+                clientRequire(total <= maxBytes, "server_response_too_large") {
                     "Setup response is unexpectedly large. Check the server routing."
                 }
             }

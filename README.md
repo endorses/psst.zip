@@ -287,6 +287,15 @@ other paths, falling back to `index.html` for `/d/*` and `/u/*`. The included
 Docker Compose stack and Caddyfile provide this routing. Running only the Go
 server does not serve download pages.
 
+## Languages
+
+The web UI, Android app, iOS app and iOS share extension support English and
+German. Choose System, English or Deutsch in the language selector. The choice
+stays on your device and does not change your server or account.
+
+See [translation contributions](docs/localization/contributing.md) for resource
+locations, terminology and verification guidance.
+
 ## Native builds and verification
 
 Android uses Gradle 9.1.0, Kotlin 2.3.21, AGP 8.13.2, KSP 2.3.12,

@@ -1,5 +1,7 @@
 package zip.psst.shared.model
 
+import zip.psst.shared.api.ClientFailureException
+import zip.psst.shared.api.clientRequire
 import zip.psst.shared.crypto.ChunkedFileCrypto
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -24,40 +26,55 @@ data class UploadCapacity(
 ) {
     @Throws(Exception::class)
     fun validate() {
-        require(checkedAt.endsWith("Z") && checkedAt.length <= 40) { CAPACITY_RETRY }
-        Instant.parse(checkedAt)
-        require(manifestReserveBytes in 1..TransferLimits.MAX_MANIFEST_BYTES.toLong()) {
+        clientRequire(
+            checkedAt.endsWith("Z") && checkedAt.length <= 40,
+            "receive_capacity_unavailable",
+        ) {
+            CAPACITY_RETRY
+        }
+        try {
+            Instant.parse(checkedAt)
+        } catch (_: IllegalArgumentException) {
+            throw ClientFailureException(CAPACITY_RETRY, "receive_capacity_unavailable")
+        }
+        clientRequire(
+            manifestReserveBytes in 1..TransferLimits.MAX_MANIFEST_BYTES.toLong(),
+            "receive_capacity_unavailable",
+        ) {
             CAPACITY_RETRY
         }
         when (state) {
             "ready" ->
-                require(
+                clientRequire(
                     reason == null &&
                         availableWireBytes != null &&
                         availableWireBytes in 60..(1L shl 50) &&
                         availableFiles != null &&
                         availableFiles in 1..TransferLimits.MAX_FILES.toLong() &&
-                        availableFiles <= availableWireBytes / ChunkedFileCrypto.FRAME_OVERHEAD
+                        availableFiles <= availableWireBytes / ChunkedFileCrypto.FRAME_OVERHEAD,
+                    "receive_capacity_unavailable",
                 ) {
                     CAPACITY_RETRY
                 }
             "blocked" ->
-                require(
+                clientRequire(
                     reason in listOf("link_limit", "capacity_limit") &&
                         availableWireBytes == 0L &&
-                        availableFiles == 0L
+                        availableFiles == 0L,
+                    "receive_capacity_unavailable",
                 ) {
                     CAPACITY_RETRY
                 }
             "unknown" ->
-                require(
+                clientRequire(
                     reason == "capacity_unavailable" &&
                         availableWireBytes == null &&
-                        availableFiles == null
+                        availableFiles == null,
+                    "receive_capacity_unavailable",
                 ) {
                     CAPACITY_RETRY
                 }
-            else -> error(CAPACITY_RETRY)
+            else -> throw ClientFailureException(CAPACITY_RETRY, "receive_capacity_unavailable")
         }
     }
 
@@ -73,26 +90,41 @@ data class UploadCapacity(
     @Throws(Exception::class)
     fun validateSelection(fileCount: Int, totalWireBytes: Long) {
         validate()
-        require(isFresh()) {
+        clientRequire(isFresh(), "receive_capacity_stale") {
             "Receive capacity is out of date. Refresh and try again; your files are still selected."
         }
-        require(state != "unknown") { CAPACITY_RETRY }
-        require(state != "blocked") {
+        clientRequire(state != "unknown", "receive_capacity_unavailable") { CAPACITY_RETRY }
+        clientRequire(
+            state != "blocked",
+            if (reason == "link_limit") "receive_file_limit" else "receive_capacity_exhausted",
+        ) {
             if (reason == "link_limit")
                 "This receive link cannot accept more files. Your files are still selected."
             else
                 "This receive link has no upload capacity right now. Refresh and try again; your files are still selected."
         }
-        require(fileCount in 0..TransferLimits.MAX_FILES && totalWireBytes >= 0) {
+        clientRequire(
+            fileCount in 0..TransferLimits.MAX_FILES && totalWireBytes >= 0,
+            "invalid_upload_selection",
+        ) {
             "Invalid upload selection"
         }
-        require(totalWireBytes >= fileCount.toLong() * ChunkedFileCrypto.FRAME_OVERHEAD) {
+        clientRequire(
+            totalWireBytes >= fileCount.toLong() * ChunkedFileCrypto.FRAME_OVERHEAD,
+            "invalid_upload_selection",
+        ) {
             "Invalid encrypted file sizes"
         }
-        require(fileCount.toLong() <= requireNotNull(availableFiles)) {
+        clientRequire(
+            fileCount.toLong() <= requireNotNull(availableFiles),
+            "receive_selection_file_limit",
+        ) {
             "Too many files for the remaining receive capacity. Remove files or refresh and try again."
         }
-        require(totalWireBytes <= requireNotNull(availableWireBytes)) {
+        clientRequire(
+            totalWireBytes <= requireNotNull(availableWireBytes),
+            "receive_selection_byte_limit",
+        ) {
             "The selected files exceed the remaining receive capacity. Remove files or refresh and try again."
         }
     }
@@ -105,11 +137,19 @@ object GuestUploadCapacity {
     /** Includes the authenticated frame of every empty file; never permits signed overflow. */
     @Throws(Exception::class)
     fun totalWireBytes(plainSizes: List<Long>): Long {
-        require(plainSizes.size <= TransferLimits.MAX_FILES) { "Select at most 100 files" }
+        clientRequire(
+            plainSizes.size <= TransferLimits.MAX_FILES,
+            "selection_file_limit",
+            mapOf("count" to TransferLimits.MAX_FILES.toString()),
+        ) {
+            "Select at most 100 files"
+        }
         var total = 0L
         for (size in plainSizes) {
             val wire = ChunkedFileCrypto.wireSize(size)
-            require(wire <= Long.MAX_VALUE - total) { "Selected files are too large" }
+            clientRequire(wire <= Long.MAX_VALUE - total, "selection_too_large") {
+                "Selected files are too large"
+            }
             total += wire
         }
         return total
@@ -124,14 +164,19 @@ internal object UploadCapacitySerializer : KSerializer<UploadCapacity> {
         val obj = (decoder as JsonDecoder).decodeJsonElement().jsonObject
         fun text(name: String): String {
             val field = obj[name] as? JsonPrimitive
-            require(field != null && field.isString) { CAPACITY_RETRY }
+            clientRequire(field != null && field.isString, "receive_capacity_unavailable") {
+                CAPACITY_RETRY
+            }
             return field.content
         }
         fun number(name: String): Long? {
-            require(obj.containsKey(name)) { CAPACITY_RETRY }
+            clientRequire(obj.containsKey(name), "receive_capacity_unavailable") { CAPACITY_RETRY }
             val field = obj[name]
             if (field == JsonNull) return null
-            require(field is JsonPrimitive && !field.isString && field.longOrNull != null) {
+            clientRequire(
+                field is JsonPrimitive && !field.isString && field.longOrNull != null,
+                "receive_capacity_unavailable",
+            ) {
                 CAPACITY_RETRY
             }
             return field.long
@@ -144,7 +189,8 @@ internal object UploadCapacitySerializer : KSerializer<UploadCapacity> {
                 reason,
                 number("available_wire_bytes"),
                 number("available_files"),
-                requireNotNull(number("manifest_reserve_bytes")) { CAPACITY_RETRY },
+                number("manifest_reserve_bytes")
+                    ?: throw ClientFailureException(CAPACITY_RETRY, "receive_capacity_unavailable"),
             )
             .also { it.validate() }
     }

@@ -3,6 +3,18 @@ import Foundation
 import XCTest
 
 final class HistorySnapshotTests: XCTestCase {
+    private var priorLanguage = AppLanguage.system
+    override func setUp() {
+        super.setUp()
+        priorLanguage = LanguageSettings.shared.preference
+        LanguageSettings.shared.preference = .en
+    }
+
+    override func tearDown() {
+        LanguageSettings.shared.preference = priorLanguage
+        super.tearDown()
+    }
+
     private let slot =
         #"{"id":"01234567-89ab-cdef-0123-456789abcdef","status":"has_uploads","file_count":130,"completed_files":125,"total_size":999,"summary":{"state":"ready","file_count":130,"completed_files":125,"total_size":999}}"#
     private func page(_ slots: String = "", next: String = "null") -> Data {

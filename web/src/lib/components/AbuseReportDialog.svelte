@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { abuseReference, abuseMailto } from "$lib/abuse-contact";
   let {
@@ -8,14 +10,21 @@
     onclose,
   }: { email: string; origin: string; pathname: string; onclose: () => void } = $props();
   let dialog: HTMLDialogElement;
-  let notice = $state("");
-  const reference = $derived(abuseReference(origin, pathname));
+  let notice = $state<DisplayText>("");
+  const reference = $derived.by(() => {
+    $t;
+    return abuseReference(origin, pathname);
+  });
+  const mailto = $derived.by(() => {
+    $t;
+    return abuseMailto(email, origin, pathname);
+  });
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      notice = "Copied.";
+      notice = m("copied");
     } catch {
-      notice = "Select and copy the text below. Clipboard access is unavailable.";
+      notice = m("selectAndCopyTheTextBelowClipboardAccessIs");
     }
   }
   onMount(() => {
@@ -40,28 +49,20 @@
     onclose();
   }}
 >
-  <h2 id="abuse-report-title">Report abuse</h2>
-  <p>
-    Contact the administrator of this server. Nothing is sent until you send an email in your mail
-    app.
-  </p>
-  <label for="abuse-contact-address">Contact</label>
+  <h2 id="abuse-report-title">{$t(m("reportAbuse"))}</h2>
+  <p>{$t(m("contactTheAdministratorOfThisServerNothingIsSent"))}</p>
+  <label for="abuse-contact-address">{$t(m("contact"))}</label>
   <input id="abuse-contact-address" readonly value={email} />
-  <button onclick={() => copy(email)}>Copy contact</button>
-  <label for="abuse-report-reference">Report reference</label>
+  <button onclick={() => copy(email)}>{$t(m("copyContact"))}</button>
+  <label for="abuse-report-reference">{$t(m("reportReference"))}</label>
   <textarea id="abuse-report-reference" readonly rows="4" value={reference}></textarea>
-  <button onclick={() => copy(reference)}>Copy report reference</button>
-  <p class="muted small">
-    The reference identifies this server and, on a file link page, its resource. It contains no
-    encryption key. Do not include the complete link or file contents in your report.
-  </p>
-  <p class="muted small">No mail app? Copy the address and reference into your email service.</p>
-  {#if notice}<p role="status">{notice}</p>{/if}
+  <button onclick={() => copy(reference)}>{$t(m("copyReportReference"))}</button>
+  <p class="muted small">{$t(m("theReferenceIdentifiesThisServerAndOnAFile"))}</p>
+  <p class="muted small">{$t(m("noMailAppCopyTheAddressAndReferenceInto"))}</p>
+  {#if notice}<p role="status">{$t(notice)}</p>{/if}
   <div class="actions">
-    <button onclick={onclose}>Close</button>
-    <a class="primary" href={abuseMailto(email, origin, pathname)} rel="noreferrer"
-      >Open email draft</a
-    >
+    <button onclick={onclose}>{$t(m("close"))}</button>
+    <a class="primary" href={mailto} rel="noreferrer">{$t(m("openEmailDraft"))}</a>
   </div>
 </dialog>
 

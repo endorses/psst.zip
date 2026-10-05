@@ -1,3 +1,4 @@
+import { message as m, number, LocalizedError } from "./i18n/index.ts";
 import { validateTrafficPolicy, type TrafficPolicy } from "./traffic-policy.ts";
 // Whole-file AES-GCM remains bounded. The server controls uploads; a lower new
 // upload setting must not make already-created links unreadable.
@@ -6,11 +7,15 @@ export const DEFAULT_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_BUFFERED_BYTES = 25 * 1024 * 1024;
 export const MAX_ZIP_BYTES = 25 * 1024 * 1024;
 export function fileLimitLabel(bytes: number): string {
-  return `${Number((bytes / 1024 / 1024).toFixed(2))} MiB`;
+  return `${number(bytes / 1024 / 1024, { maximumFractionDigits: 2 })} MiB`;
 }
+export function fileLimitMessage(bytes: number) {
+  return m("sizeMiB", { size: Math.round((bytes / 1024 / 1024) * 100) / 100 });
+}
+export class FileSizeError extends LocalizedError {}
 export function assertFileSize(size: number, limit = MAX_FILE_BYTES): void {
   if (!Number.isSafeInteger(size) || size < 0 || size > limit || size > MAX_FILE_BYTES) {
-    throw new Error(`Files must be no larger than ${fileLimitLabel(limit)}.`);
+    throw new FileSizeError(m("filesMustBeNoLargerThanValue", { arg0: fileLimitMessage(limit) }));
   }
 }
 export interface ServerLimits {
@@ -25,8 +30,7 @@ export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimi
     cache: "no-store",
     signal: signal ?? AbortSignal.timeout(10000),
   });
-  if (!response.ok)
-    throw new Error("Could not load this server's file limit. Check your connection and retry.");
+  if (!response.ok) throw new LocalizedError(m("couldNotLoadThisServerSFileLimitCheck"));
   const config = await response.json();
   const value: unknown = config.max_file_size;
   const ceiling: unknown = config.max_file_size_ceiling ?? value;
@@ -39,7 +43,7 @@ export async function loadServerLimits(signal?: AbortSignal): Promise<ServerLimi
     ceiling < value ||
     ceiling > MAX_FILE_BYTES
   )
-    throw new Error("This server's file limit is not supported by this app.");
+    throw new LocalizedError(m("thisServerSFileLimitIsNotSupportedBy"));
   return {
     ...(config.traffic_policy === undefined
       ? {}

@@ -21,6 +21,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.multi.qrcode.QRCodeMultiReader
@@ -31,7 +33,7 @@ import kotlinx.coroutines.withContext
 
 /** Camera lifetime is bounded by this visible composable and the navigation entry lifecycle. */
 @Composable
-fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
+fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
@@ -114,7 +116,12 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
 
                 override fun cameraError(error: Exception) {
                     cameraError = true
-                    latestError("Camera unavailable. Try again or choose an image or paste a link.")
+                    latestError(
+                        message(
+                            R.string
+                                .l_camera_unavailable_try_again_or_choose_an_image_or_paste_a_link_96df6c
+                        )
+                    )
                 }
             }
         camera.addStateListener(listener)
@@ -175,7 +182,12 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                         detected = true
                         latestCode(decoded)
                     } catch (_: Exception) {
-                        latestError("Choose an image containing exactly one readable QR code.")
+                        latestError(
+                            message(
+                                R.string
+                                    .l_choose_an_image_containing_exactly_one_readable_qr_code_5102b7
+                            )
+                        )
                     } finally {
                         processingImage = false
                     }
@@ -194,7 +206,7 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                 )
             }
             Text(
-                "Point the camera at a psst.zip QR code",
+                tr(R.string.l_point_the_camera_at_a_psst_zip_qr_code_1a7f37),
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -205,12 +217,20 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                             camera.setTorch(torch)
                         }
                     ) {
-                        Text(if (torch) "Torch off" else "Torch on")
+                        Text(
+                            if (torch) tr(R.string.l_torch_off_29a2dd)
+                            else tr(R.string.l_torch_on_83015b)
+                        )
                     }
             }
         } else if (processingImage) LinearProgressIndicator(Modifier.fillMaxWidth())
         else if (!granted) {
-            Text("Camera access is off. You can still choose a QR image or paste a link.")
+            Text(
+                tr(
+                    R.string
+                        .l_camera_access_is_off_you_can_still_choose_a_qr_image_or_paste_a_l_268a42
+                )
+            )
             TextButton(
                 onClick = {
                     context.startActivity(
@@ -221,11 +241,15 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                     )
                 }
             ) {
-                Text("Open app settings")
+                Text(tr(R.string.l_open_app_settings_6f0a71))
             }
-        } else if (cameraId == null) Text("No camera available. Choose a QR image or paste a link.")
+        } else if (cameraId == null)
+            Text(tr(R.string.l_no_camera_available_choose_a_qr_image_or_paste_a_link_e641ec))
         else {
-            if (cameraError) Text("Camera unavailable. Retry, choose a QR image or paste a link.")
+            if (cameraError)
+                Text(
+                    tr(R.string.l_camera_unavailable_retry_choose_a_qr_image_or_paste_a_link_7cf984)
+                )
             TextButton(
                 onClick = {
                     stop()
@@ -234,7 +258,10 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
                     detected = false
                 }
             ) {
-                Text(if (cameraError) "Retry camera" else "Scan again")
+                Text(
+                    if (cameraError) tr(R.string.l_retry_camera_d662d0)
+                    else tr(R.string.l_scan_again_f6ab55)
+                )
             }
         }
         OutlinedButton(
@@ -244,7 +271,7 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (String) -> Unit) {
             },
             enabled = !processingImage,
         ) {
-            Text("Choose QR image")
+            Text(tr(R.string.l_choose_qr_image_a23a18))
         }
     }
 }

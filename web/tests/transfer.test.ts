@@ -239,7 +239,11 @@ test("private v2 inbox encrypts for its owner, hides children and enforces cumul
   assert.equal(result.transfers[0].status, "complete");
   assert.equal(result.reserved_files, 2);
   assert.equal(result.remaining_files, 0);
-  await assert.rejects(api.createSlotTransfer(slot.id), /receive_file_limit/);
+  await assert.rejects(
+    api.createSlotTransfer(slot.id),
+    (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "receive_file_limit",
+  );
   for (const path of [`slots/${slot.id}`, `transfers/${id}`, `transfers/${id}/manifest`])
     assert.ok([401, 404].includes((await realFetch(`${origin}/api/v1/${path}`)).status));
 });
@@ -250,7 +254,11 @@ test("download count is independently enforced per file", async () => {
   assert.ok(info.files?.length === 2);
   assert.ok(info.files.every((file) => file.remaining_downloads === 1));
   await api.downloadFile(id, info.files[0].id);
-  await assert.rejects(api.downloadFile(id, info.files[0].id), /download_limit/);
+  await assert.rejects(
+    api.downloadFile(id, info.files[0].id),
+    (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "download_limit",
+  );
   assert.equal((await api.getTransferInfo(id)).files?.[1].remaining_downloads, 1);
 });
 test("AES-GCM rejects a wrong key and modified ciphertext", async () => {

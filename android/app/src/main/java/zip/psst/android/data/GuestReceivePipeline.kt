@@ -1,5 +1,6 @@
 package zip.psst.android.data
 
+import zip.psst.android.i18n.ScanStage
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.FileMetadata
 import kotlinx.coroutines.NonCancellable
@@ -12,14 +13,14 @@ internal suspend fun receiveGuestFiles(
     files: List<FileMetadata>,
     key: ByteArray,
     alreadySaved: Set<String>,
-    onStage: (String, Int, FileMetadata) -> Unit,
+    onStage: (ScanStage, Int, FileMetadata) -> Unit,
     onProgress: (Long, Long?) -> Unit,
     saveFile: suspend (FileMetadata, FileContent) -> SavedGuestFile,
     checkpoint: (SavedGuestFile) -> Unit,
 ) {
     for ((index, file) in files.withIndex()) {
         if (file.blobId in alreadySaved) continue
-        onStage("Downloading", index + 1, file)
+        onStage(ScanStage.DOWNLOADING, index + 1, file)
         val output = saveFile(file, downloadedContent(client, transferId, file, key, onProgress))
         withContext(NonCancellable) { checkpoint(output) }
     }

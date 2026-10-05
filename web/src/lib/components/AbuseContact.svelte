@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { loadAbuseContact } from "$lib/abuse-contact";
   import AbuseReportDialog from "./AbuseReportDialog.svelte";
@@ -32,7 +34,7 @@
 </script>
 
 {#if email}<p>
-    <button class="text-button" onclick={() => (open = true)}>Report abuse</button>
+    <button class="text-button" onclick={() => (open = true)}>{$t(m("reportAbuse"))}</button>
   </p>{/if}
 {#if open && email}<AbuseReportDialog
     {email}

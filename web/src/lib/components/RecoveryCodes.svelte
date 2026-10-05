@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, translate } from "$lib/i18n";
+
   import { BRAND } from "$lib/brand";
   let { codes, onacknowledge }: { codes: string[]; onacknowledge: () => void } = $props();
   let acknowledged = $state(false),
@@ -7,7 +9,12 @@
     const url = URL.createObjectURL(
       new Blob(
         [
-          `${BRAND} administrator recovery codes\nEach code can be used once. Keep these private and separate from your authenticator.\n\n${codes.join("\n")}\n`,
+          translate(
+            m("valueAdministratorRecoveryCodesEachCodeCanBeUsed", {
+              arg0: BRAND,
+              arg1: codes.join("\n"),
+            }),
+          ),
         ],
         { type: "text/plain;charset=utf-8" },
       ),
@@ -22,33 +29,23 @@
 </script>
 
 <section class="panel" aria-labelledby="recovery-codes-title">
-  <h1 id="recovery-codes-title">Save your recovery codes</h1>
-  <p>
-    These ten codes are shown once. Each can replace an authenticator code for one sign-in or
-    identity check. Keep them somewhere private, separate from your authenticator.
-  </p>
-  <p class="notice">
-    All previous sessions have ended. Sign in again after saving these codes. Changing or
-    regenerating codes invalidates the old set.
-  </p>
+  <h1 id="recovery-codes-title">{$t(m("saveYourRecoveryCodes"))}</h1>
+  <p>{$t(m("theseTenCodesAreShownOnceEachCanReplace"))}</p>
+  <p class="notice">{$t(m("allPreviousSessionsHaveEndedSignInAgainAfter"))}</p>
   <ul class="codes">
-    {#each codes as code}<li><code>{code}</code></li>{/each}
+    {#each codes as code}<li><code>{$t(code)}</code></li>{/each}
   </ul>
-  <button onclick={save}>Save recovery codes as text</button>
-  {#if downloaded}<p class="muted small">
-      The browser was asked to save a file. Check that it was saved successfully.
-    </p>{/if}
+  <button onclick={save}>{$t(m("saveRecoveryCodesAsText"))}</button>
+  {#if downloaded}<p class="muted small">{$t(m("theBrowserWasAskedToSaveAFileCheck"))}</p>{/if}
   <label class="check"
-    ><input type="checkbox" bind:checked={acknowledged} />I have saved these recovery codes
-    securely.</label
+    ><input type="checkbox" bind:checked={acknowledged} />{$t(
+      m("iHaveSavedTheseRecoveryCodesSecurely"),
+    )}</label
   >
   <button class="primary" disabled={!acknowledged} onclick={onacknowledge}
-    >Continue to sign in</button
+    >{$t(m("continueToSignIn"))}</button
   >
-  <p class="muted small">
-    This page keeps codes in memory only. Leaving or reloading it discards them. The server retains
-    hashes, so these codes cannot be displayed again.
-  </p>
+  <p class="muted small">{$t(m("thisPageKeepsCodesInMemoryOnlyLeavingOr"))}</p>
 </section>
 
 <style>

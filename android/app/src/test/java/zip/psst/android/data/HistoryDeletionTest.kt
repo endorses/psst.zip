@@ -154,7 +154,7 @@ class HistoryDeletionTest {
         val refreshed = mergeSentHistory(failed, Transfer("owned"))
         assertEquals("owner-secret", refreshed.deletionToken)
         assertEquals("failed", refreshed.status)
-        assertEquals("Upload failed", historyStatusLabel("sent", refreshed.status))
+        assertEquals("Upload failed", historyStatusLabel("sent", refreshed.status).english())
         assertEquals(
             "complete",
             mergeSentHistory(refreshed, Transfer("owned", status = TransferStatus.COMPLETE)).status,

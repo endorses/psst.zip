@@ -1,0 +1,518 @@
+{
+  "native_resources": {
+    "app_name": "Exact product name.",
+    "ui_https_transfer_example_com": "Technical example URL; never translated."
+  },
+  "source_literals": [
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/AccountHistory.kt",
+      "literal": "Account changed",
+      "reason": "Coroutine cancellation diagnostic; cancellation is not shown as an error."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/AccountHistory.kt",
+      "literal": "Invalid inbox summary counts",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestDownloads.kt",
+      "literal": "Local transfer metadata is unavailable; any original metadata file is retained",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestDownloads.kt",
+      "literal": "This local history record was removed",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestDownloads.kt",
+      "literal": "This saved transfer has a different key",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestDownloads.kt",
+      "literal": "Could not remove local transfer metadata",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestDownloads.kt",
+      "literal": "Could not persist local transfer metadata",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestFileSaver.kt",
+      "literal": "File size mismatch",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestFileSaver.kt",
+      "literal": "psst.zip",
+      "reason": "Exact product name or OS save directory; not translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "Local transfer metadata exceeds the supported record size; its original file is retained",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "Unsupported guest history schema",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT 1 FROM records WHERE kind=? AND identity=?",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT deleted FROM records WHERE kind=? AND identity=?",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT complete FROM migration WHERE id=1",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "UPDATE migration SET complete=1 WHERE id=1",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT payload FROM records WHERE kind=? AND identity=? AND deleted=0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "Local transfer metadata is too large",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": " AND pending=1",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": " AND pending=0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT identity, created_at, payload FROM records WHERE kind=? AND deleted=0 AND failed=0$pending AND identity>? ORDER BY identity LIMIT 20",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT 1 FROM records WHERE kind=? AND deleted=0 AND failed=0$pending AND payload IS NOT NULL LIMIT 1",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestHistoryIndex.kt",
+      "literal": "SELECT 1 FROM records WHERE failed=1 AND deleted=0 LIMIT 1",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/GuestReceivePipeline.kt",
+      "literal": "Too many files with this name",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "SELECT EXISTS(SELECT 1 FROM transfer_history WHERE accountId IS NULL LIMIT 1)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "UPDATE transfer_history SET sharedTitle=:title,title=NULL WHERE id=:id AND accountId=:accountId AND originScope=:originScope",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE id IN (:ids) AND accountId = :accountId AND lower(rtrim(serverUrl, '/')) = lower(rtrim(:serverUrl, '/')) ORDER BY createdAt DESC, id DESC",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "DELETE FROM transfer_history WHERE id = :id",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "UPDATE transfer_history SET status = :status WHERE id = :id",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "UPDATE transfer_history SET automaticTitle = :title WHERE id = :id AND automaticTitle IS NULL",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "UPDATE transfer_history SET title = :title WHERE id = :id AND serverUrl = :serverUrl AND accountId = :accountId AND type = :type",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "Inbox ownership changed",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "Saved checkpoints are still being imported",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE id = :id",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN sharedTitle TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN summaryUpdating INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN receivedTransfersJson TEXT NOT NULL DEFAULT '{}'",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN savedTransferIdsJson TEXT NOT NULL DEFAULT '[]'",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN deletionToken TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN accountId TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN title TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN savedFileIdsJson TEXT NOT NULL DEFAULT '[]'",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN automaticTitle TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDatabase.kt",
+      "literal": "UPDATE transfer_history SET automaticTitle = title",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/HistoryDeletion.kt",
+      "literal": "This older transfer has no deletion token. Ask the server administrator to remove it or enable legacy deletion, then retry. The history entry has been kept.",
+      "reason": "Legacy deletion diagnostic retained for compatibility; failure_code deletion_denied selects a safe native resource."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "SELECT * FROM inbox_child_checkpoint WHERE scope=:scope AND slotId=:slotId AND childId=:childId",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "SELECT * FROM inbox_file_checkpoint WHERE scope=:scope AND slotId=:slotId AND childId=:childId AND blobId=:blobId",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "SELECT childId FROM inbox_child_checkpoint WHERE scope=:scope AND slotId=:slotId AND childId IN (:ids) AND saved=1 LIMIT 100",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "SELECT childId || '/' || blobId FROM inbox_file_checkpoint WHERE scope=:scope AND slotId=:slotId AND childId IN (:ids) LIMIT 10000",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "INSERT OR IGNORE INTO inbox_legacy_checkpoint(scope,slotId,receivedTransfersJson,savedFileIdsJson,savedTransferIdsJson) SELECT :scope,id,receivedTransfersJson,savedFileIdsJson,savedTransferIdsJson FROM transfer_history WHERE id=:id AND accountId IS :accountId AND originScope=:originScope",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "UPDATE transfer_history SET receivedTransfersJson='{}',savedFileIdsJson='[]',savedTransferIdsJson='[]' WHERE id=:id AND EXISTS(SELECT 1 FROM inbox_legacy_checkpoint WHERE slotId=:id AND scope=:scope)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/InboxCheckpoints.kt",
+      "literal": "SELECT CASE :source WHEN 0 THEN substr(CAST(receivedTransfersJson AS BLOB), :offset + 1, :maximum) WHEN 1 THEN substr(CAST(savedFileIdsJson AS BLOB), :offset + 1, :maximum) ELSE substr(CAST(savedTransferIdsJson AS BLOB), :offset + 1, :maximum) END FROM inbox_legacy_checkpoint WHERE slotId=:id AND scope=:scope",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Invalid saved checkpoint position",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Incomplete saved checkpoint",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Saved checkpoint entry is too large",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Invalid saved checkpoint separator",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Invalid saved checkpoint progress",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LegacyCheckpointReader.kt",
+      "literal": "Invalid completed checkpoint progress",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE accountId = :accountId AND originScope = :originScope AND (createdAt, id) < (:beforeTime, :beforeId) ORDER BY createdAt DESC, id DESC LIMIT 51",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN originScope TEXT NOT NULL DEFAULT ''",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "UPDATE transfer_history SET originScope = lower(rtrim(trim(serverUrl), '/'))",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE INDEX index_transfer_history_accountId_originScope_createdAt_id ON transfer_history(accountId, originScope, createdAt, id)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE TABLE migration (id INTEGER PRIMARY KEY CHECK(id=1), complete INTEGER NOT NULL DEFAULT 0)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "INSERT INTO migration(id) VALUES(1)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE TABLE records (kind TEXT NOT NULL, identity TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, pending INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, payload TEXT, PRIMARY KEY(kind, identity))",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE INDEX guest_history_page ON records(kind, deleted, created_at DESC, identity DESC)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE INDEX guest_history_errors ON records(failed, deleted)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE INDEX guest_history_pending ON records(kind, deleted, failed, pending, identity)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "INTO records(kind,identity,created_at,pending,deleted,failed,payload) VALUES(?,?,?,?,0,?,?)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "INSERT OR IGNORE $GUEST_INSERT_FIELDS",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "INSERT OR REPLACE $GUEST_INSERT_FIELDS",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "INSERT OR REPLACE INTO records(kind,identity,deleted) VALUES(?,?,1)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "SELECT identity, created_at, payload FROM records WHERE kind='json' AND deleted=0 ORDER BY created_at DESC, identity DESC LIMIT 51",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "SELECT identity, created_at, payload FROM records WHERE kind='json' AND deleted=0 AND (created_at, identity) < (?, ?) ORDER BY created_at DESC, identity DESC LIMIT 51",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "SELECT $HISTORY_METADATA_PROJECTION FROM transfer_history WHERE accountId = :accountId AND originScope = :originScope AND type = :kind AND (createdAt,id) < (:beforeTime,:beforeId) ORDER BY createdAt DESC,id DESC LIMIT 51",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/LocalHistorySql.kt",
+      "literal": "CREATE INDEX index_transfer_history_accountId_originScope_type_createdAt_id ON transfer_history(accountId,originScope,type,createdAt,id)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/PrefsManager.kt",
+      "literal": "The server returned an invalid account",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/ReceivedDownload.kt",
+      "literal": "Transfer contains no files",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/ReceivedHistory.kt",
+      "literal": "Account changed",
+      "reason": "Coroutine cancellation diagnostic; cancellation is not shown as an error."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/ReceivedHistory.kt",
+      "literal": "Status request timed out",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/SessionStorage.kt",
+      "literal": "Could not save the device session",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE TABLE inbox_legacy_checkpoint (scope TEXT NOT NULL,slotId TEXT NOT NULL,receivedTransfersJson TEXT NOT NULL,savedFileIdsJson TEXT NOT NULL,savedTransferIdsJson TEXT NOT NULL,PRIMARY KEY(scope,slotId),FOREIGN KEY(slotId) REFERENCES transfer_history(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE INDEX index_inbox_legacy_checkpoint_slotId ON inbox_legacy_checkpoint(slotId)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointState TEXT NOT NULL DEFAULT 'pending'",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointColumn INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointOffset INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointKnownFiles INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointKnownBytes INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN checkpointSavedFiles INTEGER NOT NULL DEFAULT 0",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE TABLE inbox_child_checkpoint (scope TEXT NOT NULL,slotId TEXT NOT NULL,childId TEXT NOT NULL,fileCount INTEGER NOT NULL,plaintextSize INTEGER,saved INTEGER NOT NULL,savedFiles INTEGER NOT NULL,PRIMARY KEY(scope,slotId,childId),FOREIGN KEY(slotId) REFERENCES transfer_history(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE INDEX index_inbox_child_checkpoint_slotId ON inbox_child_checkpoint(slotId)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE TABLE inbox_file_checkpoint (scope TEXT NOT NULL,slotId TEXT NOT NULL,childId TEXT NOT NULL,blobId TEXT NOT NULL,uri TEXT,PRIMARY KEY(scope,slotId,childId,blobId),FOREIGN KEY(slotId) REFERENCES transfer_history(id) ON UPDATE NO ACTION ON DELETE CASCADE)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "CREATE INDEX index_inbox_file_checkpoint_slotId ON inbox_file_checkpoint(slotId)",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN maxDownloads INTEGER",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN maxFiles INTEGER",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN reservedFiles INTEGER",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/TransferHistoryMetadata.kt",
+      "literal": "ALTER TABLE transfer_history ADD COLUMN sharedTitle TEXT",
+      "reason": "SQL schema/query text; never rendered as UI."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/ui/components/EmbeddedScanner.kt",
+      "literal": "Invalid image",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/ui/components/LanguagePicker.kt",
+      "literal": "English",
+      "reason": "Language autonym, deliberately identical in every UI language."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/ui/components/LanguagePicker.kt",
+      "literal": "Deutsch",
+      "reason": "Language autonym, deliberately identical in every UI language."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/ui/screens/ScanScreen.kt",
+      "literal": "Downloads/psst.zip",
+      "reason": "Exact product name or OS save directory; not translated."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/viewmodel/ReceiveEntry.kt",
+      "literal": "Receive link belongs to another account",
+      "reason": "Internal invariant or storage/image diagnostic; native presenters use semantic UiFailureException when known and localized safe fallback otherwise. Never display this raw prose."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/viewmodel/ReceiveViewModel.kt",
+      "literal": "Your account or inbox page changed",
+      "reason": "Coroutine cancellation diagnostic; cancellation is not shown as an error."
+    }
+  ]
+}

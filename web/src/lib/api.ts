@@ -1,3 +1,5 @@
+import { ApiError } from "./api-error.ts";
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { TrafficLimitError, trafficLimitError, detectTransferStop } from "./traffic-policy.ts";
 import { wireSize } from "./chunked-files.ts";
 import { MAX_BUFFERED_BYTES } from "./limits.ts";
@@ -48,12 +50,11 @@ export async function responseError(res: Response, signal?: AbortSignal | null):
     ) ??
     transferStateError(value?.code ?? res.headers.get("X-Psst-Error-Code")) ??
     resourceLimitError(value?.code ?? res.headers.get("X-Psst-Error-Code")) ??
-    new Error(
-      value?.code === "download_limit"
-        ? "download_limit: This file's download allowance is exhausted. Ask the sender for a new link."
-        : value?.code === "receive_file_limit"
-          ? "receive_file_limit: This link cannot accept more files."
-          : `API ${res.status}`,
+    new ApiError(
+      res.status,
+      typeof value?.code === "string"
+        ? value.code
+        : (res.headers.get("X-Psst-Error-Code") ?? undefined),
     )
   );
 }
@@ -158,7 +159,7 @@ export async function getTransferInfo(
   transferId: string,
   signal?: AbortSignal,
 ): Promise<TransferInfo> {
-  if (!inboxUUID.test(transferId)) throw new Error("Invalid transfer ID");
+  if (!inboxUUID.test(transferId)) throw new LocalizedError(m("invalidTransferID"));
   return request<TransferInfo>(`/transfers/${transferId}`, { signal });
 }
 
@@ -250,7 +251,7 @@ export async function renameLinkTitle(
   id: string,
   title: string | null,
 ): Promise<{ title: string | null }> {
-  if (!inboxUUID.test(id)) throw new Error("Invalid link ID");
+  if (!inboxUUID.test(id)) throw new LocalizedError(m("invalidLinkID"));
   const normalized = normalizeLinkTitle(title);
   const result = await request<{ title: string | null }>(`/${kind}/${id}/title`, {
     method: "PATCH",
@@ -258,7 +259,7 @@ export async function renameLinkTitle(
     body: JSON.stringify({ title: normalized }),
   });
   if (result.title !== normalized)
-    throw new Error("The server did not save this title. Refresh and try again.");
+    throw new LocalizedError(m("theServerDidNotSaveThisTitleRefreshAnd"));
   return result;
 }
 
@@ -267,7 +268,7 @@ export async function getSlotAvailability(
   signal?: AbortSignal,
 ): Promise<SlotAvailability> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slotId))
-    throw new Error("Invalid receive link ID");
+    throw new LocalizedError(m("invalidReceiveLinkID"));
   const response = await requestRaw(`/slots/${slotId}/availability`, {
     credentials: "omit",
     cache: "no-store",
@@ -288,7 +289,7 @@ export async function getSlotInbox(
   signal?: AbortSignal,
 ): Promise<InboxPage> {
   if (!inboxUUID.test(slotId) || (after && !validInboxCursor(after)))
-    throw new Error("Invalid inbox page");
+    throw new LocalizedError(m("invalidInboxPage"));
   const query = new URLSearchParams({ limit: String(INBOX_PAGE_SIZE) });
   if (after) query.set("after", after);
   const timeout = AbortSignal.timeout(10_000);
@@ -300,7 +301,7 @@ export async function getSlotInbox(
   });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(`API ${response.status}`);
+    throw new ApiError(response.status);
   }
   const bytes = await readBounded(response, 32 * 1024);
   return validateInboxPage(
@@ -324,7 +325,8 @@ export async function getSlotTransferMembership(
   signal?: AbortSignal,
 ): Promise<SlotTransferMembership> {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuid.test(slotId) || !uuid.test(transferId)) throw new Error("Invalid inbox membership");
+  if (!uuid.test(slotId) || !uuid.test(transferId))
+    throw new LocalizedError(m("invalidInboxMembership"));
   const timeout = AbortSignal.timeout(10_000);
   const response = await fetch(`${API_BASE}/slots/${slotId}/transfers/${transferId}/membership`, {
     credentials: "same-origin",
@@ -334,12 +336,12 @@ export async function getSlotTransferMembership(
   });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(`API ${response.status}`);
+    throw new ApiError(response.status);
   }
   const bytes = await readBounded(response, 4096);
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error("Invalid inbox membership");
+    throw new LocalizedError(m("invalidInboxMembership"));
   const result = value as Record<string, unknown>;
   if (
     result.slot_id !== slotId ||
@@ -347,7 +349,7 @@ export async function getSlotTransferMembership(
     result.receive_protocol !== 2 ||
     typeof result.recipient_public_key !== "string"
   )
-    throw new Error("Invalid inbox membership");
+    throw new LocalizedError(m("invalidInboxMembership"));
   decodeReceivePublicKey(result.recipient_public_key);
   return result as unknown as SlotTransferMembership;
 }
@@ -386,7 +388,7 @@ async function readBounded(
   signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("Empty response body");
+  if (!reader) throw new LocalizedError(m("emptyResponseBody"));
   const chunks: Uint8Array[] = [];
   let size = 0;
   const cancel = () => {
@@ -401,7 +403,7 @@ async function readBounded(
       if (done) break;
       size += value.byteLength;
       onProgress?.(size);
-      if (size > limit) throw new Error("Download exceeds the supported file size.");
+      if (size > limit) throw new LocalizedError(m("downloadExceedsTheSupportedFileSize"));
       chunks.push(value);
     }
   } finally {

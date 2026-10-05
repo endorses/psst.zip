@@ -27,24 +27,24 @@ struct LoginFields: View {
             PasswordReplacementFields(onBusyChanged: onBusyChanged)
         } else {
             if config.passwordChanged {
-                Text("Password changed. Sign in with your new password to continue.").foregroundStyle(PsstTheme.success)
+                Text(L10n.text("Password changed. Sign in with your new password to continue.")).foregroundStyle(PsstTheme.success)
             }
             if let message = config.accountMessage {
-                Text(message).foregroundStyle(PsstTheme.warning)
+                Text(L10n.text(message)).foregroundStyle(PsstTheme.warning)
             }
-            TextField("Server URL", text: $server).keyboardType(.URL).textContentType(.URL)
+            TextField(L10n.text("Server URL"), text: $server).keyboardType(.URL).textContentType(.URL)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
             if server.lowercased().hasPrefix("http://") {
-                Text("HTTP sends login credentials without transport encryption. Use it only for local development on a trusted network; the server must explicitly allow it.").font(.footnote).foregroundStyle(PsstTheme.warning)
+                Text(L10n.text("HTTP sends login credentials without transport encryption. Use it only for local development on a trusted network; the server must explicitly allow it.")).font(.footnote).foregroundStyle(PsstTheme.warning)
             }
-            TextField("Username", text: $username).textContentType(.username)
+            TextField(L10n.text("Username"), text: $username).textContentType(.username)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
             HStack {
                 Group {
                     if visible {
-                        TextField("Password", text: $password)
+                        TextField(L10n.text("Password"), text: $password)
                     } else {
-                        SecureField("Password", text: $password)
+                        SecureField(L10n.text("Password"), text: $password)
                     }
                 }.textContentType(.password).focused($passwordFocused).submitLabel(.go).onSubmit { login() }
                 Button { visible.toggle()
@@ -52,10 +52,10 @@ struct LoginFields: View {
                 } label: { Image(systemName: visible ? "eye.slash" : "eye").frame(minWidth: 44, minHeight: 44) }
                     .accessibilityLabel(LocalizedStringKey(visible ? "Hide password" : "Show password"))
             }
-            Button("Sign in") { login() }.disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
+            Button(L10n.text("Sign in")) { login() }.disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
                 .buttonStyle(PrimaryAction())
-            Button { scanning = true } label: { Label("Scan server login QR code", systemImage: "qrcode.viewfinder").frame(minHeight: 44) }.disabled(busy)
-            Button("Test connection") {
+            Button { scanning = true } label: { Label(L10n.text("Scan server login QR code"), systemImage: "qrcode.viewfinder").frame(minHeight: 44) }.disabled(busy)
+            Button(L10n.text("Test connection")) {
                 busy = true
                 onBusyChanged(true)
                 Task {
@@ -65,40 +65,40 @@ struct LoginFields: View {
                 }
             }.disabled(busy || server.isEmpty)
             if let connection {
-                Text(connection).font(.footnote)
+                Text(L10n.text(connection)).font(.footnote)
             }
             if busy {
-                ProgressView("Signing in")
+                ProgressView(L10n.text("Signing in"))
             }
             if let error {
-                Text(error).foregroundStyle(PsstTheme.error).accessibilityAddTraits(.isStaticText)
+                Text(L10n.text(error)).foregroundStyle(PsstTheme.error).accessibilityAddTraits(.isStaticText)
             }
-            Text("To connect with a QR code, sign in on the website and open Settings → Connected devices.").font(.footnote).foregroundStyle(PsstTheme.secondary)
+            Text(L10n.text("To connect with a QR code, sign in on the website and open Settings → Connected devices.")).font(.footnote).foregroundStyle(PsstTheme.secondary)
                 .onAppear { server = config.serverURL; username = config.session?.username ?? "" }
                 .sheet(isPresented: $scanning, onDismiss: classifyPairing) {
                     NavigationStack {
                         VStack {
                             PairingScanner(allowsPaste: true, isActive: !choosingImage) { raw in scannedCode = raw; scanning = false }
                             HStack {
-                                TextField("Paste server login code", text: $pairingText).textInputAutocapitalization(.never).autocorrectionDisabled()
+                                TextField(L10n.text("Paste server login code"), text: $pairingText).textInputAutocapitalization(.never).autocorrectionDisabled()
                                 PasteButton(payloadType: String.self) { values in pairingText = values.first ?? "" }
                             }.padding(.horizontal)
-                            Button("Use login code") { scannedCode = pairingText; scanning = false }.disabled(pairingText.isEmpty)
-                            Button("Choose QR image") { imageError = nil; choosingImage = true }
+                            Button(L10n.text("Use login code")) { scannedCode = pairingText; scanning = false }.disabled(pairingText.isEmpty)
+                            Button(L10n.text("Choose QR image")) { imageError = nil; choosingImage = true }
                             if let imageError {
-                                Text(imageError).foregroundStyle(PsstTheme.error)
+                                Text(L10n.text(imageError)).foregroundStyle(PsstTheme.error)
                             }
                         }
                         .fileImporter(isPresented: $choosingImage, allowedContentTypes: [.image]) { result in
                             do { scannedCode = try QRImageReader.read(result.get()); scanning = false }
                             catch { imageError = "Choose an image containing one server login QR code." }
                         }
-                        .navigationTitle("Scan server login QR code")
-                        .toolbar { Button("Cancel") { scanning = false } }
+                        .navigationTitle(L10n.text("Scan server login QR code"))
+                        .toolbar { Button(L10n.text("Cancel")) { scanning = false } }
                     }
                 }
-                .confirmationDialog("Connect to this server?", isPresented: $confirmPairing, titleVisibility: .visible) {
-                    Button("Connect to this server") {
+                .confirmationDialog(L10n.text("Connect to this server?"), isPresented: $confirmPairing, titleVisibility: .visible) {
+                    Button(L10n.text("Connect to this server")) {
                         guard let code = scannedCode else { return }
                         busy = true
                         onBusyChanged(true)
@@ -111,9 +111,9 @@ struct LoginFields: View {
                             } catch { self.error = (error as? AccountError)?.localizedDescription ?? AccountError.pairing.localizedDescription }
                         }
                     }
-                    Button("Cancel", role: .cancel) { scannedCode = nil }
+                    Button(L10n.text("Cancel"), role: .cancel) { scannedCode = nil }
                 } message: {
-                    Text(pairingServer + (config.isConfigured ? "\nThis replaces the current account." : "") + (pairingServer.hasPrefix("http://") ? "\nHTTP sends login credentials without transport encryption. Use only on a trusted development network." : ""))
+                    Text(L10n.text(pairingServer + (config.isConfigured ? L10n.text("\nThis replaces the current account.") : "") + (pairingServer.hasPrefix("http://") ? L10n.text("\nHTTP sends login credentials without transport encryption. Use only on a trusted development network.") : "")))
                 }
         }
     }
@@ -139,7 +139,7 @@ struct LoginFields: View {
                 if !config.requiresPasswordChange {
                     onSuccess()
                 }
-            } catch { self.error = (error as? AccountError)?.localizedDescription ?? String(localized: "Sign-in failed. Check your credentials, connection, and server address. HTTPS is required unless development HTTP is enabled.") }
+            } catch { self.error = (error as? AccountError)?.localizedDescription ?? L10n.message("Sign-in failed. Check your credentials, connection, and server address. HTTPS is required unless development HTTP is enabled.") }
         }
     }
 }

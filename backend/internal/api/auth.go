@@ -55,14 +55,14 @@ func (s *Server) requestOrigin(r *http.Request) string {
 }
 func (s *Server) secureAuth(w http.ResponseWriter, r *http.Request) bool {
 	if !s.cfg.AuthAllowInsecureHTTP && !strings.HasPrefix(s.requestOrigin(r), "https://") {
-		writeError(w, http.StatusForbidden, "authentication requires HTTPS; configure PUBLIC_URL or enable AUTH_ALLOW_INSECURE_HTTP only for local development")
+		writeError(w, http.StatusForbidden, "authentication requires HTTPS; configure PUBLIC_URL or enable AUTH_ALLOW_INSECURE_HTTP only for local development", "https_required")
 		return false
 	}
 	return true
 }
 func (s *Server) sameOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if r.Header.Get("Origin") != s.requestOrigin(r) {
-		writeError(w, http.StatusForbidden, "same-origin request required")
+		writeError(w, http.StatusForbidden, "same-origin request required", "same_origin_required")
 		return false
 	}
 	return true
@@ -127,7 +127,7 @@ func (s *Server) requireRegularUser(next http.Handler) http.Handler {
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return s.requireLogin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if identity(r).user.Role != "admin" {
-			writeError(w, http.StatusForbidden, "administrator required")
+			writeError(w, http.StatusForbidden, "administrator required", "admin_required")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -375,7 +375,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			// callers who have not proved the password.
 			_ = s.queries.RecordAdminAuthenticationFailure(user.ID, user.PasswordHash, administrator.Revision, time.Now())
 		}
-		writeError(w, 401, "invalid username or password")
+		writeError(w, 401, "invalid username or password", "invalid_credentials")
 		return
 	}
 	if user.Role == "admin" && req.SessionType == "device" {
@@ -398,7 +398,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 			adminSecurityFailure(w, err)
 			return
 		}
-		writeError(w, 401, "account changed; sign in again")
+		writeError(w, 401, "account changed; sign in again", "account_changed")
 		return
 	}
 	s.loginResponse(w, r, user, session, token, req.SessionType == "device")
@@ -500,7 +500,7 @@ func pairingError(w http.ResponseWriter, err error) {
 		w.Header().Set("Retry-After", "60")
 		writeJSON(w, 429, map[string]string{"code": "pairing_capacity", "error": "Too many login QR codes. Cancel unused codes or wait for old codes to expire before creating another."})
 	case errors.Is(err, database.ErrPairingConnected):
-		writeError(w, 409, "Phone already connected. Revoke its session in Connected devices if needed.")
+		writeError(w, 409, "Phone already connected. Revoke its session in Connected devices if needed.", "pairing_already_connected")
 	default:
 		writeError(w, 500, "could not update pairing")
 	}
@@ -550,7 +550,7 @@ func (s *Server) redeemPairing(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, 401, "pairing code is invalid or expired")
+			writeError(w, 401, "pairing code is invalid or expired", "pairing_invalid")
 		} else {
 			policyError(w, 503, "authentication_unavailable", "Pairing is temporarily unavailable. Try again shortly.")
 		}
@@ -589,12 +589,12 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		req.Role = "user"
 	}
 	if !validUsername(req.Username) || (req.Role != "user" && req.Role != "admin") {
-		writeError(w, 400, "invalid username or role")
+		writeError(w, 400, "invalid username or role", "invalid_username_or_role")
 		return
 	}
 	hash, err := passwordHash(req.Password)
 	if err != nil {
-		writeError(w, 400, err.Error())
+		writeError(w, 400, err.Error(), "invalid_password")
 		return
 	}
 	u := database.User{ID: uuid.NewString(), Username: req.Username, Role: req.Role, PasswordHash: hash, MustChangePassword: req.Role == "user"}
@@ -607,7 +607,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 409, map[string]string{"code": "account_capacity", "error": "The server has reached its 1,000-account limit, including disabled accounts."})
 			return
 		}
-		writeError(w, 409, "username already exists or account could not be created")
+		writeError(w, 409, "username already exists or account could not be created", "username_conflict")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"user": u})
@@ -629,7 +629,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Password != nil {
 		hash, err = passwordHash(*req.Password)
 		if err != nil {
-			writeError(w, 400, err.Error())
+			writeError(w, 400, err.Error(), "invalid_password")
 			return
 		}
 	}
@@ -640,7 +640,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, database.ErrLastAdmin) {
-			writeError(w, 409, err.Error())
+			writeError(w, 409, err.Error(), "last_admin_required")
 		} else if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, 404, "user not found")
 		} else {
@@ -665,16 +665,16 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	a := identity(r)
 	if bcrypt.CompareHashAndPassword(a.user.PasswordHash, []byte(req.Current)) != nil {
-		writeError(w, 403, "current password is incorrect")
+		writeError(w, 403, "current password is incorrect", "incorrect_password")
 		return
 	}
 	if req.Current == req.Password {
-		writeError(w, 400, "choose a different password")
+		writeError(w, 400, "choose a different password", "password_reused")
 		return
 	}
 	hash, err := passwordHash(req.Password)
 	if err != nil {
-		writeError(w, 400, err.Error())
+		writeError(w, 400, err.Error(), "invalid_password")
 		return
 	}
 	if a.user.Role == "admin" {
@@ -688,7 +688,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, 401, "account changed; sign in again")
+			writeError(w, 401, "account changed; sign in again", "account_changed")
 			return
 		}
 		writeError(w, 500, "could not change password")

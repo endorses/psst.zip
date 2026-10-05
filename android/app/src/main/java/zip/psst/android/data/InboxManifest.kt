@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.crypto.CryptoProvider
 import zip.psst.shared.crypto.ReceiveEnvelope
@@ -11,7 +13,7 @@ import kotlinx.serialization.json.Json
 
 internal fun decodeInboxKeyMarker(value: String): ByteArray =
     Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).decode(value.removePrefix("v2.")).also {
-        require(it.size == 32) { "Invalid receive key" }
+        uiRequire(it.size == 32) { message(R.string.l_invalid_receive_key_1fc927) }
     }
 
 internal class InboxManifest(val key: ByteArray, val manifest: Manifest)
@@ -27,7 +29,9 @@ internal fun decryptInboxManifest(
         if (row.encryptionKey.startsWith("v2.")) {
             val envelope = ReceiveEnvelope.decode(bytes)
             AndroidReceiveCrypto.openSubmissionKey(
-                requireNotNull(privateKey) { "Receive private key is not on this device" },
+                uiRequireNotNull(privateKey) {
+                    message(R.string.l_receive_private_key_is_not_on_this_device_112180)
+                },
                 storedKey,
                 row.id,
                 transferId,
@@ -46,8 +50,10 @@ internal fun decryptInboxManifest(
 
 internal fun optionalLinkLimit(value: String): Int {
     if (value.isBlank()) return 0
-    require(value.all { it in '0'..'9' }) { "Enter a whole number or leave the limit empty" }
-    return requireNotNull(value.toIntOrNull()?.takeIf { it > 0 }) {
-        "Use a limit between 1 and 2147483647"
+    uiRequire(value.all { it in '0'..'9' }) {
+        message(R.string.l_enter_a_whole_number_or_leave_the_limit_empty_d770b7)
+    }
+    return uiRequireNotNull(value.toIntOrNull()?.takeIf { it > 0 }) {
+        message(R.string.l_use_a_limit_between_1_and_2147483647_a467c3)
     }
 }

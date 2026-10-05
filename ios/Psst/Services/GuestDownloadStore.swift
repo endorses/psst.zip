@@ -65,6 +65,7 @@ final class GuestDownloadStore {
         let origin: String
         let transferID: String
     }
+
     private let file: URL
     let documents: URL
     private var database: HistoryRecordDatabase?
@@ -113,8 +114,12 @@ final class GuestDownloadStore {
             if section == "records" {
                 let record = try JSONDecoder().decode(GuestDownload.self, from: data)
                 let row = try self.stored(record)
-                if record.receiptPending { try database.importIfAbsent(self.receiptRow(Receipt(origin: record.origin, transferID: record.transferID))) }
-                if !record.files.isEmpty { try database.importIfAbsent(self.reconcileRow(record.id)) }
+                if record.receiptPending {
+                    try database.importIfAbsent(self.receiptRow(Receipt(origin: record.origin, transferID: record.transferID)))
+                }
+                if !record.files.isEmpty {
+                    try database.importIfAbsent(self.reconcileRow(record.id))
+                }
                 return row
             }
             guard section == "receipts" else { throw AccountError.storage }
@@ -143,34 +148,42 @@ final class GuestDownloadStore {
         guard isReady, let database else { throw AccountError.storage }
         return database
     }
+
     private func stored(_ record: GuestDownload) throws -> HistoryRecordDatabase.Record {
         guard record.id == GuestDownload.identity(origin: record.origin, transferID: record.transferID), record.files.count <= 100,
-            Set(record.files.map(\.id)).count == record.files.count
+              Set(record.files.map(\.id)).count == record.files.count
         else { throw AccountError.storage }
-        return HistoryRecordDatabase.Record(
-            id: "guest|" + record.id, scope: Self.scope, kind: "guest", created: record.createdAt.timeIntervalSince1970, body: try JSONEncoder().encode(record))
+        return try HistoryRecordDatabase.Record(
+            id: "guest|" + record.id, scope: Self.scope, kind: "guest", created: record.createdAt.timeIntervalSince1970, body: JSONEncoder().encode(record)
+        )
     }
+
     private func receiptRow(_ receipt: Receipt, created: Double = -Date().timeIntervalSince1970) throws -> HistoryRecordDatabase.Record {
         let id = GuestDownload.identity(origin: receipt.origin, transferID: receipt.transferID)
-        return HistoryRecordDatabase.Record(id: "receipt|" + id, scope: Self.scope, kind: "receipt", created: created, body: try JSONEncoder().encode(receipt))
+        return try HistoryRecordDatabase.Record(id: "receipt|" + id, scope: Self.scope, kind: "receipt", created: created, body: JSONEncoder().encode(receipt))
     }
+
     private func reconcileRow(_ id: String, created: Double = -Date().timeIntervalSince1970) -> HistoryRecordDatabase.Record {
         HistoryRecordDatabase.Record(id: "reconcile|" + id, scope: Self.scope, kind: "reconcile", created: created, body: Data(id.utf8))
     }
+
     func find(_ id: String) throws -> GuestDownload? {
         _ = revision
         guard let row = try readyDatabase().read("guest|" + id) else { return nil }
         return try JSONDecoder().decode(GuestDownload.self, from: row.body)
     }
+
     struct Page {
         let records: [GuestDownload]
         let next: HistoryRecordDatabase.Cursor?
     }
+
     func page(after: HistoryRecordDatabase.Cursor? = nil) throws -> Page {
         _ = revision
         let value = try readyDatabase().page(scopes: [Self.scope], kinds: ["guest"], after: after, limit: 50)
-        return Page(records: try value.records.map { try JSONDecoder().decode(GuestDownload.self, from: $0.body) }, next: value.next)
+        return try Page(records: value.records.map { try JSONDecoder().decode(GuestDownload.self, from: $0.body) }, next: value.next)
     }
+
     var hasPendingReceipts: Bool {
         _ = revision
         return (try? readyDatabase().hasAny(scopes: [Self.scope], kinds: ["receipt"])) ?? false
@@ -187,7 +200,7 @@ final class GuestDownloadStore {
                 for index in record.files.indices {
                     let value = record.files[index]
                     if let saved = existing.files.first(where: { $0.id == value.id }), saved.saved,
-                        saved.relativePath == value.relativePath, saved.digest == value.digest, saved.size == value.size
+                       saved.relativePath == value.relativePath, saved.digest == value.digest, saved.size == value.size
                     {
                         record.files[index].saved = true
                     }
@@ -196,11 +209,15 @@ final class GuestDownloadStore {
             try database.write(stored(record))
             if record.receiptPending {
                 let receipt = try receiptRow(Receipt(origin: record.origin, transferID: record.transferID))
-                if try database.read(receipt.id) == nil { try database.write(receipt) }
+                if try database.read(receipt.id) == nil {
+                    try database.write(receipt)
+                }
             }
-            if !record.complete && record.files.contains(where: { $0.relativePath != nil }) {
+            if !record.complete, record.files.contains(where: { $0.relativePath != nil }) {
                 let job = reconcileRow(record.id)
-                if try database.read(job.id) == nil { try database.write(job) }
+                if try database.read(job.id) == nil {
+                    try database.write(job)
+                }
             }
         }
         revision &+= 1
@@ -210,7 +227,7 @@ final class GuestDownloadStore {
         let id = GuestDownload.identity(origin: origin, transferID: transferID)
         let record = try find(id) ?? GuestDownload(id: id, origin: origin, transferID: transferID)
         if let existing = try SecretStore.readStrict(record.keyReference), existing != key,
-            !record.files.isEmpty || record.complete || record.receiptPending || record.receiptDelivered
+           !record.files.isEmpty || record.complete || record.receiptPending || record.receiptDelivered
         {
             throw GuestError.conflictingKey
         }
@@ -236,8 +253,8 @@ final class GuestDownloadStore {
 
     func url(_ file: GuestFile) -> URL? {
         guard file.saved, let path = file.relativePath, let url = safeURL(path),
-            FileManager.default.isReadableFile(atPath: url.path),
-            let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) == file.size
+              FileManager.default.isReadableFile(atPath: url.path),
+              let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) == file.size
         else { return nil }
         return url
     }
@@ -259,8 +276,8 @@ final class GuestDownloadStore {
 
     func publish(_ temporary: URL, index: Int, record: inout GuestDownload) throws {
         guard record.files.indices.contains(index),
-            let size = try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-            Int64(size) == record.files[index].size
+              let size = try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              Int64(size) == record.files[index].size
         else { throw GuestError.invalidManifest }
         let directory = "Received/Guest/" + record.id
         try FileManager.default.createDirectory(at: documents.appendingPathComponent(directory), withIntermediateDirectories: true)
@@ -298,7 +315,9 @@ final class GuestDownloadStore {
                 return try StreamedFiles.digest(destination) == value.digest
             }
             let saved = try await withTaskCancellationHandler(operation: { try await worker.value }, onCancel: { worker.cancel() })
-            if saved { published.append(value) }
+            if saved {
+                published.append(value)
+            }
         }
         try Task.checkCancellation()
         try readyDatabase().transaction { database in
@@ -306,14 +325,20 @@ final class GuestDownloadStore {
             var current = try JSONDecoder().decode(GuestDownload.self, from: row.body)
             let unchanged = current == snapshot
             for value in published {
-                if let index = current.files.firstIndex(where: { $0 == value }) { current.files[index].saved = true }
+                if let index = current.files.firstIndex(where: { $0 == value }) {
+                    current.files[index].saved = true
+                }
             }
-            if !current.files.isEmpty && current.files.allSatisfy({ url($0) != nil }) {
+            if !current.files.isEmpty, current.files.allSatisfy({ url($0) != nil }) {
                 current.complete = true
                 current.receiptPending = !current.receiptDelivered
             }
-            if current != (try JSONDecoder().decode(GuestDownload.self, from: row.body)) { try update(current) }
-            if unchanged { try database.remove("reconcile|" + id) }
+            if try current != (JSONDecoder().decode(GuestDownload.self, from: row.body)) {
+                try update(current)
+            }
+            if unchanged {
+                try database.remove("reconcile|" + id)
+            }
         }
         revision &+= 1
     }
@@ -329,14 +354,24 @@ final class GuestDownloadStore {
                 try Task.checkCancellation()
                 let id = String(decoding: job.body, as: UTF8.self)
                 do {
-                    if try find(id) == nil { try database.remove(job.id) } else { try await reconcile(id) }
+                    if try find(id) == nil {
+                        try database.remove(job.id)
+                    } else {
+                        try await reconcile(id)
+                    }
                 } catch {
-                    if error is CancellationError { throw error }
+                    if error is CancellationError {
+                        throw error
+                    }
                     try database.write(reconcileRow(id))
                     self.error = "A saved-file checkpoint could not be checked. Existing files are preserved; retry when storage is available."
                 }
             }
-        } catch { if !(error is CancellationError) { self.error = Self.storageMessage } }
+        } catch {
+            if !(error is CancellationError) {
+                self.error = Self.storageMessage
+            }
+        }
     }
 
     func flushReceipts(deliver: ((String, String) async throws -> Void)? = nil) async {
@@ -353,7 +388,9 @@ final class GuestDownloadStore {
                     try database.write(
                         HistoryRecordDatabase.Record(
                             id: job.id, scope: job.scope, kind: job.kind,
-                            created: -Date().timeIntervalSince1970, body: job.body))
+                            created: -Date().timeIntervalSince1970, body: job.body
+                        )
+                    )
                     self.error = "A delivery confirmation could not be read. Its original job has been preserved; other confirmations can continue."
                     continue
                 }
@@ -376,14 +413,19 @@ final class GuestDownloadStore {
                     }
                     revision &+= 1
                 } catch {
-                    if error is CancellationError { throw error }
+                    if error is CancellationError {
+                        throw error
+                    }
                     // Oldest-first timestamps rotate failed hosts behind other jobs.
                     try database.write(receiptRow(receipt))
                 }
             }
-        } catch { if !(error is CancellationError) { self.error = Self.storageMessage } }
+        } catch {
+            if !(error is CancellationError) {
+                self.error = Self.storageMessage
+            }
+        }
     }
-
 }
 
 enum GuestFiles {
@@ -400,7 +442,7 @@ enum GuestFiles {
 
     /// Presentation only; do not rewrite authenticated manifests or persisted resume identity.
     static func displayName(_ name: String) -> String {
-        (try? filename(name)) ?? "File"
+        (try? filename(name)) ?? L10n.text("File")
     }
 
     static func filename(_ name: String) throws -> String {

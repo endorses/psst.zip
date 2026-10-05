@@ -1,4 +1,6 @@
 <script module lang="ts">
+  import { message as m, t, translate } from "$lib/i18n";
+
   export type SendDraft = {
     files: File[];
     maxDownloads: number;
@@ -90,7 +92,7 @@
       !willUnload &&
       to?.url.pathname !== "/" &&
       (job.active || (job.files.length && job.state !== "done")) &&
-      !confirm("Stop upload and leave? Selected files will be cleared.")
+      !confirm(translate(m("stopUploadAndLeaveSelectedFilesWillBeCleared")))
     )
       cancel();
   });
@@ -105,20 +107,22 @@
 <svelte:window onbeforeunload={unload} />
 {#if job.state === "done"}
   <h1>
-    {slotId
-      ? "Files sent"
-      : sharedState && downloadLinkExhausted(sharedState)
-        ? "Download limit reached"
-        : "Ready to share"}
+    {$t(
+      slotId
+        ? m("filesSent")
+        : sharedState && downloadLinkExhausted(sharedState)
+          ? m("downloadLimitReached")
+          : m("readyToShare"),
+    )}
   </h1>
   {#if slotId}<p class="success" role="status">
-      Your encrypted files were sent to the inbox owner. You can close this page.
+      {$t(m("yourEncryptedFilesWereSentToTheInboxOwner"))}
     </p>{:else if !sharedState || !downloadLinkExhausted(sharedState)}<LinkCard
       url={job.url}
-      label={sharedState?.title || title || "Share your files"}
+      label={sharedState?.title || title || m("shareYourFiles")}
     />{/if}
   {#if !slotId && maxDownloads}<p class="muted small">
-      {maxDownloads} download attempts per file, including interrupted downloads.
+      {$t(m("downloadAttemptsPerFileIncludingInterruptedDownloads", { count: maxDownloads }))}
     </p>{/if}
   <button
     onclick={() => {
@@ -131,54 +135,61 @@
       settingsOpen = false;
       sharedState = null;
       if (slotId) void job.refreshLimit();
-    }}>Send more files</button
+    }}>{$t(m("sendMoreFiles"))}</button
   >
 {:else if job.active}
   <h1>
-    {job.state === "stopping"
-      ? "Stopping upload"
-      : job.state === "preparing"
-        ? "Preparing files"
-        : "Sending files"}
+    {$t(
+      job.state === "stopping"
+        ? m("stoppingUpload")
+        : job.state === "preparing"
+          ? m("preparingFiles")
+          : m("sendingFiles"),
+    )}
   </h1>
-  <p class="file-name">{job.current}</p>
-  {#if job.state === "preparing"}<p role="status">Encrypting on this device…</p>{:else}<progress
-      aria-label="Upload progress"
-      max={job.total}
-      value={job.sent}
+  <p class="file-name">{$t(job.current)}</p>
+  {#if job.state === "preparing"}<p role="status">
+      {$t(m("encryptingOnThisDevice"))}
+    </p>{:else}<progress aria-label={$t(m("uploadProgress"))} max={job.total} value={job.sent}
     ></progress>
     <p>
-      {Math.floor((job.sent / job.total) * 100)}% · {formatSize(job.sent)} of {formatSize(
-        job.total,
-      )}
+      {$t(Math.floor((job.sent / job.total) * 100))}% · {$t(formatSize(job.sent))}
+      {$t(m("of"))}
+      {$t(formatSize(job.total))}
     </p>{/if}
   <button
     onclick={() => {
-      if (confirm("Stop upload? Partial files will be removed when possible.")) void job.cancel();
-    }}>Cancel upload</button
+      if (confirm(translate(m("stopPartialUpload")))) void job.cancel();
+    }}>{$t(m("cancelUpload"))}</button
   >
 {:else}
-  <h1>Send files</h1>
+  <h1>{$t(m("sendFiles"))}</h1>
   <p class="muted">
-    {slotId
-      ? destinationTitle || job.availability?.title || location.host
-      : "A private link for anything you need to share."}
+    {$t(
+      slotId
+        ? destinationTitle || job.availability?.title || location.host
+        : m("aPrivateLinkForAnythingYouNeedToShare"),
+    )}
   </p>
   {#if slotId && (job.availabilityStale || job.availability?.upload_capacity.state !== "ready")}
-    <div class="guest-capacity" aria-label="Upload availability">
+    <div class="guest-capacity" aria-label={$t(m("uploadAvailability"))}>
       <p role="status">
-        {job.checking
-          ? "Checking availability…"
-          : job.availability?.upload_capacity.state === "blocked"
-            ? "This link cannot accept files right now."
-            : "Could not check availability."}
+        {$t(
+          job.checking
+            ? m("checkingAvailability")
+            : job.availability?.upload_capacity.state === "blocked"
+              ? m("thisLinkCannotAcceptFilesRightNow")
+              : m("couldNotCheckAvailability"),
+        )}
       </p>
       <button disabled={job.checking} onclick={() => job.refreshLimit()}
-        ><Icon name="Refresh" size={16} />Refresh</button
+        ><Icon name="Refresh" size={16} />{$t(m("refresh"))}</button
       >
     </div>
   {:else if slotId && job.availability?.remaining_files != null}
-    <p class="muted small">{job.availability.remaining_files} files remaining</p>
+    <p class="muted small">
+      {$t(m("remainingFilesCount", { count: job.availability.remaining_files }))}
+    </p>
   {/if}
   <label
     class="dropzone"
@@ -190,18 +201,21 @@
   >
     <span class="upload-icon"><Icon name="Upload" size={28} /></span>
     <strong class="drop-title"
-      >{job.files.length ? "Add more files" : "Drop your files here"}</strong
+      >{$t(job.files.length ? m("addMoreFiles") : m("dropYourFilesHere"))}</strong
     >
-    <span class="muted small">or choose them from your device</span>
-    <span class="choose-files" aria-hidden="true">Choose files <Icon name="Arrow" size={17} /></span
+    <span class="muted small">{$t(m("orChooseThemFromYourDevice"))}</span>
+    <span class="choose-files" aria-hidden="true"
+      >{$t(m("chooseFiles"))} <Icon name="Arrow" size={17} /></span
     >
     <span class="muted small file-limit"
-      >{job.limit === null
-        ? "Checking server file limit…"
-        : `Up to ${fileLimitLabel(job.limit)} per file.`}</span
+      >{$t(
+        job.limit === null
+          ? m("checkingServerFileLimit")
+          : m("upToValuePerFile", { arg0: fileLimitLabel(job.limit) }),
+      )}</span
     ><input
       class="file-input"
-      aria-label="Choose files"
+      aria-label={$t(m("chooseFiles"))}
       type="file"
       multiple
       onchange={(e) => {
@@ -211,51 +225,56 @@
     /></label
   >
   {#if job.files.length}<p class="selection-summary">
-      {job.files.length} file{job.files.length === 1 ? "" : "s"} · {formatSize(
-        job.files.reduce((n, f) => n + f.size, 0),
+      {$t(m("fileCount", { count: job.files.length }))} · {$t(
+        formatSize(job.files.reduce((n, f) => n + f.size, 0)),
       )}
     </p>
     <ul class="file-list">
       {#each job.files as file, i}<li>
-          <span class="file-name">{file.name}</span><span class="file-size"
-            >{formatSize(file.size)}</span
-          ><button aria-label={`Remove ${file.name}`} onclick={() => job.remove(i)}
-            ><Icon name="Close" size={18} /></button
+          <span class="file-name">{$t(file.name)}</span><span class="file-size"
+            >{$t(formatSize(file.size))}</span
+          ><button
+            aria-label={$t(m("removeValue", { arg0: file.name }))}
+            onclick={() => job.remove(i)}><Icon name="Close" size={18} /></button
           >
         </li>{/each}
     </ul>
     {#if !slotId}
       <details class="send-options" bind:open={settingsOpen}>
-        <summary>Link settings <span class="muted small">Optional</span></summary>
+        <summary
+          >{$t(m("linkSettings"))} <span class="muted small">{$t(m("optional"))}</span></summary
+        >
         <label
-          >Link title<input
+          >{$t(m("linkTitle"))}<input
             bind:value={title}
             maxlength="400"
             disabled={policyLocked}
-            placeholder="For example, Wedding photos"
+            placeholder={$t(m("forExampleWeddingPhotos"))}
           /></label
         >
-        <p class="muted small">Shown to people using this link.</p>
+        <p class="muted small">{$t(m("shownToPeopleUsingThisLink"))}</p>
         <OptionalLimit
           bind:value={maxDownloads}
           disabled={policyLocked}
-          label="Limit downloads per file"
-          description="Each file allows this many download attempts. Interrupted downloads and retries count. This limit is fixed when you send."
+          label={$t(m("limitDownloadsPerFile"))}
+          description={$t(m("eachFileAllowsThisManyDownloadAttemptsInterruptedDownloads"))}
         />
       </details>{/if}
     <button class="primary" disabled={job.checking || !job.guestReady} onclick={start}
-      ><Icon name={job.state === "error" ? "Refresh" : "Send"} size={18} />{job.state === "error"
-        ? "Retry upload"
-        : "Send files"}</button
+      ><Icon name={job.state === "error" ? "Refresh" : "Send"} size={18} />{$t(
+        job.state === "error" ? m("retryUpload") : m("sendFiles"),
+      )}</button
     >{:else}<p class="encryption-note">
-      <Icon name="Lock" size={16} />{slotId
-        ? "Encrypted for the inbox owner. Other uploaders cannot read your files."
-        : "Encrypted on your device. Only people with the link can open your files."}
+      <Icon name="Lock" size={16} />{$t(
+        slotId
+          ? m("encryptedForTheInboxOwnerOtherUploadersCannotRead")
+          : m("encryptedOnYourDeviceOnlyPeopleWithTheLink"),
+      )}
     </p>{/if}
 {/if}
-{#if job.error}<p class="error" role="alert">{job.error}</p>
+{#if job.error}<p class="error" role="alert">{$t(job.error)}</p>
   {#if job.transferId && !job.active}<button onclick={() => job.retryCleanup()}
-      >Retry cleanup</button
+      >{$t(m("retryCleanup"))}</button
     >{/if}{/if}
 
 <style>

@@ -1,5 +1,6 @@
 package zip.psst.shared.model
 
+import zip.psst.shared.api.clientRequire
 import kotlinx.serialization.Serializable
 
 /** Optional shared descriptive metadata. Never derive this from private filenames. */
@@ -13,15 +14,21 @@ data class LinkTitle(val title: String?) {
             var index = 0
             while (index < value.length) {
                 val char = value[index]
-                require(char.code !in 0..31 && char.code !in 127..159) {
+                clientRequire(char.code !in 0..31 && char.code !in 127..159, "invalid_link_title") {
                     "Use a title without control characters"
                 }
                 if (char.isHighSurrogate()) {
-                    require(index + 1 < value.length && value[index + 1].isLowSurrogate()) {
+                    clientRequire(
+                        index + 1 < value.length && value[index + 1].isLowSurrogate(),
+                        "invalid_link_title",
+                    ) {
                         "Use a valid Unicode title"
                     }
                     index++
-                } else require(!char.isLowSurrogate()) { "Use a valid Unicode title" }
+                } else
+                    clientRequire(!char.isLowSurrogate(), "invalid_link_title") {
+                        "Use a valid Unicode title"
+                    }
                 index++
             }
             val title =
@@ -36,7 +43,10 @@ data class LinkTitle(val title: String?) {
                 if (title[index].isHighSurrogate()) index++
                 index++
             }
-            require(scalars <= 200 && title.encodeToByteArray().size <= 800) {
+            clientRequire(
+                scalars <= 200 && title.encodeToByteArray().size <= 800,
+                "invalid_link_title",
+            ) {
                 "Use a title of at most 200 Unicode characters"
             }
             return title

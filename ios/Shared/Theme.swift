@@ -89,7 +89,7 @@ struct LinkCard: View {
                     Image(uiImage: image).interpolation(.none).resizable()
                         .frame(width: image.size.width / displayScale, height: image.size.height / displayScale)
                         .position(x: center, y: center)
-                        .accessibilityLabel("Shareable link QR code")
+                        .accessibilityLabel(L10n.text("Shareable link QR code"))
                 }
             }
             .aspectRatio(1, contentMode: .fit)
@@ -102,7 +102,7 @@ struct LinkCard: View {
                     share
                 }
             }
-            DisclosureGroup("Link and details") {
+            DisclosureGroup(L10n.text("Link and details")) {
                 Text(verbatim: url).font(.caption).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
@@ -113,13 +113,24 @@ struct LinkCard: View {
         Button {
             UIPasteboard.general.string = url
             copied = true
-            UIAccessibility.post(notification: .announcement, argument: String(localized: "Link copied"))
+            UIAccessibility.post(notification: .announcement, argument: L10n.text("Link copied"))
         } label: { Label(LocalizedStringKey(copied ? "Link copied" : "Copy link"), systemImage: copied ? "checkmark" : "doc.on.doc").frame(maxWidth: .infinity) }
             .buttonStyle(PrimaryAction())
     }
 
     private var share: some View {
-        ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).frame(minHeight: 48) }
+        ShareLink(item: url) { Label(L10n.text("Share"), systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).frame(minHeight: 48) }
             .buttonStyle(.bordered)
+    }
+}
+
+/// Re-render strings only: no identity replacement or transfer/navigation restart.
+struct PsstLanguage: ViewModifier {
+    @Bindable private var settings = LanguageSettings.shared
+    func body(content: Content) -> some View {
+        content.environment(\.locale, L10n.locale)
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in settings.reload() }
+            .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in settings.reload() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in settings.reload() }
     }
 }

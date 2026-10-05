@@ -100,6 +100,7 @@ type CreateSlotResponse struct {
 // ErrorResponse is a generic error body.
 type ErrorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code"`
 }
 
 // SlotAvailability exposes submission policy, never private inbox history.

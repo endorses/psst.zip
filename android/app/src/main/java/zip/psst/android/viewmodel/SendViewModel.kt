@@ -6,9 +6,11 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.spoolUpload
 import zip.psst.android.data.uploadChunkedFile
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
@@ -48,7 +50,7 @@ data class SendUiState(
     val uploadedBytes: Long = 0,
     val totalUploadBytes: Long = 0,
     val currentFileIndex: Int = 0,
-    val error: String? = null,
+    val error: UiText? = null,
     val requiresLogin: Boolean = false,
     val transferId: String? = null,
     val encryptionKey: String? = null,
@@ -135,7 +137,11 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 files = (it.files + accepted).distinctBy { file -> file.uri },
                 error =
-                    if (rejected) "A selected file exceeds this server’s per-file limit" else null,
+                    if (rejected)
+                        message(
+                            R.string.l_a_selected_file_exceeds_this_server_s_per_file_limit_b94adf
+                        )
+                    else null,
             )
         }
     }
@@ -159,7 +165,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.value.maxDownloadsInput,
                 )
             } catch (e: IllegalArgumentException) {
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = failureText(e)) }
                 return
             }
         val files = _uiState.value.files
@@ -168,9 +174,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
             _uiState.update {
-                it.copy(
-                    error = app.getString(zip.psst.android.R.string.ui_server_url_not_configured)
-                )
+                it.copy(error = message(zip.psst.android.R.string.ui_server_url_not_configured))
             }
             return
         }
@@ -182,7 +186,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     requiresLogin = true,
                     error =
-                        app.getString(
+                        message(
                             zip.psst.android.R.string
                                 .ui_sign_in_under_server_configuration_to_upload_files
                         ),
@@ -213,9 +217,11 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val maxBytes = client.limits.get().maxFileSize
                     _uiState.update { it.copy(maxFileBytes = maxBytes) }
-                    require(files.size <= TransferLimits.MAX_FILES) { "Too many files" }
-                    require(files.all { it.size <= maxBytes }) {
-                        "A file exceeds this server’s per-file limit"
+                    uiRequire(files.size <= TransferLimits.MAX_FILES) {
+                        message(R.string.failure_selection_file_limit)
+                    }
+                    uiRequire(files.all { it.size <= maxBytes }) {
+                        message(R.string.l_a_file_exceeds_this_server_s_per_file_limit_78f30e)
                     }
                     val key = CryptoProvider.generateKey()
                     val base64Key =
@@ -365,7 +371,7 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                     e is PasswordChangeRequiredException ||
                                     e is AdminTransferForbiddenException,
                             error =
-                                trafficError?.message
+                                trafficError?.let(::failureText)
                                     ?: if (
                                         e is zip.psst.shared.api.TransferPolicyException ||
                                             e is
@@ -373,8 +379,8 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                             e is PasswordChangeRequiredException ||
                                             e is AdminTransferForbiddenException
                                     )
-                                        e.message
-                                    else app.getString(zip.psst.android.R.string.upload_failed),
+                                        failureText(e)
+                                    else message(zip.psst.android.R.string.upload_failed),
                         )
                     }
                 } finally {
@@ -392,12 +398,12 @@ class SendViewModel(application: Application) : AndroidViewModel(application) {
                                             error =
                                                 listOfNotNull(
                                                         it.error,
-                                                        app.getString(
+                                                        message(
                                                             zip.psst.android.R.string.cleanup_failed
                                                         ),
                                                     )
                                                     .distinct()
-                                                    .joinToString("\n")
+                                                    .let(::combinedMessages)
                                         )
                                     }
                             }

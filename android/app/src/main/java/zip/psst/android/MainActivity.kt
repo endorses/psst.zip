@@ -3,10 +3,10 @@ package zip.psst.android
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -21,12 +21,13 @@ import zip.psst.android.ui.navigation.PsstNavGraph
 import zip.psst.android.ui.navigation.Routes
 import zip.psst.android.ui.theme.PsstTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private val incomingUris = mutableStateListOf<Uri>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        zip.psst.android.i18n.UiStrings.configurationChanged()
         enableEdgeToEdge()
 
         val app = application as PsstApplication
@@ -67,6 +68,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        zip.psst.android.i18n.UiStrings.configurationChanged()
     }
 
     override fun onNewIntent(intent: Intent) {

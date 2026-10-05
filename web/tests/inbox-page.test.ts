@@ -86,7 +86,10 @@ test("inbox API requests exactly one bounded authenticated page and refuses lega
   response = new Response(" ".repeat(32769));
   await assert.rejects(getSlotInbox(inboxID, inboxCursor(1)));
   response = new Response("sensitive error", { status: 404 });
-  await assert.rejects(getSlotInbox(inboxID, inboxCursor(1)), /^Error: API 404$/);
+  await assert.rejects(
+    getSlotInbox(inboxID, inboxCursor(1)),
+    (error: unknown) => error instanceof Error && "status" in error && error.status === 404,
+  );
   assert.equal(calls, 3);
   await assert.rejects(getSlotInbox(inboxID, "x".repeat(513)));
   assert.equal(calls, 3);

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { utcTime } from "$lib/admin";
   import { loadOrphanChecks, type OrphanChecks } from "$lib/admin-orphan-checks";
@@ -32,92 +34,91 @@
   });
 </script>
 
-<section aria-label="Orphan file checks" class="orphan-checks">
+<section aria-label={$t(m("orphanFileChecks"))} class="orphan-checks">
   <div class="heading">
-    <h2>Orphan file checks</h2>
+    <h2>{$t(m("orphanFileChecks"))}</h2>
     <button disabled={busy} onclick={refresh}
-      >{busy ? "Refreshing orphan checks…" : "Refresh orphan checks"}</button
+      >{$t(busy ? m("refreshingOrphanChecks") : m("refreshOrphanChecks"))}</button
     >
   </div>
-  <p class="muted small">Looks for regular payload files no longer referenced by the database.</p>
+  <p class="muted small">{$t(m("looksForRegularPayloadFilesNoLongerReferencedBy"))}</p>
   {#if failed}
     <p role="alert" class="error">
-      Orphan-check status could not be loaded.{snapshot
-        ? " The previous snapshot remains below and may be stale."
-        : " Retry with Refresh orphan checks."}
+      {$t(m("orphanCheckStatusCouldNotBeLoaded"))}{$t(
+        snapshot
+          ? m("thePreviousSnapshotRemainsBelowAndMayBeStale")
+          : m("retryWithRefreshOrphanChecks"),
+      )}
     </p>
   {/if}
   {#if snapshot}
     <p class="summary">
-      {snapshot.scan_error_code ||
-      snapshot.saturated ||
-      snapshot.unstable ||
-      snapshot.state === "degraded"
-        ? "Orphan checks incomplete"
-        : snapshot.state === "pending"
-          ? "Orphan checks pending"
-          : "Last orphan pass completed"}
+      {$t(
+        snapshot.scan_error_code ||
+          snapshot.saturated ||
+          snapshot.unstable ||
+          snapshot.state === "degraded"
+          ? m("orphanChecksIncomplete")
+          : snapshot.state === "pending"
+            ? m("orphanChecksPending")
+            : m("lastOrphanPassCompleted"),
+      )}
     </p>
     {#if snapshot.scan_error_code}
-      <p class="error" role="alert">The orphan scan could not complete. It will retry.</p>
+      <p class="error" role="alert">{$t(m("theOrphanScanCouldNotCompleteItWillRetry"))}</p>
     {/if}
     {#if snapshot.saturated}
-      <p class="muted small">
-        The work queue reached its limit. Additional entries may still need checking.
-      </p>
+      <p class="muted small">{$t(m("theWorkQueueReachedItsLimitAdditionalEntriesMay"))}</p>
     {/if}
     {#if snapshot.unstable}
-      <p class="muted small">Storage changed during scanning. Another pass is needed.</p>
+      <p class="muted small">{$t(m("storageChangedDuringScanningAnotherPassIsNeeded"))}</p>
     {/if}
     <dl>
       <div>
-        <dt>Queued directories</dt>
-        <dd>{snapshot.pending_directories}</dd>
+        <dt>{$t(m("queuedDirectories"))}</dt>
+        <dd>{$t(snapshot.pending_directories)}</dd>
       </div>
       <div>
-        <dt>Queued candidates</dt>
-        <dd>{snapshot.pending_candidates}</dd>
+        <dt>{$t(m("queuedCandidates"))}</dt>
+        <dd>{$t(snapshot.pending_candidates)}</dd>
       </div>
       <div>
-        <dt>Queued checks awaiting safe access</dt>
-        <dd>{snapshot.busy_count}</dd>
+        <dt>{$t(m("queuedChecksAwaitingSafeAccess"))}</dt>
+        <dd>{$t(snapshot.busy_count)}</dd>
       </div>
       <div>
-        <dt>Queued failures</dt>
-        <dd>{snapshot.failed_count}</dd>
+        <dt>{$t(m("queuedFailures"))}</dt>
+        <dd>{$t(snapshot.failed_count)}</dd>
       </div>
       <div>
-        <dt>Recorded unsupported entries</dt>
-        <dd>{snapshot.unsupported_count}</dd>
+        <dt>{$t(m("recordedUnsupportedEntries"))}</dt>
+        <dd>{$t(snapshot.unsupported_count)}</dd>
       </div>
     </dl>
     {#if snapshot.unsupported_count > 0}
-      <p class="muted small">
-        Unknown or suspicious entries are retained for operator review. Nested directories are not
-        scanned recursively.
-      </p>
+      <p class="muted small">{$t(m("unknownOrSuspiciousEntriesAreRetainedForOperatorReview"))}</p>
     {/if}
     {#if snapshot.oldest_pending_at}
-      <p class="muted small">Oldest queued observation: {utcTime(snapshot.oldest_pending_at)}.</p>
+      <p class="muted small">
+        {$t(m("oldestQueuedObservation"))}
+        {$t(utcTime(snapshot.oldest_pending_at))}.
+      </p>
     {/if}
     <p class="muted small">
-      {snapshot.last_scan_completed_at
-        ? `Last completed orphan pass: ${utcTime(snapshot.last_scan_completed_at)}.`
-        : "No completed orphan pass recorded yet."}
-      {snapshot.scan_pending
-        ? "Additional work may await discovery or retry."
-        : "The last traversal reached its end."}
+      {$t(
+        snapshot.last_scan_completed_at
+          ? m("lastCompletedOrphanPassValue", { arg0: utcTime(snapshot.last_scan_completed_at) })
+          : m("noCompletedOrphanPassRecordedYet"),
+      )}
+      {$t(
+        snapshot.scan_pending
+          ? m("additionalWorkMayAwaitDiscoveryOrRetry")
+          : m("theLastTraversalReachedItsEnd"),
+      )}
     </p>
-  {:else if !failed}<p role="status">Loading orphan-check status…</p>{/if}
-  <p class="muted small">
-    Candidate payloads are observed for at least one hour before automatic removal, with database,
-    file identity and active-reader checks repeated first. Queued candidates are not confirmed
-    orphans.
-  </p>
-  <p class="muted small">
-    Counts cover bounded queued work, not a complete disk inventory. These checks do not verify
-    encryption, file contents, disk health or backups.
-  </p>
+  {:else if !failed}<p role="status">{$t(m("loadingOrphanCheckStatus"))}</p>{/if}
+  <p class="muted small">{$t(m("candidatePayloadsAreObservedForAtLeastOneHour"))}</p>
+  <p class="muted small">{$t(m("countsCoverBoundedQueuedWorkNotACompleteDisk"))}</p>
 </section>
 
 <style>

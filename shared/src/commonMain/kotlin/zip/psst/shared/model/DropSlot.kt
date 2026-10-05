@@ -1,5 +1,7 @@
 package zip.psst.shared.model
 
+import zip.psst.shared.api.ClientFailureException
+import zip.psst.shared.api.clientRequire
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -94,14 +96,27 @@ data class SlotAvailability(
         totalWireBytes: Long,
     ) {
         validateInvitation(slotId, publicKey)
-        require(fileCount in 1..TransferLimits.MAX_FILES) { "Select between 1 and 100 files" }
-        require(remainingFiles == null || fileCount.toLong() <= remainingFiles) {
+        clientRequire(
+            fileCount in 1..TransferLimits.MAX_FILES,
+            "selection_file_limit",
+            mapOf("count" to TransferLimits.MAX_FILES.toString()),
+        ) {
+            "Select between 1 and 100 files"
+        }
+        clientRequire(
+            remainingFiles == null || fileCount.toLong() <= remainingFiles,
+            "receive_selection_file_limit",
+        ) {
             "This receive link has too few file allocations remaining"
         }
-        require(totalWireBytes >= 0 && totalWireBytes <= remainingBytes) {
+        clientRequire(
+            totalWireBytes >= 0 && totalWireBytes <= remainingBytes,
+            "receive_selection_byte_limit",
+        ) {
             "The selected files exceed this receive link's remaining byte allowance"
         }
-        requireNotNull(uploadCapacity) { CAPACITY_RETRY }
+        (uploadCapacity
+                ?: throw ClientFailureException(CAPACITY_RETRY, "receive_capacity_unavailable"))
             .validateSelection(fileCount, totalWireBytes)
     }
 }

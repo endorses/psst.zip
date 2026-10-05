@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { validateAdministratorSecurity } from "$lib/admin-security";
@@ -20,12 +22,11 @@
 </script>
 
 {#if enabled === false}<aside class="notice" role="note">
-    <strong>Your administrator account has no second factor.</strong> Set up an authenticator and
-    save recovery codes to protect server controls.
-    <a href="/?view=account">Open account security</a>
+    <strong>{$t(m("yourAdministratorAccountHasNoSecondFactor"))}</strong>
+    {$t(m("setUpAnAuthenticatorAndSaveRecoveryCodesTo"))}
+    <a href="/?view=account">{$t(m("openAccountSecurity"))}</a>
   </aside>
 {:else if unavailable}<aside class="notice" role="note">
-    Administrator security status could not be checked. <a href="/?view=account"
-      >Open account security to retry</a
-    >.
+    {$t(m("administratorSecurityStatusCouldNotBeChecked"))}
+    <a href="/?view=account">{$t(m("openAccountSecurityToRetry"))}</a>.
   </aside>{/if}

@@ -5,6 +5,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+
+from localization_harness import add_localization
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +68,12 @@ let package = Package(name: "ReceiveCheckpointHarness", targets: [
     .testTarget(name: "ReceiveCheckpointHarnessTests", dependencies: ["ReceiveCheckpointHarness", "SQLite3"])
 ])
 """)
+        add_localization(
+            sources,
+            work / "Package.swift",
+            "ReceiveCheckpointHarness",
+            app_constants=False,
+        )
         subprocess.run(
             [
                 "docker",

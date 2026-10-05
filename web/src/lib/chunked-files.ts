@@ -1,11 +1,12 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { encrypt, decrypt, type EncryptionKey, type FileManifestEntry } from "./crypto.ts";
 export const FILE_CHUNK_SIZE = 4194304;
 export const FRAME_OVERHEAD = 60;
 export function wireSize(size: number): number {
   if (!Number.isSafeInteger(size) || size < 0 || size > 1024 ** 4)
-    throw new Error("Invalid file size");
+    throw new LocalizedError(m("invalidFileSize"));
   const value = size + Math.max(1, Math.ceil(size / FILE_CHUNK_SIZE)) * FRAME_OVERHEAD;
-  if (!Number.isSafeInteger(value)) throw new Error("Invalid file size");
+  if (!Number.isSafeInteger(value)) throw new LocalizedError(m("invalidFileSize"));
   return value;
 }
 export function newEncryptionId(): string {
@@ -14,7 +15,7 @@ export function newEncryptionId(): string {
     .join("");
 }
 function context(id: string): Uint8Array {
-  if (!/^[0-9a-f]{32}$/.test(id)) throw new Error("Invalid file encryption context");
+  if (!/^[0-9a-f]{32}$/.test(id)) throw new LocalizedError(m("invalidFileEncryptionContext"));
   return Uint8Array.from(id.match(/../g)!, (v) => parseInt(v, 16));
 }
 export async function encryptFileFrame(
@@ -55,7 +56,7 @@ export async function* decryptFileStream(
   signal?: AbortSignal,
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
   if (file.encoding !== "chunked-v1" || file.chunk_size !== FILE_CHUNK_SIZE)
-    throw new Error("Unsupported file encryption format");
+    throw new LocalizedError(m("unsupportedFileEncryptionFormat"));
   const expectedContext = context(file.encryption_id);
   wireSize(file.size);
   const reader = stream.getReader();
@@ -68,7 +69,7 @@ export async function* decryptFileStream(
       signal?.throwIfAborted();
       if (offset === pending.length) {
         const next = await reader.read();
-        if (next.done) throw new Error("Encrypted file is incomplete");
+        if (next.done) throw new LocalizedError(m("encryptedFileIsIncomplete"));
         pending = next.value;
         offset = 0;
       }
@@ -92,12 +93,12 @@ export async function* decryptFileStream(
         view.getBigUint64(16) !== BigInt(index) ||
         view.getBigUint64(24) !== BigInt(file.size)
       )
-        throw new Error("Encrypted file verification failed");
+        throw new LocalizedError(m("encryptedFileVerificationFailed"));
       signal?.throwIfAborted();
       yield plain.slice(32);
     }
     if (offset !== pending.length || !(await reader.read()).done)
-      throw new Error("Encrypted file has unexpected trailing data");
+      throw new LocalizedError(m("encryptedFileHasUnexpectedTrailingData"));
   } finally {
     await reader.cancel();
     reader.releaseLock();

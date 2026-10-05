@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { message as m, t, translate, type DisplayText } from "$lib/i18n";
+
   import Icon from "./Icon.svelte";
   import { brandedQr } from "$lib/branded-qr";
-  let { url, label = "Share this link" }: { url: string; label?: string } = $props();
+  let { url, label = m("shareThisLink") }: { url: string; label?: DisplayText } = $props();
   let qr = $state(""),
-    message = $state(""),
+    message = $state<DisplayText>(""),
     field = $state<HTMLInputElement>();
   $effect(() => {
     let alive = true;
@@ -17,7 +19,7 @@
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
-      message = "Link copied.";
+      message = m("linkCopied");
     } catch {
       field?.closest("details")?.setAttribute("open", "");
       field?.focus();
@@ -26,13 +28,13 @@
       try {
         copied = document.execCommand("copy");
       } catch {}
-      message = copied ? "Link copied." : "Link selected. Use your browser’s Copy command.";
+      message = copied ? m("linkCopied") : m("linkSelectedUseYourBrowserSCopyCommand");
     }
   }
   async function share() {
     if (navigator.share) {
       try {
-        await navigator.share({ title: label, url });
+        await navigator.share({ title: translate(label), url });
       } catch (e) {
         if (!(e instanceof DOMException && e.name === "AbortError")) await copy();
       }
@@ -41,18 +43,17 @@
 </script>
 
 <div class="link-card">
-  <p>{label}</p>
-  {#if qr}<img class="qr" src={qr} alt="QR code for shared link" />{/if}
+  <p>{$t(label)}</p>
+  {#if qr}<img class="qr" src={qr} alt={$t(m("qrCodeForSharedLink"))} />{/if}
   <div class="link-actions">
-    <button class="primary" onclick={copy}><Icon name="Copy" size={18} />Copy link</button><button
-      onclick={share}><Icon name="Share" size={18} />Share</button
-    >
+    <button class="primary" onclick={copy}><Icon name="Copy" size={18} />{$t(m("copyLink"))}</button
+    ><button onclick={share}><Icon name="Share" size={18} />{$t(m("share"))}</button>
   </div>
-  <p role="status" class="small">{message}</p>
+  <p role="status" class="small">{$t(message)}</p>
   <details>
-    <summary>Link and details</summary><input
+    <summary>{$t(m("linkAndDetails"))}</summary><input
       bind:this={field}
-      aria-label="Full link"
+      aria-label={$t(m("fullLink"))}
       readonly
       value={url}
       onclick={(e) => e.currentTarget.select()}

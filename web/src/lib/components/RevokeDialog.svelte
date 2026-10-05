@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
 
@@ -9,7 +11,7 @@
     onconfirm,
   }: {
     busy: boolean;
-    error: string;
+    error: DisplayText;
     oncancel: () => void;
     onconfirm: () => void;
   } = $props();
@@ -51,16 +53,13 @@
     if (!busy) oncancel();
   }}
 >
-  <h2 id="revoke-title">Revoke this link?</h2>
-  <p id="revoke-description">
-    The link will stop working and its server files will be deleted. Existing downloaded copies will
-    remain.
-  </p>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  <h2 id="revoke-title">{$t(m("revokeThisLink"))}</h2>
+  <p id="revoke-description">{$t(m("theLinkWillStopWorkingAndItsServerFiles"))}</p>
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
   <div class="actions">
-    <button disabled={busy} onclick={oncancel}>Cancel</button>
+    <button disabled={busy} onclick={oncancel}>{$t(m("cancel"))}</button>
     <button class="danger" disabled={busy} onclick={onconfirm}
-      ><Icon name="Revoke" size={18} />{busy ? "Revoking…" : "Revoke and delete"}</button
+      ><Icon name="Revoke" size={18} />{$t(busy ? m("revoking") : m("revokeAndDelete"))}</button
     >
   </div>
 </dialog>

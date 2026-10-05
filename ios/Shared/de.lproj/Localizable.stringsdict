@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key> + %lld files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string> + %lld Datei</string>
+			<key>other</key>
+			<string> + %lld Dateien</string>
+		</dict>
+	</dict>
+	<key> · %lld files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string> · %lld Datei</string>
+			<key>other</key>
+			<string> · %lld Dateien</string>
+		</dict>
+	</dict>
+	<key>%lld download attempts per file</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Downloadversuch pro Datei</string>
+			<key>other</key>
+			<string>%lld Downloadversuche pro Datei</string>
+		</dict>
+	</dict>
+	<key>%lld download attempts remaining</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Downloadversuch verbleibend</string>
+			<key>other</key>
+			<string>%lld Downloadversuche verbleibend</string>
+		</dict>
+	</dict>
+	<key>%lld file allowances used · No optional file-count limit</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Dateiannahme genutzt · Kein zusätzliches Dateianzahllimit</string>
+			<key>other</key>
+			<string>%lld Dateiannahmen genutzt · Kein zusätzliches Dateianzahllimit</string>
+		</dict>
+	</dict>
+	<key>%lld files</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei</string>
+			<key>other</key>
+			<string>%lld Dateien</string>
+		</dict>
+	</dict>
+	<key>%lld files have reached their download limit. Receive only the available files?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei hat ihr Downloadlimit erreicht. Nur verfügbare Dateien empfangen?</string>
+			<key>other</key>
+			<string>%lld Dateien haben ihr Downloadlimit erreicht. Nur verfügbare Dateien empfangen?</string>
+		</dict>
+	</dict>
+	<key>%lld files remaining</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei verbleibend</string>
+			<key>other</key>
+			<string>%lld Dateien verbleibend</string>
+		</dict>
+	</dict>
+	<key>%lld files saved in psst.zip Documents</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei in psst.zip Dokumente gespeichert</string>
+			<key>other</key>
+			<string>%lld Dateien in psst.zip Dokumente gespeichert</string>
+		</dict>
+	</dict>
+	<key>%lld files selected</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei ausgewählt</string>
+			<key>other</key>
+			<string>%lld Dateien ausgewählt</string>
+		</dict>
+	</dict>
+	<key>%lld files · %@</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei · %@</string>
+			<key>other</key>
+			<string>%lld Dateien · %@</string>
+		</dict>
+	</dict>
+	<key>%lld of %lld file allowances used</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>PsstPluralArgumentIndex</key>
+		<integer>1</integer>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld von %lld Dateiannahme genutzt</string>
+			<key>other</key>
+			<string>%lld von %lld Dateiannahmen genutzt</string>
+		</dict>
+	</dict>
+	<key>%lld received files total</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Insgesamt %lld Datei empfangen</string>
+			<key>other</key>
+			<string>Insgesamt %lld Dateien empfangen</string>
+		</dict>
+	</dict>
+	<key>Imported %lld records. Your original history is preserved.</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Eintrag importiert. Dein ursprünglicher Verlauf bleibt erhalten.</string>
+			<key>other</key>
+			<string>%lld Einträge importiert. Dein ursprünglicher Verlauf bleibt erhalten.</string>
+		</dict>
+	</dict>
+	<key>Maximum %lld files · Allowance use updating</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Maximal %lld Datei · Nutzung wird aktualisiert</string>
+			<key>other</key>
+			<string>Maximal %lld Dateien · Nutzung wird aktualisiert</string>
+		</dict>
+	</dict>
+	<key>Receive %lld files (%@)?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei (%@) empfangen?</string>
+			<key>other</key>
+			<string>%lld Dateien (%@) empfangen?</string>
+		</dict>
+	</dict>
+	<key>Save %lld files (%@)?</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Datei (%@) speichern?</string>
+			<key>other</key>
+			<string>%lld Dateien (%@) speichern?</string>
+		</dict>
+	</dict>
+	<key>Up to %lld download attempts per file</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Bis zu %lld Downloadversuch pro Datei</string>
+			<key>other</key>
+			<string>Bis zu %lld Downloadversuche pro Datei</string>
+		</dict>
+	</dict>
+	<key>Up to %lld files · %@ per file</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>Bis zu %lld Datei · %@ pro Datei</string>
+			<key>other</key>
+			<string>Bis zu %lld Dateien · %@ pro Datei</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

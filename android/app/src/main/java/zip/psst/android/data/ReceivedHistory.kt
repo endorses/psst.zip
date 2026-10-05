@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.ServerConfig
@@ -110,19 +112,21 @@ internal suspend fun refreshHistoryEntry(
     return dao.getById(id)
 }
 
-internal fun historyStatusLabel(type: String, status: String): String =
+internal fun historyStatusLabel(type: String, status: String): UiText =
     when (status) {
-        "complete" -> if (type == "received" || type == "receive") "Saved" else "Ready to download"
-        "downloaded" -> "Downloaded"
-        "download_started" -> "Download started"
-        "has_uploads" -> "Uploads received"
-        "waiting" -> "Waiting for files"
-        "pending" -> "In progress"
-        "failed" -> "Upload failed"
-        "exhausted" -> "Download limit reached"
-        "expired" -> "Expired"
-        "unavailable" -> "Expired or revoked"
-        else -> "Unknown"
+        "complete" ->
+            if (type == "received" || type == "receive") message(R.string.ui_received_status_saved)
+            else message(R.string.ui_received_status_ready)
+        "downloaded" -> message(R.string.l_downloaded_c61970)
+        "download_started" -> message(R.string.ui_received_status_started)
+        "has_uploads" -> message(R.string.ui_received_status_uploads)
+        "waiting" -> message(R.string.waiting_files)
+        "pending" -> message(R.string.ui_received_status_progress)
+        "failed" -> message(R.string.ui_received_status_failed)
+        "exhausted" -> message(R.string.l_download_limit_reached_8745b6)
+        "expired" -> message(R.string.expired)
+        "unavailable" -> message(R.string.ui_received_status_revoked)
+        else -> message(R.string.ui_received_status_unknown)
     }
 
 internal fun parseHistoryExpiry(value: String?): Long? =

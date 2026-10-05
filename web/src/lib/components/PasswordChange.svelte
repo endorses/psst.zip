@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import Icon from "./Icon.svelte";
   let {
     busy = false,
@@ -13,32 +15,34 @@
     password = $state(""),
     confirmation = $state(""),
     visible = $state(false),
-    mismatch = $state("");
+    mismatch = $state<DisplayText>("");
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     mismatch = "";
     if (password !== confirmation) {
-      mismatch = "The passwords do not match.";
+      mismatch = m("thePasswordsDoNotMatch");
       return;
     }
     if (password === current) {
-      mismatch = "Choose a password different from your current password.";
+      mismatch = m("chooseAPasswordDifferentFromYourCurrentPassword");
       return;
     }
     await onchange(current, password);
   }
 </script>
 
-<h1>{requiredChange ? "Choose your own password" : "Change password"}</h1>
+<h1>{$t(requiredChange ? m("chooseYourOwnPassword") : m("changePassword"))}</h1>
 <p class="muted">
-  {requiredChange
-    ? "Replace your temporary password before using your account."
-    : "Changing your password signs out all devices, including this browser."} You will sign in again
-  with your new password.
+  {$t(
+    requiredChange
+      ? m("replaceYourTemporaryPasswordBeforeUsingYourAccount")
+      : m("changingYourPasswordSignsOutAllDevicesIncludingThis"),
+  )}
+  {$t(m("youWillSignInAgainWithYourNewPassword"))}
 </p>
 <form onsubmit={submit}>
   <label
-    >Current password<input
+    >{$t(m("currentPassword"))}<input
       type={visible ? "text" : "password"}
       autocomplete="current-password"
       required
@@ -47,7 +51,7 @@
     /></label
   >
   <label
-    >New password<input
+    >{$t(m("newPassword"))}<input
       type={visible ? "text" : "password"}
       autocomplete="new-password"
       minlength="12"
@@ -57,7 +61,7 @@
     /></label
   >
   <label
-    >Confirm password<input
+    >{$t(m("confirmPassword"))}<input
       type={visible ? "text" : "password"}
       autocomplete="new-password"
       minlength="12"
@@ -73,13 +77,15 @@
     class="visibility"
     aria-pressed={visible}
     onclick={() => (visible = !visible)}
-    ><Icon name={visible ? "EyeOff" : "Eye"} />{visible
-      ? "Hide passwords"
-      : "Show passwords"}</button
+    ><Icon name={visible ? "EyeOff" : "Eye"} />{$t(
+      visible ? m("hidePasswords") : m("showPasswords"),
+    )}</button
   >
-  <p class="muted small">Use at least 12 characters (up to 72 UTF-8 bytes).</p>
-  {#if mismatch}<p id="password-mismatch" class="error" role="alert">{mismatch}</p>{/if}
-  <button class="primary" disabled={busy}>{busy ? "Changing password…" : "Change password"}</button>
+  <p class="muted small">{$t(m("useAtLeastCharactersUpToUTFBytes"))}</p>
+  {#if mismatch}<p id="password-mismatch" class="error" role="alert">{$t(mismatch)}</p>{/if}
+  <button class="primary" disabled={busy}
+    >{$t(busy ? m("changingPassword") : m("changePassword"))}</button
+  >
 </form>
 
 <style>

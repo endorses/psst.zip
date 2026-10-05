@@ -99,7 +99,10 @@ test("oversized chunked metadata/error bodies stop reading and cancel the stream
     globalThis.fetch = async () => response(128 * 1024);
     await assert.rejects(getTransferInfo("12345678-1234-1234-1234-123456789012"), /exceeds/);
     assert.equal(cancelled, 1);
-    assert.equal((await responseError(response(4096, 500))).message, "API 500");
+    assert.equal(
+      ((await responseError(response(4096, 500))) as Error & { status: number }).status,
+      500,
+    );
     assert.equal(cancelled, 2);
   } finally {
     globalThis.fetch = previous;

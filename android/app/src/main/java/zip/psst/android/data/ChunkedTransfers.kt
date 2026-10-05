@@ -2,6 +2,8 @@ package zip.psst.android.data
 
 import android.content.Context
 import android.net.Uri
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.model.FileMetadata
@@ -20,9 +22,11 @@ internal fun downloadedContent(
     key: ByteArray,
     onProgress: (Long, Long?) -> Unit = { _, _ -> },
 ): FileContent = { write ->
-    require(file.encoding == "chunked-v1") { "Unsupported file encryption" }
-    require(file.chunkSize == 4 * 1024 * 1024)
-    val encryptionId = requireNotNull(file.encryptionId)
+    uiRequire(file.encoding == "chunked-v1") {
+        message(R.string.l_unsupported_file_encryption_3c7700)
+    }
+    uiRequire(file.chunkSize == 4 * 1024 * 1024)
+    val encryptionId = uiRequireNotNull(file.encryptionId)
     val wireSize = ChunkedFileCrypto.wireSize(file.size)
     val coroutine = currentCoroutineContext()
     var index = 0L
@@ -54,11 +58,13 @@ internal suspend fun spoolUpload(context: Context, uri: Uri, maxBytes: Long): Fi
                     val count = input.read(buffer)
                     if (count < 0) break
                     length += count
-                    require(length <= maxBytes) { "File exceeds this server’s per-file limit" }
+                    uiRequire(length <= maxBytes) {
+                        message(R.string.l_file_exceeds_this_server_s_per_file_limit_ba1638)
+                    }
                     output.write(buffer, 0, count)
                 }
             }
-        } ?: error("Cannot read selected file")
+        } ?: error(message(R.string.l_cannot_read_selected_file_dd9248))
         return file
     } catch (error: Throwable) {
         file.delete()
@@ -92,7 +98,9 @@ internal suspend fun uploadChunkedFile(
             onProgress(offset)
             index++
         } while (offset < wireSize)
-        require(input.read() == -1) { "Selected file changed during upload" }
+        uiRequire(input.read() == -1) {
+            message(R.string.l_selected_file_changed_during_upload_143c63)
+        }
     }
     return FileMetadata(
         name,
@@ -111,7 +119,7 @@ private suspend fun readChunk(input: InputStream, count: Int): ByteArray {
     while (offset < count) {
         currentCoroutineContext().ensureActive()
         val read = input.read(bytes, offset, count - offset)
-        require(read >= 0) { "Selected file is incomplete" }
+        uiRequire(read >= 0) { message(R.string.l_selected_file_is_incomplete_c6d56c) }
         offset += read
     }
     return bytes

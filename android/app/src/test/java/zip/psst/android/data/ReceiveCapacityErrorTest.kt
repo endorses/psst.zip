@@ -12,18 +12,25 @@ class ReceiveCapacityErrorTest {
             receiveCapacityError(
                 IOException("unexpected end of stream on https://private.invalid/u/id#secret")
             )
-        assertFalse(message.contains("private.invalid"))
-        assertFalse(message.contains("secret"))
-        assertTrue(message.contains("refresh"))
-        assertTrue(message.contains("files are still selected"))
+        assertFalse(message.english()!!.contains("private.invalid"))
+        assertFalse(message.english()!!.contains("secret"))
+        assertTrue(message.english()!!.contains("refresh"))
+        assertTrue(message.english()!!.contains("files are still selected"))
     }
 
     @Test
     fun policyAndUnknownCapacityWarningsRemainSpecific() {
-        val quota = "The server traffic budget is exhausted"
-        assertEquals(quota, receiveCapacityError(TransferPolicyException(quota)))
-        val unknown =
-            "Receive capacity could not be checked. Refresh and try again; your files are still selected."
-        assertEquals(unknown, receiveCapacityError(IllegalArgumentException(unknown)))
+        val quota =
+            TransferPolicyException("operator diagnostic", code = "traffic_budget_exhausted")
+        assertEquals(
+            zip.psst.android.R.string.failure_traffic_budget_exhausted,
+            receiveCapacityError(quota).resource,
+        )
+        // Arbitrary English server/legacy prose never selects a localized operational outcome.
+        val unknown = IllegalArgumentException("<html>secret link#fragment</html>")
+        assertEquals(
+            zip.psst.android.R.string.failure_unknown,
+            receiveCapacityError(unknown).resource,
+        )
     }
 }

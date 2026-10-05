@@ -44,17 +44,17 @@ struct ScanReceiveView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             if uploadLink != nil {
-                                Button(model.uploadComplete ? "Return to sent files" : "Return to send files") { uploadPresented = true }.buttonStyle(PrimaryAction())
+                                Button(L10n.text(model.uploadComplete ? "Return to sent files" : "Return to send files")) { uploadPresented = true }.buttonStyle(PrimaryAction())
                             }
                             inputControls
                             if let error {
-                                Text(error).foregroundStyle(PsstTheme.error)
+                                Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
                             }
                             if let message = model.error {
-                                Text(message).foregroundStyle(PsstTheme.error)
+                                Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
                             }
                             if let message = store.error {
-                                Text(message).foregroundStyle(PsstTheme.error)
+                                Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
                             }
                             if let reportContext, model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil {
                                 AbuseReportButton(context: reportContext).id(reportContext.id)
@@ -63,17 +63,17 @@ struct ScanReceiveView: View {
                             progressPanel
                             if let id = model.currentID, let record = try? store.find(id) {
                                 GuestDownloadDetail(record: record)
-                                Button("View in History", action: onHistory)
+                                Button(L10n.text("View in History"), action: onHistory)
                             }
                         }.padding().frame(maxWidth: 620)
                     }
                 }
             }
-            .navigationTitle(uploadPresented ? "Send files" : "Scan QR code")
+            .navigationTitle(L10n.text(uploadPresented ? "Send files" : "Scan QR code"))
             .toolbar {
                 if uploadPresented {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Back") {
+                        Button(L10n.text("Back")) {
                             uploadPresented = false
                             cameraEnabled = false
                         }
@@ -96,17 +96,16 @@ struct ScanReceiveView: View {
                     refreshCapacity(adding: values)
                 } catch { self.error = "Could not select these files. Check file access and the server’s file-size limit." }
             }
-            .confirmationDialog(
-                "Download missing files again? The server may no longer permit another download.",
-                isPresented: Binding(
-                    get: { redownload != nil },
-                    set: {
-                        if !$0 {
-                            redownload = nil
-                        }
-                    }), titleVisibility: .visible
-            ) {
-                Button("Download missing files") {
+            .confirmationDialog(L10n.text("Download missing files again? The server may no longer permit another download."),
+                                isPresented: Binding(
+                                    get: { redownload != nil },
+                                    set: {
+                                        if !$0 {
+                                            redownload = nil
+                                        }
+                                    }
+                                ), titleVisibility: .visible) {
+                Button(L10n.text("Download missing files")) {
                     if let redownload {
                         model.resume(redownload, allowRedownload: true)
                     }
@@ -123,20 +122,20 @@ struct ScanReceiveView: View {
                 accept(raw)
             }
             .frame(height: 280).clipShape(RoundedRectangle(cornerRadius: 16))
-            .accessibilityLabel("QR camera preview")
+            .accessibilityLabel(L10n.text("QR camera preview"))
         } else {
-            Button("Scan again") {
+            Button(L10n.text("Scan again")) {
                 resetScan()
             }.disabled(model.active || pairing)
         }
-        Text("Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received.")
+        Text(L10n.text("Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received."))
             .font(.footnote).foregroundStyle(PsstTheme.secondary)
-        TextField("Paste a complete link", text: $pasted, axis: .vertical)
+        TextField(L10n.text("Paste a complete link"), text: $pasted, axis: .vertical)
             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
             .textFieldStyle(.roundedBorder).privacySensitive()
         HStack {
             PasteButton(payloadType: String.self) { values in pasted = values.first ?? "" }
-            Button("Receive files") {
+            Button(L10n.text("Receive files")) {
                 let value = pasted
                 pasted = ""
                 cameraEnabled = false
@@ -144,7 +143,7 @@ struct ScanReceiveView: View {
             }
             .disabled(pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }.disabled(model.active || pairing)
-        Button("Camera settings") {
+        Button(L10n.text("Camera settings")) {
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 openURL(url)
             }
@@ -153,7 +152,7 @@ struct ScanReceiveView: View {
             cameraEnabled = false
             imagePicking = true
         } label: {
-            Label("Choose QR image", systemImage: "photo")
+            Label(L10n.text("Choose QR image"), systemImage: "photo")
         }
         .disabled(model.active || pairing)
     }
@@ -161,10 +160,10 @@ struct ScanReceiveView: View {
     @ViewBuilder private var pairingPanel: some View {
         if let raw = pairingRaw {
             VStack(alignment: .leading, spacing: 12) {
-                Label("Connect account", systemImage: "person.crop.circle")
-                Text(pairingServer).textSelection(.enabled)
-                Text(config.isConfigured ? "Connecting will replace the active account on this device." : "Connect to this server using its single-use login code.")
-                Button("Connect to this server") {
+                Label(L10n.text("Connect account"), systemImage: "person.crop.circle")
+                Text(L10n.text(pairingServer)).textSelection(.enabled)
+                Text(L10n.text(config.isConfigured ? "Connecting will replace the active account on this device." : "Connect to this server using its single-use login code."))
+                Button(L10n.text("Connect to this server")) {
                     pairing = true
                     Task {
                         defer {
@@ -174,7 +173,7 @@ struct ScanReceiveView: View {
                         do { try await config.pair(raw: raw) } catch { self.error = "This login code could not be used. Generate a fresh code and check the connection." }
                     }
                 }.buttonStyle(PrimaryAction()).disabled(pairing)
-                Button("Cancel") { pairingRaw = nil }.disabled(pairing)
+                Button(L10n.text("Cancel")) { pairingRaw = nil }.disabled(pairing)
             }
         }
     }
@@ -182,22 +181,30 @@ struct ScanReceiveView: View {
     @ViewBuilder private var uploadPanel: some View {
         if let uploadLink {
             VStack(alignment: .leading, spacing: 12) {
-                Text(uploadTitle ?? "Send files").font(.title2.bold())
-                Text(uploadLink.origin).font(.caption).textSelection(.enabled)
-                if uploadLink.origin.hasPrefix("http://") { Text("HTTP connection").font(.caption).foregroundStyle(PsstTheme.warning) }
+                Text(verbatim: uploadTitle ?? L10n.text("Send files")).font(.title2.bold())
+                Text(verbatim: uploadLink.origin).font(.caption).textSelection(.enabled)
+                if uploadLink.origin.hasPrefix("http://") {
+                    Text(L10n.text("HTTP connection")).font(.caption).foregroundStyle(PsstTheme.warning)
+                }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        if model.uploadComplete { Label("Files sent", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success) }
-                        if let error { Text(error).foregroundStyle(PsstTheme.error) }
-                        if let error = model.error { Text(error).foregroundStyle(PsstTheme.error) }
+                        if model.uploadComplete {
+                            Label(L10n.text("Files sent"), systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+                        }
+                        if let error {
+                            Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
+                        }
+                        if let error = model.error {
+                            Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
+                        }
                         progressPanel
                         if selected.isEmpty {
-                            ContentUnavailableView("Choose files", systemImage: "doc.badge.plus", description: Text("Send files to the owner of this link."))
+                            ContentUnavailableView(L10n.text("Choose files"), systemImage: "doc.badge.plus", description: Text(L10n.text("Send files to the owner of this link.")))
                         }
                         ForEach(selected, id: \.self) { url in
                             HStack {
                                 Image(systemName: "doc")
-                                Text(url.lastPathComponent).lineLimit(2)
+                                Text(verbatim: url.lastPathComponent).lineLimit(2)
                                 Spacer()
                                 if !model.uploadComplete {
                                     Button {
@@ -206,16 +213,22 @@ struct ScanReceiveView: View {
                                     } label: {
                                         Image(systemName: "xmark.circle")
                                     }
-                                    .accessibilityLabel("Remove " + url.lastPathComponent).disabled(model.active)
+                                    .accessibilityLabel(L10n.text(L10n.format("Remove %@", url.lastPathComponent))).disabled(model.active)
                                 }
                             }.padding(.vertical, 8)
                         }
-                        if model.cleanupPending { Text("Unfinished upload cleanup will retry when connected.").font(.footnote) }
-                        DisclosureGroup("Details & help") {
-                            if let uploadLimit { Text("Up to " + ByteCountFormatter.string(fromByteCount: uploadLimit, countStyle: .binary) + " per file.").font(.footnote) }
-                            if let reportContext { AbuseReportButton(context: reportContext).id(reportContext.id) }
-                            Button("History", action: onHistory)
-                            Button("Scan again") { resetScan() }.disabled(model.active)
+                        if model.cleanupPending {
+                            Text(L10n.text("Unfinished upload cleanup will retry when connected.")).font(.footnote)
+                        }
+                        DisclosureGroup(L10n.text("Details & help")) {
+                            if let uploadLimit {
+                                Text(L10n.text(L10n.format("Up to %@ per file.", L10n.bytes(uploadLimit, binary: true)))).font(.footnote)
+                            }
+                            if let reportContext {
+                                AbuseReportButton(context: reportContext).id(reportContext.id)
+                            }
+                            Button(L10n.text("History"), action: onHistory)
+                            Button(L10n.text("Scan again")) { resetScan() }.disabled(model.active)
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxHeight: .infinity)
@@ -223,19 +236,27 @@ struct ScanReceiveView: View {
                 .safeAreaInset(edge: .bottom) {
                     VStack(spacing: 10) {
                         if !model.uploadComplete {
-                            Text(capacityMessage).font(.caption).foregroundStyle(capacityReady ? PsstTheme.secondary : PsstTheme.warning)
-                            if !capacityReady { Button("Retry capacity check") { refreshCapacity() }.disabled(model.active || checkingCapacity) }
-                            HStack {
-                                Button("Add files") { picking = true }.buttonStyle(.bordered).disabled(model.active || checkingCapacity)
-                                Button("Send files") { model.send(selected, to: uploadLink) }.buttonStyle(PrimaryAction())
-                                    .disabled(selected.isEmpty || !capacityReady || checkingCapacity || model.active)
+                            Text(L10n.text(capacityMessage)).font(.caption).foregroundStyle(capacityReady ? PsstTheme.secondary : PsstTheme.warning)
+                            if !capacityReady {
+                                Button(L10n.text("Retry capacity check")) { refreshCapacity() }.disabled(model.active || checkingCapacity)
+                            }
+                            ViewThatFits(in: .horizontal) {
+                                HStack { uploadActions(uploadLink) }
+                                VStack { uploadActions(uploadLink) }
                             }
                         } else {
-                            Button("Scan again") { resetScan() }.buttonStyle(PrimaryAction())
+                            Button(L10n.text("Scan again")) { resetScan() }.buttonStyle(PrimaryAction())
                         }
                     }.padding().background(PsstTheme.surface)
                 }
         }
+    }
+
+    @ViewBuilder private func uploadActions(_ link: ParsedUrl) -> some View {
+        Button(L10n.text("Add files")) { picking = true }.buttonStyle(.bordered)
+            .frame(minHeight: 44).disabled(model.active || checkingCapacity)
+        Button(L10n.text("Send files")) { model.send(selected, to: link) }.buttonStyle(PrimaryAction())
+            .disabled(selected.isEmpty || !capacityReady || checkingCapacity || model.active)
     }
 
     private func resetScan() {
@@ -253,18 +274,18 @@ struct ScanReceiveView: View {
 
     @ViewBuilder private var progressPanel: some View {
         if model.active {
-            Text(model.stage).font(.headline).accessibilityAddTraits(.updatesFrequently)
-            if model.stage == "Downloading" || model.stage == "Uploading" {
+            Text(L10n.text(model.stage.rawValue)).font(.headline).accessibilityAddTraits(.updatesFrequently)
+            if model.stage == .downloading || model.stage == .uploading {
                 ProgressView(value: Double(model.bytes), total: Double(max(1, model.total)))
-                Text(ByteCountFormatter.string(fromByteCount: model.bytes, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: model.total, countStyle: .file))
+                Text(L10n.text(L10n.bytes(model.bytes) + " / " + L10n.bytes(model.total)))
                     .font(.caption)
                 if model.fileNumber > 0 {
-                    Text("File \(model.fileNumber)").font(.caption)
+                    Text(L10n.text(L10n.format("File %lld", Int64(model.fileNumber)))).font(.caption)
                 }
             } else {
                 ProgressView()
             }
-            Button("Stop", role: .destructive) { model.cancel() }
+            Button(L10n.text("Stop"), role: .destructive) { model.cancel() }
         }
     }
 
@@ -299,7 +320,9 @@ struct ScanReceiveView: View {
             uploadLink = input.link
             uploadPresented = input.link != nil
             cameraEnabled = false
-            if let link = input.link { reportContext = AbuseReportContext(origin: link.origin, resourceType: "slot", resourceID: link.id) }
+            if let link = input.link {
+                reportContext = AbuseReportContext(origin: link.origin, resourceType: "slot", resourceID: link.id)
+            }
             refreshCapacity()
         case .pairing:
             pairingRaw = raw
@@ -328,10 +351,16 @@ struct ScanReceiveView: View {
         capacityMessage = "Checking receive capacity…"
         // Add is cumulative; a rejected addition leaves the previous selection intact.
         let candidate = additions.reduce(into: selected) { files, url in
-            if !files.contains(url) { files.append(url) }
+            if !files.contains(url) {
+                files.append(url)
+            }
         }
         Task { @MainActor in
-            defer { if capacityRequest == request { checkingCapacity = false } }
+            defer {
+                if capacityRequest == request {
+                    checkingCapacity = false
+                }
+            }
             do {
                 let client = try ApiClient.companion.anonymous(origin: link.origin)
                 defer { client.close() }
@@ -346,16 +375,16 @@ struct ScanReceiveView: View {
                 uploadTitle = try SharedLinkTitle.normalize(availability.title)
                 try GuestUploadPreflight.validate(availability, link: link, urls: candidate, sizes: sizes)
                 guard let capacity = availability.uploadCapacity,
-                    let files = capacity.availableFiles, capacity.availableWireBytes != nil
+                      let files = capacity.availableFiles, capacity.availableWireBytes != nil
                 else { throw GuestUploadSelectionError.unavailable }
                 selected = candidate
                 capacityReady = true
-                capacityMessage = "Up to \(files.int64Value) files · " + ByteCountFormatter.string(fromByteCount: limit, countStyle: .binary) + " per file"
+                capacityMessage = L10n.typedFormat("Up to %lld files · %@ per file", .integer(Int64(files.int64Value)), .byteCount(limit, binary: true))
             } catch {
                 guard capacityRequest == request else { return }
-                capacityMessage =
+                capacityMessage = L10n.failure(error, fallback:
                     (error as? GuestUploadSelectionError)?.localizedDescription ?? TransferIncident.from(error)?.localizedDescription
-                    ?? GuestUploadSelectionError.unavailable.localizedDescription
+                        ?? GuestUploadSelectionError.unavailable.localizedDescription)
             }
         }
     }

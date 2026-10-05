@@ -1,3 +1,4 @@
+import { message as m, LocalizedError, translate } from "./i18n/index.ts";
 import { normalizeScanOrigin } from "./scan-input.ts";
 
 export function validAbuseEmail(value: unknown): value is string {
@@ -22,21 +23,28 @@ export function validAbuseEmail(value: unknown): value is string {
 /** Accept only separately supplied origin/path, never a complete capability URL. */
 export function abuseReference(origin: string, pathname = "/"): string {
   const normalized = normalizeScanOrigin(origin);
-  if (!normalized) throw new Error("Invalid server address");
+  if (!normalized) throw new LocalizedError(m("invalidServerAddress"));
   const match =
     /^\/([du])\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(pathname);
   return (
-    `Instance: ${normalized}` +
+    translate(m("instanceValue", { arg0: normalized })) +
     (match
-      ? `\nResource type: ${match[1].toLowerCase() === "d" ? "transfer" : "slot"}\nResource ID: ${match[2].toLowerCase()}`
+      ? translate(
+          m("resourceTypeValueResourceIDValue", {
+            arg0: match[1].toLowerCase() === "d" ? "transfer" : "slot",
+            arg1: match[2].toLowerCase(),
+          }),
+        )
       : "")
   );
 }
 
 export function abuseMailto(email: string, origin: string, pathname = "/"): string {
-  if (!validAbuseEmail(email)) throw new Error("Invalid abuse contact");
-  const body = `${abuseReference(origin, pathname)}\n\nDescribe your concern here. Do not include the complete file link, encryption keys or file contents.`;
-  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("psst.zip abuse report")}&body=${encodeURIComponent(body)}`;
+  if (!validAbuseEmail(email)) throw new LocalizedError(m("invalidAbuseContact"));
+  const body = m("valueDescribeYourConcernHereDoNotIncludeThe", {
+    arg0: abuseReference(origin, pathname),
+  });
+  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(translate(m("abuseReportSubject")))}&body=${encodeURIComponent(translate(body))}`;
 }
 
 /** Same-origin only; no credentials, redirects, referrer or unbounded JSON. */
@@ -48,7 +56,7 @@ export async function loadAbuseContact(signal: AbortSignal): Promise<string> {
     referrerPolicy: "no-referrer",
     signal,
   });
-  if (!response.ok || !response.body) throw new Error("Abuse contact unavailable");
+  if (!response.ok || !response.body) throw new LocalizedError(m("abuseContactUnavailable"));
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -57,7 +65,7 @@ export async function loadAbuseContact(signal: AbortSignal): Promise<string> {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > 65536) throw new Error("Abuse contact response is too large");
+      if (total > 65536) throw new LocalizedError(m("abuseContactResponseIsTooLarge"));
       chunks.push(value);
     }
   } finally {

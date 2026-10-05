@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
   import { resourceLabel, type AdminResource } from "$lib/admin-resources";
@@ -12,7 +14,7 @@
   }: {
     resource: AdminResource;
     busy: boolean;
-    error: string;
+    error: DisplayText;
     oncancel: () => void;
     onconfirm: () => void;
   } = $props();
@@ -54,21 +56,19 @@
     if (!busy) oncancel();
   }}
 >
-  <h2 id="revoke-title">Revoke this link?</h2>
-  <p id="revoke-description">
-    The link will stop working immediately. Server files will be queued for deletion; cleanup may
-    need more time or a retry. Existing downloaded copies remain.
-  </p>
+  <h2 id="revoke-title">{$t(m("revokeThisLink"))}</h2>
+  <p id="revoke-description">{$t(m("theLinkWillStopWorkingImmediatelyServerFilesWill"))}</p>
   <p>
-    <strong>{resourceLabel(resource)}</strong><br />Owner: {resource.owner_username ??
-      resource.owner_id ??
-      "Unknown account"}<br /><code>{resource.id}</code>
+    <strong>{$t(resourceLabel(resource))}</strong><br />{$t(m("owner_9a638"))}
+    {$t(resource.owner_username ?? resource.owner_id ?? m("unknownAccount"))}<br /><code
+      >{$t(resource.id)}</code
+    >
   </p>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
   <div class="actions">
-    <button disabled={busy} onclick={oncancel}>Cancel</button>
+    <button disabled={busy} onclick={oncancel}>{$t(m("cancel"))}</button>
     <button class="danger" disabled={busy} onclick={onconfirm}
-      ><Icon name="Revoke" size={18} />{busy ? "Revoking…" : "Revoke and delete"}</button
+      ><Icon name="Revoke" size={18} />{$t(busy ? m("revoking") : m("revokeAndDelete"))}</button
     >
   </div>
 </dialog>

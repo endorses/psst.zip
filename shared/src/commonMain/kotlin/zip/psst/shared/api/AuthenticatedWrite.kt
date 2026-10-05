@@ -11,34 +11,43 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 class AuthenticationRequiredException :
-    IllegalArgumentException(
-        "Your session has expired or no longer has permission. Sign in again under Server Configuration."
+    ClientFailureException(
+        "Your session has expired or no longer has permission. Sign in again under Server Configuration.",
+        "authentication_required",
     )
 
 class PasswordChangeRequiredException :
-    IllegalArgumentException(
-        "Change your temporary password under Server Configuration before continuing."
+    ClientFailureException(
+        "Change your temporary password under Server Configuration before continuing.",
+        "password_change_required",
     )
 
 class AdminTransferForbiddenException :
-    IllegalArgumentException(
-        "Administrator accounts manage the server. Sign in with a regular account to transfer files."
+    ClientFailureException(
+        "Administrator accounts manage the server. Sign in with a regular account to transfer files.",
+        "admin_transfer_forbidden",
     )
 
 /** Operator actions must not be mistaken for an expired login or retried automatically. */
-open class TransferPolicyException(message: String, val title: String = "Transfer unavailable") :
-    IllegalArgumentException(message)
+open class TransferPolicyException(
+    message: String,
+    val title: String = "Transfer unavailable",
+    code: String = "transfer_unavailable",
+    arguments: Map<String, String> = emptyMap(),
+) : ClientFailureException(message, code, arguments)
 
 class PublicTransfersPausedException :
     TransferPolicyException(
         "The server administrator has paused file transfers. Your saved files are safe. Retry after the administrator resumes transfers.",
         "Transfers paused",
+        "public_transfers_paused",
     )
 
 class ResourceRevokedException :
     TransferPolicyException(
         "This link is no longer available. Ask the sender for a new link. Files already saved on this device are still available.",
         "Link unavailable",
+        "resource_revoked",
     )
 
 /** A validated UTC timestamp is safe to show; untrusted prose is never reflected. */
@@ -58,6 +67,8 @@ class TrafficBudgetExhaustedException(retryAt: String? = null) :
                 "Retry after $it (UTC), when the billing cycle resets, or contact the administrator."
             } ?: "Retry after the next billing cycle or contact the administrator."),
         "Traffic budget reached",
+        "traffic_budget_exhausted",
+        normalizedTrafficRetryAt(retryAt)?.let { mapOf("retry_at" to it) } ?: emptyMap(),
     ) {
     val retryAt: String? = normalizedTrafficRetryAt(retryAt)
 }
@@ -66,16 +77,18 @@ class TrafficAccountingUnavailableException :
     TransferPolicyException(
         "The server cannot safely account for transfer traffic right now. Saved files are kept. Retry later or contact the administrator.",
         "Transfers temporarily unavailable",
+        "traffic_accounting_unavailable",
     )
 
 class TrafficPolicyChangedException :
     TransferPolicyException(
         "The server's traffic limits changed during this transfer. Saved files are kept. Retry manually to continue under the new limits.",
         "Traffic limits changed",
+        "traffic_policy_changed",
     )
 
 internal suspend fun HttpResponse.checkAccountRestriction() {
-    if (status.value !in listOf(403, 409, 410, 429, 503)) return
+    if (status.value !in listOf(400, 403, 409, 410, 413, 429, 503, 507)) return
     val headerCode = headers["X-Psst-Error-Code"]?.takeIf { it.length <= 64 }
     val headerRetryAt = normalizedTrafficRetryAt(headers["X-Psst-Retry-At"])
     val errorBody =
@@ -114,6 +127,22 @@ internal suspend fun HttpResponse.checkAccountRestriction() {
             }
         "traffic_accounting_unavailable" ->
             if (status.value == 503) throw TrafficAccountingUnavailableException()
+        "download_limit",
+        "link_expired",
+        "receive_file_limit",
+        "receive_batch_limit",
+        "resource_limit",
+        "disk_capacity",
+        "retention_limit",
+        "legacy_receive_disabled",
+        "invalid_link_title",
+        "invalid_link_policy",
+        "unsupported_manifest",
+        "transfer_file_limit_exceeded" ->
+            throw TransferPolicyException(
+                "The server rejected this operation ($code).",
+                code = code,
+            )
     }
 }
 
@@ -141,7 +170,11 @@ private suspend fun HttpResponse.readPolicyErrorBody(): JsonObject? =
 internal suspend fun HttpResponse.checkAuthenticatedWrite() {
     checkAccountRestriction()
     if (status.value in listOf(401, 403)) throw AuthenticationRequiredException()
-    require(status.value in 200..299) {
+    clientRequire(
+        status.value in 200..299,
+        "upload_request_failed",
+        mapOf("status" to status.value.toString()),
+    ) {
         "The server rejected the upload request (HTTP ${status.value})."
     }
 }

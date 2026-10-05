@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { accountRequest } from "./account.ts";
 
 export type ResourceType = "transfer" | "slot";
@@ -54,7 +55,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isResourceID = (value: string) => uuid.test(value);
 export function resourcePath(type: ResourceType, id: string) {
   if ((type !== "transfer" && type !== "slot") || !isResourceID(id))
-    throw new Error("Choose a resource type and enter its ID only, without a URL or link secret.");
+    throw new LocalizedError(m("chooseAResourceTypeAndEnterItsIDOnly"));
   return `/admin/resources/${type}/${id}`;
 }
 const natural = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
@@ -105,20 +106,21 @@ export async function loadAdminResources(
 ): Promise<AdminResourcePage> {
   const query = new URLSearchParams({ limit: "50" });
   if (filters.type) {
-    if (!["transfer", "slot"].includes(filters.type)) throw new Error("Invalid resource type");
+    if (!["transfer", "slot"].includes(filters.type))
+      throw new LocalizedError(m("invalidResourceType"));
     query.set("type", filters.type);
   }
   if (filters.owner_id) {
-    if (!isResourceID(filters.owner_id)) throw new Error("Enter the account ID only.");
+    if (!isResourceID(filters.owner_id)) throw new LocalizedError(m("enterTheAccountIDOnly"));
     query.set("owner_id", filters.owner_id);
   }
   if (filters.status) {
     if (!["pending", "complete", "waiting", "revoked"].includes(filters.status))
-      throw new Error("Invalid resource status");
+      throw new LocalizedError(m("invalidResourceStatus"));
     query.set("status", filters.status);
   }
   if (after) {
-    if (after.length > 2048) throw new Error("Invalid resource page");
+    if (after.length > 2048) throw new LocalizedError(m("invalidResourcePage"));
     query.set("after", after);
   }
   const page = await accountRequest<AdminResourcePage>(
@@ -138,7 +140,7 @@ export async function loadAdminResources(
         page.next_cursor.length > 2048 ||
         page.next_cursor === after))
   )
-    throw new Error("Invalid resource response");
+    throw new LocalizedError(m("invalidResourceResponse"));
   return page;
 }
 export async function loadAdminResource(
@@ -153,7 +155,7 @@ export async function loadAdminResource(
     signal,
   );
   if (!validResource(value) || value.type !== type || value.id !== id)
-    throw new Error("Invalid resource response");
+    throw new LocalizedError(m("invalidResourceResponse"));
   return value;
 }
 export async function loadCleanupOverview(signal?: AbortSignal): Promise<CleanupOverview> {
@@ -165,7 +167,7 @@ export async function loadCleanupOverview(signal?: AbortSignal): Promise<Cleanup
     !optionalTime(value.last_discovery_at) ||
     typeof value.discovery_pending !== "boolean"
   )
-    throw new Error("Invalid cleanup response");
+    throw new LocalizedError(m("invalidCleanupResponse"));
   return value;
 }
 export async function mutateAdminResource(
@@ -189,57 +191,51 @@ export async function mutateAdminResource(
         !validCleanup(value.cleanup) ||
         (value.state === "complete" && (action !== "cleanup" || value.cleanup.state !== "none"))))
   )
-    throw new Error("Invalid resource response");
+    throw new LocalizedError(m("invalidResourceResponse"));
   return value;
 }
 const cleanupLabels = new Map([
-  ["none", "No cleanup queued"],
-  ["pending", "Cleanup pending"],
-  ["busy", "Waiting for active file operations"],
-  ["waiting_children", "Waiting for received transfers to be removed"],
-  ["failed", "Cleanup failed"],
+  ["none", m("noCleanupQueued")],
+  ["pending", m("cleanupPending")],
+  ["busy", m("waitingForActiveFileOperations")],
+  ["waiting_children", m("waitingForReceivedTransfersToBeRemoved")],
+  ["failed", m("cleanupFailed")],
 ]);
 const failureLabels = new Map([
-  [
-    "storage_delete_failed",
-    "Encrypted files could not be removed. Check storage access and available disk space.",
-  ],
-  [
-    "metadata_delete_failed",
-    "Resource metadata could not be removed. Check database availability.",
-  ],
+  ["storage_delete_failed", m("encryptedFilesCouldNotBeRemovedCheckStorageAccess")],
+  ["metadata_delete_failed", m("resourceMetadataCouldNotBeRemovedCheckDatabaseAvailability")],
 ]);
 const reasonLabels = new Map([
-  ["revoked", "Link revoked"],
-  ["expired", "Link expired"],
-  ["unfinished_expired", "Unfinished upload expired"],
-  ["download_limit", "Download limit reached"],
+  ["revoked", m("linkRevoked")],
+  ["expired", m("linkExpired")],
+  ["unfinished_expired", m("unfinishedUploadExpired")],
+  ["download_limit", m("downloadLimitReached")],
 ]);
 export const cleanupLabel = (value: ResourceCleanup) =>
-  cleanupLabels.get(value.state) ?? "Cleanup status unavailable";
+  cleanupLabels.get(value.state) ?? m("cleanupStatusUnavailable");
 export const cleanupFailure = (value: ResourceCleanup) =>
   value.failure_code
     ? (failureLabels.get(value.failure_code) ??
-      "The last cleanup attempt failed. Check server storage and database availability.")
+      m("theLastCleanupAttemptFailedCheckServerStorageAnd"))
     : "";
 export const cleanupReason = (value: ResourceCleanup) => reasonLabels.get(value.reason ?? "") ?? "";
 export const resourceLabel = (value: AdminResource) =>
   value.type === "slot"
-    ? "Receive link"
+    ? m("receiveLink")
     : value.parent_slot_id
-      ? "Received transfer"
-      : "Sent transfer";
+      ? m("receivedTransfer")
+      : m("sentTransfer");
 export const resourceStatus = (value: AdminResource) =>
   value.status === "revoked"
-    ? "Revoked"
+    ? m("revoked")
     : Date.parse(value.expires_at) <= Date.now()
-      ? "Expired"
+      ? m("expired")
       : value.status === "complete"
-        ? "Ready to download"
+        ? m("readyToDownload")
         : value.status === "pending"
-          ? "Upload unfinished"
+          ? m("uploadUnfinished")
           : !value.totals_available
-            ? "Receive link active"
+            ? m("receiveLinkActive")
             : value.file_count > 0
-              ? "Files received"
-              : "Waiting for files";
+              ? m("filesReceived")
+              : m("waitingForFiles");

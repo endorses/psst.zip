@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import type { Manifest } from "./crypto.ts";
 import type { TransferInfo } from "./api.ts";
 import { wireSize } from "./chunked-files.ts";
@@ -6,7 +7,7 @@ import { validSharedTitle } from "./link-title.ts";
 /** Cross-check server metadata against the authenticated, bounded manifest. */
 export function validateDownload(info: TransferInfo, id: string, manifest: Manifest): void {
   const invalid = () => {
-    throw new Error("Manifest size mismatch or invalid transfer details");
+    throw new LocalizedError(m("manifestSizeMismatchOrInvalidTransferDetails"));
   };
   if (
     !info ||

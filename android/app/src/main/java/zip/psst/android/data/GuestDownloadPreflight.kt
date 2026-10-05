@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.Manifest
 import zip.psst.shared.model.ManifestValidator
@@ -15,8 +17,8 @@ data class GuestDownloadConsent(
 )
 
 internal class InsufficientDownloadSpaceException :
-    IllegalStateException(
-        "Not enough storage. Free space for the remaining files plus 256 MiB, then try again."
+    UiFailureException(
+        message(R.string.l_not_enough_storage_free_space_for_the_remaining_files_plus_256_mi_d719e6)
     )
 
 internal object GuestDownloadPreflight {
@@ -33,8 +35,8 @@ internal object GuestDownloadPreflight {
         exhaustedBlobIds: Set<String> = emptySet(),
     ): GuestDownloadConsent {
         val total = ManifestValidator.validate(Manifest(files = files))
-        require(total <= MAX_TOTAL_BYTES) {
-            "This transfer exceeds the supported total size of 1 TiB"
+        uiRequire(total <= MAX_TOTAL_BYTES) {
+            message(R.string.l_this_transfer_exceeds_the_supported_total_size_of_1_tib_1eea29)
         }
         val skipped =
             files
@@ -64,7 +66,7 @@ internal object GuestDownloadPreflight {
      * ciphertext spool or ZIP. Retries discard their partial output before this check.
      */
     fun requireSpace(availableBytes: Long, remainingBytes: Long) {
-        require(remainingBytes >= 0)
+        uiRequire(remainingBytes >= 0)
         if (
             availableBytes < FREE_SPACE_RESERVE ||
                 remainingBytes > availableBytes - FREE_SPACE_RESERVE

@@ -4,38 +4,42 @@ struct ServerConfigView: View {
     @Environment(ServerConfigManager.self) private var serverConfig
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppConstants.appearanceKey, store: AppConstants.sharedDefaults) private var appearance = AppAppearance.system
+    @Bindable private var language = LanguageSettings.shared
     @State private var editing = false
     @State private var checking = false
     @State private var connection: String?
     var body: some View {
         Form {
-            Section("Appearance") {
-                Picker("Theme", selection: $appearance) {
+            Section(L10n.text("Appearance")) {
+                Picker(L10n.text("Theme"), selection: $appearance) {
                     ForEach(AppAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
                 }.pickerStyle(.menu)
+                Picker(L10n.text("Language"), selection: $language.preference) {
+                    ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.title).tag($0) }
+                }.pickerStyle(.menu)
             }
-            Section("Server & account") {
+            Section(L10n.text("Server & account")) {
                 if let session = serverConfig.session {
-                    LabeledContent("Username", value: session.username)
-                    LabeledContent("Server") { Text(session.serverURL).textSelection(.enabled) }
+                    LabeledContent(L10n.text("Username"), value: session.username)
+                    LabeledContent(L10n.text("Server")) { Text(verbatim: session.serverURL).textSelection(.enabled) }
                     if let message = serverConfig.accountMessage {
-                        Text(message).foregroundStyle(PsstTheme.warning)
+                        Text(L10n.text(message)).foregroundStyle(PsstTheme.warning)
                     }
                     if serverConfig.needsSignIn {
-                        Text(serverConfig.passwordChanged ? "Password changed. Sign in with your new password." : "Your session expired. Sign in again.").foregroundStyle(
-                            PsstTheme.warning)
+                        Text(L10n.text(serverConfig.passwordChanged ? "Password changed. Sign in with your new password." : "Your session expired. Sign in again.")).foregroundStyle(
+                            PsstTheme.warning
+                        )
                     }
                 } else {
-                    Text("Not signed in")
+                    Text(L10n.text("Not signed in"))
                 }
-                Button(serverConfig.requiresPasswordChange ? "Change password" : serverConfig.isConfigured ? "Change server or account" : "Sign in") { editing = true }
+                Button(L10n.text(serverConfig.requiresPasswordChange ? "Change password" : serverConfig.isConfigured ? "Change server or account" : "Sign in")) { editing = true }
             }
-            Section("Connection") {
+            Section(L10n.text("Connection")) {
                 if !serverConfig.serverURL.isEmpty {
-                    Label(
-                        serverConfig.serverURL.hasPrefix("https://") ? "Encrypted connection" : "HTTP · Unencrypted connection",
-                        systemImage: serverConfig.serverURL.hasPrefix("https://") ? "lock" : "lock.open")
-                    Button("Test connection") {
+                    Label(L10n.text(serverConfig.serverURL.hasPrefix("https://") ? "Encrypted connection" : "HTTP · Unencrypted connection"),
+                          systemImage: serverConfig.serverURL.hasPrefix("https://") ? "lock" : "lock.open")
+                    Button(L10n.text("Test connection")) {
                         checking = true
                         Task {
                             defer { checking = false }
@@ -50,22 +54,22 @@ struct ServerConfigView: View {
                     ProgressView()
                 }
                 if let connection {
-                    Text(connection).font(.footnote)
+                    Text(L10n.text(connection)).font(.footnote)
                 }
             }
             if serverConfig.isConfigured, !serverConfig.needsSignIn {
-                Section("Usage") {
+                Section(L10n.text("Usage")) {
                     NavigationLink {
                         AccountTrafficView()
                     } label: {
-                        Label("Usage & traffic", systemImage: "chart.bar")
+                        Label(L10n.text("Usage & traffic"), systemImage: "chart.bar")
                     }
                 }
-                Section("Security") { NavigationLink("Change password") { Form { PasswordReplacementFields() }.navigationTitle("Change password") } }
+                Section(L10n.text("Security")) { NavigationLink("Change password") { Form { PasswordReplacementFields() }.navigationTitle(L10n.text("Change password")) } }
             }
             if let context = AbuseReportContext(origin: serverConfig.serverURL), let contact = serverConfig.abuseContactEmail {
-                Section("Help & contact") {
-                    Text(contact).textSelection(.enabled)
+                Section(L10n.text("Help & contact")) {
+                    Text(verbatim: contact).textSelection(.enabled)
                     AbuseReportButton(context: context, configuredContact: serverConfig.abuseContactEmail, fetchContact: false).id(context.id)
                 }
             }
@@ -76,8 +80,8 @@ struct ServerConfigView: View {
         .task(id: serverConfig.serverURL) { await serverConfig.refreshLimit() }
         .modifier(PsstStyle()).modifier(PsstAppearance())
         .sheet(isPresented: $editing) { NavigationStack { AccountSetupView() } }
-        .navigationTitle("Settings").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        .navigationTitle(L10n.text("Settings")).navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("Done")) { dismiss() } } }
     }
 }
 
@@ -87,12 +91,12 @@ struct AccountSetupView: View {
     @State private var busy = false
     var body: some View {
         Form {
-            Section("Server login") { LoginFields(onSuccess: { dismiss() }, onBusyChanged: { busy = $0 }) }
-            Section { Text("Use a server address other people can reach. Your files are encrypted automatically before upload.").foregroundStyle(PsstTheme.secondary) }
+            Section(L10n.text("Server login")) { LoginFields(onSuccess: { dismiss() }, onBusyChanged: { busy = $0 }) }
+            Section { Text(L10n.text("Use a server address other people can reach. Your files are encrypted automatically before upload.")).foregroundStyle(PsstTheme.secondary) }
         }
-        .navigationTitle("Server & account").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(L10n.text("Server & account")).navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(busy)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) } }
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Cancel")) { dismiss() }.disabled(busy) } }
         .interactiveDismissDisabled(busy)
         .modifier(PsstStyle()).modifier(PsstAppearance())
     }
@@ -103,15 +107,15 @@ private struct LogoutButton: View {
     @State private var error: String?
     @State private var busy = false
     var body: some View {
-        Button("Sign out", role: .destructive) {
+        Button(L10n.text("Sign out"), role: .destructive) {
             busy = true
             Task {
                 defer { busy = false }
-                do { try await config.logout() } catch { self.error = String(localized: "Could not revoke your session. Reconnect and retry signing out.") }
+                do { try await config.logout() } catch { self.error = L10n.message("Could not revoke your session. Reconnect and retry signing out.") }
             }
         }.disabled(busy)
         if let error {
-            Text(error).foregroundStyle(PsstTheme.error)
+            Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
         }
     }
 }

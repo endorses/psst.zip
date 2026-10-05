@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
 import zip.psst.android.data.*
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.InboxPager
@@ -11,6 +12,7 @@ import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.localHistoryScope
 import zip.psst.android.data.revokeHistoryEntry
 import zip.psst.android.data.syncAccountHistory
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthResources
@@ -36,7 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class HistoryDeletionError(val id: String, val message: String)
+data class HistoryDeletionError(val id: String, val message: UiText)
 
 data class AccountHistoryPageState(
     val access: HistoryAccess? = null,
@@ -55,7 +57,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     val deviceRows = MutableStateFlow<List<HistoryRow>>(emptyList())
     val deviceNext = MutableStateFlow<MergedHistoryCursor?>(null)
     val deviceLoading = MutableStateFlow(false)
-    val deviceIssue = MutableStateFlow<String?>(null)
+    val deviceIssue = MutableStateFlow<UiText?>(null)
     val deviceImporting = MutableStateFlow(false)
     val deviceImportErrors = MutableStateFlow(false)
     private var deviceCursor = MergedHistoryCursor()
@@ -160,7 +162,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                             filter.value == selected
                     )
                         deviceIssue.value =
-                            "Local history could not be read. Saved files and records are retained. Retry."
+                            message(
+                                R.string
+                                    .l_local_history_could_not_be_read_saved_files_and_records_are_retai_0f2a42
+                            )
                 } finally {
                     if (
                         requestRevision == deviceRevision &&
@@ -215,8 +220,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     val deletionError = _deletionError.asStateFlow()
 
     val offline = MutableStateFlow(false)
-    val accountIssue = MutableStateFlow<String?>(null)
-    val transferIssue = MutableStateFlow<String?>(null)
+    val accountIssue = MutableStateFlow<UiText?>(null)
+    val transferIssue = MutableStateFlow<UiText?>(null)
     private var refreshJob: Job? = null
     @Volatile private var revision = 0L
     private var visible = false
@@ -267,7 +272,9 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                transferIssue.value = error.message ?: "Could not rename this link. Retry."
+                transferIssue.value =
+                    failureText(error)
+                        ?: message(R.string.l_could_not_rename_this_link_retry_229f97)
             } finally {
                 client.close()
             }
@@ -302,7 +309,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             navigate(state.pager.next(next))
         } catch (_: IllegalArgumentException) {
             transferIssue.value =
-                "The server repeated a History page. Return to the first page and retry."
+                message(
+                    R.string
+                        .l_the_server_repeated_a_history_page_return_to_the_first_page_and_r_202d64
+                )
         }
     }
 
@@ -351,8 +361,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                                 },
                             )
                         if (!current()) return@launch
-                        require(page.nextCursor == null || page.nextCursor !in pager.previous) {
-                            "The server repeated a History page"
+                        uiRequire(page.nextCursor == null || page.nextCursor !in pager.previous) {
+                            message(R.string.l_the_server_repeated_a_history_page_639a72)
                         }
                         syncAccountHistory(dao, page, access) {
                             if (current()) access else HistoryAccess()
@@ -365,7 +375,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                         if (!isActive || !current()) throw e
                         failed = true
                         transferIssue.value =
-                            "History request timed out. The shown records were kept. Retry this page."
+                            message(
+                                R.string
+                                    .l_history_request_timed_out_the_shown_records_were_kept_retry_this__c5e131
+                            )
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: AuthenticationRequiredException) {
@@ -378,10 +391,13 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                             e is PasswordChangeRequiredException ||
                                 e is AdminTransferForbiddenException
                         )
-                            accountIssue.value = e.message
+                            accountIssue.value = failureText(e)
                         else
                             transferIssue.value =
-                                "Could not load this History page. The shown records were kept. Retry or return to the first page."
+                                message(
+                                    R.string
+                                        .l_could_not_load_this_history_page_the_shown_records_were_kept_retr_bc1e72
+                                )
                     } finally {
                         client.close()
                         if (current()) _pageState.update { it.copy(loading = false) }
@@ -431,9 +447,12 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                     _deletionError.value =
                         HistoryDeletionError(
                             id,
-                            if (error is LinkDeletionException) error.message.orEmpty()
+                            if (error is LinkDeletionException) failureText(error)
                             else
-                                "Could not revoke this link. Check the connection and retry. The history entry has been kept.",
+                                message(
+                                    R.string
+                                        .l_could_not_revoke_this_link_check_the_connection_and_retry_the_his_6156db
+                                ),
                         )
                 } finally {
                     _deletingIds.update { it - id }

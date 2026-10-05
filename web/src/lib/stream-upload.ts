@@ -1,3 +1,4 @@
+import { message as m, LocalizedError, translate } from "./i18n/index.ts";
 import { TrafficLimitError, trafficLimitError, detectTransferStop } from "./traffic-policy.ts";
 import { encryptFile, wireSize } from "./chunked-files.ts";
 import type { EncryptionKey } from "./crypto.ts";
@@ -34,13 +35,11 @@ export async function uploadEncryptedFile(options: {
       resourceLimitError(code);
     if (policyError) throw policyError;
     if (error?.code === "receive_file_limit")
-      throw new Error(
-        "This receive link has no file allocations left. Ask its owner for a new link.",
-      );
-    throw new Error("Could not create file upload");
+      throw new LocalizedError(m("thisReceiveLinkHasNoFileAllocationsLeftAsk"));
+    throw new LocalizedError(m("couldNotCreateFileUpload"));
   }
   const location = creation.headers.get("Location");
-  if (!location) throw new Error("Missing file upload location");
+  if (!location) throw new LocalizedError(m("missingFileUploadLocation"));
   const url = new URL(location, window.location.origin);
   const endpoint = new URL(options.endpoint, window.location.origin);
   if (
@@ -51,12 +50,12 @@ export async function uploadEncryptedFile(options: {
     url.hash ||
     !url.pathname.startsWith(endpoint.pathname + "/")
   )
-    throw new Error("Invalid file upload location");
+    throw new LocalizedError(m("invalidFileUploadLocation"));
   const id = url.pathname.split("/").pop()!;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
-    throw new Error("Invalid file upload location");
+    throw new LocalizedError(m("invalidFileUploadLocation"));
   if (url.pathname !== endpoint.pathname + "/" + id)
-    throw new Error("Invalid file upload location");
+    throw new LocalizedError(m("invalidFileUploadLocation"));
   let offset = 0;
   for await (const frame of encryptFile(options.key, options.file, options.encryptionId, signal)) {
     const start = offset,
@@ -77,7 +76,7 @@ export async function uploadEncryptedFile(options: {
           signal,
           (sent) => options.onProgress(baseOffset + sent),
         );
-        if (next !== end) throw new Error("Unexpected upload offset");
+        if (next !== end) throw new LocalizedError(m("unexpectedUploadOffset"));
         offset = next;
         options.onProgress(offset);
       } catch (cause) {
@@ -113,7 +112,7 @@ export async function uploadEncryptedFile(options: {
         const text = head.headers.get("Upload-Offset"),
           next = Number(text);
         if (!head.ok || text === null || !Number.isSafeInteger(next) || next < offset || next > end)
-          throw new Error("Could not resume this upload");
+          throw new LocalizedError(m("couldNotResumeThisUpload"));
         offset = next;
         options.onProgress(offset);
       }
@@ -142,7 +141,7 @@ function patchFrame(
           if (policyError) throw policyError;
         }
         const offset = response.headers.get("Upload-Offset");
-        if (!response.ok || offset === null) throw new Error("Upload interrupted");
+        if (!response.ok || offset === null) throw new LocalizedError(m("uploadInterrupted"));
         progress(body.byteLength);
         return Number(offset);
       },
@@ -178,21 +177,21 @@ function patchFrame(
       }
       const offset = xhr.getResponseHeader("Upload-Offset");
       if (xhr.status < 200 || xhr.status >= 300 || offset === null)
-        reject(new Error("Upload interrupted"));
+        reject(new LocalizedError(m("uploadInterrupted")));
       else resolve(Number(offset));
     };
     xhr.onerror = () => {
       finish();
-      reject(new Error("Upload interrupted"));
+      reject(new LocalizedError(m("uploadInterrupted")));
     };
     xhr.onabort = () => {
       finish();
-      reject(new DOMException("Upload stopped", "AbortError"));
+      reject(new DOMException(translate(m("uploadStopped")), "AbortError"));
     };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
       finish();
-      reject(new DOMException("Upload stopped", "AbortError"));
+      reject(new DOMException(translate(m("uploadStopped")), "AbortError"));
       return;
     }
     xhr.send(body);

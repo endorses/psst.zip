@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 /**
  * AES-256-GCM using Web Crypto when available, or noble-ciphers on LAN HTTP.
  *
@@ -47,13 +48,13 @@ export type EncryptionKey = Uint8Array<ArrayBuffer>;
 
 function validateKey(key: EncryptionKey): void {
   if (key.byteLength !== KEY_LENGTH / 8) {
-    throw new Error("Encryption keys must contain exactly 32 bytes");
+    throw new LocalizedError(m("encryptionKeysMustContainExactlyBytes"));
   }
 }
 
 function randomBytes(length: number): Uint8Array<ArrayBuffer> {
   if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("This browser cannot generate cryptographically secure random bytes");
+    throw new LocalizedError(m("thisBrowserCannotGenerateCryptographicallySecureRandomBytes"));
   }
   return globalThis.crypto.getRandomValues(new Uint8Array(length));
 }
@@ -110,7 +111,7 @@ export async function encrypt(key: EncryptionKey, plaintext: ArrayBuffer): Promi
 export async function decrypt(key: EncryptionKey, data: ArrayBuffer): Promise<ArrayBuffer> {
   validateKey(key);
   if (data.byteLength < IV_LENGTH + TAG_LENGTH / 8) {
-    throw new Error("Encrypted data is too short");
+    throw new LocalizedError(m("encryptedDataIsTooShort"));
   }
   const bytes = new Uint8Array(data);
   const iv = bytes.slice(0, IV_LENGTH);
@@ -187,10 +188,11 @@ export async function decryptManifest(key: EncryptionKey, data: ArrayBuffer): Pr
         !/^[0-9a-f]{32}$/.test(file.encryption_id),
     )
   )
-    throw new Error("Invalid file manifest");
+    throw new LocalizedError(m("invalidFileManifest"));
   let total = 0;
   for (const file of manifest.files) {
-    if (file.size > MAX_RECEIVE_TOTAL_BYTES - total) throw new Error("Invalid file manifest");
+    if (file.size > MAX_RECEIVE_TOTAL_BYTES - total)
+      throw new LocalizedError(m("invalidFileManifest"));
     total += file.size;
   }
   const names = uniqueFilenames(manifest.files.map((file) => file.name));

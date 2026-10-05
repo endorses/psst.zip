@@ -1,4 +1,15 @@
 <script lang="ts">
+  import { hasStatus, hasCode } from "$lib/api-error";
+  import {
+    message as m,
+    t,
+    number,
+    LocalizedError,
+    errorText,
+    translate,
+    type DisplayText,
+  } from "$lib/i18n";
+
   import { TrafficLimitError, detectTransferStop } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
   import { beforeNavigate, goto } from "$app/navigation";
@@ -44,7 +55,7 @@
     loadController.abort();
   });
   let status = $state<Status>("loading");
-  let errorMessage = $state("");
+  let errorMessage = $state<DisplayText>("");
   let manifest = $state<Manifest | null>(null);
   let transferId = $state("");
   let keyStr = $state("");
@@ -57,7 +68,7 @@
   const returnUrl = $derived(inboxId ? `/?view=receive&slot=${encodeURIComponent(inboxId)}` : "/");
   async function logout() {
     if (signingOut) return;
-    if (saving && !confirm("Stop saving and sign out? Files already saved will remain.")) return;
+    if (saving && !confirm(translate(m("stopSavingAndSignOutFilesAlreadySavedWill")))) return;
     controller?.abort();
     signingOut = true;
     try {
@@ -69,7 +80,7 @@
       departureApproved = true;
       await goto("/");
     } catch {
-      errorMessage = "Could not sign out. Check your connection and try again.";
+      errorMessage = m("couldNotSignOutCheckYourConnectionAndTry");
     } finally {
       signingOut = false;
       departureApproved = false;
@@ -92,7 +103,7 @@
       !willUnload &&
       !departureApproved &&
       saving &&
-      !confirm("Stop saving and leave? Files already saved will remain.")
+      !confirm(translate(m("stopSavingAndLeaveFilesAlreadySavedWillRemain")))
     )
       cancel();
   });
@@ -108,21 +119,17 @@
 
     if (!keyStr && !inboxId) {
       status = "error";
-      errorMessage =
-        "This link is incomplete. Ask the sender for the full link, including the part after #.";
+      errorMessage = m("thisLinkIsIncompleteAskTheSenderForThe");
       return;
     }
 
     try {
       if (inboxId) {
-        if (!/^[0-9a-f-]{36}$/i.test(inboxId)) throw new Error("Invalid inbox");
+        if (!/^[0-9a-f-]{36}$/i.test(inboxId)) throw new LocalizedError(m("invalidInbox"));
         const { user } = await accountRequest<{ user: User }>("/auth/me");
         ownerUser = user;
         const pair = loadReceiveKey(user.id, inboxId);
-        if (!pair)
-          throw new Error(
-            "This browser has no private key for this inbox. Use the device that created it.",
-          );
+        if (!pair) throw new LocalizedError(m("thisBrowserHasNoPrivateKeyForThisInbox"));
         try {
           const membership = await getSlotTransferMembership(
             inboxId,
@@ -131,9 +138,9 @@
           );
           if (disposed) return;
           if (membership.recipient_public_key !== (await exportKey(pair.publicKey)))
-            throw new Error("This file does not match the expected inbox.");
+            throw new LocalizedError(m("thisFileDoesNotMatchTheExpectedInbox"));
           transferInfo = await getTransferInfo(transferId, loadController.signal);
-          if (downloadLinkExhausted(transferInfo)) throw new Error(DOWNLOAD_LINK_CLOSED);
+          if (downloadLinkExhausted(transferInfo)) throw new LocalizedError(DOWNLOAD_LINK_CLOSED);
           const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
           const envelope = decodeReceiveEnvelope(new Uint8Array(encryptedManifestData));
           const key = await openSubmissionKey(
@@ -154,7 +161,7 @@
         }
       } else {
         transferInfo = await getTransferInfo(transferId, loadController.signal);
-        if (downloadLinkExhausted(transferInfo)) throw new Error(DOWNLOAD_LINK_CLOSED);
+        if (downloadLinkExhausted(transferInfo)) throw new LocalizedError(DOWNLOAD_LINK_CLOSED);
         const encryptedManifestData = await downloadManifest(transferId, loadController.signal);
         manifest = await decryptManifest(await importKey(keyStr), encryptedManifestData);
       }
@@ -163,27 +170,17 @@
     } catch (err) {
       status = "error";
       if (err instanceof TrafficLimitError || err instanceof TransferStateError) {
-        errorMessage = err.message;
-      } else if (err instanceof Error && err.message === DOWNLOAD_LINK_CLOSED) {
-        errorMessage = err.message;
-      } else if (
-        err instanceof Error &&
-        (err.message.includes("401") || err.message.includes("403"))
-      ) {
-        errorMessage = "Sign in as the inbox owner to save these files.";
-      } else if (
-        err instanceof Error &&
-        err.message.startsWith("This browser has no private key")
-      ) {
-        errorMessage = err.message;
-      } else if (
-        err instanceof Error &&
-        (err.message.includes("404") || err.message.includes("410"))
-      ) {
-        errorMessage = "This transfer has expired or was revoked. Ask the sender for a new link.";
+        errorMessage = errorText(err);
+      } else if (err instanceof Error && errorText(err) === DOWNLOAD_LINK_CLOSED) {
+        errorMessage = errorText(err);
+      } else if (hasStatus(err, 401, 403)) {
+        errorMessage = m("signInAsTheInboxOwnerToSaveThese");
+      } else if (err instanceof Error && err instanceof LocalizedError) {
+        errorMessage = errorText(err);
+      } else if (hasStatus(err, 404, 410)) {
+        errorMessage = m("thisTransferHasExpiredOrWasRevokedAskThe");
       } else {
-        errorMessage =
-          "Could not open these files. Check your connection and retry, or ask the sender for a new link.";
+        errorMessage = m("couldNotOpenTheseFilesCheckYourConnectionAnd");
       }
     }
   }
@@ -196,7 +193,7 @@
     if (bytes === 0) return "0 B";
     const units = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+    return `${number(bytes / Math.pow(1024, i), { minimumFractionDigits: i ? 1 : 0, maximumFractionDigits: i ? 1 : 0 })} ${units[i]}`;
   }
 
   function triggerDownload(data: ArrayBuffer, filename: string, mimeType: string) {
@@ -305,12 +302,12 @@
         (err instanceof TrafficLimitError ||
           err instanceof TransferStateError ||
           err instanceof ReceiveStorageError ||
-          err.message === LARGE_SAVE_MESSAGE ||
-          err.message.includes("download allowance is exhausted"))
-          ? err.message
+          errorText(err) === LARGE_SAVE_MESSAGE ||
+          hasCode(err, "download_limit"))
+          ? errorText(err)
           : err instanceof DOMException && err.name === "AbortError"
-            ? "Saving stopped. Started downloads still count toward the limit. Retry only files with attempts remaining."
-            : "Could not save files. Check your connection and try Save files again.";
+            ? m("savingStoppedStartedDownloadsStillCountTowardTheLimit")
+            : m("couldNotSaveFilesCheckYourConnectionAndTry");
       const { [entry.blob_id]: _, ...rest } = downloadProgress;
       downloadProgress = rest;
     }
@@ -325,7 +322,7 @@
     errorMessage = "";
     try {
       if (manifest.files.reduce((sum, file) => sum + file.size, 0) > MAX_ZIP_BYTES) {
-        throw new Error("ZIP downloads are limited to 25 MiB total. Download files individually.");
+        throw new LocalizedError(m("zipDownloadsAreLimitedToMiBTotalDownloadFiles"));
       }
       const zipData: Record<string, Uint8Array> = Object.create(null);
 
@@ -355,11 +352,11 @@
         err instanceof Error &&
         (err instanceof TrafficLimitError ||
           err instanceof TransferStateError ||
-          err.message.includes("download allowance is exhausted"))
-          ? err.message
+          hasCode(err, "download_limit"))
+          ? errorText(err)
           : err instanceof DOMException && err.name === "AbortError"
-            ? "Saving stopped. Started downloads still count toward the limit. Retry only files with attempts remaining."
-            : "Could not save files. Check your connection and try Save files again.";
+            ? m("savingStoppedStartedDownloadsStillCountTowardTheLimit")
+            : m("couldNotSaveFilesCheckYourConnectionAndTry");
     }
   }
 </script>
@@ -367,7 +364,9 @@
 <svelte:window onbeforeunload={unload} />
 <svelte:head>
   <title
-    >{transferInfo?.title || (manifest?.files.length === 1 ? "Save file" : "Save files")} · {BRAND}</title
+    >{$t(transferInfo?.title || (manifest?.files.length === 1 ? m("saveFile") : m("saveFiles")))} · {$t(
+      BRAND,
+    )}</title
   >
 </svelte:head>
 
@@ -375,46 +374,58 @@
   {#if status === "loading"}
     <section class="center">
       <div class="spinner"></div>
-      <p>Loading transfer...</p>
+      <p>{$t(m("loadingTransfer"))}</p>
     </section>
   {:else if status === "error"}
     <section class="center">
-      <h1>Cannot open files</h1>
-      <p class="error" role="alert">{errorMessage}</p>
+      <h1>{$t(m("cannotOpenFiles"))}</h1>
+      <p class="error" role="alert">{$t(errorMessage)}</p>
       <button
         onclick={() => {
           status = "loading";
           void load();
-        }}><Icon name="Refresh" size={18} />Reconnect</button
+        }}><Icon name="Refresh" size={18} />{$t(m("reconnect"))}</button
       >
     </section>
   {:else if status === "downloading"}
     <section class="center">
       <div class="spinner"></div>
-      <p>Saving {currentFile} · {formatSize(downloadBytes)} received</p>
-      <button onclick={() => controller?.abort()}>Cancel saving</button>
+      <p>
+        {$t(m("saving"))}
+        {$t(currentFile)} · {$t(formatSize(downloadBytes))}
+        {$t(m("received"))}
+      </p>
+      <button onclick={() => controller?.abort()}>{$t(m("cancelSaving"))}</button>
     </section>
   {:else if manifest}
     <section>
-      <h1>{transferInfo?.title || (manifest.files.length === 1 ? "Save file" : "Save files")}</h1>
+      <h1>
+        {$t(transferInfo?.title || (manifest.files.length === 1 ? m("saveFile") : m("saveFiles")))}
+      </h1>
       <p class="subtitle">
-        {manifest.files.length} file{manifest.files.length !== 1 ? "s" : ""} &middot;
-        {formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0))} total
+        {$t(m("fileCount", { count: manifest.files.length }))} &middot;
+        {$t(formatSize(manifest.files.reduce((sum, f) => sum + f.size, 0)))}
+        {$t(m("total"))}
       </p>
       <ul class="file-list">
         {#each manifest.files as entry}
           <li>
             <div class="file-info">
-              <span class="file-name">{entry.name}</span>
-              <span class="file-size">{formatSize(entry.size)}</span>
+              <span class="file-name">{$t(entry.name)}</span>
+              <span class="file-size">{$t(formatSize(entry.size))}</span>
               {#if transferInfo?.files?.find((file) => file.id === entry.blob_id)?.remaining_downloads != null}<span
                   class="muted small"
                 >
                   {#if transferInfo.files.find((file) => file.id === entry.blob_id)?.remaining_downloads === 0}
-                    Download limit reached
+                    {$t(m("downloadLimitReached"))}
                   {:else}
-                    · {transferInfo.files.find((file) => file.id === entry.blob_id)
-                      ?.remaining_downloads} attempts remaining
+                    · {$t(
+                      m("remainingAttemptsCount", {
+                        count:
+                          transferInfo.files.find((file) => file.id === entry.blob_id)
+                            ?.remaining_downloads ?? 0,
+                      }),
+                    )}
                   {/if}</span
                 >{/if}
             </div>
@@ -427,9 +438,9 @@
             >
               <Icon name="Download" size={18} />
               {#if entry.blob_id in downloadProgress}
-                {downloadProgress[entry.blob_id]}%
+                {$t(downloadProgress[entry.blob_id])}%
               {:else}
-                {downloadedFileIds.includes(entry.blob_id) ? "Save again" : "Save file"}
+                {$t(downloadedFileIds.includes(entry.blob_id) ? m("saveAgain") : m("saveFile"))}
               {/if}
             </button>
           </li>
@@ -439,10 +450,9 @@
       {#if manifest.files.length > 1}
         <p class="muted small">
           {#if transferInfo?.files?.some((file) => file.remaining_downloads === 0)}
-            ZIP is unavailable because one or more files reached their download limit. Save the
-            available files individually.
+            {$t(m("zipIsUnavailableBecauseOneOrMoreFilesReached"))}
           {:else}
-            ZIP downloads support up to 25 MiB total. Larger transfers can be saved individually.
+            {$t(m("zipDownloadsSupportUpToMiBTotalLargerTransfers"))}
           {/if}
         </p>
         <button
@@ -450,26 +460,27 @@
           disabled={Object.keys(downloadProgress).length > 0 ||
             transferInfo?.files?.some((file) => file.remaining_downloads === 0) ||
             manifest.files.reduce((n, f) => n + f.size, 0) > MAX_ZIP_BYTES}
-          onclick={downloadAllAsZip}><Icon name="Download" size={18} />Save all as ZIP</button
+          onclick={downloadAllAsZip}
+          ><Icon name="Download" size={18} />{$t(m("saveAllAsZIP"))}</button
         >
       {/if}
 
-      {#if saving}<button onclick={() => controller?.abort()}>Cancel saving</button>{/if}
+      {#if saving}<button onclick={() => controller?.abort()}>{$t(m("cancelSaving"))}</button>{/if}
       {#if errorMessage}
-        <p class="error" role="alert">{errorMessage}</p>
+        <p class="error" role="alert">{$t(errorMessage)}</p>
       {/if}
 
       {#if allFilesDownloaded}
         <div class="download-confirmation" role="status">
-          <p>All files handed to your browser. Check its Downloads list for saved files.</p>
+          <p>{$t(m("allFilesHandedToYourBrowserCheckItsDownloads"))}</p>
           {#if confirmation === "sending"}
-            <p>Notifying the sender...</p>
+            <p>{$t(m("notifyingTheSender"))}</p>
           {:else if confirmation === "confirmed"}
-            <p>Sender notified.</p>
+            <p>{$t(m("senderNotified"))}</p>
           {:else if confirmation === "failed"}
-            <p>Files downloaded, but the sender could not be notified.</p>
+            <p>{$t(m("filesDownloadedButTheSenderCouldNotBeNotified"))}</p>
             <button class="btn" onclick={confirmDownload}
-              ><Icon name="Refresh" size={18} />Retry confirmation</button
+              ><Icon name="Refresh" size={18} />{$t(m("retryConfirmation"))}</button
             >
           {/if}
         </div>

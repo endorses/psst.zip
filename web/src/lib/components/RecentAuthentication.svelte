@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest, AccountError } from "$lib/account";
   import {
@@ -11,7 +13,7 @@
     $props();
   let open = $state(false),
     busy = $state(false),
-    error = $state(""),
+    error = $state<DisplayText>(""),
     password = $state(""),
     code = $state(""),
     recovery = $state(false);
@@ -46,7 +48,7 @@
         onsessionended();
         return;
       }
-      error = cause instanceof Error ? cause.message : "Could not load administrator security.";
+      error = cause instanceof Error ? errorText(cause) : m("couldNotLoadAdministratorSecurity");
     } finally {
       if (run === generation) busy = false;
     }
@@ -79,7 +81,7 @@
     } catch (cause) {
       if (run !== generation) return;
       // Incorrect proof is a local error; /auth/me polling separately detects session expiry.
-      error = cause instanceof Error ? cause.message : "Could not confirm your identity.";
+      error = cause instanceof Error ? errorText(cause) : m("couldNotConfirmYourIdentity");
     } finally {
       if (run === generation) {
         busy = false;
@@ -125,15 +127,14 @@
       discard();
     }}
   >
-    <h2 id="recent-auth-title">Confirm administrator identity</h2>
+    <h2 id="recent-auth-title">{$t(m("confirmAdministratorIdentity"))}</h2>
     <p id="recent-auth-description">
-      Sensitive changes require verification within the last five minutes. Your action has not been
-      applied. Its unsaved values remain; review and submit it again after verification.
+      {$t(m("sensitiveChangesRequireVerificationWithinTheLastFiveMinutes"))}
     </p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
+    {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
     {#if security}<form onsubmit={verify}>
         <label
-          >Administrator password<input
+          >{$t(m("administratorPassword"))}<input
             type="password"
             autocomplete="current-password"
             required
@@ -142,7 +143,7 @@
           /></label
         >
         {#if security.enabled}<label
-            >{recovery ? "Recovery code" : "Authenticator code"}<input
+            >{$t(recovery ? m("recoveryCode") : m("authenticatorCode"))}<input
               type="text"
               autocomplete="one-time-code"
               inputmode={recovery ? "text" : "numeric"}
@@ -161,17 +162,17 @@
             onclick={() => {
               recovery = !recovery;
               code = "";
-            }}>{recovery ? "Use authenticator code" : "Use a recovery code"}</button
+            }}>{$t(recovery ? m("useAuthenticatorCode") : m("useARecoveryCode"))}</button
           >{/if}
         <div class="actions">
-          <button type="button" onclick={discard}>Cancel verification</button><button
+          <button type="button" onclick={discard}>{$t(m("cancelVerification"))}</button><button
             class="primary"
-            disabled={busy}>{busy ? "Verifying…" : "Confirm identity"}</button
+            disabled={busy}>{$t(busy ? m("verifying") : m("confirmIdentity"))}</button
           >
         </div>
       </form>{:else}<button disabled={busy} onclick={load}
-        >{busy ? "Loading security settings…" : "Retry security settings"}</button
-      ><button onclick={discard}>Cancel verification</button>{/if}
+        >{$t(busy ? m("loadingSecuritySettings") : m("retrySecuritySettings"))}</button
+      ><button onclick={discard}>{$t(m("cancelVerification"))}</button>{/if}
   </dialog>{/if}
 
 <style>

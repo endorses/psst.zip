@@ -1,9 +1,20 @@
 import Foundation
+@testable import Psst
 import XCTest
 
-@testable import Psst
-
 final class AbuseReportTests: XCTestCase {
+    private var priorLanguage = AppLanguage.system
+    override func setUp() {
+        super.setUp()
+        priorLanguage = LanguageSettings.shared.preference
+        LanguageSettings.shared.preference = .en
+    }
+
+    override func tearDown() {
+        LanguageSettings.shared.preference = priorLanguage
+        super.tearDown()
+    }
+
     private let identifier = "12345678-1234-1234-1234-123456789ABC"
     func testContactAcceptsOrdinaryASCIIAndRejectsInjectionAndLimits() {
         XCTAssertEqual(
@@ -26,12 +37,15 @@ final class AbuseReportTests: XCTestCase {
     func testContextContainsOnlyValidatedOriginTypeAndID() throws {
         let context = try XCTUnwrap(
             AbuseReportContext(
-                origin: "HTTPS://EXAMPLE.org:443/", resourceType: "slot", resourceID: identifier))
+                origin: "HTTPS://EXAMPLE.org:443/", resourceType: "slot", resourceID: identifier
+            )
+        )
         XCTAssertEqual(context.origin, "https://example.org")
         XCTAssertEqual(
             context.text,
             "Instance: https://example.org\nResource type: slot\nResource ID: "
-                + identifier.lowercased())
+                + identifier.lowercased()
+        )
         XCTAssertNotNil(AbuseReportContext(origin: "http://192.168.1.2:8080"))
         XCTAssertNotNil(AbuseReportContext(origin: "https://[::1]:8443"))
         for origin in [
@@ -49,11 +63,14 @@ final class AbuseReportTests: XCTestCase {
         }
         XCTAssertNil(
             AbuseReportContext(
-                origin: "https://example.org", resourceType: "user", resourceID: identifier))
+                origin: "https://example.org", resourceType: "user", resourceID: identifier
+            )
+        )
         XCTAssertNil(
             AbuseReportContext(
                 origin: "https://example.org", resourceType: "slot", resourceID: identifier + "#KEY"
-            ))
+            )
+        )
         XCTAssertNil(AbuseReportContext(origin: "https://example.org", resourceID: identifier))
     }
 
@@ -61,13 +78,16 @@ final class AbuseReportTests: XCTestCase {
         for route in ["d", "u"] {
             let context = try XCTUnwrap(
                 AbuseReportContext.fromLink(
-                    "https://example.org/\(route)/\(identifier)?token=DO_NOT_SEND#INVALID_KEY"))
+                    "https://example.org/\(route)/\(identifier)?token=DO_NOT_SEND#INVALID_KEY"
+                )
+            )
             XCTAssertEqual(context.resourceType, route == "d" ? "transfer" : "slot")
             XCTAssertEqual(context.resourceID, identifier.lowercased())
             XCTAssertFalse(context.text.contains("DO_NOT_SEND"))
             XCTAssertFalse(context.text.contains("INVALID_KEY"))
             XCTAssertFalse(
-                context.mailURL(contact: "a@example.org")!.absoluteString.contains("INVALID_KEY"))
+                try XCTUnwrap(context.mailURL(contact: "a@example.org")?.absoluteString.contains("INVALID_KEY"))
+            )
         }
         for raw in [
             "https://example.org/pair#CODE", "https://example.org/d/invalid#SECRET",
@@ -83,7 +103,8 @@ final class AbuseReportTests: XCTestCase {
         let context = try XCTUnwrap(
             AbuseReportContext(
                 origin: "https://example.org:8443", resourceType: "transfer", resourceID: identifier
-            ))
+            )
+        )
         let url = try XCTUnwrap(context.mailURL(contact: "Abuse+reports%tag@example.org"))
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         XCTAssertEqual(components.scheme, "mailto")

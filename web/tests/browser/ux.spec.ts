@@ -93,6 +93,8 @@ test("live history keeps known data when offline and recovers automatically", as
   await signIn(page);
   await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
+  await expect(page).toHaveURL(/view=receive&slot=/);
+  await expect(page.getByRole("img", { name: "QR code for shared link" })).toBeVisible();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await expect(page.locator("article").first()).toBeVisible();
   await page.route("**/api/v1/auth/resources?*", (route) => route.abort());

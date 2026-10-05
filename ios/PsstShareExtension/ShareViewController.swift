@@ -45,7 +45,7 @@ class ShareViewController: UIViewController, UIAdaptivePresentationControllerDel
 
     private func processSharedItems() async {
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
-            viewModel.error = String(localized: "No items to share")
+            viewModel.error = L10n.message("No items to share")
             return
         }
 
@@ -126,7 +126,7 @@ class ShareViewController: UIViewController, UIAdaptivePresentationControllerDel
         extensionContext?.cancelRequest(withError: NSError(
             domain: "zip.psst.ios.share-extension",
             code: 0,
-            userInfo: [NSLocalizedDescriptionKey: "User cancelled"]
+            userInfo: [NSLocalizedDescriptionKey: L10n.text("User cancelled")]
         ))
     }
 

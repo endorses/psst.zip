@@ -19,9 +19,9 @@ class HistoryTitlesTest {
 
     @Test
     fun automaticTitleIncludesAdditionalCountAndCustomTitleWins() {
-        assertEquals("holiday.jpg + 3 files", historyTitle(entry))
-        assertEquals("Wedding", historyTitle(entry.copy(title = "Wedding")))
-        assertEquals("holiday.jpg + 3 files", historyTitle(entry.copy(title = "")))
+        assertEquals("holiday.jpg + 3 files", historyTitle(entry).english())
+        assertEquals("Wedding", historyTitle(entry.copy(title = "Wedding")).english())
+        assertEquals("holiday.jpg + 3 files", historyTitle(entry.copy(title = "")).english())
     }
 
     @Test
@@ -29,12 +29,12 @@ class HistoryTitlesTest {
         val raw = "photo\u061C\u200E\u200F\u202Ejpg.exe"
         val expected = "photo____jpg.exe"
         assertEquals(expected, receivedFilenameLabel(raw))
-        assertEquals("$expected + 1 file", automaticHistoryTitle(raw, 2))
+        assertEquals("$expected + 1 file", automaticHistoryTitle(raw, 2).english())
         val record = entry.copy(automaticTitle = raw)
-        assertEquals("$expected + 3 files", historyTitle(record))
+        assertEquals("$expected + 3 files", historyTitle(record).english())
         assertEquals(raw, record.automaticTitle)
-        assertEquals("File", receivedFilenameLabel("../unsafe.exe"))
-        assertEquals("File", receivedFilenameLabel(""))
+        assertEquals("File", displayFilename("../unsafe.exe").english())
+        assertEquals("File", displayFilename("").english())
         assertEquals("صورة.jpg", receivedFilenameLabel("صورة.jpg"))
     }
 

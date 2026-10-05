@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.model.ManifestValidator
 
 /** A presentation projection only. Account and local stores remain independent. */
@@ -44,20 +46,27 @@ fun unifiedHistory(
         )
 
 /** Display only: persisted manifest names remain untouched for authentication and resume checks. */
-internal fun receivedFilenameLabel(name: String): String =
-    runCatching { ManifestValidator.safeFilename(name) }.getOrDefault("File")
+internal fun receivedFilenameLabel(name: String): String = displayFilename(name).text()
 
-internal fun automaticHistoryTitle(firstName: String?, count: Int): String? =
+internal fun displayFilename(name: String): UiText =
+    runCatching { userText(ManifestValidator.safeFilename(name)) }
+        .getOrDefault(message(R.string.ui_unknown_file))
+
+internal fun automaticHistoryTitle(firstName: String?, count: Int): UiText? =
     firstName?.let {
-        val name = receivedFilenameLabel(it)
-        if (count > 1) "$name + ${count - 1} ${if (count == 2) "file" else "files"}" else name
+        val name = displayFilename(it)
+        if (count > 1)
+            pluralMessage(R.plurals.automatic_history_title, (count - 1).toLong(), name, count - 1)
+        else name
     }
 
-internal fun historyTitle(entry: TransferHistoryEntity): String =
-    entry.sharedTitle?.takeIf { it.isNotBlank() }
-        ?: entry.title?.takeIf { it.isNotBlank() }
+internal fun historyTitle(entry: TransferHistoryEntity): UiText =
+    entry.sharedTitle?.takeIf { it.isNotBlank() }?.let(::userText)
+        ?: entry.title?.takeIf { it.isNotBlank() }?.let(::userText)
         ?: automaticHistoryTitle(entry.automaticTitle, entry.fileCount)
-        ?: if (entry.type == "sent") "Sent files" else "Receive link"
+        ?: message(
+            if (entry.type == "sent") R.string.ui_sent_fallback else R.string.ui_receive_fallback
+        )
 
 /** Keep the filename extension/count visible, while accessibility exposes the full original. */
 internal fun compactHistoryTitle(title: String, limit: Int = 64): String {

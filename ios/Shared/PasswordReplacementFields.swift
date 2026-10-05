@@ -12,27 +12,27 @@ struct PasswordReplacementFields: View {
     var onBusyChanged: (Bool) -> Void = { _ in }
     var onChanged: () -> Void = {}
     var body: some View {
-        Text(config.indicator).font(.caption).foregroundStyle(PsstTheme.secondary)
-        Text(config.requiresPasswordChange ? "Choose your own password" : "Change password").font(.headline)
-        Text("Use 12–72 UTF-8 bytes and a password different from your current one. Afterwards, sign in again with the new password.").font(.footnote)
-        SecureField("Current password", text: $current).textContentType(.password)
+        Text(L10n.text(config.indicator)).font(.caption).foregroundStyle(PsstTheme.secondary)
+        Text(L10n.text(config.requiresPasswordChange ? "Choose your own password" : "Change password")).font(.headline)
+        Text(L10n.text("Use 12–72 UTF-8 bytes and a password different from your current one. Afterwards, sign in again with the new password.")).font(.footnote)
+        SecureField(L10n.text("Current password"), text: $current).textContentType(.password)
         Group {
             if visible {
-                TextField("New password", text: $replacement)
-                TextField("Confirm password", text: $confirmation)
+                TextField(L10n.text("New password"), text: $replacement)
+                TextField(L10n.text("Confirm password"), text: $confirmation)
             } else {
-                SecureField("New password", text: $replacement)
-                SecureField("Confirm password", text: $confirmation)
+                SecureField(L10n.text("New password"), text: $replacement)
+                SecureField(L10n.text("Confirm password"), text: $confirmation)
             }
         }.textContentType(.newPassword).textInputAutocapitalization(.never).autocorrectionDisabled()
-        Button { visible.toggle() } label: { Label(visible ? "Hide passwords" : "Show passwords", systemImage: visible ? "eye.slash" : "eye") }
+        Button { visible.toggle() } label: { Label(L10n.text(visible ? "Hide passwords" : "Show passwords"), systemImage: visible ? "eye.slash" : "eye") }
         if !confirmation.isEmpty, confirmation != replacement {
-            Text("Passwords do not match.").foregroundStyle(PsstTheme.error)
+            Text(L10n.text("Passwords do not match.")).foregroundStyle(PsstTheme.error)
         }
         if let error {
-            Text(error).foregroundStyle(PsstTheme.error)
+            Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
         }
-        Button("Change password") {
+        Button(L10n.text("Change password")) {
             busy = true; error = nil; onBusyChanged(true)
             Task {
                 defer { busy = false; onBusyChanged(false) }
@@ -44,9 +44,9 @@ struct PasswordReplacementFields: View {
             }
         }.buttonStyle(PrimaryAction()).disabled(busy || !PasswordReplacementPolicy.valid(current: current, replacement: replacement, confirmation: confirmation))
         if busy {
-            ProgressView("Changing password")
+            ProgressView(L10n.text("Changing password"))
         }
-        Text("Your other sessions will be signed out.").font(.caption)
+        Text(L10n.text("Your other sessions will be signed out.")).font(.caption)
     }
 }
 

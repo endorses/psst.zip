@@ -43,7 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.AccountIndicator
 import zip.psst.android.ui.components.LinkLimits
 import zip.psst.android.viewmodel.SendViewModel
@@ -70,9 +71,9 @@ fun SendScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var settings by remember { mutableStateOf(false) }
-    var confirmStop by remember { mutableStateOf(false) }
-    var leaveAfterStop by remember { mutableStateOf(false) }
+    var settings by rememberSaveable { mutableStateOf(false) }
+    var confirmStop by rememberSaveable { mutableStateOf(false) }
+    var leaveAfterStop by rememberSaveable { mutableStateOf(false) }
     val requestBack = {
         if (state.isUploading) {
             leaveAfterStop = true
@@ -106,7 +107,7 @@ fun SendScreen(
     if (settings)
         AlertDialog(
             onDismissRequest = { settings = false },
-            title = { Text("Link settings") },
+            title = { Text(tr(R.string.l_link_settings_14b504)) },
             text = {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),
@@ -115,8 +116,10 @@ fun SendScreen(
                     OutlinedTextField(
                         value = state.sharedTitle,
                         onValueChange = viewModel::setSharedTitle,
-                        label = { Text("Link title (optional)") },
-                        supportingText = { Text("Shown to people using this link") },
+                        label = { Text(tr(R.string.l_link_title_optional_fc0c15)) },
+                        supportingText = {
+                            Text(tr(R.string.l_shown_to_people_using_this_link_1c969c))
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -124,14 +127,20 @@ fun SendScreen(
                         enabled = state.downloadLimitEnabled,
                         value = state.maxDownloadsInput,
                         editable = !state.linkPolicyLocked,
-                        label = "Maximum downloads per file",
-                        help = "Each started download counts, including interrupted downloads.",
+                        label = tr(R.string.l_maximum_downloads_per_file_657845),
+                        help =
+                            tr(
+                                R.string
+                                    .l_each_started_download_counts_including_interrupted_downloads_2be8c5
+                            ),
                         onEnabledChange = viewModel::setDownloadLimitEnabled,
                         onValueChange = viewModel::setMaxDownloads,
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { settings = false }) { Text("Done") } },
+            confirmButton = {
+                TextButton(onClick = { settings = false }) { Text(tr(R.string.l_done_e9b450)) }
+            },
         )
 
     LaunchedEffect(Unit) { viewModel.refreshLimit() }
@@ -187,14 +196,17 @@ fun SendScreen(
                 TextButton(onClick = { settings = true }) {
                     Text(
                         if (state.sharedTitle.isBlank() && !state.downloadLimitEnabled)
-                            "Link settings · title and limits"
-                        else "Link settings · edit title or limits"
+                            tr(R.string.l_link_settings_title_and_limits_2e28cf)
+                        else tr(R.string.l_link_settings_edit_title_or_limits_7e5458)
                     )
                 }
             Text(
                 state.maxFileBytes?.let {
-                    "Up to ${formatFileSize(it)} per file. Files are encrypted automatically."
-                } ?: "The server’s file limit is checked before uploading.",
+                    tr(
+                        R.string.l_up_to_1_s_per_file_files_are_encrypted_automatically_7b19e3,
+                        (formatFileSize(it)),
+                    )
+                } ?: tr(R.string.l_the_server_s_file_limit_is_checked_before_uploading_5b14b0),
                 style = MaterialTheme.typography.bodySmall,
             )
             if (state.files.isNotEmpty())
@@ -327,7 +339,7 @@ fun SendScreen(
                 state.error?.let { error ->
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = error,
+                        text = error.text(),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -374,11 +386,5 @@ fun SendScreen(
     }
 }
 
-internal fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
-        else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-    }
-}
+internal fun formatFileSize(bytes: Long): String =
+    UiFormatting.bytes(bytes, UiStrings.context().resources.configuration.locales[0])

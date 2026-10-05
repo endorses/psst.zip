@@ -1,3 +1,4 @@
+import { message as m, number, LocalizedError, type DisplayText } from "./i18n/index.ts";
 export interface ResourcePolicy {
   server_storage_bytes: number;
   account_storage_bytes: number;
@@ -37,7 +38,7 @@ export interface ResourceSnapshot {
 }
 export const policyFields: {
   key: keyof ResourcePolicy;
-  label: string;
+  label: DisplayText;
   factor: number;
   min: number;
   max: number;
@@ -45,7 +46,7 @@ export const policyFields: {
 }[] = [
   {
     key: "server_storage_bytes",
-    label: "Server storage (MiB)",
+    label: m("serverStorageMiB"),
     factor: 1024 ** 2,
     min: 1,
     max: 1024 ** 3,
@@ -53,7 +54,7 @@ export const policyFields: {
   },
   {
     key: "account_storage_bytes",
-    label: "Storage per account (MiB)",
+    label: m("storagePerAccountMiB"),
     factor: 1024 ** 2,
     min: 1,
     max: 1024 ** 3,
@@ -61,7 +62,7 @@ export const policyFields: {
   },
   {
     key: "server_files",
-    label: "Files on server",
+    label: m("filesOnServer"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -69,7 +70,7 @@ export const policyFields: {
   },
   {
     key: "account_files",
-    label: "Files per account",
+    label: m("filesPerAccount"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -77,7 +78,7 @@ export const policyFields: {
   },
   {
     key: "server_transfers",
-    label: "Transfers on server",
+    label: m("transfersOnServer"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -85,7 +86,7 @@ export const policyFields: {
   },
   {
     key: "account_transfers",
-    label: "Transfers per account",
+    label: m("transfersPerAccount"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -93,7 +94,7 @@ export const policyFields: {
   },
   {
     key: "server_slots",
-    label: "Receive links on server",
+    label: m("receiveLinksOnServer"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -101,7 +102,7 @@ export const policyFields: {
   },
   {
     key: "account_slots",
-    label: "Receive links per account",
+    label: m("receiveLinksPerAccount"),
     factor: 1,
     min: 1,
     max: 1000000,
@@ -109,7 +110,7 @@ export const policyFields: {
   },
   {
     key: "max_retention_seconds",
-    label: "Maximum retention (hours)",
+    label: m("maximumRetentionHours"),
     factor: 3600,
     min: 1 / 60,
     max: 365 * 24,
@@ -117,7 +118,7 @@ export const policyFields: {
   },
   {
     key: "pending_upload_seconds",
-    label: "Unfinished upload lifetime (hours)",
+    label: m("unfinishedUploadLifetimeHours"),
     factor: 3600,
     min: 1 / 60,
     max: 365 * 24,
@@ -125,24 +126,25 @@ export const policyFields: {
   },
   {
     key: "reserve_disk_bytes",
-    label: "Minimum free disk space (MiB)",
+    label: m("minimumFreeDiskSpaceMiB"),
     factor: 1024 ** 2,
     min: 1,
     max: 1024 ** 2,
-    group: "Disk safety",
+    group: "disk-safety",
   },
   {
     key: "reserve_disk_percent",
-    label: "Minimum free disk space (%)",
+    label: m("minimumFreeDiskSpace"),
     factor: 1,
     min: 1,
     max: 50,
-    group: "Disk safety",
+    group: "disk-safety",
   },
 ];
 
 export function validateResourcePolicy(value: unknown): ResourcePolicy {
-  if (!value || typeof value !== "object") throw new Error("Resource policy is unavailable.");
+  if (!value || typeof value !== "object")
+    throw new LocalizedError(m("resourcePolicyIsUnavailable"));
   const policy = value as ResourcePolicy;
   for (const field of policyFields) {
     const number = policy[field.key];
@@ -151,10 +153,12 @@ export function validateResourcePolicy(value: unknown): ResourcePolicy {
       number < field.min * field.factor ||
       number > field.max * field.factor
     )
-      throw new Error(`Choose a supported whole-number value for ${field.label.toLowerCase()}.`);
+      throw new LocalizedError(
+        m("chooseASupportedWholeNumberValueForValue", { arg0: field.label }),
+      );
   }
   if (policy.pending_upload_seconds > policy.max_retention_seconds)
-    throw new Error("Unfinished upload lifetime cannot exceed maximum retention.");
+    throw new LocalizedError(m("unfinishedUploadLifetimeCannotExceedMaximumRetention"));
   return { ...policy };
 }
 
@@ -163,9 +167,9 @@ export function validateResourceSnapshot(value: unknown): ResourceSnapshot {
   const policy = validateResourcePolicy(snapshot?.policy);
   for (const field of ["reserved_bytes", "occupied_bytes", "files", "transfers", "slots"] as const)
     if (!Number.isSafeInteger(snapshot?.usage?.[field]) || snapshot.usage[field] < 0)
-      throw new Error("Resource usage is unavailable. Retry to refresh the measurements.");
+      throw new LocalizedError(m("resourceUsageIsUnavailableRetryToRefreshTheMeasurements"));
   if (snapshot.usage.occupied_bytes > snapshot.usage.reserved_bytes)
-    throw new Error("Resource usage needs reconciliation. Retry to refresh the measurements.");
+    throw new LocalizedError(m("resourceUsageNeedsReconciliationRetryToRefreshTheMeasurements"));
   const capacity = snapshot.capacity;
   if (capacity !== undefined) {
     if (
@@ -174,18 +178,18 @@ export function validateResourceSnapshot(value: unknown): ResourceSnapshot {
       !["server", "account"].includes(capacity.scope) ||
       !Number.isFinite(Date.parse(capacity.checked_at))
     )
-      throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+      throw new LocalizedError(m("currentUploadCapacityIsUnavailableRetryToRefreshIt"));
     for (const field of ["available_files", "available_transfers", "available_slots"] as const)
       if (!Number.isSafeInteger(capacity[field]) || capacity[field] < 0)
-        throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+        throw new LocalizedError(m("currentUploadCapacityIsUnavailableRetryToRefreshIt"));
     if (
       capacity.state === "unknown"
         ? capacity.available_wire_bytes !== null
         : !Number.isSafeInteger(capacity.available_wire_bytes) || capacity.available_wire_bytes! < 0
     )
-      throw new Error("Current upload capacity is unavailable. Retry to refresh it.");
+      throw new LocalizedError(m("currentUploadCapacityIsUnavailableRetryToRefreshIt"));
     if (capacity.state === "blocked" && capacity.available_wire_bytes !== 0)
-      throw new Error("Current upload capacity is inconsistent. Retry to refresh it.");
+      throw new LocalizedError(m("currentUploadCapacityIsInconsistentRetryToRefreshIt"));
   }
   return {
     policy,
@@ -201,23 +205,20 @@ export function capacityLabel(bytes: number): string {
   const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
   const index =
     bytes > 0 ? Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024))) : 0;
-  return `${Number((bytes / 1024 ** index).toFixed(2))} ${units[index]}`;
+  return `${number(bytes / 1024 ** index, { maximumFractionDigits: 2 })} ${units[index]}`;
 }
-export function durationLabel(seconds: number): string {
-  if (seconds % 86400 === 0) return `${seconds / 86400} days`;
-  if (seconds % 3600 === 0) return `${seconds / 3600} hours`;
-  return `${Math.round(seconds / 60)} minutes`;
+export function durationLabel(seconds: number): DisplayText {
+  if (seconds % 86400 === 0) return m("valueDays", { arg0: seconds / 86400 });
+  if (seconds % 3600 === 0) return m("valueHours", { arg0: seconds / 3600 });
+  return m("valueMinutes", { arg0: Math.round(seconds / 60) });
 }
 
-export class ResourceLimitError extends Error {}
+export class ResourceLimitError extends LocalizedError {}
 export function resourceLimitError(code: unknown): ResourceLimitError | null {
-  const messages: Record<string, string> = {
-    resource_limit:
-      "This account or server has reached its storage or object limit. Remove unused transfers or contact the administrator before retrying.",
-    disk_capacity:
-      "The server has reached its free-disk safety reserve. Contact its administrator before retrying.",
-    retention_limit:
-      "The requested lifetime exceeds this server's retention policy. Refresh the server limits before retrying.",
+  const messages: Record<string, DisplayText> = {
+    resource_limit: m("thisAccountOrServerHasReachedItsStorageOr"),
+    disk_capacity: m("theServerHasReachedItsFreeDiskSafetyReserve"),
+    retention_limit: m("theRequestedLifetimeExceedsThisServerSRetentionPolicy"),
   };
   return typeof code === "string" && messages[code] ? new ResourceLimitError(messages[code]) : null;
 }

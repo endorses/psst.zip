@@ -25,7 +25,9 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
+import zip.psst.android.R
 import zip.psst.android.data.linkLimitError
+import zip.psst.android.i18n.*
 
 /** Owner-only creation control; the result/QR layout does not contain editable settings. */
 @Composable
@@ -45,10 +47,19 @@ internal fun LinkLimits(
             onClick = { expanded = !expanded },
             modifier =
                 Modifier.fillMaxWidth().semantics {
-                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                    stateDescription =
+                        if (expanded) tr(R.string.l_expanded_6d1704)
+                        else tr(R.string.l_collapsed_0084e8)
                 },
         ) {
-            Text(if (enabled) "Link limits · ${value.ifBlank { "Set a limit" }}" else "Link limits")
+            Text(
+                if (enabled)
+                    tr(
+                        R.string.l_link_limits_1_s_5991d3,
+                        (value.ifBlank { tr(R.string.ui_set_limit) }),
+                    )
+                else tr(R.string.l_link_limits_7c69c0)
+            )
             Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
         }
         if (expanded) {
@@ -70,7 +81,7 @@ internal fun LinkLimits(
                     isError = error != null,
                     supportingText = {
                         Text(
-                            error ?: help,
+                            error?.text() ?: help,
                             Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         )
                     },
@@ -78,8 +89,8 @@ internal fun LinkLimits(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-            } else Text("Unlimited. Existing server restrictions still apply.")
-            if (!editable) Text("The selected limit is fixed for this link.")
+            } else Text(tr(R.string.l_unlimited_existing_server_restrictions_still_apply_167a1a))
+            if (!editable) Text(tr(R.string.l_the_selected_limit_is_fixed_for_this_link_a37d0a))
         }
     }
 }

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { untrack } from "svelte";
   let {
     value = $bindable(0),
@@ -17,8 +19,8 @@
 
 <details class="optional-limit" bind:open={opened}>
   <summary
-    >Link limits <span class="muted small">{value === 0 ? "Optional" : "Limit enabled"}</span
-    ></summary
+    >{$t(m("linkLimits"))}
+    <span class="muted small">{$t(value === 0 ? m("optional") : m("limitEnabled"))}</span></summary
   >
   <div class="limit-fields">
     <label class="limit-toggle">
@@ -28,13 +30,13 @@
         checked={value !== 0}
         onchange={(event) => (value = event.currentTarget.checked ? 1 : 0)}
       />
-      {label}
+      {$t(label)}
     </label>
     {#if value !== 0}
       <label
-        >Maximum
+        >{$t(m("maximum"))}
         <input
-          aria-label={label}
+          aria-label={$t(label)}
           aria-invalid={invalid}
           aria-describedby={`${id}-help${invalid ? ` ${id}-error` : ""}`}
           type="number"
@@ -50,9 +52,9 @@
         />
       </label>
       {#if invalid}<p id={`${id}-error`} class="error small" role="alert">
-          Enter a whole number between 1 and 2147483647, or turn the limit off.
+          {$t(m("enterAWholeNumberBetweenAndOrTurnThe"))}
         </p>{/if}
-      <p id={`${id}-help`} class="muted small">{description}</p>
+      <p id={`${id}-help`} class="muted small">{$t(description)}</p>
     {/if}
   </div>
 </details>

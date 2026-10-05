@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { utcTime } from "$lib/admin";
   import { loadStorageChecks, type StorageChecks } from "$lib/admin-storage-checks";
@@ -29,67 +31,71 @@
   });
 </script>
 
-<section aria-label="Stored file checks" class="storage-checks">
+<section aria-label={$t(m("storedFileChecks"))} class="storage-checks">
   <div class="heading">
-    <h2>Stored file checks</h2>
+    <h2>{$t(m("storedFileChecks"))}</h2>
     <button disabled={busy} onclick={refresh}
-      >{busy ? "Refreshing checks…" : "Refresh file checks"}</button
+      >{$t(busy ? m("refreshingChecks") : m("refreshFileChecks"))}</button
     >
   </div>
-  <p class="muted small">Checks payload files referenced by the database.</p>
+  <p class="muted small">{$t(m("checksPayloadFilesReferencedByTheDatabase"))}</p>
   {#if failed}
     <p role="alert" class="error">
-      File-check status could not be loaded.{snapshot
-        ? " The previous snapshot remains below and may be stale."
-        : " Retry with Refresh file checks."}
+      {$t(m("fileCheckStatusCouldNotBeLoaded"))}{$t(
+        snapshot
+          ? m("thePreviousSnapshotRemainsBelowAndMayBeStale")
+          : m("retryWithRefreshFileChecks"),
+      )}
     </p>
   {/if}
   {#if snapshot}
     <p class="summary">
-      {snapshot.scan_error_code
-        ? "File checks incomplete"
-        : snapshot.state === "pending"
-          ? snapshot.last_scan_completed_at
-            ? "File checks pending"
-            : "Initial checks pending"
-          : snapshot.issue_count > 0
-            ? "Unresolved file checks"
-            : "No recorded issues"}
+      {$t(
+        snapshot.scan_error_code
+          ? m("fileChecksIncomplete")
+          : snapshot.state === "pending"
+            ? snapshot.last_scan_completed_at
+              ? m("fileChecksPending")
+              : m("initialChecksPending")
+            : snapshot.issue_count > 0
+              ? m("unresolvedFileChecks")
+              : m("noRecordedIssues"),
+      )}
     </p>
     {#if snapshot.scan_error_code}
-      <p class="error" role="alert">The database-file scan could not complete. It will retry.</p>
+      <p class="error" role="alert">{$t(m("theDatabaseFileScanCouldNotCompleteItWill"))}</p>
     {/if}
     <dl>
       <div>
-        <dt>Published payloads unavailable</dt>
-        <dd>{snapshot.unavailable_count}</dd>
+        <dt>{$t(m("publishedPayloadsUnavailable"))}</dt>
+        <dd>{$t(snapshot.unavailable_count)}</dd>
       </div>
       <div>
-        <dt>Inspection or repair failures</dt>
-        <dd>{snapshot.failed_count}</dd>
+        <dt>{$t(m("inspectionOrRepairFailures"))}</dt>
+        <dd>{$t(snapshot.failed_count)}</dd>
       </div>
       <div>
-        <dt>Waiting for active file operations</dt>
-        <dd>{snapshot.busy_count}</dd>
+        <dt>{$t(m("waitingForActiveFileOperations"))}</dt>
+        <dd>{$t(snapshot.busy_count)}</dd>
       </div>
     </dl>
     <p class="muted small">
-      {snapshot.last_scan_completed_at
-        ? `Last completed database-file pass: ${utcTime(snapshot.last_scan_completed_at)}.`
-        : "No completed database-file pass recorded yet."}
-      {snapshot.scan_pending
-        ? "Files are still awaiting checks or retry."
-        : "The last traversal reached its end."}
+      {$t(
+        snapshot.last_scan_completed_at
+          ? m("lastCompletedDatabaseFilePassValue", {
+              arg0: utcTime(snapshot.last_scan_completed_at),
+            })
+          : m("noCompletedDatabaseFilePassRecordedYet"),
+      )}
+      {$t(
+        snapshot.scan_pending
+          ? m("filesAreStillAwaitingChecksOrRetry")
+          : m("theLastTraversalReachedItsEnd"),
+      )}
     </p>
-  {:else if !failed}<p role="status">Loading file-check status…</p>{/if}
-  <p class="muted small">
-    Pending uploads can be repaired before publication. Published payload mismatches block downloads
-    until storage is restored or the resource is revoked.
-  </p>
-  <p class="muted small">
-    A completed pass may include unresolved checks. This is not an orphan-file scan, a complete
-    disk-health check, or a measurement of physical disk usage.
-  </p>
+  {:else if !failed}<p role="status">{$t(m("loadingFileCheckStatus"))}</p>{/if}
+  <p class="muted small">{$t(m("pendingUploadsCanBeRepairedBeforePublicationPublishedPayload"))}</p>
+  <p class="muted small">{$t(m("aCompletedPassMayIncludeUnresolvedChecksThisIs"))}</p>
 </section>
 
 <style>

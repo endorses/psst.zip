@@ -1,9 +1,9 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import type { FileManifestEntry } from "./crypto";
 import { MAX_BUFFERED_BYTES, assertFileSize } from "./limits.ts";
 import { safeFilename } from "./filenames.ts";
 import { checkBrowserStorage, ReceiveStorageError } from "./recipient-policy.ts";
-export const LARGE_SAVE_MESSAGE =
-  "Large files need HTTPS with a browser that supports saving to disk, or the psst.zip mobile app.";
+export const LARGE_SAVE_MESSAGE = m("largeFilesNeedHTTPSWithABrowserThatSupports");
 interface SaveSink {
   write(chunk: Uint8Array<ArrayBuffer>): Promise<void>;
   close(): Promise<void>;
@@ -39,21 +39,20 @@ export async function createSaveSink(
     return {
       async write(chunk) {
         signal?.throwIfAborted();
-        if (chunk.byteLength > file.size - written) throw new Error("Unexpected file size");
+        if (chunk.byteLength > file.size - written)
+          throw new LocalizedError(m("unexpectedFileSize"));
         try {
           await sink.write(chunk);
         } catch (cause) {
           if (cause instanceof DOMException && cause.name === "QuotaExceededError")
-            throw new ReceiveStorageError(
-              "Not enough storage to save this file. Free some space and retry, or use the psst.zip mobile app.",
-            );
+            throw new ReceiveStorageError(m("notEnoughStorageToSaveThisFileFreeSome"));
           throw cause;
         }
         written += chunk.byteLength;
       },
       async close() {
         signal?.throwIfAborted();
-        if (written !== file.size) throw new Error("Incomplete file");
+        if (written !== file.size) throw new LocalizedError(m("incompleteFile"));
         await sink.close();
       },
       abort: () => sink.abort(),
@@ -66,11 +65,11 @@ export async function createSaveSink(
       async write(chunk) {
         bytes += chunk.length;
         if (bytes > file.size || bytes > MAX_BUFFERED_BYTES)
-          throw new Error("Unexpected file size");
+          throw new LocalizedError(m("unexpectedFileSize"));
         chunks.push(chunk);
       },
       async close() {
-        if (bytes !== file.size) throw new Error("Incomplete file");
+        if (bytes !== file.size) throw new LocalizedError(m("incompleteFile"));
         handoff(new Blob(chunks, { type: "application/octet-stream" }), file.name);
         chunks.length = 0;
       },
@@ -104,7 +103,7 @@ export async function createSaveSink(
           aborted = () => reject(deadline.reason);
           deadline.addEventListener("abort", aborted, { once: true });
         });
-        if (!navigator.storage.estimate) throw new Error("Storage estimate unavailable");
+        if (!navigator.storage.estimate) throw new LocalizedError(m("storageEstimateUnavailable"));
         const estimate = await Promise.race([navigator.storage.estimate(), cancelled]);
         // Estimates may exclude uncommitted writable staging. Validate the raw
         // values first, then conservatively charge our own staged bytes too.
@@ -118,9 +117,7 @@ export async function createSaveSink(
       } catch (cause) {
         signal?.throwIfAborted();
         if (cause instanceof ReceiveStorageError) throw cause;
-        throw new ReceiveStorageError(
-          "Could not check browser storage. Use a browser with a save-file picker or the psst.zip mobile app.",
-        );
+        throw new ReceiveStorageError(m("couldNotCheckBrowserStorageUseABrowserWith"));
       } finally {
         if (aborted) deadline.removeEventListener("abort", aborted);
       }
@@ -166,7 +163,7 @@ export async function createSaveSink(
       },
     });
   }
-  throw new Error(LARGE_SAVE_MESSAGE);
+  throw new LocalizedError(LARGE_SAVE_MESSAGE);
 }
 /** Remove abandoned OPFS temporary files after crashes; never touch other origin data. */
 export async function cleanAbandonedDownloads(): Promise<void> {

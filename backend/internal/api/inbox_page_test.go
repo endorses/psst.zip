@@ -181,7 +181,7 @@ func TestInboxPagesFailClosedWhenPayloadMetadataUnavailable(t *testing.T) {
 	// Its failure must not turn the child into an apparently empty submission.
 	for _, suffix := range []string{"", "/inbox"} {
 		response := inboxPageRequest(t, h, suffix, "owner-session", 503)
-		if len(response) != 1 || response["error"] != "inbox unavailable" {
+		if len(response) != 2 || response["code"] != "service_unavailable" || response["error"] != "inbox unavailable" {
 			t.Fatal("failed file read disclosed partial owner metadata", response)
 		}
 	}

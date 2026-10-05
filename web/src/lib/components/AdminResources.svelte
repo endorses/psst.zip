@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import { onMount, tick } from "svelte";
   import { AccountError } from "$lib/account";
   import { utcTime } from "$lib/admin";
@@ -33,10 +35,10 @@
     removed = $state(false),
     auditVersion = $state(0);
   let busy = $state(false),
-    error = $state(""),
-    detailError = $state(""),
-    cleanupError = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    detailError = $state<DisplayText>(""),
+    cleanupError = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let type = $state(""),
     status = $state(""),
     owner = $state("");
@@ -50,15 +52,15 @@
   let detailHeading = $state<HTMLHeadingElement>();
   let disposed = false;
   const controller = new AbortController();
-  function message(cause: unknown, fallback: string) {
+  function message(cause: unknown, fallback: DisplayText) {
     if (cause instanceof AccountError && cause.code === "recent_authentication_required")
-      return "Confirm your administrator credentials, then explicitly try this action again.";
+      return m("confirmYourAdministratorCredentialsThenExplicitlyTryThisAction");
     if (cause instanceof AccountError && cause.status === 401)
-      return "Your session ended. Sign in again.";
+      return m("yourSessionEndedSignInAgain");
     if (cause instanceof AccountError && cause.status === 403)
-      return "Administrator access is required. Confirm your credentials and try again.";
+      return m("administratorAccessIsRequiredConfirmYourCredentialsAndTry");
     if (cause instanceof AccountError && cause.status === 409)
-      return "Cleanup is available only after the resource is revoked or expires. Refresh its details.";
+      return m("cleanupIsAvailableOnlyAfterTheResourceIsRevoked");
     return fallback;
   }
   async function refreshOverview() {
@@ -69,9 +71,7 @@
         cleanupError = "";
       }
     } catch {
-      if (!disposed)
-        cleanupError =
-          "Cleanup status could not be loaded. Previous status, if shown, may be stale.";
+      if (!disposed) cleanupError = m("cleanupStatusCouldNotBeLoadedPreviousStatusIf");
     }
   }
   async function list(direction: "refresh" | "next" | "previous" | "apply" = "refresh") {
@@ -79,7 +79,7 @@
     const filters =
       direction === "apply" ? { type, status, owner_id: owner.trim().toLowerCase() } : applied;
     if (filters.owner_id && !isResourceID(filters.owner_id)) {
-      error = "Enter the account ID only, without a URL or link secret.";
+      error = m("enterTheAccountIDOnlyWithoutAURLOr");
       return;
     }
     const after =
@@ -121,8 +121,7 @@
       applied = filters;
       result = page;
     } catch (cause) {
-      if (!disposed)
-        error = message(cause, "Resources could not be loaded. Try Refresh resources.");
+      if (!disposed) error = message(cause, m("resourcesCouldNotBeLoadedTryRefreshResources"));
     } finally {
       if (!disposed) busy = false;
     }
@@ -131,7 +130,7 @@
     if (busy) return;
     id = id.trim().toLowerCase();
     if (!isResourceID(id)) {
-      detailError = "Enter the resource ID only, without a URL or link secret.";
+      detailError = m("enterTheResourceIDOnlyWithoutAURLOr");
       return;
     }
     busy = true;
@@ -154,10 +153,7 @@
         removed = false;
         auditVersion++;
       } else
-        detailError = message(
-          cause,
-          "Resource details could not be loaded. Previously loaded details may be stale.",
-        );
+        detailError = message(cause, m("resourceDetailsCouldNotBeLoadedPreviouslyLoadedDetails"));
     } finally {
       if (!disposed) {
         busy = false;
@@ -191,7 +187,7 @@
               (item) => item.type !== target.type || item.id !== target.id,
             ),
           };
-        notice = "Resource removed. Server cleanup is complete. Existing downloaded copies remain.";
+        notice = m("resourceRemovedServerCleanupIsCompleteExistingDownloadedCopies");
       } else {
         detail = {
           ...target,
@@ -202,10 +198,10 @@
         removed = false;
         notice =
           response.state === "complete"
-            ? "Server cleanup is complete. Resource metadata remains available."
+            ? m("serverCleanupIsCompleteResourceMetadataRemainsAvailable")
             : action === "revoke"
-              ? "The link is revoked. Server cleanup is still pending."
-              : "Cleanup queued. Refresh details to confirm its progress.";
+              ? m("theLinkIsRevokedServerCleanupIsStillPending")
+              : m("cleanupQueuedRefreshDetailsToConfirmItsProgress");
         if (result)
           result = {
             ...result,
@@ -232,11 +228,9 @@
               absent = true;
               notice =
                 action === "revoke"
-                  ? "The link was revoked and the resource is no longer present."
-                  : "The resource is no longer present.";
-            } else
-              detailError =
-                "Could not refresh cleanup progress. The last known cleanup state remains below.";
+                  ? m("theLinkWasRevokedAndTheResourceIsNo")
+                  : m("theResourceIsNoLongerPresent");
+            } else detailError = m("couldNotRefreshCleanupProgressTheLastKnownCleanup");
           }
         }
       }
@@ -246,8 +240,8 @@
         detailError = message(
           cause,
           cause instanceof AccountError && cause.status === 404
-            ? "The resource was not found. Refresh its details to check whether it has already been removed."
-            : "The action could not be confirmed. Refresh resource details before retrying; the action may already have taken effect.",
+            ? m("theResourceWasNotFoundRefreshItsDetailsTo")
+            : m("theActionCouldNotBeConfirmedRefreshResourceDetails"),
         );
     } finally {
       if (!disposed) busy = false;
@@ -262,34 +256,41 @@
   });
 </script>
 
-<a href="/?view=overview">Back to Overview</a>
+<a href="/?view=overview">{$t(m("backToOverview"))}</a>
 <div class="heading">
-  <h1>Resources</h1>
-  <button disabled={busy} onclick={() => list()}>Refresh resources</button>
+  <h1>{$t(m("resources"))}</h1>
+  <button disabled={busy} onclick={() => list()}>{$t(m("refreshResources"))}</button>
 </div>
-<p class="muted">
-  Inspect encrypted transfers and receive links, revoke access, and check server cleanup. File
-  names, contents and encryption keys are unavailable.
-</p>
-<section aria-label="Cleanup overview" class="cleanup-overview">
-  <h2>Cleanup</h2>
-  {#if cleanupError}<p class="error" role="alert">{cleanupError}</p>{/if}
+<p class="muted">{$t(m("inspectEncryptedTransfersAndReceiveLinksRevokeAccessAnd"))}</p>
+<section aria-label={$t(m("cleanupOverview"))} class="cleanup-overview">
+  <h2>{$t(m("cleanup"))}</h2>
+  {#if cleanupError}<p class="error" role="alert">{$t(cleanupError)}</p>{/if}
   {#if overview}
     <p>
-      {overview.pending_count} pending · {overview.failed_count} failed · {overview.busy_count} waiting
-      for file operations or received transfers
+      {$t(overview.pending_count)}
+      {$t(m("pending"))}
+      {$t(overview.failed_count)}
+      {$t(m("failed"))}
+      {$t(overview.busy_count)}
+      {$t(m("waitingForFileOperationsOrReceivedTransfers"))}
     </p>
     {#if overview.oldest_pending_at}<p class="muted small">
-        Oldest pending: {utcTime(overview.oldest_pending_at)}
+        {$t(m("oldestPending"))}
+        {$t(utcTime(overview.oldest_pending_at))}
       </p>{/if}
     <p class="muted small">
-      {overview.discovery_pending
-        ? "Expired-resource discovery is in progress; pending counts may increase."
-        : "The last discovery pass completed."}{overview.last_discovery_at
-        ? ` Last scan: ${utcTime(overview.last_discovery_at)}.`
-        : " No completed scan recorded yet."} This is database cleanup status, not a physical disk inventory.
+      {$t(
+        overview.discovery_pending
+          ? m("expiredResourceDiscoveryIsInProgressPendingCountsMay")
+          : m("theLastDiscoveryPassCompleted"),
+      )}{$t(
+        overview.last_discovery_at
+          ? m("lastScanValue", { arg0: utcTime(overview.last_discovery_at) })
+          : m("noCompletedScanRecordedYet"),
+      )}
+      {$t(m("thisIsDatabaseCleanupStatusNotAPhysicalDisk"))}
     </p>
-  {:else if !cleanupError}<p role="status">Loading cleanup status…</p>{/if}
+  {:else if !cleanupError}<p role="status">{$t(m("loadingCleanupStatus"))}</p>{/if}
 </section>
 <StorageChecks />
 <CounterChecks />
@@ -302,80 +303,88 @@
   }}
 >
   <label
-    >Resource type<select bind:value={type} disabled={busy}
-      ><option value="">All types</option><option value="transfer">Transfers</option><option
-        value="slot">Receive links</option
-      ></select
+    >{$t(m("resourceType"))}<select bind:value={type} disabled={busy}
+      ><option value="">{$t(m("allTypes"))}</option><option value="transfer"
+        >{$t(m("transfers"))}</option
+      ><option value="slot">{$t(m("receiveLinks"))}</option></select
     ></label
   >
   <label
-    >Status<select bind:value={status} disabled={busy}
-      ><option value="">All statuses</option><option value="pending">Upload unfinished</option
-      ><option value="complete">Ready to download</option><option value="waiting"
-        >Receive links</option
-      ><option value="revoked">Revoked</option></select
+    >{$t(m("status"))}<select bind:value={status} disabled={busy}
+      ><option value="">{$t(m("allStatuses"))}</option><option value="pending"
+        >{$t(m("uploadUnfinished"))}</option
+      ><option value="complete">{$t(m("readyToDownload"))}</option><option value="waiting"
+        >{$t(m("receiveLinks"))}</option
+      ><option value="revoked">{$t(m("revoked"))}</option></select
     ></label
   >
   <label
-    >Owner account ID<input
+    >{$t(m("ownerAccountID"))}<input
       bind:value={owner}
       disabled={busy}
       autocomplete="off"
       spellcheck="false"
-      placeholder="Optional account ID"
+      placeholder={$t(m("optionalAccountID"))}
     /></label
   >
-  <button disabled={busy} type="submit">Apply filters</button>
+  <button disabled={busy} type="submit">{$t(m("applyFilters"))}</button>
 </form>
 {#if error}<p class="error" role="alert">
-    {error}
-    {result ? "The previous resource page remains below and may be stale." : ""}
+    {$t(error)}
+    {$t(result ? m("thePreviousResourcePageRemainsBelowAndMayBe") : "")}
   </p>{/if}
-{#if result}<nav aria-label="Resource pages">
+{#if result}<nav aria-label={$t(m("resourcePages"))}>
     <button disabled={busy || !previous.length} onclick={() => list("previous")}
-      >Newer resources</button
+      >{$t(m("newerResources"))}</button
     ><span class="muted small" role="status"
-      >Page {pageNumber} · {result.resources.length} resources</span
+      >{$t(m("page"))}
+      {$t(pageNumber)} · {$t(result.resources.length)}
+      {$t(m("resources_41d31"))}</span
     ><button disabled={busy || !result.next_cursor} onclick={() => list("next")}
-      >Older resources</button
+      >{$t(m("olderResources"))}</button
     >
   </nav>
-  {#if !result.resources.length}<p>No resources found.</p>{/if}
+  {#if !result.resources.length}<p>{$t(m("noResourcesFound"))}</p>{/if}
   {#each result.resources as item (`${item.type}:${item.id}`)}
     <article class="resource" data-resource-id={item.id}>
       <div>
-        <strong>{resourceLabel(item)}</strong>
+        <strong>{$t(resourceLabel(item))}</strong>
         <p>
-          {resourceStatus(item)}
+          {$t(resourceStatus(item))}
           {#if item.totals_available}
-            · {item.file_count} files · {formatSize(item.occupied_bytes_estimate)} estimated occupied
+            · {$t(item.file_count)}
+            {$t(m("files_b5c9c"))}
+            {$t(formatSize(item.occupied_bytes_estimate))}
+            {$t(m("estimatedOccupied"))}
           {/if}
         </p>
-        {#if !item.totals_available}<p class="muted">Storage totals awaiting repair</p>{/if}
+        {#if !item.totals_available}<p class="muted">{$t(m("storageTotalsAwaitingRepair"))}</p>{/if}
         <p>
-          Owner: {item.owner_username ?? item.owner_id ?? "Unknown account"}{item.owner_disabled
-            ? " (sign-in disabled)"
-            : ""}
+          {$t(m("owner_9a638"))}
+          {$t(item.owner_username ?? item.owner_id ?? m("unknownAccount"))}{$t(
+            item.owner_disabled ? m("signInDisabled") : "",
+          )}
         </p>
         <p class="muted small">
-          Created {utcTime(item.created_at)} · Expires {utcTime(item.expires_at)}
+          {$t(m("created"))}
+          {$t(utcTime(item.created_at))}
+          {$t(m("expires_f8716"))}
+          {$t(utcTime(item.expires_at))}
         </p>
-        <code>{item.id}</code>{#if item.cleanup.state !== "none"}<p
+        <code>{$t(item.id)}</code>{#if item.cleanup.state !== "none"}<p
             class:error={item.cleanup.state === "failed"}
           >
-            {cleanupLabel(item.cleanup)}
+            {$t(cleanupLabel(item.cleanup))}
           </p>{/if}
       </div>
-      <button disabled={busy} onclick={() => inspect(item.type, item.id)}>Inspect</button>
+      <button disabled={busy} onclick={() => inspect(item.type, item.id)}>{$t(m("inspect"))}</button
+      >
     </article>
   {/each}
-{:else if !error}<p role="status">Loading resources…</p>{/if}
+{:else if !error}<p role="status">{$t(m("loadingResources"))}</p>{/if}
 <section class="lookup">
-  <h2>Find a resource</h2>
-  <p class="muted small">
-    Use the resource ID from a report or security event. Enter only the ID; do not paste a full
-    share link or its secret.
-  </p>
+  <h2>{$t(m("findAResource"))}</h2>
+  <p class="muted small">{$t(m("useTheResourceIDFromAReportOrSecurity"))}</p>
   <form
     class="filters"
     onsubmit={(event) => {
@@ -384,115 +393,124 @@
     }}
   >
     <label
-      >Lookup type<select bind:value={lookupType} disabled={busy}
-        ><option value="transfer">Transfer</option><option value="slot">Receive link</option
+      >{$t(m("lookupType"))}<select bind:value={lookupType} disabled={busy}
+        ><option value="transfer">{$t(m("transfer"))}</option><option value="slot"
+          >{$t(m("receiveLink"))}</option
         ></select
       ></label
     ><label
-      >Resource ID<input
+      >{$t(m("resourceID"))}<input
         bind:value={lookupID}
         disabled={busy}
         autocomplete="off"
         spellcheck="false"
       /></label
-    ><button type="submit" disabled={busy}>Find resource</button>
+    ><button type="submit" disabled={busy}>{$t(m("findResource"))}</button>
   </form>
 </section>
-{#if detailError && !confirmation}<p class="error" role="alert">{detailError}</p>{/if}
-{#if notice}<p class="notice" role="status">{notice}</p>{/if}
+{#if detailError && !confirmation}<p class="error" role="alert">{$t(detailError)}</p>{/if}
+{#if notice}<p class="notice" role="status">{$t(notice)}</p>{/if}
 {#if selected}
-  <section class="resource-detail" aria-label="Resource details">
+  <section class="resource-detail" aria-label={$t(m("resourceDetails"))}>
     <div class="heading">
-      <h2 bind:this={detailHeading} tabindex="-1">Resource details</h2>
+      <h2 bind:this={detailHeading} tabindex="-1">{$t(m("resourceDetails"))}</h2>
       <button disabled={busy} onclick={() => selected && inspect(selected.type, selected.id, false)}
-        >Refresh details</button
+        >{$t(m("refreshDetails"))}</button
       >
     </div>
-    <code>{selected.id}</code>
+    <code>{$t(selected.id)}</code>
     {#if absent}<p>
-        {removed
-          ? "This resource has been removed."
-          : "Resource not found. It may have expired or already been removed. This is different from a server connection failure."}
-        Retained security activity may still be available below.
+        {$t(
+          removed
+            ? m("thisResourceHasBeenRemoved")
+            : m("resourceNotFoundItMayHaveExpiredOrAlready"),
+        )}
+        {$t(m("retainedSecurityActivityMayStillBeAvailableBelow"))}
       </p>{/if}
     {#if detail}
-      <h3>{resourceLabel(detail)} · {resourceStatus(detail)}</h3>
-      {#if !detail.totals_available}<p class="muted">Storage totals awaiting repair</p>{/if}
+      <h3>{$t(resourceLabel(detail))} · {$t(resourceStatus(detail))}</h3>
+      {#if !detail.totals_available}<p class="muted">{$t(m("storageTotalsAwaitingRepair"))}</p>{/if}
       <dl>
         <div>
-          <dt>Owner</dt>
+          <dt>{$t(m("owner"))}</dt>
           <dd>
-            {detail.owner_username ?? "Unknown account"}{detail.owner_disabled
-              ? " (sign-in disabled)"
-              : ""}<code>{detail.owner_id ?? "No owner recorded"}</code>
+            {$t(detail.owner_username ?? m("unknownAccount"))}{$t(
+              detail.owner_disabled ? m("signInDisabled") : "",
+            )}<code>{$t(detail.owner_id ?? m("noOwnerRecorded"))}</code>
           </dd>
         </div>
         {#if detail.totals_available}<div>
-            <dt>Files</dt>
-            <dd>{detail.file_count}</dd>
+            <dt>{$t(m("files"))}</dt>
+            <dd>{$t(detail.file_count)}</dd>
           </div>
           <div>
-            <dt>Received transfers</dt>
-            <dd>{detail.child_transfer_count}</dd>
+            <dt>{$t(m("receivedTransfers"))}</dt>
+            <dd>{$t(detail.child_transfer_count)}</dd>
           </div>{/if}
         <div>
-          <dt>Created</dt>
-          <dd>{utcTime(detail.created_at)}</dd>
+          <dt>{$t(m("created"))}</dt>
+          <dd>{$t(utcTime(detail.created_at))}</dd>
         </div>
         <div>
-          <dt>Expires</dt>
-          <dd>{utcTime(detail.expires_at)}</dd>
+          <dt>{$t(m("expires"))}</dt>
+          <dd>{$t(utcTime(detail.expires_at))}</dd>
         </div>
         {#if detail.pending_expires_at}<div>
-            <dt>Unfinished upload expires</dt>
-            <dd>{utcTime(detail.pending_expires_at)}</dd>
+            <dt>{$t(m("unfinishedUploadExpires"))}</dt>
+            <dd>{$t(utcTime(detail.pending_expires_at))}</dd>
           </div>{/if}
         {#if detail.totals_available}<div>
-            <dt>Reserved storage</dt>
-            <dd>{formatSize(detail.reserved_bytes)}</dd>
+            <dt>{$t(m("reservedStorage"))}</dt>
+            <dd>{$t(formatSize(detail.reserved_bytes))}</dd>
           </div>
           <div>
-            <dt>Estimated occupied storage</dt>
-            <dd>{formatSize(detail.occupied_bytes_estimate)}</dd>
+            <dt>{$t(m("estimatedOccupiedStorage"))}</dt>
+            <dd>{$t(formatSize(detail.occupied_bytes_estimate))}</dd>
           </div>
           <div>
-            <dt>Encrypted manifest portion</dt>
-            <dd>{formatSize(detail.manifest_bytes)}</dd>
+            <dt>{$t(m("encryptedManifestPortion"))}</dt>
+            <dd>{$t(formatSize(detail.manifest_bytes))}</dd>
           </div>{/if}
         {#if detail.parent_slot_id}<div>
-            <dt>Parent receive link</dt>
+            <dt>{$t(m("parentReceiveLink"))}</dt>
             <dd>
               <button
                 disabled={busy}
                 onclick={() => detail?.parent_slot_id && inspect("slot", detail.parent_slot_id)}
-                >{detail.parent_slot_id}</button
+                >{$t(detail.parent_slot_id)}</button
               >
             </dd>
           </div>{/if}
       </dl>
-      <p class="muted small">
-        Storage totals include encrypted manifests. Occupied bytes are an estimate; reserved storage
-        may remain charged until cleanup succeeds.
-      </p>
-      <h3>{cleanupLabel(detail.cleanup)}</h3>
-      {#if cleanupReason(detail.cleanup)}<p>{cleanupReason(detail.cleanup)}</p>{/if}
+      <p class="muted small">{$t(m("storageTotalsIncludeEncryptedManifestsOccupiedBytesAreAn"))}</p>
+      <h3>{$t(cleanupLabel(detail.cleanup))}</h3>
+      {#if cleanupReason(detail.cleanup)}<p>{$t(cleanupReason(detail.cleanup))}</p>{/if}
       {#if cleanupFailure(detail.cleanup)}<p class="error" role="alert">
-          {cleanupFailure(detail.cleanup)}{detail.cleanup.last_failure_at
-            ? ` Last failure: ${utcTime(detail.cleanup.last_failure_at)}.`
-            : ""}
+          {$t(cleanupFailure(detail.cleanup))}{$t(
+            detail.cleanup.last_failure_at
+              ? m("lastFailureValue", { arg0: utcTime(detail.cleanup.last_failure_at) })
+              : "",
+          )}
         </p>{/if}
       {#if detail.cleanup.state !== "none"}<p>
-          {detail.cleanup.attempt_count} cleanup attempts{detail.cleanup.pending_since
-            ? ` · Pending since ${utcTime(detail.cleanup.pending_since)}`
-            : ""}
+          {$t(detail.cleanup.attempt_count)}
+          {$t(m("cleanupAttempts"))}{$t(
+            detail.cleanup.pending_since
+              ? m("pendingSinceValue", { arg0: utcTime(detail.cleanup.pending_since) })
+              : "",
+          )}
         </p>
         <p class="muted small">
-          {detail.cleanup.last_attempt_at
-            ? `Last attempt: ${utcTime(detail.cleanup.last_attempt_at)}.`
-            : "No cleanup attempt recorded yet."}
-          {detail.cleanup.next_retry_at
-            ? `Next scheduled retry: ${utcTime(detail.cleanup.next_retry_at)}.`
-            : ""}
+          {$t(
+            detail.cleanup.last_attempt_at
+              ? m("lastAttemptValue", { arg0: utcTime(detail.cleanup.last_attempt_at) })
+              : m("noCleanupAttemptRecordedYet"),
+          )}
+          {$t(
+            detail.cleanup.next_retry_at
+              ? m("nextScheduledRetryValue", { arg0: utcTime(detail.cleanup.next_retry_at) })
+              : "",
+          )}
         </p>{/if}
       <div class="actions">
         {#if detail.status !== "revoked"}<button
@@ -501,11 +519,11 @@
             onclick={() => {
               confirmation = detail;
               detailError = "";
-            }}>Revoke</button
+            }}>{$t(m("revoke"))}</button
           >{/if}
         {#if detail.status === "revoked" || detail.cleanup.state !== "none" || Date.parse(detail.expires_at) <= Date.now()}<button
             disabled={busy}
-            onclick={() => mutate("cleanup")}>Retry cleanup</button
+            onclick={() => mutate("cleanup")}>{$t(m("retryCleanup"))}</button
           >{/if}
       </div>
     {/if}

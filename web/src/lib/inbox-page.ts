@@ -1,3 +1,4 @@
+import { message as m, t, LocalizedError } from "./i18n/index.ts";
 import { base64urlDecode, base64urlEncode } from "./crypto.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
 import { validSharedTitle } from "./link-title.ts";
@@ -27,9 +28,7 @@ export interface InboxPage {
   };
 }
 const unsupported = () =>
-  new Error(
-    "This server returned an unsupported inbox page. Refresh or contact its administrator.",
-  );
+  new LocalizedError(m("thisServerReturnedAnUnsupportedInboxPageRefreshOr"));
 export function validInboxCursor(value: unknown): value is string {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,512}$/.test(value)) return false;
   try {

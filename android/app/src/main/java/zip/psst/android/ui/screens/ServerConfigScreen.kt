@@ -33,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.ui.components.accountAutofill
 import zip.psst.android.ui.components.loginAutofill
@@ -64,43 +66,53 @@ fun ServerConfigScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     BackHandler(enabled = state.isTesting) {}
-    var pairing by remember { mutableStateOf<String?>(null) }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var scanningPairing by remember { mutableStateOf(false) }
+    val pairing = state.pairingDraft
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var scanningPairing by rememberSaveable { mutableStateOf(false) }
 
     pairing?.let { raw ->
         val server = PairingCode.parse(raw).serverUrl
         AlertDialog(
-            onDismissRequest = { pairing = null },
-            title = { Text("Set up account?") },
+            onDismissRequest = { viewModel.setPairingDraft(null) },
+            title = { Text(tr(R.string.l_set_up_account_a77621)) },
             text = {
                 Text(
-                    "Connect to $server and replace the current login?" +
+                    tr(R.string.l_connect_to_1_s_and_replace_the_current_login_8638f9, (server)) +
                         if (server.startsWith("http://"))
-                            " HTTP sends login credentials without transport encryption. Use only on a trusted development network."
+                            tr(
+                                R.string
+                                    .l_http_sends_login_credentials_without_transport_encryption_use_onl_78d775
+                            )
                         else ""
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        pairing = null
+                        viewModel.setPairingDraft(null)
                         viewModel.pair(raw, onConfigured)
                     }
                 ) {
-                    Text("Set up account")
+                    Text(tr(R.string.l_set_up_account_ddd0f7))
                 }
             },
-            dismissButton = { TextButton(onClick = { pairing = null }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { viewModel.setPairingDraft(null) }) {
+                    Text(tr(R.string.l_cancel_77dfd2))
+                }
+            },
         )
     }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Server & account") },
+                title = { Text(tr(R.string.l_server_account_c2fe7f)) },
                 navigationIcon = {
                     IconButton(onClick = onBack, enabled = !state.isTesting) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Cancel account changes")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            tr(R.string.l_cancel_account_changes_d12aee),
+                        )
                     }
                 },
             )
@@ -116,23 +128,26 @@ fun ServerConfigScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            state.notice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            state.notice?.let { Text(it.text(), style = MaterialTheme.typography.bodyMedium) }
             if (state.mustChangePassword) {
-                Text("Change temporary password", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    tr(R.string.l_change_temporary_password_7ee336),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
                 PasswordEntry(
-                    "Temporary password",
+                    tr(R.string.l_temporary_password_62d606),
                     state.password,
                     viewModel::onPasswordChange,
                     !state.isTesting,
                 )
                 PasswordEntry(
-                    "New password",
+                    tr(R.string.l_new_password_d850ee),
                     state.newPassword,
                     viewModel::onNewPasswordChange,
                     !state.isTesting,
                 )
                 PasswordEntry(
-                    "Confirm password",
+                    tr(R.string.l_confirm_password_4a7c56),
                     state.confirmPassword,
                     viewModel::onConfirmPasswordChange,
                     !state.isTesting,
@@ -140,7 +155,10 @@ fun ServerConfigScreen(
                 val mismatch =
                     state.confirmPassword.isNotEmpty() && state.newPassword != state.confirmPassword
                 if (mismatch)
-                    Text("Passwords do not match", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        tr(R.string.l_passwords_do_not_match_d69c3b),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 Button(
                     onClick = viewModel::replacePassword,
                     enabled =
@@ -150,17 +168,17 @@ fun ServerConfigScreen(
                             state.newPassword.isNotBlank() &&
                             state.confirmPassword.isNotBlank(),
                 ) {
-                    Text("Change password")
+                    Text(tr(R.string.l_change_password_8c6842))
                 }
                 TextButton(
                     onClick = { viewModel.signOut(onAccountCleared) },
                     enabled = !state.isTesting,
                 ) {
-                    Text("Use another account")
+                    Text(tr(R.string.l_use_another_account_48a644))
                 }
                 if (state.isTesting) CircularProgressIndicator()
                 (state.testResult as? TestResult.Error)?.let {
-                    Text(it.message, color = MaterialTheme.colorScheme.error)
+                    Text(it.message.text(), color = MaterialTheme.colorScheme.error)
                 }
                 return@Column
             }
@@ -182,7 +200,7 @@ fun ServerConfigScreen(
                     onCode = { raw ->
                         try {
                             PairingCode.parse(raw)
-                            pairing = raw
+                            viewModel.setPairingDraft(raw)
                             scanningPairing = false
                         } catch (_: Exception) {
                             viewModel.invalidPairing()
@@ -225,7 +243,8 @@ fun ServerConfigScreen(
                         Icon(
                             if (passwordVisible) Icons.Default.VisibilityOff
                             else Icons.Default.Visibility,
-                            if (passwordVisible) "Hide password" else "Show password",
+                            if (passwordVisible) tr(R.string.l_hide_password_e40123)
+                            else tr(R.string.l_show_password_044b85),
                         )
                     }
                 },
@@ -279,7 +298,7 @@ fun ServerConfigScreen(
                     )
                 is TestResult.Error ->
                     Text(
-                        result.message,
+                        result.message.text(),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -308,7 +327,7 @@ private fun PasswordEntry(
         modifier =
             Modifier.fillMaxWidth()
                 .accountAutofill(
-                    if (label == "Temporary password") AutofillType.Password
+                    if (label == tr(R.string.l_temporary_password_62d606)) AutofillType.Password
                     else AutofillType.NewPassword,
                     onChange,
                 ),
@@ -319,7 +338,8 @@ private fun PasswordEntry(
             IconButton(onClick = { visible = !visible }) {
                 Icon(
                     if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    if (visible) "Hide password" else "Show password",
+                    if (visible) tr(R.string.l_hide_password_e40123)
+                    else tr(R.string.l_show_password_044b85),
                 )
             }
         },

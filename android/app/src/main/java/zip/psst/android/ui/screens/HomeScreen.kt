@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import zip.psst.android.PsstApplication
 import zip.psst.android.R
+import zip.psst.android.i18n.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,8 +100,8 @@ fun HomeScreen(
 
             ActionCard(
                 Icons.Default.QrCodeScanner,
-                "Scan QR code",
-                "Scan or paste a link to save files without signing in.",
+                tr(R.string.l_scan_qr_code_e7d8c3),
+                tr(R.string.l_scan_or_paste_a_link_to_save_files_without_signing_in_62a0be),
                 onScan,
             )
             Spacer(Modifier.height(16.dp))

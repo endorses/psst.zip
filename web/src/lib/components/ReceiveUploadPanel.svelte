@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { hasStatus } from "$lib/api-error";
+  import { message as m, t, errorText, type DisplayText } from "$lib/i18n";
+
   import { TrafficLimitError } from "$lib/traffic-policy";
   import Icon from "$lib/components/Icon.svelte";
   import { onMount } from "svelte";
@@ -23,7 +26,7 @@
   let reconnect = $state(false);
   let availability = $state<SlotAvailability | null>(null);
   let ready = $state(false),
-    error = $state(""),
+    error = $state<DisplayText>(""),
     key = $state("");
   async function load() {
     const current = ++generation;
@@ -34,15 +37,13 @@
     reconnect = false;
     key = keyString;
     if (!key) {
-      error =
-        "This link is incomplete. Ask the sender to copy the full link, including the part after #.";
+      error = m("thisLinkIsIncompleteAskTheSenderToCopy");
       return;
     }
     try {
       parseReceiveFragment(key);
     } catch {
-      error =
-        "This receive link is invalid or uses an older version. Ask its owner for a new link.";
+      error = m("thisReceiveLinkIsInvalidOrUsesAnOlder");
       return;
     }
     try {
@@ -56,40 +57,37 @@
         availability.receive_protocol !== 2 ||
         availability.recipient_public_key !== parseReceiveFragment(key).encoded
       ) {
-        error =
-          "The receive link's encryption key does not match this inbox. Ask its owner for a new link.";
+        error = m("theReceiveLinkSEncryptionKeyDoesNotMatch");
         return;
       }
       if (!availability.available) {
         error =
           availability.remaining_files === 0
-            ? "This link cannot accept more files. Its file allowance is exhausted. Ask its owner for a new link."
+            ? m("thisLinkCannotAcceptMoreFilesItsFileAllowance")
             : availability.remaining_bytes === 0
-              ? "This receive link's byte allowance is exhausted. Ask its owner for a new link."
+              ? m("thisReceiveLinkSByteAllowanceIsExhaustedAsk")
               : availability.remaining_transfers === 0
-                ? "This receive link's upload batch allowance is exhausted. Ask its owner for a new link."
-                : "This receive link cannot accept uploads under the server's current limits. Ask its owner for help.";
+                ? m("thisReceiveLinkSUploadBatchAllowanceIsExhausted")
+                : m("thisReceiveLinkCannotAcceptUploadsUnderTheServer");
         return;
       }
       ready = true;
     } catch (e) {
       if (disposed || current !== generation) return;
       if (e instanceof GuestCapacityError) {
-        error =
-          "Could not check this receive link's upload availability. Try reconnecting in a moment.";
+        error = m("couldNotCheckThisReceiveLinkSUploadAvailability");
         reconnect = true;
         return;
       }
       if (e instanceof TrafficLimitError || e instanceof TransferStateError) {
-        error = e.message;
+        error = errorText(e);
         reconnect = false;
         return;
       }
-      reconnect = !(e instanceof Error && (e.message.includes("404") || e.message.includes("410")));
-      error =
-        e instanceof Error && (e.message.includes("404") || e.message.includes("410"))
-          ? "This receive link has expired or was revoked. Ask for a new link."
-          : "Could not connect. Check your connection and retry.";
+      reconnect = !hasStatus(e, 404, 410);
+      error = hasStatus(e, 404, 410)
+        ? m("thisReceiveLinkHasExpiredOrWasRevokedAsk")
+        : m("couldNotConnectCheckYourConnectionAndRetry");
     }
   }
   onMount(() => {
@@ -103,15 +101,16 @@
   });
 </script>
 
-<svelte:head><title>{availability?.title || "Send files"} · {BRAND}</title></svelte:head>
-<section class="panel" aria-label="Send to inbox">
-  {#if error}<h1>Cannot open receive link</h1>
-    <p role="alert" class="error">{error}</p>
-    {#if reconnect}<button onclick={load}><Icon name="Refresh" size={18} />Reconnect</button
+<svelte:head><title>{$t(availability?.title || m("sendFiles"))} · {$t(BRAND)}</title></svelte:head>
+<section class="panel" aria-label={$t(m("sendToInbox"))}>
+  {#if error}<h1>{$t(m("cannotOpenReceiveLink"))}</h1>
+    <p role="alert" class="error">{$t(error)}</p>
+    {#if reconnect}<button onclick={load}
+        ><Icon name="Refresh" size={18} />{$t(m("reconnect"))}</button
       >{/if}{:else if ready}{#key `${slotId}:${key}`}<SendPanel
         {slotId}
         keyString={key}
         {onactive}
         destinationTitle={availability?.title}
-      />{/key}{:else}<p role="status">Opening receive link…</p>{/if}
+      />{/key}{:else}<p role="status">{$t(m("openingReceiveLink"))}</p>{/if}
 </section>

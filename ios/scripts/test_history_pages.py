@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import tempfile
 
+from localization_harness import add_localization
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -53,6 +55,9 @@ let package = Package(name: "HistoryPageHarness", targets: [
     .testTarget(name: "HistoryPageHarnessTests", dependencies: ["HistoryPageHarness"])
 ])
 """)
+        add_localization(
+            sources, work / "Package.swift", "HistoryPageHarness", app_constants=True
+        )
         subprocess.run(
             [
                 "docker",

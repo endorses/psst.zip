@@ -1,3 +1,4 @@
+import { message as m, t, LocalizedError } from "./i18n/index.ts";
 /** Legacy localStorage requires one whole-string allocation. Parse only one bounded
  * entry at a time; callers yield and commit batches instead of building a full map. */
 export const LEGACY_ENTRY_CHARS = 64 * 1024;
@@ -10,10 +11,7 @@ export function* legacyHistoryEntries(source: string): Generator<[string, unknow
       index++;
     }
   };
-  const fail = () =>
-    new Error(
-      "Existing local history could not be imported. Its original data is unchanged. Retry after restoring a valid browser backup.",
-    );
+  const fail = () => new LocalizedError(m("existingLocalHistoryCouldNotBeImportedItsOriginal"));
   whitespace();
   if (source[index++] !== "{") throw fail();
   whitespace();

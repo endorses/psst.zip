@@ -14,6 +14,7 @@ class PsstApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        zip.psst.android.i18n.UiStrings.application = this
         // No upload runs before Application startup; remove snapshots left by process termination.
         cacheDir
             .listFiles()

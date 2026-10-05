@@ -5,15 +5,15 @@ import os
 import shutil
 import subprocess
 import tempfile
+
+from localization_harness import add_localization
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    with tempfile.TemporaryDirectory(
-        prefix="psst-guest-store-swift-"
-    ) as directory:
+    with tempfile.TemporaryDirectory(prefix="psst-guest-store-swift-") as directory:
         work = Path(directory)
         sources = work / "Sources" / "GuestStoreHarness"
         tests = work / "Tests" / "GuestStoreHarnessTests"
@@ -40,16 +40,13 @@ def main():
         )
         (sources / "GuestHistoryPageViewModel.swift").write_text(
             "import Observation\n"
-            + (
-                ROOT / "Psst/ViewModels/GuestHistoryPageViewModel.swift"
-            ).read_text()
+            + (ROOT / "Psst/ViewModels/GuestHistoryPageViewModel.swift").read_text()
         )
         shutil.copy2("/usr/include/sqlite3.h", sqlite / "sqlite3.h")
         (sqlite / "module.modulemap").write_text(
             'module SQLite3 [system] {\n header "sqlite3.h"\n link "sqlite3"\n export *\n}\n'
         )
-        (work / "Package.swift").write_text(
-            """// swift-tools-version:5.9
+        (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
 let package = Package(name: "GuestStoreHarness", targets: [
     .systemLibrary(name: "SQLite3"),
@@ -58,8 +55,8 @@ let package = Package(name: "GuestStoreHarness", targets: [
     .target(name: "GuestStoreHarness", dependencies: ["SQLite3", "CryptoKit", "Shared"]),
     .testTarget(name: "GuestStoreHarnessTests", dependencies: ["GuestStoreHarness", "SQLite3"])
 ])
-"""
-        )
+""")
+        add_localization(sources, work / "Package.swift", "GuestStoreHarness")
         subprocess.run(
             [
                 "docker",

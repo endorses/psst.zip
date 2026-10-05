@@ -216,7 +216,7 @@ func TestAdministratorWrongPasswordDoesNotRevealLockOrRole(t *testing.T) {
 	unknown, _, _ := adminProofLogin(t, env, map[string]string{"username": "unknown-admin", "password": "wrong"}, 401)
 	for range 5 {
 		wrong, headers, _ := adminProofLogin(t, env, map[string]string{"password": "wrong"}, 401)
-		if wrong["error"] != unknown["error"] || wrong["code"] != nil || headers.Get("X-Psst-Error-Code") != "" {
+		if wrong["error"] != unknown["error"] || wrong["code"] != "invalid_credentials" || wrong["code"] != unknown["code"] || headers.Get("X-Psst-Error-Code") != "invalid_credentials" {
 			t.Fatal("wrong password disclosed administrator state")
 		}
 	}

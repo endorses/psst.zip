@@ -7,7 +7,21 @@ import io.ktor.client.request.prepareDelete
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Safe, actionable failure text; never includes the owner token or server response body. */
-class LinkDeletionException(message: String, val statusCode: Int? = null) : Exception(message)
+class LinkDeletionException(
+    message: String,
+    val statusCode: Int? = null,
+    code: String =
+        when (statusCode) {
+            405 -> "deletion_unsupported"
+            401,
+            403 -> "deletion_denied"
+            else -> "deletion_failed"
+        },
+) : Exception(message), ClientFailure {
+    override val failureCode: String = code
+    override val failureArguments: Map<String, String> =
+        statusCode?.let { mapOf("status" to it.toString()) } ?: emptyMap()
+}
 
 internal suspend fun deleteLink(httpClient: HttpClient, url: String, deleteToken: String?) {
     val finished =
@@ -42,5 +56,8 @@ internal suspend fun deleteLink(httpClient: HttpClient, url: String, deleteToken
             true
         }
     if (finished == null)
-        throw LinkDeletionException("Revoking the link timed out. Check the connection and retry.")
+        throw LinkDeletionException(
+            "Revoking the link timed out. Check the connection and retry.",
+            code = "deletion_timeout",
+        )
 }

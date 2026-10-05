@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, date } from "$lib/i18n";
+
   import { capacityLabel, remainingCapacity, type ResourceSnapshot } from "$lib/resource-policy";
   let {
     snapshot,
@@ -12,71 +14,75 @@
   });
 </script>
 
-<div class="usage" aria-label={`${scope === "server" ? "Server" : "Account"} resource usage`}>
+<div
+  class="usage"
+  aria-label={$t(
+    m("valueResourceUsage", { arg0: scope === "server" ? m("server") : m("account") }),
+  )}
+>
   <dl>
     <div>
-      <dt>Tracked occupied storage (estimate)</dt>
-      <dd>{capacityLabel(snapshot.usage.occupied_bytes)}</dd>
+      <dt>{$t(m("trackedOccupiedStorageEstimate"))}</dt>
+      <dd>{$t(capacityLabel(snapshot.usage.occupied_bytes))}</dd>
     </div>
     <div>
-      <dt>Reserved storage, including occupied</dt>
-      <dd>{capacityLabel(snapshot.usage.reserved_bytes)}</dd>
+      <dt>{$t(m("reservedStorageIncludingOccupied"))}</dt>
+      <dd>{$t(capacityLabel(snapshot.usage.reserved_bytes))}</dd>
     </div>
     <div>
-      <dt>Storage quota</dt>
-      <dd>{capacityLabel(quota.storage)}</dd>
+      <dt>{$t(m("storageQuota"))}</dt>
+      <dd>{$t(capacityLabel(quota.storage))}</dd>
     </div>
     <div>
-      <dt>Available within storage quota</dt>
-      <dd>{capacityLabel(remainingCapacity(quota.storage, snapshot.usage.reserved_bytes))}</dd>
+      <dt>{$t(m("availableWithinStorageQuota"))}</dt>
+      <dd>{$t(capacityLabel(remainingCapacity(quota.storage, snapshot.usage.reserved_bytes)))}</dd>
     </div>
   </dl>
   {#if snapshot.capacity}
-    <div class="capacity-snapshot" aria-label="Current upload capacity">
+    <div class="capacity-snapshot" aria-label={$t(m("currentUploadCapacity"))}>
       {#if snapshot.capacity.state === "unknown"}
-        <p class="notice">
-          Current disk capacity could not be checked. The quota figures above are still available;
-          refresh before trying a new upload.
-        </p>
+        <p class="notice">{$t(m("currentDiskCapacityCouldNotBeCheckedTheQuota"))}</p>
       {:else if snapshot.capacity.state === "blocked"}
         <p class="notice">
-          {snapshot.capacity.reason === "disk_capacity"
-            ? "New file allocations are blocked by the disk safety reserve."
-            : "New file allocations have reached a server or account quota."} Existing local files and
-          administrative recovery remain available.
+          {$t(
+            snapshot.capacity.reason === "disk_capacity"
+              ? m("newFileAllocationsAreBlockedByTheDiskSafety")
+              : m("newFileAllocationsHaveReachedAServerOrAccount"),
+          )}
+          {$t(m("existingLocalFilesAndAdministrativeRecoveryRemainAvailable"))}
         </p>
       {:else}
         <p>
           <strong
-            >{capacityLabel(snapshot.capacity.available_wire_bytes!)} currently available for new encrypted
-            file allocations.</strong
+            >{$t(capacityLabel(snapshot.capacity.available_wire_bytes!))}
+            {$t(m("currentlyAvailableForNewEncryptedFileAllocations"))}</strong
           >
         </p>
       {/if}
       <p class="muted small">
-        Checked {new Date(snapshot.capacity.checked_at).toLocaleString()}. This includes server-wide
-        limits and the disk reserve, but is not a reservation. Encryption and manifests also consume
-        space; other uploads can change availability. Transfer pauses and per-link limits apply
-        separately.
+        {$t(m("checked"))}
+        {$t(date(snapshot.capacity.checked_at))}{$t(
+          m("thisIncludesServerWideLimitsAndTheDiskReserve"),
+        )}
       </p>
     </div>
   {/if}
   <div class="table-scroll">
     <table>
-      <caption>Current object allocations</caption>
+      <caption>{$t(m("currentObjectAllocations"))}</caption>
       <thead
         ><tr
-          ><th scope="col">Resource</th><th scope="col">Used</th><th scope="col">Quota</th><th
-            scope="col">Available</th
-          ></tr
+          ><th scope="col">{$t(m("resource"))}</th><th scope="col">{$t(m("used"))}</th><th
+            scope="col">{$t(m("quota"))}</th
+          ><th scope="col">{$t(m("available"))}</th></tr
         ></thead
       >
       <tbody
-        >{#each [{ key: "files" as const, label: "Files" }, { key: "transfers" as const, label: "Transfers" }, { key: "slots" as const, label: "Receive links" }] as row}<tr
+        >{#each [{ key: "files" as const, label: m("files") }, { key: "transfers" as const, label: m("transfers") }, { key: "slots" as const, label: m("receiveLinks") }] as row}<tr
           >
-            <th scope="row">{row.label}</th><td>{snapshot.usage[row.key]}</td><td
-              >{quota[row.key]}</td
-            ><td>{remainingCapacity(quota[row.key], snapshot.usage[row.key])}</td>
+            <th scope="row">{$t(row.label)}</th><td>{$t(snapshot.usage[row.key])}</td><td
+              >{$t(quota[row.key])}</td
+            ><td>{$t(remainingCapacity(quota[row.key], snapshot.usage[row.key]))}</td>
           </tr>{/each}</tbody
       >
     </table>
@@ -84,16 +90,9 @@
   {#if snapshot.usage.reserved_bytes > quota.storage || snapshot.usage.files > quota.files || snapshot.usage.transfers > quota.transfers || snapshot.usage.slots > quota.slots}<p
       class="notice"
     >
-      Current allocations exceed a quota. Existing data remains available; new allocations may be
-      blocked until capacity is released or the administrator raises the quota.
+      {$t(m("currentAllocationsExceedAQuotaExistingDataRemainsAvailable"))}
     </p>{/if}
-  <p class="muted small">
-    Occupied storage follows persisted upload progress and can lag physical writes after a crash.
-    Reservations include encrypted files, manifests and unfinished uploads. Retained metadata counts
-    toward object quotas. Capacity is released after verified deletion; cumulative limits on receive
-    links do not refill. Available quota is not a disk-space guarantee: server-wide limits and the
-    free-disk reserve also apply.
-  </p>
+  <p class="muted small">{$t(m("occupiedStorageFollowsPersistedUploadProgressAndCanLag"))}</p>
 </div>
 
 <style>

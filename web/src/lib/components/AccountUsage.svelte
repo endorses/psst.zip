@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { message as m, t, date, number, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { validateResourceSnapshot, type ResourceSnapshot } from "$lib/resource-policy";
   import ResourceUsage from "./ResourceUsage.svelte";
   let snapshot = $state<ResourceSnapshot | null>(null),
     busy = $state(false),
-    error = $state(""),
-    updated = $state("");
+    error = $state<DisplayText>(""),
+    updated = $state<number | null>(null);
   let disposed = false;
   async function load() {
     if (busy) return;
@@ -16,11 +18,10 @@
       const next = validateResourceSnapshot(await accountRequest("/auth/usage"));
       if (!disposed) {
         snapshot = next;
-        updated = new Date().toLocaleString();
+        updated = Date.now();
       }
     } catch {
-      if (!disposed)
-        error = "Could not refresh account usage. Previous measurements, if shown, may be stale.";
+      if (!disposed) error = m("couldNotRefreshAccountUsagePreviousMeasurementsIfShown");
     } finally {
       if (!disposed) busy = false;
     }
@@ -34,14 +35,15 @@
 </script>
 
 <details class="account-usage">
-  <summary>Account storage and resource usage</summary>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  <summary>{$t(m("accountStorageAndResourceUsage"))}</summary>
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
   {#if snapshot}<p class="muted small">
-      Last updated {updated}. Refresh after creating or deleting resources.
+      {$t(m("lastUpdated"))}
+      {$t(updated ? date(updated) : "")}{$t(m("refreshAfterCreatingOrDeletingResources"))}
     </p>
     <ResourceUsage {snapshot} />{/if}
   <button disabled={busy} onclick={load}
-    >{busy ? "Loading account usage…" : "Refresh account usage"}</button
+    >{$t(busy ? m("loadingAccountUsage") : m("refreshAccountUsage"))}</button
   >
 </details>
 

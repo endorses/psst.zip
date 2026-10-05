@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { legacyHistoryEntries } from "./legacy-history.ts";
 import { labelKey, type HistoryLabel, type HistoryLabels } from "./history-labels.ts";
 export type LocalResource = { kind: "transfers" | "slots"; id: string };
@@ -12,10 +13,7 @@ export type LocalHistoryPage = { links: Record<string, string>; labels: HistoryL
 const databaseName = "psst.local-history.v1";
 let opened: Promise<IDBDatabase> | undefined;
 const importing = new Map<string, Promise<void>>();
-const storageFailure = () =>
-  new Error(
-    "Could not save or read local history on this device. Check browser storage permissions and available space, then retry. Existing data has not been erased.",
-  );
+const storageFailure = () => new LocalizedError(m("couldNotSaveOrReadLocalHistoryOnThis"));
 function identity(account: string, key: string) {
   if (!account || account.length > 256 || !key || key.length > 256) throw storageFailure();
 }
@@ -177,9 +175,7 @@ async function migrate(account: string, signal?: AbortSignal) {
     if (batch.length) await importBatch(account, kind, batch);
     signal?.throwIfAborted();
     if (localStorage.getItem(name) !== source)
-      throw new Error(
-        "Existing local history changed during import. Close older psst.zip tabs and retry. Its original data is unchanged.",
-      );
+      throw new LocalizedError(m("existingLocalHistoryChangedDuringImportCloseOlderPsst"));
     const db = await database();
     await transaction<void>(db, "readwrite", (store, finish) => {
       store.put({

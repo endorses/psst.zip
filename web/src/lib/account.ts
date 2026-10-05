@@ -1,3 +1,5 @@
+import { apiErrorMessage } from "./api-error.ts";
+import { message as m, LocalizedError, type DisplayText } from "./i18n/index.ts";
 import {
   administratorSecurityMessage,
   securityIdentityGeneration,
@@ -68,10 +70,10 @@ export function receivedFileCount(resource: Resource): number | null {
       .reduce((sum, child) => sum + child.file_count, 0);
   return null;
 }
-export class AccountError extends Error {
+export class AccountError extends LocalizedError {
   status: number;
   code?: string;
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: DisplayText, code?: string) {
     super(message);
     this.status = status;
     this.code = code;
@@ -80,7 +82,7 @@ export class AccountError extends Error {
 /** Stop reading at the byte boundary, including chunked or untrusted error responses. */
 async function accountBody(response: Response, limit: number): Promise<string> {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("Empty account response");
+  if (!reader) throw new LocalizedError(m("emptyAccountResponse"));
   let size = 0;
   const chunks: Uint8Array[] = [];
   try {
@@ -88,7 +90,7 @@ async function accountBody(response: Response, limit: number): Promise<string> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) throw new Error("Account response exceeds the supported size");
+      if (size > limit) throw new LocalizedError(m("accountResponseExceedsTheSupportedSize"));
       chunks.push(value);
     }
   } finally {
@@ -133,26 +135,17 @@ export async function accountRequest<T>(
         typeof parsed.code === "string"
       )
         code = parsed.code;
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "error" in parsed &&
-        typeof parsed.error === "string"
-      )
-        detail = parsed.error;
     } catch {
-      /* Plain text errors remain useful. */
+      /* Unknown response bodies are never displayed. */
     }
-    detail = detail.slice(0, 300);
     if (code === "recent_authentication_required") recentAuthenticationRequired(generation);
     throw new AccountError(
       response.status,
       administratorSecurityMessage(code) ||
-        trafficLimitError(code, response.headers.get("X-Psst-Retry-At"))?.message ||
-        transferStateError(code)?.message ||
-        resourceLimitError(code)?.message ||
-        detail ||
-        `Request failed (${response.status})`,
+        trafficLimitError(code, response.headers.get("X-Psst-Retry-At"))?.presentation ||
+        transferStateError(code)?.presentation ||
+        resourceLimitError(code)?.presentation ||
+        apiErrorMessage(response.status, code),
       code,
     );
   }

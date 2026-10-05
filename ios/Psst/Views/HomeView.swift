@@ -29,29 +29,31 @@ struct HomeView: View {
                             receiveName = ""
                             limitEnabled = false
                             limitValue = "1"
-                        })
+                        }
+                    )
                 } else {
                     ScrollView {
                         VStack(spacing: 20) {
                             HStack {
                                 Image("BrandSymbol").resizable().scaledToFit().frame(width: 40, height: 40).accessibilityHidden(true)
-                                Text("psst.zip").font(.largeTitle.bold())
+                                Text(L10n.text("psst.zip")).font(.largeTitle.bold())
                             }
                             Text(
                                 LocalizedStringKey(
                                     receiving
                                         ? "Create a receive link for someone to send you files, nearby or elsewhere."
-                                        : "Send encrypted files with a link or QR code, nearby or elsewhere.")
+                                        : "Send encrypted files with a link or QR code, nearby or elsewhere."
+                                )
                             )
                             .foregroundStyle(PsstTheme.secondary)
-                            Text(config.limitDescription + " Files are encrypted automatically.").font(.footnote)
+                            Text(L10n.text(L10n.format("%@ Files are encrypted automatically.", L10n.text(config.limitDescription)))).font(.footnote)
                             if config.isConfigured, !config.needsSignIn {
                                 if receiving {
-                                    TextField("Name this receive link (optional)", text: $receiveName).disabled(creatingReceive)
-                                    Text("Shown to people using this link.").font(.caption).foregroundStyle(PsstTheme.secondary)
+                                    TextField(L10n.text("Name this receive link (optional)"), text: $receiveName).disabled(creatingReceive)
+                                    Text(L10n.text("Shown to people using this link.")).font(.caption).foregroundStyle(PsstTheme.secondary)
                                 } else {
-                                    TextField("Shared title (optional)", text: $sendName)
-                                    Text("Shown to people using this link.").font(.caption).foregroundStyle(PsstTheme.secondary)
+                                    TextField(L10n.text("Shared title (optional)"), text: $sendName)
+                                    Text(L10n.text("Shown to people using this link.")).font(.caption).foregroundStyle(PsstTheme.secondary)
                                 }
                                 LinkLimitControl(receiving: receiving, enabled: $limitEnabled, value: $limitValue).disabled(creatingReceive)
                                 Button(LocalizedStringKey(receiving ? "Create receive link" : "Choose files")) {
@@ -62,29 +64,29 @@ struct HomeView: View {
                                     }
                                 }.buttonStyle(PrimaryAction()).disabled(creatingReceive || send?.active == true || LinkLimit.parse(limitValue, enabled: limitEnabled) == nil)
                                 if !selected.isEmpty, send == nil {
-                                    Text(String(format: String(localized: "%lld files selected"), Int64(selected.count)))
+                                    Text(L10n.text(L10n.format("%lld files selected", Int64(selected.count))))
                                     ForEach(selected, id: \.self) { url in
                                         HStack {
-                                            Text(url.lastPathComponent).lineLimit(2)
+                                            Text(verbatim: url.lastPathComponent).lineLimit(2)
                                             Spacer()
                                             Button {
                                                 selected.removeAll { $0 == url }
                                             } label: {
                                                 Image(systemName: "xmark.circle")
-                                            }.accessibilityLabel("Remove " + url.lastPathComponent)
+                                            }.accessibilityLabel(L10n.text(L10n.format("Remove %@", url.lastPathComponent)))
                                         }
                                     }
-                                    Button("Send files") { startSend() }.buttonStyle(PrimaryAction())
+                                    Button(L10n.text("Send files")) { startSend() }.buttonStyle(PrimaryAction())
                                 }
                                 if send != nil || receive != nil {
-                                    Button("Return to transfer") { showing = true }.frame(minHeight: 44)
+                                    Button(L10n.text("Return to transfer")) { showing = true }.frame(minHeight: 44)
                                 }
                             } else {
-                                Text(config.accountMessage ?? "Sign in to continue this task.").font(.headline)
-                                Button(config.requiresPasswordChange ? "Change password" : "Sign in") { accountSetup = true }.buttonStyle(PrimaryAction())
+                                Text(L10n.text(config.accountMessage ?? "Sign in to continue this task.")).font(.headline)
+                                Button(L10n.text(config.requiresPasswordChange ? "Change password" : "Sign in")) { accountSetup = true }.buttonStyle(PrimaryAction())
                             }
                             if let error {
-                                Text(error).foregroundStyle(PsstTheme.error)
+                                Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
                             }
                         }.padding(24).frame(maxWidth: 600)
                     }
@@ -98,7 +100,8 @@ struct HomeView: View {
                         showing = false
                         send = nil
                         error = nil
-                    })
+                    }
+                )
             }
             .task(id: config.serverURL) { await config.refreshLimit() }
             .sheet(isPresented: $accountSetup) { NavigationStack { AccountSetupView() } }
@@ -107,8 +110,10 @@ struct HomeView: View {
                     let urls = try result.get()
                     _ = try BufferedUpload.sizes(urls, limit: BufferedUpload.maxFileBytes)
                     selected = urls
-                    if send?.active != true { send = nil }
-                } catch { self.error = String(localized: "Could not select these files. Check file access and the server’s file-size limit.") }
+                    if send?.active != true {
+                        send = nil
+                    }
+                } catch { self.error = L10n.message("Could not select these files. Check file access and the server’s file-size limit.") }
             }
             .onChange(of: config.accountID) { old, next in
                 if old != nil, old != next {
@@ -136,7 +141,7 @@ struct HomeView: View {
     private func startSend() {
         guard !selected.isEmpty, let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
         do { _ = try SharedLinkTitle.normalize(sendName) } catch {
-            self.error = error.localizedDescription
+            self.error = L10n.failure(error, fallback: "Could not select these files. Check file access and the server’s file-size limit.")
             return
         }
         let vm = SendViewModel(fileURLs: selected, serverConfig: config, historyStore: history, maxDownloads: limit, sharedTitle: sendName)
@@ -151,7 +156,7 @@ struct HomeView: View {
     private func createReceive() {
         guard !creatingReceive, let limit = LinkLimit.parse(limitValue, enabled: limitEnabled) else { return }
         do { _ = try SharedLinkTitle.normalize(receiveName) } catch {
-            self.error = error.localizedDescription
+            self.error = L10n.failure(error, fallback: "Could not select these files. Check file access and the server’s file-size limit.")
             return
         }
         creatingReceive = true

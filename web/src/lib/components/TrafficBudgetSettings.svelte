@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, number, LocalizedError, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import {
@@ -15,8 +17,8 @@
     uploadMiB = $state<number | undefined>(),
     downloadMiB = $state<number | undefined>();
   let busy = $state(false),
-    error = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let disposed = false;
   function accept(value: unknown) {
     const next = validateTrafficSnapshot(value);
@@ -37,7 +39,7 @@
     } catch (cause) {
       if (!disposed)
         error =
-          cause instanceof Error ? cause.message : "Could not load traffic enforcement policy.";
+          cause instanceof Error ? errorText(cause) : m("couldNotLoadTrafficEnforcementPolicy");
     } finally {
       if (!disposed) busy = false;
     }
@@ -64,25 +66,23 @@
           ([key, value]) => next.policy[key as keyof TrafficPolicy] !== value,
         )
       )
-        throw new Error(
-          "The server did not accept the requested traffic policy. Refresh before retrying.",
-        );
+        throw new LocalizedError(m("theServerDidNotAcceptTheRequestedTrafficPolicy"));
       accept(next);
       if (!disposed)
-        notice = "Transfer traffic policy saved. Monitoring allowance settings are unchanged.";
+        notice = m("transferTrafficPolicySavedMonitoringAllowanceSettingsAreUnchanged");
     } catch (cause) {
       if (!disposed)
-        error = cause instanceof Error ? cause.message : "Could not save traffic policy.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotSaveTrafficPolicy");
     } finally {
       if (!disposed) busy = false;
     }
   }
   const streams = [
-    ["max_active_streams", "Server-wide active streams"],
-    ["max_streams_per_account", "Active streams per account"],
-    ["max_streams_per_ip", "Active streams per IP address"],
-    ["max_streams_per_transfer", "Active streams per transfer"],
-    ["max_streams_per_slot", "Active streams per receive link"],
+    ["max_active_streams", m("activeServerStreams")],
+    ["max_streams_per_account", m("activeAccountStreams")],
+    ["max_streams_per_ip", m("activeIPStreams")],
+    ["max_streams_per_transfer", m("activeTransferStreams")],
+    ["max_streams_per_slot", m("activeSlotStreams")],
   ] as const;
   onMount(() => {
     void load();
@@ -93,31 +93,31 @@
 </script>
 
 <section aria-labelledby="traffic-budget-heading">
-  <h2 id="traffic-budget-heading">Transfer traffic enforcement</h2>
-  <p class="muted">
-    Enforcement is off by default and separate from the monitoring allowance below. Server and
-    account budgets apply together, including invited uploads charged to the receive-link owner.
-  </p>
+  <h2 id="traffic-budget-heading">{$t(m("transferTrafficEnforcement"))}</h2>
+  <p class="muted">{$t(m("enforcementIsOffByDefaultAndSeparateFromThe"))}</p>
   {#if error}<p class="error" role="alert">
-      {error}
-      {snapshot
-        ? "Displayed usage may be stale. Unsaved values remain in the form."
-        : "Other administrator and recovery controls remain available."}
+      {$t(error)}
+      {$t(
+        snapshot
+          ? m("displayedUsageMayBeStaleUnsavedValuesRemainIn")
+          : m("otherAdministratorAndRecoveryControlsRemainAvailable"),
+      )}
     </p>{/if}
-  {#if notice}<p class="success" role="status">{notice}</p>{/if}
-  <button disabled={busy} onclick={load}>Refresh traffic enforcement</button>
+  {#if notice}<p class="success" role="status">{$t(notice)}</p>{/if}
+  <button disabled={busy} onclick={load}>{$t(m("refreshTrafficEnforcement"))}</button>
   {#if snapshot && draft}
     <TrafficBudgetUsage {snapshot} enabled={snapshot.policy.enforcement_enabled} />
     <form onsubmit={save}>
       <fieldset disabled={busy}>
-        <legend>Cycle budgets</legend>
+        <legend>{$t(m("cycleBudgets"))}</legend>
         <label class="check"
-          ><input type="checkbox" bind:checked={draft.enforcement_enabled} />Enforce transfer
-          traffic budget</label
+          ><input type="checkbox" bind:checked={draft.enforcement_enabled} />{$t(
+            m("enforceTransferTrafficBudget"),
+          )}</label
         >
         <div class="fields">
           <label
-            >Server traffic budget (GiB)<input
+            >{$t(m("serverTrafficBudgetGiB"))}<input
               type="number"
               min={1 / 1024 ** 3}
               step="any"
@@ -126,7 +126,7 @@
             /></label
           >
           <label
-            >Default account traffic budget (GiB)<input
+            >{$t(m("defaultAccountTrafficBudgetGiB"))}<input
               type="number"
               min={1 / 1024 ** 3}
               step="any"
@@ -135,7 +135,7 @@
             /></label
           >
           <label
-            >Enforced cycle starts on day (UTC)<input
+            >{$t(m("enforcedCycleStartsOnDayUTC"))}<input
               type="number"
               min="1"
               max="31"
@@ -145,26 +145,20 @@
             /></label
           >
           <label
-            >Count toward enforced budget<select bind:value={draft.basis}
-              ><option value="outbound">Outbound downloads only</option><option value="combined"
-                >Uploads and downloads</option
+            >{$t(m("countTowardEnforcedBudget"))}<select bind:value={draft.basis}
+              ><option value="outbound">{$t(m("outboundDownloadsOnly"))}</option><option
+                value="combined">{$t(m("uploadsAndDownloads"))}</option
               ></select
             ></label
           >
         </div>
-        <p class="muted small">
-          A missing day starts on the last day of that month. Set individual account overrides in
-          Users. The default account budget cannot exceed the server budget. Lowering a budget can
-          stop transfers immediately; existing data and administrative access remain available.
-          Changing the cycle or traffic basis recalculates retained usage; it does not reset
-          charges.
-        </p>
+        <p class="muted small">{$t(m("aMissingDayStartsOnTheLastDayOf"))}</p>
       </fieldset>
       <fieldset disabled={busy}>
-        <legend>Bandwidth and concurrent streams</legend>
+        <legend>{$t(m("bandwidthAndConcurrentStreams"))}</legend>
         <div class="fields">
           <label
-            >Upload bandwidth (MiB/s)<input
+            >{$t(m("uploadBandwidthMiBS"))}<input
               type="number"
               min={1 / 1024 ** 2}
               max="10240"
@@ -174,7 +168,7 @@
             /></label
           >
           <label
-            >Download bandwidth (MiB/s)<input
+            >{$t(m("downloadBandwidthMiBS"))}<input
               type="number"
               min={1 / 1024 ** 2}
               max="10240"
@@ -184,7 +178,7 @@
             /></label
           >
           {#each streams as [key, label]}<label
-              >{label}<input
+              >{$t(label)}<input
                 type="number"
                 min="1"
                 max="4096"
@@ -195,18 +189,17 @@
             >{/each}
         </div>
         <p class="muted small">
-          The server reserves payload bytes in {snapshot.lease_bytes.toLocaleString()}-byte blocks.
-          Bandwidth and stream limits apply even when budget enforcement is off. Concurrent streams
-          share server capacity.
+          {$t(m("theServerReservesPayloadBytesIn"))}
+          {$t(number(snapshot.lease_bytes))}{$t(
+            m("byteBlocksBandwidthAndStreamLimitsApplyEvenWhen"),
+          )}
         </p>
       </fieldset>
-      <button class="primary" disabled={busy}>Save transfer traffic policy</button>
+      <button class="primary" disabled={busy}>{$t(m("saveTransferTrafficPolicy"))}</button>
     </form>
-  {:else if busy}<p role="status">Loading traffic enforcement…</p>{/if}
+  {:else if busy}<p role="status">{$t(m("loadingTrafficEnforcement"))}</p>{/if}
   <p class="muted small">
-    These limits account for encrypted application payload, including manifests, retries and partial
-    transfers. They exclude HTTP/TLS overhead, static assets, backups and other services. They
-    cannot cap or predict the provider's bill.
+    {$t(m("theseLimitsAccountForEncryptedApplicationPayloadIncludingManifests"))}
   </p>
 </section>
 

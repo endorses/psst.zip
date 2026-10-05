@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +22,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.AccountIndicator
 import zip.psst.android.ui.components.LinkLimits
 import zip.psst.android.ui.components.LinkPanel
@@ -40,21 +42,23 @@ fun ReceiveScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    var freshCreation by remember(existingId) { mutableStateOf(false) }
+    var freshCreation by rememberSaveable(existingId) { mutableStateOf(false) }
     val activeExistingId = existingId.takeUnless { freshCreation }
-    var showQR by remember(state.slotId) { mutableStateOf(false) }
-    var renaming by remember(state.slotId) { mutableStateOf(false) }
-    var renameDraft by remember(state.slotId) { mutableStateOf("") }
+    var showQR by rememberSaveable(state.slotId) { mutableStateOf(false) }
+    var renaming by rememberSaveable(state.slotId) { mutableStateOf(false) }
+    var renameDraft by rememberSaveable(state.slotId) { mutableStateOf("") }
     if (renaming)
         AlertDialog(
             onDismissRequest = { renaming = false },
-            title = { Text("Rename link") },
+            title = { Text(tr(R.string.l_rename_link_8e2e05)) },
             text = {
                 OutlinedTextField(
                     value = renameDraft,
                     onValueChange = { renameDraft = it },
-                    label = { Text("Shared title") },
-                    supportingText = { Text("Shown to people using this link") },
+                    label = { Text(tr(R.string.l_shared_title_6bac93)) },
+                    supportingText = {
+                        Text(tr(R.string.l_shown_to_people_using_this_link_1c969c))
+                    },
                     singleLine = true,
                 )
             },
@@ -65,37 +69,58 @@ fun ReceiveScreen(
                         renaming = false
                     }
                 ) {
-                    Text("Save")
+                    Text(tr(R.string.l_save_efc007))
                 }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { renaming = false }) { Text(tr(R.string.l_cancel_77dfd2)) }
+            },
         )
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(existingId) { if (existingId != null) viewModel.openExisting(existingId) }
     DisposableEffect(lifecycle, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) viewModel.setVisible(true)
-            if (event == Lifecycle.Event.ON_STOP) viewModel.setVisible(false)
+            if (
+                event == Lifecycle.Event.ON_STOP &&
+                    (context as? android.app.Activity)?.isChangingConfigurations != true
+            )
+                viewModel.setVisible(false)
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            viewModel.setVisible(false)
+            if ((context as? android.app.Activity)?.isChangingConfigurations != true)
+                viewModel.setVisible(false)
         }
     }
     state.downloadConsent?.let { consent ->
         AlertDialog(
             onDismissRequest = viewModel::cancelDownload,
-            title = { Text("Download these files?") },
+            title = { Text(tr(R.string.l_download_these_files_f0f150)) },
             text = {
                 Text(
-                    "${consent.fileCount} files · ${android.text.format.Formatter.formatFileSize(context, consent.remainingBytes)}. This download is larger than 100 MiB. Keep the app open while saving."
+                    plural(
+                        R.plurals.download_large_consent,
+                        consent.fileCount.toLong(),
+                        consent.fileCount,
+                        UiFormatting.bytes(
+                            consent.remainingBytes,
+                            UiStrings.context().resources.configuration.locales[0],
+                        ),
+                    )
                 )
             },
             confirmButton = {
-                TextButton(onClick = viewModel::confirmDownload) { Text("Download and save") }
+                TextButton(onClick = viewModel::confirmDownload) {
+                    Text(tr(R.string.l_download_and_save_392089))
+                }
             },
-            dismissButton = { TextButton(onClick = viewModel::cancelDownload) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelDownload) {
+                    Text(tr(R.string.l_cancel_77dfd2))
+                }
+            },
         )
     }
     val hasUploads = state.page?.completedTransfers?.isNotEmpty() == true
@@ -123,7 +148,7 @@ fun ReceiveScreen(
                                 onClick = viewModel::cancelDownload,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("Cancel saving")
+                                Text(tr(R.string.l_cancel_saving_2f4c09))
                             }
                         } else if (canSave)
                             Button(
@@ -131,7 +156,7 @@ fun ReceiveScreen(
                                 enabled = !state.isPaging && state.downloadConsent == null,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("Save shown uploads")
+                                Text(tr(R.string.l_save_shown_uploads_62e075))
                             }
                         else
                             OutlinedButton(
@@ -170,12 +195,19 @@ fun ReceiveScreen(
         ) {
             AccountIndicator()
             if (state.slotId == null && activeExistingId == null && !state.isCreatingSlot) {
-                Text("Create a private inbox link for others to send files to you.")
+                Text(
+                    tr(
+                        R.string
+                            .l_create_a_private_inbox_link_for_others_to_send_files_to_you_3a7e52
+                    )
+                )
                 OutlinedTextField(
                     value = state.localName,
                     onValueChange = viewModel::renameLocal,
-                    label = { Text("Name (optional)") },
-                    supportingText = { Text("Shown to people using this link") },
+                    label = { Text(tr(R.string.l_name_optional_9c9f03)) },
+                    supportingText = {
+                        Text(tr(R.string.l_shown_to_people_using_this_link_1c969c))
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -183,9 +215,12 @@ fun ReceiveScreen(
                     enabled = state.fileLimitEnabled,
                     value = state.maxFilesInput,
                     editable = !state.linkPolicyLocked,
-                    label = "Maximum files accepted",
+                    label = tr(R.string.l_maximum_files_accepted_54d449),
                     help =
-                        "Incomplete uploads use an allowance too; deleting files does not restore it. Existing server restrictions still apply.",
+                        tr(
+                            R.string
+                                .l_incomplete_uploads_use_an_allowance_too_deleting_files_does_not_r_cdd215
+                        ),
                     onEnabledChange = viewModel::setFileLimitEnabled,
                     onValueChange = viewModel::setMaxFiles,
                 )
@@ -197,12 +232,12 @@ fun ReceiveScreen(
                             state.maxFilesInput,
                         ) == null,
                 ) {
-                    Text("Create receive link")
+                    Text(tr(R.string.l_create_receive_link_b664da))
                 }
             }
             if (state.slotId != null) {
                 Text(
-                    state.localName.ifBlank { "Receive link" },
+                    state.localName.ifBlank { tr(R.string.l_receive_link_ef4dc0) },
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Row {
@@ -212,7 +247,7 @@ fun ReceiveScreen(
                             renaming = true
                         }
                     ) {
-                        Text("Rename")
+                        Text(tr(R.string.l_rename_d3f4cb))
                     }
                     TextButton(
                         onClick = {
@@ -221,16 +256,22 @@ fun ReceiveScreen(
                         },
                         enabled = !state.isDownloading && !state.isPaging,
                     ) {
-                        Text("Create another link")
+                        Text(tr(R.string.l_create_another_link_ba0703))
                     }
                 }
             }
             if (state.legacyReadOnly)
                 Text(
-                    "This older inbox is read-only. Save its existing files and create a new receive link for further uploads."
+                    tr(
+                        R.string
+                            .l_this_older_inbox_is_read_only_save_its_existing_files_and_create__b83329
+                    )
                 )
             if (state.slotId != null && state.maxFiles > 0)
-                Text("${state.remainingFiles ?: "…"} files remaining")
+                Text(
+                    state.remainingFiles?.let { plural(R.plurals.files_remaining, it, it) }
+                        ?: tr(R.string.ui_unknown_files_remaining)
+                )
             if (state.slotId != null || state.isCreatingSlot)
                 Text(
                     stringResource(
@@ -254,7 +295,10 @@ fun ReceiveScreen(
                 if (!arrivals || showQR) LinkPanel(state.uploadUrl!!)
                 if (arrivals)
                     TextButton(onClick = { showQR = !showQR }) {
-                        Text(if (showQR) "Hide QR" else "Show QR / Share link")
+                        Text(
+                            if (showQR) tr(R.string.l_hide_qr_b7a2f4)
+                            else tr(R.string.l_show_qr_share_link_e63fb8)
+                        )
                     }
             }
             state.page?.let { page ->
@@ -266,7 +310,7 @@ fun ReceiveScreen(
                             if (summary.completedFiles == 1L) 1 else 2,
                             summary.completedFiles ?: 0L,
                         )
-                    else "Received files",
+                    else tr(R.string.l_received_files_c558af),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
@@ -274,16 +318,17 @@ fun ReceiveScreen(
                     onClick = viewModel::reconnect,
                     enabled = !state.isPaging && !state.isDownloading,
                 ) {
-                    Text("Refresh")
+                    Text(tr(R.string.l_refresh_56e3ba))
                 }
-                if (page.transfers.isEmpty()) Text("No available uploads on this page.")
+                if (page.transfers.isEmpty())
+                    Text(tr(R.string.l_no_available_uploads_on_this_page_92661b))
                 page.transfers.forEach { child ->
                     val status =
                         when (child.status) {
-                            TransferStatus.COMPLETE -> "Ready to save"
-                            TransferStatus.PENDING -> "Upload in progress"
-                            TransferStatus.EXPIRED -> "Expired"
-                            TransferStatus.EXHAUSTED -> "Download limit reached"
+                            TransferStatus.COMPLETE -> tr(R.string.l_ready_to_save_275fae)
+                            TransferStatus.PENDING -> tr(R.string.l_upload_in_progress_dbc05c)
+                            TransferStatus.EXPIRED -> tr(R.string.l_expired_a689a9)
+                            TransferStatus.EXHAUSTED -> tr(R.string.l_download_limit_reached_8745b6)
                         }
                     Text(
                         pluralStringResource(
@@ -295,7 +340,7 @@ fun ReceiveScreen(
                     )
                 }
                 if (state.isPaging) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (state.shownSaved) Text("Shown uploads saved on this device")
+                if (state.shownSaved) Text(tr(R.string.l_shown_uploads_saved_on_this_device_375637))
             }
             if (state.connectionError) {
                 Text(
@@ -308,7 +353,7 @@ fun ReceiveScreen(
             }
             if (state.error != null) {
                 Text(
-                    state.error.orEmpty(),
+                    state.error!!.text(),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
@@ -335,17 +380,24 @@ fun ReceiveScreen(
             if (state.checkpointState != "ready") {
                 Text(
                     if (state.checkpointState == "recovery")
-                        "An older saved checkpoint contains invalid or unsupported data. Original records and saved files are retained; saving is paused to avoid duplicate downloads. Retrying after an app update may resolve it."
+                        tr(
+                            R.string
+                                .l_an_older_saved_checkpoint_contains_invalid_or_unsupported_data_or_084a28
+                        )
                     else
-                        "Importing saved-file checkpoints. Saved files remain on this device; saving resumes when the import finishes."
+                        tr(
+                            R.string
+                                .l_importing_saved_file_checkpoints_saved_files_remain_on_this_devic_3acb84
+                        )
                 )
                 TextButton(
                     onClick = viewModel::continueCheckpointImport,
                     enabled = !state.isPaging,
                 ) {
                     Text(
-                        if (state.checkpointState == "recovery") "Retry checkpoint import"
-                        else "Continue checkpoint import"
+                        if (state.checkpointState == "recovery")
+                            tr(R.string.l_retry_checkpoint_import_78098d)
+                        else tr(R.string.l_continue_checkpoint_import_291d65)
                     )
                 }
                 TextButton(
@@ -359,7 +411,13 @@ fun ReceiveScreen(
                 }
             }
             if (state.downloadComplete || state.savedFileCount > 0) {
-                Text(stringResource(R.string.saved_count, state.savedFileCount))
+                Text(
+                    plural(
+                        R.plurals.files_saved_local,
+                        state.savedFileCount.toLong(),
+                        state.savedFileCount,
+                    )
+                )
                 OutlinedButton(
                     onClick = {
                         runCatching {
@@ -379,19 +437,19 @@ fun ReceiveScreen(
                             onClick = viewModel::firstPage,
                             enabled = canNavigate && state.pager.cursor != null,
                         ) {
-                            Text("First")
+                            Text(tr(R.string.l_first_916a78))
                         }
                         TextButton(
                             onClick = viewModel::previousPage,
                             enabled = canNavigate && state.pager.previous.isNotEmpty(),
                         ) {
-                            Text("Previous")
+                            Text(tr(R.string.l_previous_50f942))
                         }
                         TextButton(
                             onClick = viewModel::nextPage,
                             enabled = canNavigate && page.nextCursor != null,
                         ) {
-                            Text("Next")
+                            Text(tr(R.string.l_next_bc9819))
                         }
                     }
             }

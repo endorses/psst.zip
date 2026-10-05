@@ -1,4 +1,12 @@
 import {
+  message as m,
+  number,
+  LocalizedError,
+  errorText,
+  translate,
+  type DisplayText,
+} from "./i18n/index.ts";
+import {
   TrafficLimitError,
   trafficLimitError,
   detectTransferStop,
@@ -7,7 +15,7 @@ import {
 import { uploadEncryptedFile } from "./stream-upload";
 import { newEncryptionId, wireSize } from "./chunked-files";
 import { generateKey, exportKey, encryptManifest, type FileManifestEntry } from "./crypto";
-import { assertFileSize, loadUploadLimit, loadServerLimits } from "./limits";
+import { FileSizeError, assertFileSize, loadUploadLimit, loadServerLimits } from "./limits";
 import { ResourceLimitError, resourceLimitError, type ResourcePolicy } from "./resource-policy";
 import { getSlotAvailability } from "./api";
 import { parseReceiveFragment } from "./receive-keys";
@@ -29,7 +37,7 @@ export function formatSize(bytes: number) {
   if (!bytes) return "0 B";
   const units = ["B", "KiB", "MiB", "GiB"];
   const i = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
+  return `${number(bytes / 1024 ** i, { minimumFractionDigits: i ? 1 : 0, maximumFractionDigits: i ? 1 : 0 })} ${units[i]}`;
 }
 export class UploadJob {
   constructor(private readonly guest?: { slotId: string; key: string }) {}
@@ -68,10 +76,10 @@ export class UploadJob {
             this.error =
               this.guest &&
               !(cause instanceof GuestCapacityError) &&
-              !(cause instanceof Error && /^Files must be no larger/.test(cause.message))
+              !(cause instanceof FileSizeError)
                 ? CAPACITY_UNAVAILABLE
                 : cause instanceof Error
-                  ? cause.message
+                  ? errorText(cause)
                   : CAPACITY_UNAVAILABLE;
         }
       })
@@ -125,11 +133,11 @@ export class UploadJob {
       this.trafficPolicy = limits.traffic_policy ?? null;
     } catch (cause) {
       this.limit = null;
-      this.error = cause instanceof Error ? cause.message : "Could not load the file limit.";
+      this.error = cause instanceof Error ? errorText(cause) : m("couldNotLoadTheFileLimit");
     }
   }
   state = $state<"idle" | "preparing" | "uploading" | "stopping" | "done" | "error">("idle");
-  error = $state("");
+  error = $state<DisplayText>("");
   sent = $state(0);
   total = $state(0);
   current = $state("");
@@ -160,12 +168,14 @@ export class UploadJob {
           assertGuestSelection(available, selection, this.limit!);
         } catch (cause) {
           if (cause instanceof GuestCapacityError)
-            throw new GuestCapacityError(`New files were not added. ${cause.message}`);
+            throw new GuestCapacityError(
+              m("newFilesWereNotAddedValue", { arg0: errorText(cause) }),
+            );
           throw cause;
         }
       }
       if (this.files.length + files.length > 100)
-        throw new Error("Choose no more than 100 files per transfer.");
+        throw new LocalizedError(m("chooseNoMoreThanFilesPerTransfer"));
       files.forEach((f) => assertFileSize(f.size, this.limit!));
       this.files = selection;
       this.error = "";
@@ -200,10 +210,9 @@ export class UploadJob {
       });
       if (!response.ok && response.status !== 404) throw Error();
       this.transferId = "";
-      this.error = "Upload stopped. Partial server files removed.";
+      this.error = m("uploadStoppedPartialServerFilesRemoved");
     } catch {
-      this.error =
-        "Upload stopped, but partial files could not be removed. Retry cleanup or revoke the transfer from History.";
+      this.error = m("uploadStoppedButPartialFilesCouldNotBeRemoved");
     }
   }
   async retryCleanup() {
@@ -227,7 +236,8 @@ export class UploadJob {
     this.controller = new AbortController();
     const signal = this.controller.signal;
     const check = () => {
-      if (run !== this.run || signal.aborted) throw new DOMException("Stopped", "AbortError");
+      if (run !== this.run || signal.aborted)
+        throw new DOMException(translate(m("stopped")), "AbortError");
     };
     const request = async (path: string, init: RequestInit = {}) => {
       check();
@@ -265,27 +275,23 @@ export class UploadJob {
           .json()
           .catch(() => null);
         if (body?.code === "password_change_required")
-          throw new Error("Change your temporary password before sending files.");
+          throw new LocalizedError(m("changeYourTemporaryPasswordBeforeSendingFiles"));
         if (body?.code === "admin_transfer_forbidden")
-          throw new Error("Administrator accounts cannot transfer files. Use a regular account.");
+          throw new LocalizedError(m("administratorAccountsCannotTransferFilesUseARegularAccount"));
         if (body?.code === "receive_file_limit")
-          throw new Error(
-            "This receive link has no file allocations left. Ask its owner for a new link.",
-          );
+          throw new LocalizedError(m("thisReceiveLinkHasNoFileAllocationsLeftAsk"));
         if (body?.code === "receive_batch_limit")
-          throw new Error(
-            "This receive link has reached its upload limit. Ask its owner for a new link.",
-          );
+          throw new LocalizedError(m("thisReceiveLinkHasReachedItsUploadLimitAsk"));
       }
       if (!res.ok)
-        throw new Error(
+        throw new LocalizedError(
           res.status === 429
-            ? "This server is busy. Wait a moment, then retry upload."
+            ? m("thisServerIsBusyWaitAMomentThenRetry")
             : res.status === 401
-              ? "Sign in again to continue."
+              ? m("signInAgainToContinue")
               : res.status === 404 || res.status === 410
-                ? "This link is no longer available. Ask for a new link."
-                : "The server could not finish the upload. Check your connection and retry.",
+                ? m("thisLinkIsNoLongerAvailableAskForA")
+                : m("theServerCouldNotFinishTheUploadCheckYour"),
         );
       return res;
     };
@@ -294,7 +300,7 @@ export class UploadJob {
     this.sent = 0;
     this.total = 0;
     try {
-      if (files.length > 100) throw new Error("Choose no more than 100 files per transfer.");
+      if (files.length > 100) throw new LocalizedError(m("chooseNoMoreThanFilesPerTransfer"));
       if (!options.slotId) this.limit = await loadUploadLimit(signal);
       check();
       this.total = selectionWireSize(files, options.slotId ? undefined : this.limit!);
@@ -302,11 +308,11 @@ export class UploadJob {
         const me = await (await request("/auth/me")).json();
         check();
         if (me.user.must_change_password)
-          throw new Error("Change your temporary password before sending files.");
+          throw new LocalizedError(m("changeYourTemporaryPasswordBeforeSendingFiles"));
         if (me.user.role === "admin")
-          throw new Error("Administrator accounts cannot transfer files. Use a regular account.");
+          throw new LocalizedError(m("administratorAccountsCannotTransferFilesUseARegularAccount"));
         if (me.user.id !== options.accountId)
-          throw Error("Your account changed. Sign in again before sending files.");
+          throw new LocalizedError(m("yourAccountChangedSignInAgainBeforeSendingFiles"));
       }
       const maxDownloads = validateLinkLimit(options.maxDownloads ?? 0);
       const sharedTitle = normalizeLinkTitle(options.title);
@@ -339,9 +345,7 @@ export class UploadJob {
         const accepted = await (await request(`/transfers/${created.id}`)).json();
         if (accepted.max_downloads !== maxDownloads || (accepted.title ?? null) !== sharedTitle) {
           await this.cleanup();
-          throw new Error(
-            "This server did not accept the link settings. Ask its operator to update it. No files were uploaded.",
-          );
+          throw new LocalizedError(m("thisServerDidNotAcceptTheLinkSettingsAsk"));
         }
       }
       const url = `${location.origin}/d/${created.id}#${keyString}`;
@@ -349,10 +353,7 @@ export class UploadJob {
         options.oncreated?.(
           created.id,
           url,
-          files[0].name +
-            (files.length > 1
-              ? ` + ${files.length - 1} ${files.length === 2 ? "file" : "files"}`
-              : ""),
+          files[0].name,
           files.reduce((n, f) => n + f.size, 0),
         );
       const entries: FileManifestEntry[] = [];
@@ -420,34 +421,7 @@ export class UploadJob {
         }
       }
       this.state = "error";
-      const safeErrors = [
-        "Change your temporary password before sending files.",
-        "Administrator accounts cannot transfer files. Use a regular account.",
-        "Choose no more than 100 files per transfer.",
-        "This server is busy. Wait a moment, then retry upload.",
-        "Sign in again to continue.",
-        "This link is no longer available. Ask for a new link.",
-        "The server could not finish the upload. Check your connection and retry.",
-        "Your account changed. Sign in again before sending files.",
-        "This receive link has no file allocations left. Ask its owner for a new link.",
-        "This receive link has reached its upload limit. Ask its owner for a new link.",
-        "This receive link cannot accept these files. Ask its owner for a new link.",
-        "The receive link's encryption key does not match this inbox. Ask its owner for a new link.",
-        "Choose a whole-number limit between 1 and 2147483647, or turn the limit off.",
-        "This server did not accept the download limit. Ask its operator to update it. No files were uploaded.",
-      ];
-      this.error =
-        error instanceof Error &&
-        (error instanceof GuestCapacityError ||
-          error instanceof TrafficLimitError ||
-          error instanceof TransferStateError ||
-          error instanceof ResourceLimitError ||
-          safeErrors.includes(error.message) ||
-          /^Files must be no larger than [0-9.]+ MiB\.$/.test(error.message) ||
-          error.message ===
-            "Could not load this server's file limit. Check your connection and retry.")
-          ? error.message
-          : "Upload interrupted. Check your connection, then retry upload. You can also remove partial files with Retry cleanup.";
+      this.error = errorText(error, m("uploadInterruptedCheckYourConnectionThenRetryUploadYou"));
     }
   }
 }

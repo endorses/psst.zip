@@ -1,3 +1,4 @@
+import { message as m, t, LocalizedError } from "./i18n/index.ts";
 import { accountRequest, type Resource, type User } from "./account.ts";
 import { inboxUUID, validInboxCursor } from "./inbox-page.ts";
 import { decodeReceivePublicKey } from "./receive-keys.ts";
@@ -12,9 +13,7 @@ export interface ResourcePage {
   next_cursor: string | null;
 }
 const invalidPage = () =>
-  new Error(
-    "This server returned an unsupported resource page. Refresh or contact its administrator.",
-  );
+  new LocalizedError(m("thisServerReturnedAnUnsupportedResourcePageRefreshOr"));
 const nonnegative = (value: unknown, maximum = Number.MAX_SAFE_INTEGER): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= maximum;
 const timestamp = (value: unknown): value is string =>
@@ -150,8 +149,6 @@ export async function loadUsersPage(
         result.next_cursor.length > 2048 ||
         result.next_cursor === after))
   )
-    throw new Error(
-      "This server returned an unsupported accounts page. Refresh or contact its administrator.",
-    );
+    throw new LocalizedError(m("thisServerReturnedAnUnsupportedAccountsPageRefreshOr"));
   return { users: result.users, next_cursor: result.next_cursor || null };
 }

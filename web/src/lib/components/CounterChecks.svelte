@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { utcTime } from "$lib/admin";
   import { loadCounterChecks, type CounterChecks } from "$lib/admin-counter-checks";
@@ -32,59 +34,64 @@
   });
 </script>
 
-<section aria-label="Counter checks" class="counter-checks">
+<section aria-label={$t(m("counterChecks"))} class="counter-checks">
   <div class="heading">
-    <h2>Counter checks</h2>
+    <h2>{$t(m("counterChecks"))}</h2>
     <button disabled={busy} onclick={refresh}
-      >{busy ? "Refreshing counters…" : "Refresh counter checks"}</button
+      >{$t(busy ? m("refreshingCounters") : m("refreshCounterChecks"))}</button
     >
   </div>
-  <p class="muted small">Checks and repairs storage summaries derived from database records.</p>
+  <p class="muted small">{$t(m("checksAndRepairsStorageSummariesDerivedFromDatabaseRecords"))}</p>
   {#if failed}
     <p role="alert" class="error">
-      Counter-check status could not be loaded.{snapshot
-        ? " The previous snapshot remains below and may be stale."
-        : " Retry with Refresh counter checks."}
+      {$t(m("counterCheckStatusCouldNotBeLoaded"))}{$t(
+        snapshot
+          ? m("thePreviousSnapshotRemainsBelowAndMayBeStale")
+          : m("retryWithRefreshCounterChecks"),
+      )}
     </p>
   {/if}
   {#if snapshot}
     <p class="summary">
-      {snapshot.scan_error_code || snapshot.state === "degraded"
-        ? "Counter checks need retry"
-        : snapshot.state === "pending"
-          ? "Counter checks pending"
-          : "Last counter pass completed"}
+      {$t(
+        snapshot.scan_error_code || snapshot.state === "degraded"
+          ? m("counterChecksNeedRetry")
+          : snapshot.state === "pending"
+            ? m("counterChecksPending")
+            : m("lastCounterPassCompleted"),
+      )}
     </p>
     {#if snapshot.scan_error_code}
-      <p class="error" role="alert">The counter scan could not complete. It will retry.</p>
+      <p class="error" role="alert">{$t(m("theCounterScanCouldNotCompleteItWillRetry"))}</p>
     {/if}
     <dl>
       <div>
-        <dt>Queued checks, including retries</dt>
-        <dd>{snapshot.pending_count}</dd>
+        <dt>{$t(m("queuedChecksIncludingRetries"))}</dt>
+        <dd>{$t(snapshot.pending_count)}</dd>
       </div>
       <div>
-        <dt>Queued failures</dt>
-        <dd>{snapshot.failed_count}</dd>
+        <dt>{$t(m("queuedFailures"))}</dt>
+        <dd>{$t(snapshot.failed_count)}</dd>
       </div>
       <div>
-        <dt>Queued checks awaiting stable data</dt>
-        <dd>{snapshot.busy_count}</dd>
+        <dt>{$t(m("queuedChecksAwaitingStableData"))}</dt>
+        <dd>{$t(snapshot.busy_count)}</dd>
       </div>
     </dl>
     <p class="muted small">
-      {snapshot.last_scan_completed_at
-        ? `Last completed counter pass: ${utcTime(snapshot.last_scan_completed_at)}.`
-        : "No completed counter pass recorded yet."}
-      {snapshot.scan_pending
-        ? "Additional work may await discovery or retry."
-        : "The last traversal reached its end."}
+      {$t(
+        snapshot.last_scan_completed_at
+          ? m("lastCompletedCounterPassValue", { arg0: utcTime(snapshot.last_scan_completed_at) })
+          : m("noCompletedCounterPassRecordedYet"),
+      )}
+      {$t(
+        snapshot.scan_pending
+          ? m("additionalWorkMayAwaitDiscoveryOrRetry")
+          : m("theLastTraversalReachedItsEnd"),
+      )}
     </p>
-  {:else if !failed}<p role="status">Loading counter-check status…</p>{/if}
-  <p class="muted small">
-    Repairs run automatically. Upload quotas use live database records. These checks do not verify
-    stored file contents, orphan files, disk health or backups.
-  </p>
+  {:else if !failed}<p role="status">{$t(m("loadingCounterCheckStatus"))}</p>{/if}
+  <p class="muted small">{$t(m("repairsRunAutomaticallyUploadQuotasUseLiveDatabaseRecords"))}</p>
 </section>
 
 <style>

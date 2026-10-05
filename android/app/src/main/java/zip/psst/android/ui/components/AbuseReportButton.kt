@@ -15,6 +15,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.AbuseContact
 import zip.psst.shared.model.AbuseReportReference
@@ -30,7 +32,7 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
     // link.
     var contact by remember(origin) { mutableStateOf<String?>(null) }
     var open by remember(reference.text) { mutableStateOf(false) }
-    var notice by remember(reference.text) { mutableStateOf<String?>(null) }
+    var notice by remember(reference.text) { mutableStateOf<UiText?>(null) }
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(origin) {
@@ -50,7 +52,7 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
     TextButton(onClick = { open = true }) {
         Icon(Icons.Outlined.Flag, contentDescription = null)
         Spacer(Modifier.width(8.dp))
-        Text("Report abuse")
+        Text(tr(R.string.l_report_abuse_ef459e))
     }
     if (open)
         ModalBottomSheet(onDismissRequest = { open = false }) {
@@ -58,39 +60,52 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("Report abuse", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "Contact this server’s operator. Nothing is sent until you send an email yourself."
+                    tr(R.string.l_report_abuse_ef459e),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    tr(
+                        R.string
+                            .l_contact_this_server_s_operator_nothing_is_sent_until_you_send_an__d5e9c9
+                    )
                 )
                 SelectionContainer { Text(email) }
                 SelectionContainer { Text(reference.text) }
                 Text(
-                    "The reference contains the server address and, when available, the resource ID. Do not add the full link, encryption key, filenames, or file contents.",
+                    tr(
+                        R.string
+                            .l_the_reference_contains_the_server_address_and_when_available_the__d426a8
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = {
                             clipboard.setText(AnnotatedString(email))
-                            notice = "Contact copied"
+                            notice = message(R.string.l_contact_copied_fd82dc)
                         }
                     ) {
-                        Text("Copy contact")
+                        Text(tr(R.string.l_copy_contact_afe9a1))
                     }
                     TextButton(
                         onClick = {
                             clipboard.setText(AnnotatedString(reference.text))
-                            notice = "Reference copied"
+                            notice = message(R.string.l_reference_copied_d8ac62)
                         }
                     ) {
-                        Text("Copy reference")
+                        Text(tr(R.string.l_copy_reference_955753))
                     }
                 }
                 Button(
                     onClick = {
-                        val subject = "psst.zip abuse report"
+                        val subject = tr(R.string.l_psst_zip_abuse_report_c6b59c)
                         val body =
-                            "I would like to report abuse on this server.\n\n${reference.text}\n\nDescription (do not include encryption keys or file contents):\n"
+                            tr(
+                                R.string
+                                    .l_i_would_like_to_report_abuse_on_this_server_n_n_1_s_n_ndescriptio_2826ae,
+                                (reference.text),
+                            )
                         val mailto =
                             "mailto:${Uri.encode(email)}?subject=${Uri.encode(subject)}&body=${Uri.encode(body)}"
                         try {
@@ -98,15 +113,18 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
                             notice = null
                         } catch (_: Exception) {
                             notice =
-                                "No email app is available. Copy the contact and reference to send your report."
+                                message(
+                                    R.string
+                                        .l_no_email_app_is_available_copy_the_contact_and_reference_to_send__a3e1b1
+                                )
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Open email app")
+                    Text(tr(R.string.l_open_email_app_bc54c2))
                 }
-                notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                TextButton(onClick = { open = false }) { Text("Close") }
+                notice?.let { Text(it.text(), style = MaterialTheme.typography.bodySmall) }
+                TextButton(onClick = { open = false }) { Text(tr(R.string.l_close_bbfa77)) }
             }
         }
 }

@@ -47,17 +47,23 @@ class ReceiveEntryTest {
     @Test
     fun failedSaveRetriesOriginalDownloadNeverCreatesAnotherLink() {
         val restored = restoreReceiveEntry(row(), access)
-        val failed = restored.copy(error = "Download failed", isDownloading = false)
+        val failed =
+            restored.copy(
+                error = zip.psst.android.i18n.userText("Download failed"),
+                isDownloading = false,
+            )
         assertEquals(ReceiveRetry.SAVE, failed.retryAction("original-slot"))
         assertEquals(restored.slotId, failed.slotId)
         assertEquals(restored.encryptionKey, failed.encryptionKey)
         assertEquals(
             ReceiveRetry.REOPEN,
-            ReceiveUiState(error = "Offline").retryAction("original-slot"),
+            ReceiveUiState(error = zip.psst.android.i18n.userText("Offline"))
+                .retryAction("original-slot"),
         )
         assertEquals(
             ReceiveRetry.CREATE,
-            ReceiveUiState(error = "Creation failed").retryAction(null),
+            ReceiveUiState(error = zip.psst.android.i18n.userText("Creation failed"))
+                .retryAction(null),
         )
     }
 

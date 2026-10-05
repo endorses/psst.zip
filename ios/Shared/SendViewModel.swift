@@ -50,7 +50,9 @@ final class SendViewModel {
     }
 
     var active: Bool {
-        if starting { return true }
+        if starting {
+            return true
+        }
         if case .encrypting = state {
             return true
         }
@@ -101,7 +103,7 @@ final class SendViewModel {
             try await historyStore.refreshSend(record, session: session)
             try serverConfig.check(session)
             self.record = try historyStore.record(record.localID)
-        } catch { /* A failed status refresh does not erase a usable saved link. */  }
+        } catch { /* A failed status refresh does not erase a usable saved link. */ }
     }
 
     func stop() {
@@ -163,15 +165,16 @@ final class SendViewModel {
                 self.client = nil
             }
             let key = try CryptoProvider.shared.generateKey()
-            let transfer = try await client.transfers.create(maxDownloads: maxDownloads, title: try SharedLinkTitle.normalize(sharedTitle))
+            let transfer = try await client.transfers.create(maxDownloads: maxDownloads, title: SharedLinkTitle.normalize(sharedTitle))
             guard UUID(uuidString: transfer.id) != nil else { throw AccountError.request }
             let url = UrlHelper.shared.buildDownloadUrl(baseUrl: session.serverURL, transferId: transfer.id, key: key)
-            var entry = TransferRecord(
+            var entry = try TransferRecord(
                 id: transfer.id, direction: .sent, state: .inProgress,
                 createdAt: Date(), expiresAt: ServerTimestamp.parse(transfer.expiresAt),
                 fileCount: fileURLs.count, totalSize: sizes.reduce(0, +), shareURL: nil,
-                serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, sharedTitle: try SharedLinkTitle.normalize(sharedTitle), isSlot: false,
-                maxDownloads: Int(maxDownloads))
+                serverURL: session.serverURL, ownerID: session.userID, title: fileNames.first, sharedTitle: SharedLinkTitle.normalize(sharedTitle), isSlot: false,
+                maxDownloads: Int(maxDownloads)
+            )
             try historyStore.add(entry)
             record = entry
             try entry.saveSecrets(link: url, deletionToken: transfer.deleteToken)
@@ -200,7 +203,8 @@ final class SendViewModel {
                     }
                     self.progress = value
                     self.state = .uploading(progress: value.fraction)
-                })
+                }
+            )
             let manifest = try ManifestSerializer.encode(manifest: Manifest(files: metadata))
             let nonce = try CryptoProvider.shared.generateNonce()
             let encrypted = try CryptoProvider.shared.encrypt(key: key, nonce: nonce, plaintext: Data(manifest.utf8).toKotlinByteArray())
@@ -224,7 +228,8 @@ final class SendViewModel {
                 incident = await TransferTrafficRecovery.inspect(
                     error, server: origin.serverURL,
                     resource: .transfer, id: record.id,
-                    direction: .upload, token: origin.token)
+                    direction: .upload, token: origin.token
+                )
             }
             if var record {
                 record.state = .failed
@@ -247,16 +252,16 @@ final class SendViewModel {
                     do {
                         try historyStore.remove(record)
                         self.record = nil
-                    } catch { /* Retry revocation removes the retained row after a 404. */  }
-                    state = .failed(String(localized: "Upload stopped. The server files were removed."))
+                    } catch { /* Retry revocation removes the retained row after a 404. */ }
+                    state = .failed(L10n.message("Upload stopped. The server files were removed."))
                     return
                 }
             }
-            state = .failed(
+            state = .failed(L10n.failure(error, fallback:
                 incident?.localizedDescription ?? (error as? LinkLimitError)?.localizedDescription ?? serverConfig.accountMessage
                     ?? (record == nil
-                        ? String(localized: "Upload could not start. Sign in or check your connection, then retry.")
-                        : String(localized: "Upload stopped. Its server record remains in History; retry or revoke it there.")))
+                        ? L10n.message("Upload could not start. Sign in or check your connection, then retry.")
+                        : L10n.message("Upload stopped. Its server record remains in History; retry or revoke it there."))))
         }
     }
 }

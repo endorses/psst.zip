@@ -5,7 +5,7 @@ import UIKit
 /// Guest lookups use a new anonymous, bounded config client for the link's exact origin.
 struct AbuseReportButton: View {
     let context: AbuseReportContext
-    var configuredContact: String? = nil
+    var configuredContact: String?
     var fetchContact = true
     @State private var loadedOrigin: String?
     @State private var contact: String?
@@ -22,7 +22,7 @@ struct AbuseReportButton: View {
                 Button {
                     showing = true
                 } label: {
-                    Label("Report abuse", systemImage: "flag")
+                    Label(L10n.text("Report abuse"), systemImage: "flag")
                 }
                 .sheet(isPresented: $showing) {
                     AbuseReportView(context: context, contact: contact)
@@ -57,26 +57,24 @@ private struct AbuseReportView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Server operator") {
-                    Text(contact).textSelection(.enabled)
-                    Button("Copy contact address") {
+                Section(L10n.text("Server operator")) {
+                    Text(verbatim: contact).textSelection(.enabled)
+                    Button(L10n.text("Copy contact address")) {
                         UIPasteboard.general.string = contact
                         feedback = "Contact address copied."
                     }
                 }
-                Section("Report details") {
-                    Text(context.text).textSelection(.enabled)
-                    Button("Copy report details") {
+                Section(L10n.text("Report details")) {
+                    Text(L10n.text(context.text)).textSelection(.enabled)
+                    Button(L10n.text("Copy report details")) {
                         UIPasteboard.general.string = context.text
                         feedback = "Report details copied."
                     }
-                    Text(
-                        "Only the instance address, resource type and ID are included. Link secrets, encryption keys and file names are excluded. Nothing is sent automatically."
-                    ).font(.footnote)
+                    Text(L10n.text("Only the instance address, resource type and ID are included. Link secrets, encryption keys and file names are excluded. Nothing is sent automatically.")).font(.footnote)
                 }
                 if let url = context.mailURL(contact: contact) {
                     Section {
-                        Button("Write email") {
+                        Button(L10n.text("Write email")) {
                             openURL(url) { accepted in
                                 if !accepted {
                                     feedback =
@@ -84,18 +82,16 @@ private struct AbuseReportView: View {
                                 }
                             }
                         }
-                        Text(
-                            "Review and send the message in your email app. The server operator handles reports; this does not revoke the link."
-                        ).font(.footnote)
+                        Text(L10n.text("Review and send the message in your email app. The server operator handles reports; this does not revoke the link.")).font(.footnote)
                     }
                 }
                 if let feedback {
-                    Section { Text(feedback).accessibilityAddTraits(.updatesFrequently) }
+                    Section { Text(L10n.text(feedback)).accessibilityAddTraits(.updatesFrequently) }
                 }
             }
-            .navigationTitle("Report abuse").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(L10n.text("Report abuse")).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button(L10n.text("Done")) { dismiss() } }
             }
         }.modifier(PsstStyle()).modifier(PsstAppearance())
     }

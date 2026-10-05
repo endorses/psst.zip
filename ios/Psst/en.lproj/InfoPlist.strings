@@ -1,0 +1,4 @@
+/* System permission descriptions follow the OS app language. */
+"CFBundleDisplayName" = "psst.zip";
+"NSCameraUsageDescription" = "Scan QR codes to receive files or connect your psst.zip server account.";
+"NSLocalNetworkUsageDescription" = "psst.zip connects to the server you choose to send and receive encrypted files.";

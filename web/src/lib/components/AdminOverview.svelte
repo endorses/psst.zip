@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { utcTime, type Overview } from "$lib/admin";
@@ -6,7 +8,7 @@
   import PublicTransferControl from "./PublicTransferControl.svelte";
   let data = $state<Overview | null>(null),
     busy = $state(false),
-    error = $state("");
+    error = $state<DisplayText>("");
   let disposed = false;
   async function load() {
     busy = true;
@@ -15,7 +17,7 @@
       const result = await accountRequest<Overview>("/admin/overview");
       if (!disposed) data = result;
     } catch (e) {
-      if (!disposed) error = e instanceof Error ? e.message : "Overview is unavailable.";
+      if (!disposed) error = e instanceof Error ? errorText(e) : m("overviewIsUnavailable");
     } finally {
       if (!disposed) busy = false;
     }
@@ -29,92 +31,91 @@
 </script>
 
 <div class="heading">
-  <h1>Overview</h1>
-  <button disabled={busy} onclick={load}>Refresh</button>
+  <h1>{$t(m("overview"))}</h1>
+  <button disabled={busy} onclick={load}>{$t(m("refresh"))}</button>
 </div>
-<p class="muted">Manage your private transfer server.</p>
+<p class="muted">{$t(m("manageYourPrivateTransferServer"))}</p>
 <PublicTransferControl />
 {#if error}<p class="error" role="alert">
-    {error}
-    {data ? "Previous metrics may be stale." : ""}
+    {$t(error)}
+    {$t(data ? m("previousMetricsMayBeStale") : "")}
   </p>{/if}
 {#if data}
   {#if data.enabled_users === 0}<section class="first-user">
-      <h2>Create your first user</h2>
-      <p>
-        Administrator accounts manage the service. Create a regular account to send files and
-        receive links, including for your own transfers.
-      </p>
-      <a class="button primary" href="/?view=users">Create your first user</a>
+      <h2>{$t(m("createYourFirstUser"))}</h2>
+      <p>{$t(m("administratorAccountsManageTheServiceCreateARegularAccount"))}</p>
+      <a class="button primary" href="/?view=users">{$t(m("createYourFirstUser"))}</a>
     </section>{/if}
   <div class="metrics">
     <article>
-      <span>Enabled regular users</span><strong>{data.enabled_users}</strong><a href="/?view=users"
-        >Manage users</a
+      <span>{$t(m("enabledRegularUsers"))}</span><strong>{$t(data.enabled_users)}</strong><a
+        href="/?view=users">{$t(m("manageUsers"))}</a
       >
     </article>
     <article>
-      <span>Active transfers</span><strong>{data.active_transfers}</strong><small
-        >Current resources</small
+      <span>{$t(m("activeTransfers"))}</span><strong>{$t(data.active_transfers)}</strong><small
+        >{$t(m("currentResources"))}</small
       >
     </article>
     <article>
-      <span>Active receive links</span><strong>{data.active_receive_links}</strong><small
-        >Current resources</small
+      <span>{$t(m("activeReceiveLinks"))}</span><strong>{$t(data.active_receive_links)}</strong
+      ><small>{$t(m("currentResources"))}</small>
+    </article>
+    <article>
+      <span>{$t(m("storedEncryptedData"))}</span><strong>{$t(formatSize(data.stored_bytes))}</strong
+      ><small>{$t(m("currentStoredBytes"))}</small>
+    </article>
+    <article>
+      <span>{$t(m("filesUploaded"))}</span><strong>{$t(data.files_uploaded)}</strong><small
+        >{$t(m("countedOnceWhenATransferFinalizes"))}</small
       >
     </article>
     <article>
-      <span>Stored encrypted data</span><strong>{formatSize(data.stored_bytes)}</strong><small
-        >Current stored bytes</small
-      >
-    </article>
-    <article>
-      <span>Files uploaded</span><strong>{data.files_uploaded}</strong><small
-        >Counted once when a transfer finalizes</small
-      >
-    </article>
-    <article>
-      <span>Files with confirmed delivery</span><strong>{data.files_delivered}</strong><small
-        >Recipient-reported save confirmations, counted once</small
-      >
+      <span>{$t(m("filesWithConfirmedDelivery"))}</span><strong>{$t(data.files_delivered)}</strong
+      ><small>{$t(m("recipientReportedSaveConfirmationsCountedOnce"))}</small>
     </article>
   </div>
   <p class="muted small">
-    Activity counted since {utcTime(data.recording_started_at)}. Uploaded files: {data.standalone_files_uploaded}
-    standalone sends, {data.received_files_uploaded} through receive links. Historical counts remain after
-    deletion; current resource gauges do not.
+    {$t(m("activityCountedSince"))}
+    {$t(utcTime(data.recording_started_at))}{$t(m("uploadedFiles"))}
+    {$t(data.standalone_files_uploaded)}
+    {$t(m("standaloneSends"))}
+    {$t(data.received_files_uploaded)}
+    {$t(m("throughReceiveLinksHistoricalCountsRemainAfterDeletionCurrent"))}
   </p>
   <section>
-    <h2>Current-cycle traffic</h2>
+    <h2>{$t(m("currentCycleTraffic"))}</h2>
     {#if data.traffic.status !== "ok"}<p class="error" role="alert">
-        Traffic accounting is degraded; totals may be incomplete.
+        {$t(m("trafficAccountingIsDegradedTotalsMayBeIncomplete"))}
       </p>{/if}
     <p>
-      <strong>{formatSize(data.traffic.cycle.counted_bytes)}</strong> · {data.traffic.settings
-        .basis === "outbound"
-        ? "Outbound"
-        : "Combined"} · {data.traffic.cycle.start} to {data.traffic.cycle.end} (exclusive, UTC)
+      <strong>{$t(formatSize(data.traffic.cycle.counted_bytes))}</strong> · {$t(
+        data.traffic.settings.basis === "outbound" ? m("outbound") : m("combined"),
+      )} · {$t(utcTime(data.traffic.cycle.start))}
+      {$t(m("to"))}
+      {$t(utcTime(data.traffic.cycle.end))}
+      {$t(m("exclusiveUTC"))}
     </p>
     <p class="muted small">
-      Measured since {utcTime(data.traffic.recording_started_at)}; the initial cycle may be partial.
-      Application payload measurements may differ from provider billing.
+      {$t(m("measuredSince"))}
+      {$t(utcTime(data.traffic.recording_started_at))}{$t(
+        m("theInitialCycleMayBePartialApplicationPayloadMeasurements"),
+      )}
     </p>
-    <a href="/?view=traffic">View traffic, budgets and allowance</a>
+    <a href="/?view=traffic">{$t(m("viewTrafficBudgetsAndAllowance"))}</a>
   </section>
 {:else}<p role="status">
-    {busy ? "Loading overview…" : "Overview is unavailable. Retry with Refresh."}
+    {$t(busy ? m("loadingOverview") : m("overviewIsUnavailableRetryWithRefresh"))}
   </p>{/if}
 <div class="shortcuts">
-  <a class="button" href="/?view=users">Manage users</a><a class="button" href="/?view=server"
-    >Server settings</a
+  <a class="button" href="/?view=users">{$t(m("manageUsers"))}</a><a
+    class="button"
+    href="/?view=server">{$t(m("serverSettings"))}</a
   >
 </div>
-<h2>Operational resources</h2>
-<p class="muted">
-  Inspect ownership, status and storage, or revoke a link. Encryption keys and decrypted file names
-  are unavailable to the server.
-</p>
-<a class="button" href="/?view=resources">View resources</a>
+<h2>{$t(m("operationalResources"))}</h2>
+<p class="muted">{$t(m("inspectOwnershipStatusAndStorageOrRevokeALink"))}</p>
+<a class="button" href="/?view=resources">{$t(m("viewResources"))}</a>
 
 <style>
   .heading {

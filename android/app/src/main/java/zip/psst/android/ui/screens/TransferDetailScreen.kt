@@ -17,6 +17,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import zip.psst.android.R
 import zip.psst.android.data.historyStatusLabel
+import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.AccountIndicator
 import zip.psst.android.ui.components.ExpiryCountdown
 import zip.psst.android.ui.components.LinkPanel
@@ -70,9 +71,9 @@ fun TransferDetailScreen(
             AccountIndicator()
             if (state.isLoading) CircularProgressIndicator()
             else {
-                state.title?.let { Text(it, style = MaterialTheme.typography.headlineSmall) }
+                state.title?.let { Text(it.text(), style = MaterialTheme.typography.headlineSmall) }
                 Text(
-                    historyStatusLabel(state.type, state.status),
+                    historyStatusLabel(state.type, state.status).text(),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (
@@ -91,13 +92,20 @@ fun TransferDetailScreen(
                         ExpiryCountdown(state.expiresAt)
                     }
                 if (state.status == "exhausted") {
-                    Text("This link is closed.")
-                    Button(onClick = onCreateReplacement) { Text("Create replacement link") }
+                    Text(tr(R.string.l_this_link_is_closed_34f30d))
+                    Button(onClick = onCreateReplacement) {
+                        Text(tr(R.string.l_create_replacement_link_839152))
+                    }
                 } else if (state.maxDownloads > 0)
                     Text(
-                        "${state.exhaustedFiles} of ${state.fileCount} files have reached their download limit."
+                        plural(
+                            R.plurals.files_exhausted_total,
+                            state.exhaustedFiles.toLong(),
+                            state.exhaustedFiles,
+                            state.fileCount,
+                        )
                     )
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                state.error?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
                 if (state.offline) Text(stringResource(R.string.offline_retained))
                 TextButton(onClick = { viewModel.load(transferId, encryptionKey, type) }) {
                     Text(stringResource(R.string.refresh))

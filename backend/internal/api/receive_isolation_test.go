@@ -243,12 +243,12 @@ func TestPublicAvailabilityHidesActivityAndOwnerCountersFailClosed(t *testing.T)
 		t.Fatal(err)
 	}
 	history := authRequest(t, env, "GET", "/auth/resources", env.userToken, nil, 503)
-	if len(history) != 1 || history["error"] != "history unavailable" {
+	if len(history) != 2 || history["code"] != "service_unavailable" || history["error"] != "history unavailable" {
 		t.Fatal("failed history counter read disclosed partial metadata", history)
 	}
 	for _, suffix := range []string{"", "/inbox"} {
 		response := authRequest(t, env, "GET", "/slots/"+slot+suffix, env.userToken, nil, 503)
-		if len(response) != 1 || response["error"] != "inbox unavailable" {
+		if len(response) != 2 || response["code"] != "service_unavailable" || response["error"] != "inbox unavailable" {
 			t.Fatal("failed summary read disclosed partial owner metadata", response)
 		}
 	}

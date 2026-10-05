@@ -39,29 +39,29 @@ struct TransferRecord: Identifiable, Codable {
 
     var statusText: String {
         if isExpired {
-            return String(localized: "Expired")
+            return L10n.text("Expired")
         }
         switch state {
-        case .inProgress: return isSlot == true ? String(localized: "Waiting for files") : String(localized: "Uploading")
-        case .complete: return isSlot == true ? String(localized: "Files received") : String(localized: "Ready to download")
-        case .downloaded: return String(localized: "Downloaded")
-        case .started: return String(localized: "Download started")
-        case .saved: return String(localized: "Files saved locally")
-        case .expired: return String(localized: "Expired")
-        case .revoked: return String(localized: "Revoked")
-        case .exhausted: return String(localized: "Download limit reached")
-        case .failed: return String(localized: "Upload stopped")
+        case .inProgress: return isSlot == true ? L10n.text("Waiting for files") : L10n.text("Uploading")
+        case .complete: return isSlot == true ? L10n.text("Files received") : L10n.text("Ready to download")
+        case .downloaded: return L10n.text("Downloaded")
+        case .started: return L10n.text("Download started")
+        case .saved: return L10n.text("Files saved locally")
+        case .expired: return L10n.text("Expired")
+        case .revoked: return L10n.text("Revoked")
+        case .exhausted: return L10n.text("Download limit reached")
+        case .failed: return L10n.text("Upload stopped")
         }
     }
 
     var summary: String {
         if serverSummaryKnown == false {
-            return String(localized: "File count updating")
+            return L10n.text("File count updating")
         }
         if serverSummaryKnown != nil, totalSize == 0 {
-            return String(format: String(localized: "%lld files"), Int64(fileCount))
+            return L10n.text(L10n.format("%lld files", Int64(fileCount)))
         }
-        return String(format: String(localized: "%lld files · %@"), Int64(fileCount), ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+        return L10n.text(L10n.format("%lld files · %@", Int64(fileCount), L10n.bytes(totalSize)))
     }
 
     var linkPolicySummary: String? {
@@ -69,32 +69,36 @@ struct TransferRecord: Identifiable, Codable {
             guard let maxFiles else { return nil }
             if maxFiles > 0 {
                 guard let reservedFiles else {
-                    return String(format: String(localized: "Maximum %lld files · Allowance use updating"), Int64(maxFiles))
+                    return L10n.text(L10n.format("Maximum %lld files · Allowance use updating", Int64(maxFiles)))
                 }
-                return String(format: String(localized: "%lld of %lld file allowances used"), reservedFiles, Int64(maxFiles))
+                return L10n.text(L10n.format("%lld of %lld file allowances used", reservedFiles, Int64(maxFiles)))
             }
             if let reservedFiles {
-                return String(format: String(localized: "%lld file allowances used · No optional file-count limit"), reservedFiles)
+                return L10n.text(L10n.format("%lld file allowances used · No optional file-count limit", reservedFiles))
             }
-            return String(localized: "No optional file-count limit")
+            return L10n.text("No optional file-count limit")
         }
         guard let maxDownloads else { return nil }
         return maxDownloads > 0
-            ? String(format: String(localized: "%lld download attempts per file"), Int64(maxDownloads))
-            : String(localized: "No optional download limit")
+            ? L10n.text(L10n.format("%lld download attempts per file", Int64(maxDownloads)))
+            : L10n.text("No optional download limit")
     }
 
-    var linkActive: Bool { !isExpired && state != .revoked && state != .exhausted }
+    var linkActive: Bool {
+        !isExpired && state != .revoked && state != .exhausted
+    }
 
     var displayTitle: String {
-        if let sharedTitle, !sharedTitle.isEmpty { return sharedTitle }
+        if let sharedTitle, !sharedTitle.isEmpty {
+            return sharedTitle
+        }
         if let name = customTitle, !name.isEmpty {
             return name
         }
         if let title, !title.isEmpty {
-            return fileCount > 1 ? title + " + \(fileCount - 1) files" : title
+            return fileCount > 1 ? title + L10n.text(L10n.format(" + %lld files", Int64(fileCount - 1))) : title
         }
-        return isSlot == true ? String(localized: "Receive link") : String(localized: "Sent files")
+        return L10n.text(isSlot == true ? "Receive link" : "Sent files")
     }
 
     var isExpired: Bool {

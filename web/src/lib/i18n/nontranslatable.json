@@ -1,0 +1,238 @@
+{
+  "identical": [
+    "administrator",
+    "id",
+    "status",
+    "maximum",
+    "optional",
+    "details",
+    "server",
+    "system",
+    "sizeMiB"
+  ],
+  "source": [
+    {
+      "file": "routes/+page.svelte",
+      "value": "psst.auth-change",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/LanguagePicker.svelte",
+      "value": "English",
+      "reason": "Language autonym, intentionally displayed in its own language."
+    },
+    {
+      "file": "lib/components/LanguagePicker.svelte",
+      "value": "Deutsch",
+      "reason": "Language autonym, intentionally displayed in its own language."
+    },
+    {
+      "file": "lib/brand.ts",
+      "value": "psst.zip",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/branded-qr.ts",
+      "value": "/brand/qr-icon.svg",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/inbox-navigation.ts",
+      "value": "psst.inbox-return",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/local-history.ts",
+      "value": "psst.local-history.v1",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/receive-crypto.ts",
+      "value": "psst.zip/receive-key/v2\u0000",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/receive-keys.ts",
+      "value": "psst.receive-key.v2.{arg0}.{arg1}",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/RecoveryCodes.svelte",
+      "value": "psst.zip-recovery-codes.txt",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.file_size_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.abuse_contact_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.resource_policy_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.traffic_policy_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.traffic_chart_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "settings.account_traffic_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "transfers.paused",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "transfers.resumed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.created",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.enabled",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.disabled",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.shutdown",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.password_changed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "account.password_reset",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "session.revoked",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "pairing.created",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "pairing.redeemed",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "pairing.revoked",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.signed_in",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.reauthenticated",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.factor_enabled",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.factor_disabled",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.factor_reset",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.recovery_rotated",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "administrator.recovery_used",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "transfer.revoked",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "slot.revoked",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "authentication.login_rejected",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "authentication.pairing_rejected",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "authentication.factor_rejected",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/SecurityEvents.svelte",
+      "value": "authentication.throttled",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "lib/components/ThemePicker.svelte",
+      "value": "psst.theme",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "routes/d/[transferId]/+page.svelte",
+      "value": "psst.auth-change",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    },
+    {
+      "file": "routes/d/[transferId]/+page.svelte",
+      "value": "files.zip",
+      "reason": "Protocol/storage identity or technical identifier; not translated."
+    }
+  ],
+  "notes": [
+    "Protocol tokens, user-provided content, product name, ISO date input values, CSS and icon identifiers are not translated. Each remaining human-looking source exception below is reviewed explicitly."
+  ]
+}

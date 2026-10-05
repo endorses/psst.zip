@@ -109,6 +109,10 @@ textarea {
 button,
 .button {
   min-height: 44px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
   padding: 0.6rem 0.9rem;
   border: 1px solid var(--divider);
   border-radius: 10px;

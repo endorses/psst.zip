@@ -1,13 +1,15 @@
 <script lang="ts">
+  import { message as m, t, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
-  import { loadServerLimits, fileLimitLabel } from "$lib/limits";
+  import { loadServerLimits, fileLimitLabel, fileLimitMessage } from "$lib/limits";
   let maximum = $state<number | undefined>(undefined),
     current = $state<number | null>(null),
     ceiling = $state<number | null>(null),
     busy = $state(false),
-    error = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let disposed = false;
   async function load() {
     busy = true;
@@ -21,7 +23,7 @@
       }
     } catch (cause) {
       if (!disposed)
-        error = cause instanceof Error ? cause.message : "Could not load server settings.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotLoadServerSettings");
     } finally {
       if (!disposed) busy = false;
     }
@@ -37,7 +39,7 @@
       ceiling === null ||
       bytes > ceiling
     ) {
-      error = `Choose a file limit between 1 MiB and ${fileLimitLabel(ceiling ?? 0)}.`;
+      error = m("chooseAFileLimitBetweenMiBAndValue", { arg0: fileLimitMessage(ceiling ?? 0) });
       return;
     }
     busy = true;
@@ -48,12 +50,10 @@
       if (!disposed) {
         current = result.max_file_size;
         maximum = result.max_file_size / 1024 / 1024;
-        notice = "File limit saved. It applies to new uploads; existing links stay available.";
+        notice = m("fileLimitSavedItAppliesToNewUploadsExisting");
       }
     } catch {
-      if (!disposed)
-        error =
-          "Could not save the file limit. Check your connection and administrator session, then retry.";
+      if (!disposed) error = m("couldNotSaveTheFileLimitCheckYourConnection");
     } finally {
       if (!disposed) busy = false;
     }
@@ -67,12 +67,10 @@
 </script>
 
 <section class="server-settings" aria-labelledby="server-settings-heading">
-  <h2 id="server-settings-heading">Server upload limit</h2>
-  <p class="muted">
-    Maximum size of each file, before encryption. Applies to account uploads and receive links.
-  </p>
+  <h2 id="server-settings-heading">{$t(m("serverUploadLimit"))}</h2>
+  <p class="muted">{$t(m("maximumSizeOfEachFileBeforeEncryptionAppliesTo"))}</p>
   <form onsubmit={save}>
-    <label for="max-file-size">Maximum file size (MiB)</label>
+    <label for="max-file-size">{$t(m("maximumFileSizeMiB"))}</label>
     <input
       id="max-file-size"
       type="number"
@@ -84,21 +82,23 @@
       required
     />
     <p class="muted small">
-      Choose at least 1 MiB, up to the server ceiling{ceiling === null
-        ? ""
-        : ` of ${fileLimitLabel(ceiling)}`}. {current !== null
-        ? `Current limit: ${fileLimitLabel(current)}.`
-        : "Loading current limit…"}
+      {$t(m("chooseAtLeastMiBUpToTheServerCeiling"))}{$t(
+        ceiling === null ? "" : m("ofValue", { arg0: fileLimitLabel(ceiling) }),
+      )}. {$t(
+        current !== null
+          ? m("currentLimitValue", { arg0: fileLimitLabel(current) })
+          : m("loadingCurrentLimit"),
+      )}
     </p>
     <button class="primary" type="submit" disabled={busy || current === null}
-      >{busy ? "Please wait…" : "Save file limit"}</button
+      >{$t(busy ? m("pleaseWait") : m("saveFileLimit"))}</button
     >
     {#if current === null && !busy}<button type="button" onclick={load}
-        >Retry loading settings</button
+        >{$t(m("retryLoadingSettings"))}</button
       >{/if}
   </form>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
-  {#if notice}<p class="success" role="status">{notice}</p>{/if}
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
+  {#if notice}<p class="success" role="status">{$t(notice)}</p>{/if}
 </section>
 
 <style>

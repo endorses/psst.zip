@@ -54,6 +54,7 @@ dependencies {
 
     // Activity & Lifecycle
     implementation(libs.activity.compose)
+    implementation("androidx.appcompat:appcompat:1.7.1")
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
 

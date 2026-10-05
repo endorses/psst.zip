@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
 import zip.psst.android.data.InboxKeyStore
 import zip.psst.android.data.InboxPager
 import zip.psst.android.data.InboxReadIdentity
@@ -17,6 +18,7 @@ import zip.psst.android.data.receiveAndSaveChild
 import zip.psst.android.data.receivedSnapshot
 import zip.psst.android.data.retrySavedDownloadAcknowledgements
 import zip.psst.android.data.selectedLinkLimit
+import zip.psst.android.i18n.*
 import zip.psst.shared.api.AdminTransferForbiddenException
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.api.AuthenticationRequiredException
@@ -66,7 +68,7 @@ data class ReceiveUiState(
     val receivedFiles: List<FileMetadata> = emptyList(),
     val isDownloading: Boolean = false,
     val downloadProgress: Float = 0f,
-    val error: String? = null,
+    val error: UiText? = null,
     val requiresLogin: Boolean = false,
     val downloadComplete: Boolean = false,
     val connectionError: Boolean = false,
@@ -123,7 +125,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         else
                             ReceiveUiState(
                                 error =
-                                    app.getString(
+                                    message(
                                         zip.psst.android.R.string
                                             .ui_your_account_changed_create_a_new_receive_link_to_continue
                                     ),
@@ -155,7 +157,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.value =
                         ReceiveUiState(
                             error =
-                                app.getString(
+                                message(
                                     zip.psst.android.R.string
                                         .ui_this_receive_link_is_unavailable_to_this_account
                                 )
@@ -181,7 +183,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         restored.copy(
                             error =
                                 if (restored.keyUnavailable)
-                                    app.getString(zip.psst.android.R.string.unavailable_key)
+                                    message(zip.psst.android.R.string.unavailable_key)
                                 else null
                         )
                     if (visible) listenForEvents(client, id)
@@ -192,7 +194,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         ReceiveUiState(
                             slotId = row.id,
                             slotStatus = row.status,
-                            error = app.getString(zip.psst.android.R.string.unavailable_key),
+                            error = message(zip.psst.android.R.string.unavailable_key),
                             keyUnavailable = true,
                         )
                 }
@@ -237,7 +239,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update {
                         it.copy(
                             error =
-                                "Saved checkpoints could not be imported. Original records and saved files are retained. Check device storage and retry."
+                                message(
+                                    R.string
+                                        .l_saved_checkpoints_could_not_be_imported_original_records_and_save_a50cc8
+                                )
                         )
                     }
             }
@@ -274,7 +279,11 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 throw error
             } catch (error: Exception) {
                 _uiState.update {
-                    it.copy(error = error.message ?: "Could not rename this link. Retry.")
+                    it.copy(
+                        error =
+                            failureText(error)
+                                ?: message(R.string.l_could_not_rename_this_link_retry_229f97)
+                    )
                 }
             } finally {
                 client.close()
@@ -328,15 +337,13 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
             try {
                 selectedLinkLimit(_uiState.value.fileLimitEnabled, _uiState.value.maxFilesInput)
             } catch (e: IllegalArgumentException) {
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = failureText(e)) }
                 return
             }
         val serverUrl = app.prefs.getServerUrl()
         if (serverUrl.isBlank()) {
             _uiState.update {
-                it.copy(
-                    error = app.getString(zip.psst.android.R.string.ui_server_url_not_configured)
-                )
+                it.copy(error = message(zip.psst.android.R.string.ui_server_url_not_configured))
             }
             return
         }
@@ -348,7 +355,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 it.copy(
                     requiresLogin = true,
                     error =
-                        app.getString(
+                        message(
                             zip.psst.android.R.string
                                 .ui_sign_in_under_server_configuration_to_create_receive_links
                         ),
@@ -497,9 +504,9 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                         e is PasswordChangeRequiredException ||
                                         e is AdminTransferForbiddenException
                                 )
-                                    e.message
+                                    failureText(e)
                                 else
-                                    app.getString(
+                                    message(
                                         zip.psst.android.R.string
                                             .ui_could_not_create_a_receive_link_check_your_connection_and_retry
                                     ),
@@ -547,7 +554,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
         try {
             navigatePage(state.pager.next(next))
         } catch (e: IllegalArgumentException) {
-            _uiState.update { it.copy(error = e.message) }
+            _uiState.update { it.copy(error = failureText(e)) }
         }
     }
 
@@ -594,8 +601,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 !current() || _uiState.value.isDownloading || _uiState.value.downloadConsent != null
             )
                 return
-            require(slot.nextCursor == null || slot.nextCursor !in target.previous) {
-                "The server repeated an inbox page. Return to the first page."
+            uiRequire(slot.nextCursor == null || slot.nextCursor !in target.previous) {
+                message(
+                    R.string.l_the_server_repeated_an_inbox_page_return_to_the_first_page_6ce5f7
+                )
             }
             val snapshot = slot.receivedSnapshot()
             historyMutex.withLock {
@@ -661,7 +670,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 sseJob?.cancel()
                 pollJob?.cancel()
                 _uiState.update {
-                    it.copy(requiresLogin = true, error = e.message, connectionError = false)
+                    it.copy(requiresLogin = true, error = failureText(e), connectionError = false)
                 }
             } else if (
                 e is zip.psst.shared.api.ResourceRevokedException ||
@@ -735,7 +744,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             isDownloading = false,
                             error =
-                                app.getString(
+                                message(
                                     zip.psst.android.R.string.ui_receive_history_entry_is_missing
                                 ),
                         )
@@ -752,13 +761,13 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     val slot = client.slots.getPage(slotId, selectedPager.cursor, 50)
                     checkCurrent()
                     val selected = zip.psst.android.data.shownInboxTransfers(selectedPage, slot)
-                    require(
+                    uiRequire(
                         if (row.encryptionKey.startsWith("v2."))
                             slot.receiveProtocol == 2 &&
                                 slot.recipientPublicKey == row.encryptionKey.removePrefix("v2.")
                         else slot.receiveProtocol == 1
                     ) {
-                        "The inbox receive key does not match this device."
+                        message(R.string.l_the_inbox_receive_key_does_not_match_this_device_0a2771)
                     }
                     val latest =
                         dao.mergeReceived(
@@ -766,13 +775,16 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             slot.receivedSnapshot(),
                             expectedScope = row.checkpointScope(),
                         ) ?: row
-                    require(latest.checkpointState == "ready") {
-                        "Saved checkpoints are still being imported. Continue local checkpoint import before saving."
+                    uiRequire(latest.checkpointState == "ready") {
+                        message(
+                            R.string
+                                .l_saved_checkpoints_are_still_being_imported_continue_local_checkpo_921dc6
+                        )
                     }
                     val savedChildren = dao.savedChildren(latest, selected.map { it.transferId })
                     checkCurrent()
                     val transfers = selected.filter { it.transferId !in savedChildren }
-                    require(transfers.isNotEmpty()) { "No new completed uploads to save" }
+                    uiRequire(transfers.isNotEmpty()) { message(R.string.ui_no_completed_uploads) }
                     val received = mutableListOf<Pair<String, FileMetadata>>()
                     val childKeys = mutableMapOf<String, ByteArray>()
                     val fingerprints = mutableMapOf<String, String>()
@@ -793,8 +805,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             manifest,
                             metadata,
                         )
-                        require(manifest.files.size == transfer.fileCount) {
-                            "Manifest file count mismatch"
+                        uiRequire(manifest.files.size == transfer.fileCount) {
+                            message(R.string.l_manifest_file_count_mismatch_634a32)
                         }
                         fingerprints[transfer.transferId] =
                             java.security.MessageDigest.getInstance("SHA-256")
@@ -809,8 +821,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
                     val context = getApplication<PsstApplication>()
                     val totalFiles = received.size
-                    require(totalFiles == transfers.sumOf { it.fileCount }) {
-                        "Manifest file count mismatch"
+                    uiRequire(totalFiles == transfers.sumOf { it.fileCount }) {
+                        message(R.string.l_manifest_file_count_mismatch_634a32)
                     }
                     val savedIds = dao.savedFiles(latest, transfers.map { it.transferId })
                     val preflight =
@@ -953,16 +965,16 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             isDownloading = false,
                             requiresLogin = e is AuthenticationRequiredException,
                             error =
-                                trafficError?.message
+                                trafficError?.let(::failureText)
                                     ?: if (
                                         e is
                                             zip.psst.android.data.InsufficientDownloadSpaceException ||
                                             e is zip.psst.shared.api.TransferPolicyException ||
                                             e is AuthenticationRequiredException
                                     )
-                                        e.message
+                                        failureText(e)
                                     else
-                                        app.getString(
+                                        message(
                                             zip.psst.android.R.string
                                                 .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
                                         ),

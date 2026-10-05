@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { wireSize, FILE_CHUNK_SIZE } from "./chunked-files.ts";
 import type { FileManifestEntry } from "./crypto.ts";
 import { assertFileSize, MAX_FILE_BYTES } from "./limits.ts";
@@ -23,7 +24,7 @@ export interface SlotAvailability {
   available: boolean;
   upload_capacity: GuestCapacity;
 }
-export class GuestCapacityError extends Error {}
+export class GuestCapacityError extends LocalizedError {}
 type SelectedFile = { size: number; name?: string; type?: string };
 export function fileManifestEntry(
   file: SelectedFile,
@@ -49,8 +50,7 @@ export function guestManifestWireSize(files: readonly SelectedFile[]): number {
   };
   return new TextEncoder().encode(JSON.stringify(manifest)).length + 116;
 }
-export const CAPACITY_UNAVAILABLE =
-  "Could not check upload space. Refresh availability and try again. Your selected files are kept.";
+export const CAPACITY_UNAVAILABLE = m("couldNotCheckUploadSpaceRefreshAvailabilityAndTry");
 const integer = (value: unknown, max = Number.MAX_SAFE_INTEGER): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max;
 
@@ -104,27 +104,22 @@ export function validateSlotAvailability(value: unknown, slotId: string): SlotAv
 export function assertGuestFresh(availability: SlotAvailability, now = Date.now()) {
   const timestamp = Date.parse(availability.upload_capacity.checked_at);
   if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > 120000)
-    throw new GuestCapacityError(
-      "Upload availability is out of date. Refresh availability before sending.",
-    );
+    throw new GuestCapacityError(m("uploadAvailabilityIsOutOfDateRefreshAvailabilityBefore"));
 }
 
 export function assertGuestKey(availability: SlotAvailability, publicKey: string) {
   if (availability.recipient_public_key !== publicKey)
-    throw new GuestCapacityError(
-      "The receive link's encryption key does not match this inbox. Ask its owner for a new link.",
-    );
+    throw new GuestCapacityError(m("theReceiveLinkSEncryptionKeyDoesNotMatch"));
 }
 
 export function selectionWireSize(files: readonly SelectedFile[], limit = MAX_FILE_BYTES): number {
-  if (files.length > 100)
-    throw new GuestCapacityError("Choose no more than 100 files per transfer.");
+  if (files.length > 100) throw new GuestCapacityError(m("chooseNoMoreThanFilesPerTransfer"));
   let total = 0;
   for (const file of files) {
     assertFileSize(file.size, limit);
     total += wireSize(file.size);
     if (!Number.isSafeInteger(total))
-      throw new GuestCapacityError("This selection is too large. Remove some files and try again.");
+      throw new GuestCapacityError(m("thisSelectionIsTooLargeRemoveSomeFilesAnd"));
   }
   return total;
 }
@@ -142,28 +137,18 @@ export function assertGuestSelection(
     availability.remaining_transfers === 0 ||
     c.reason === "link_limit"
   )
-    throw new GuestCapacityError(
-      "This receive link has reached its upload allowance. Ask its owner for a new link.",
-    );
+    throw new GuestCapacityError(m("thisReceiveLinkHasReachedItsUploadAllowanceAsk"));
   if (c.state === "unknown") throw new GuestCapacityError(CAPACITY_UNAVAILABLE);
   if (c.state === "blocked")
-    throw new GuestCapacityError(
-      "Upload space is currently unavailable. Refresh availability later or contact the link owner.",
-    );
+    throw new GuestCapacityError(m("uploadSpaceIsCurrentlyUnavailableRefreshAvailabilityLaterOr"));
   if (
     files.length > c.available_files! ||
     (availability.remaining_files !== null && files.length > availability.remaining_files)
   )
-    throw new GuestCapacityError(
-      "Too many files for this receive link's current allowance. Remove some files or ask its owner for a new link.",
-    );
+    throw new GuestCapacityError(m("tooManyFilesForThisReceiveLinkSCurrent"));
   if (total > c.available_wire_bytes! || total > availability.remaining_bytes)
-    throw new GuestCapacityError(
-      "These files exceed the space currently available. Remove some files or refresh availability later.",
-    );
+    throw new GuestCapacityError(m("theseFilesExceedTheSpaceCurrentlyAvailableRemoveSome"));
   if (files.length && guestManifestWireSize(files) > c.manifest_reserve_bytes)
-    throw new GuestCapacityError(
-      "These file details exceed this link's allowance. Remove some files or contact the link owner.",
-    );
+    throw new GuestCapacityError(m("theseFileDetailsExceedThisLinkSAllowanceRemove"));
   return total;
 }

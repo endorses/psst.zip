@@ -123,19 +123,19 @@ class HistoryTest {
     @Test
     fun senderShowsAvailabilityAndDownloadActivityWithoutReceiptClaim() {
         val sent = row("complete").copy(type = "sent", fileCount = 2, totalSize = 42)
-        assertEquals("Ready to download", historyStatusLabel("sent", sent.status))
+        assertEquals("Ready to download", historyStatusLabel("sent", sent.status).english())
         val started =
             mergeSentHistory(
                 sent,
                 Transfer("slot", status = TransferStatus.COMPLETE, downloadCount = 1),
             )
-        assertEquals("Download started", historyStatusLabel("sent", started.status))
+        assertEquals("Download started", historyStatusLabel("sent", started.status).english())
         assertEquals(
             "download_started",
             mergeSentHistory(started, Transfer("slot", status = TransferStatus.COMPLETE)).status,
         )
-        assertEquals("Saved", historyStatusLabel("received", "complete"))
-        assertEquals("Uploads received", historyStatusLabel("received", "has_uploads"))
+        assertEquals("Saved", historyStatusLabel("received", "complete").english())
+        assertEquals("Uploads received", historyStatusLabel("received", "has_uploads").english())
     }
 
     @Test
@@ -150,7 +150,7 @@ class HistoryTest {
                     downloadedAt = "2026-10-03T16:00:00Z",
                 ),
             )
-        assertEquals("Downloaded", historyStatusLabel("sent", downloaded.status))
+        assertEquals("Downloaded", historyStatusLabel("sent", downloaded.status).english())
         assertEquals(
             "downloaded",
             mergeSentHistory(

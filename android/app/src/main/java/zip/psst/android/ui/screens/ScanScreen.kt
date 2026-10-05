@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,8 @@ import zip.psst.android.R
 import zip.psst.android.data.SavedGuestFile
 import zip.psst.android.data.compactHistoryTitle
 import zip.psst.android.data.receivedFilenameLabel
+import zip.psst.android.i18n.*
+import zip.psst.android.i18n.ScanStage
 import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.viewmodel.ScanViewModel
@@ -53,18 +56,21 @@ fun ScanScreen(
     val state by viewModel.state.collectAsState()
     val accountState by account.uiState.collectAsState()
 
-    var secondary by remember { mutableStateOf(false) }
-    var paste by remember { mutableStateOf("") }
-    var pairingConfirmation by remember { mutableStateOf(false) }
+    var secondary by rememberSaveable { mutableStateOf(false) }
+    val paste = state.inputDraft
+    var pairingConfirmation by rememberSaveable { mutableStateOf(false) }
 
-    var redownload by remember { mutableStateOf(false) }
-    var stopConfirmation by remember { mutableStateOf(false) }
+    var redownload by rememberSaveable { mutableStateOf(false) }
+    var stopConfirmation by rememberSaveable { mutableStateOf(false) }
     val storage =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) viewModel.receive(redownload)
             else
                 viewModel.error(
-                    "Storage access is required to save in Downloads/psst.zip on this Android version. Allow it and retry."
+                    message(
+                        R.string
+                            .l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb
+                    )
                 )
         }
     fun receive(missing: Boolean = false) {
@@ -81,7 +87,7 @@ fun ScanScreen(
     }
     fun accept(raw: String) {
         if (!accountState.isTesting && viewModel.classify(raw)) {
-            paste = ""
+            viewModel.setInputDraft("")
             when (viewModel.state.value.kind) {
                 ScanInputKind.DOWNLOAD -> receive()
                 ScanInputKind.PAIRING -> pairingConfirmation = true
@@ -111,13 +117,13 @@ fun ScanScreen(
                 state.busy &&
                     state.stage in
                         listOf(
-                            "Inspecting transfer",
-                            "Downloading",
-                            "Decrypting",
-                            "Saving",
-                            "Preparing upload",
-                            "Encrypting",
-                            "Uploading",
+                            ScanStage.INSPECTING,
+                            ScanStage.DOWNLOADING,
+                            ScanStage.DECRYPTING,
+                            ScanStage.SAVING,
+                            ScanStage.PREPARING,
+                            ScanStage.ENCRYPTING,
+                            ScanStage.UPLOADING,
                         )
             )
                 stopConfirmation = true
@@ -131,7 +137,10 @@ fun ScanScreen(
     fun openFile(file: SavedGuestFile, share: Boolean) {
         if (!viewModel.fileExists(file)) {
             viewModel.error(
-                "This saved file is missing. You can explicitly redownload it while the link remains available."
+                message(
+                    R.string
+                        .l_this_saved_file_is_missing_you_can_explicitly_redownload_it_while_845b63
+                )
             )
             return
         }
@@ -147,11 +156,15 @@ fun ScanScreen(
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             intent.clipData = ClipData.newRawUri(receivedFilenameLabel(file.name), uri)
             context.startActivity(
-                if (share) Intent.createChooser(intent, "Share saved file") else intent
+                if (share) Intent.createChooser(intent, tr(R.string.l_share_saved_file_81dfc4))
+                else intent
             )
         } catch (_: Exception) {
             viewModel.error(
-                "No app could open this file. Try Share or find it in Downloads/psst.zip."
+                message(
+                    R.string
+                        .l_no_app_could_open_this_file_try_share_or_find_it_in_downloads_pss_8bf749
+                )
             )
         }
     }
@@ -160,17 +173,20 @@ fun ScanScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (state.kind == ScanInputKind.UPLOAD) "Send files"
-                        else if (historical) "Downloaded files" else "Scan QR code"
+                        if (state.kind == ScanInputKind.UPLOAD) tr(R.string.l_send_files_ea4b35)
+                        else if (historical) tr(R.string.l_downloaded_files_a9609f)
+                        else tr(R.string.l_scan_qr_code_e7d8c3)
                     )
                 },
                 actions = {
                     if (state.kind != null)
-                        TextButton(onClick = { secondary = true }) { Text("More") }
+                        TextButton(onClick = { secondary = true }) {
+                            Text(tr(R.string.l_more_4bab2d))
+                        }
                 },
                 navigationIcon = {
                     IconButton(onClick = ::back) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, tr(R.string.l_back_b52b36))
                     }
                 },
             )
@@ -194,28 +210,49 @@ fun ScanScreen(
         ) {
             if (state.pendingReceipts > 0 && !state.busy && !accountState.isTesting) {
                 TextButton(onClick = viewModel::retryAllReceipts) {
-                    Text("Retry next pending delivery receipts")
+                    Text(tr(R.string.l_retry_next_pending_delivery_receipts_4692e8))
                 }
             }
             if (state.pendingCleanup > 0 && !state.busy && !accountState.isTesting) {
                 Text(
-                    "Interrupted uploads need server cleanup. Each retry processes a bounded batch."
+                    tr(
+                        R.string
+                            .l_interrupted_uploads_need_server_cleanup_each_retry_processes_a_bo_0d10d5
+                    )
                 )
-                TextButton(onClick = viewModel::retryCleanup) { Text("Retry upload cleanup") }
+                TextButton(onClick = viewModel::retryCleanup) {
+                    Text(tr(R.string.l_retry_upload_cleanup_532a80))
+                }
             }
-            state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-            if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error)
+            state.notice?.let { Text(it.text(), color = MaterialTheme.colorScheme.primary) }
+            if (state.error != null)
+                Text(state.error!!.text(), color = MaterialTheme.colorScheme.error)
             if (state.kind == null) AbuseReportButton(state.reportReference)
             run {
                 if (state.origin.isNotBlank())
                     Text(state.origin, style = MaterialTheme.typography.titleMedium)
                 if (state.busy) {
-                    Text(state.stage, style = MaterialTheme.typography.headlineSmall)
+                    Text(state.stage.label(), style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "File ${state.fileIndex.coerceAtLeast(1)}${state.record?.files?.size?.takeIf { it > 0 }?.let { " of $it" }.orEmpty()}"
+                        if (state.record?.files?.isNotEmpty() == true)
+                            tr(
+                                R.string.ui_file_progress,
+                                state.fileIndex.coerceAtLeast(1),
+                                state.record!!.files.size,
+                            )
+                        else
+                            tr(R.string.l_file_1_s_2_s_62e558, state.fileIndex.coerceAtLeast(1), "")
                     )
-                    if (state.stage == "Downloading" || state.stage == "Uploading") {
-                        Text("${state.bytes} / ${state.totalBytes ?: "?"} bytes")
+                    if (
+                        state.stage == ScanStage.DOWNLOADING || state.stage == ScanStage.UPLOADING
+                    ) {
+                        Text(
+                            tr(
+                                R.string.l_1_s_2_s_bytes_975e83,
+                                (state.bytes),
+                                (state.totalBytes ?: "?"),
+                            )
+                        )
                         LinearProgressIndicator(
                             progress = {
                                 (state.bytes.toFloat() / (state.totalBytes ?: 1).coerceAtLeast(1))
@@ -225,10 +262,15 @@ fun ScanScreen(
                         )
                     } else LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(
-                        "Keep this app in the foreground. Leaving pauses receiving; saved files are kept.",
+                        tr(
+                            R.string
+                                .l_keep_this_app_in_the_foreground_leaving_pauses_receiving_saved_fi_e2c7a1
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    OutlinedButton(onClick = viewModel::cancel) { Text("Cancel") }
+                    OutlinedButton(onClick = viewModel::cancel) {
+                        Text(tr(R.string.l_cancel_77dfd2))
+                    }
                 } else
                     when (state.kind) {
                         ScanInputKind.DOWNLOAD -> {
@@ -236,13 +278,21 @@ fun ScanScreen(
                             val availability = viewModel.downloadAvailability()
                             Text(
                                 if (record?.complete == true && !viewModel.missingFiles())
-                                    "${record.saved.size} ${if (record.saved.size == 1) "file" else "files"} saved"
-                                else if (record?.complete == true) "Some local files are missing"
-                                else state.stage.ifBlank { "Ready to receive" },
+                                    plural(
+                                        R.plurals.files_saved_short,
+                                        record.saved.size.toLong(),
+                                        record.saved.size,
+                                    )
+                                else if (record?.complete == true)
+                                    tr(R.string.l_some_local_files_are_missing_5b465c)
+                                else
+                                    state.stage.label().ifBlank {
+                                        tr(R.string.l_ready_to_receive_b4814d)
+                                    },
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                             record?.sharedTitle?.let {
-                                Text(it, style = MaterialTheme.typography.titleMedium)
+                                Text(it.text(), style = MaterialTheme.typography.titleMedium)
                             }
                             Text("Downloads/psst.zip")
                             if (state.fileAttempts.isNotEmpty())
@@ -253,9 +303,14 @@ fun ScanScreen(
                                                 val attempts =
                                                     state.fileAttempts[file.blobId.lowercase()]
                                             ) {
-                                                0L -> "Download limit reached"
-                                                null -> "Availability unknown"
-                                                else -> "$attempts download attempts remaining"
+                                                0L -> tr(R.string.l_download_limit_reached_8745b6)
+                                                null -> tr(R.string.l_availability_unknown_692251)
+                                                else ->
+                                                    plural(
+                                                        R.plurals.attempts_remaining,
+                                                        attempts,
+                                                        attempts,
+                                                    )
                                             },
                                         style = MaterialTheme.typography.bodySmall,
                                     )
@@ -273,10 +328,10 @@ fun ScanScreen(
                                         Text(receivedFilenameLabel(file.name))
                                         Row {
                                             TextButton(onClick = { openFile(file, false) }) {
-                                                Text("Open")
+                                                Text(tr(R.string.l_open_cf9b77))
                                             }
                                             TextButton(onClick = { openFile(file, true) }) {
-                                                Text("Share")
+                                                Text(tr(R.string.l_share_09ca55))
                                             }
                                         }
                                     }
@@ -284,11 +339,18 @@ fun ScanScreen(
                             }
                             if (availability?.allMissingExhausted == true)
                                 Text(
-                                    "Download limit reached. Saved local copies can still be opened or shared."
+                                    tr(
+                                        R.string
+                                            .l_download_limit_reached_saved_local_copies_can_still_be_opened_or__04af1b
+                                    )
                                 )
                             else if (availability?.partiallyExhausted == true)
                                 Text(
-                                    "${availability.exhausted} missing files have reached their download limit. Only available files will be downloaded; you will confirm the available-file download first."
+                                    plural(
+                                        R.plurals.files_exhausted_missing,
+                                        availability.exhausted.toLong(),
+                                        availability.exhausted,
+                                    )
                                 )
                             val canDownload =
                                 availability?.allMissingExhausted != true &&
@@ -297,16 +359,16 @@ fun ScanScreen(
                                 Button(onClick = { receive(true) }, enabled = canDownload) {
                                     Text(
                                         if (availability?.partiallyExhausted == true)
-                                            "Redownload available missing files"
-                                        else "Redownload missing files"
+                                            tr(R.string.l_redownload_available_missing_files_4f0301)
+                                        else tr(R.string.l_redownload_missing_files_677f43)
                                     )
                                 }
                             else if (record?.complete != true)
                                 Button(onClick = { receive() }, enabled = canDownload) {
                                     Text(
                                         if (availability?.partiallyExhausted == true)
-                                            "Download available files"
-                                        else "Resume receiving"
+                                            tr(R.string.l_download_available_files_1fc1f3)
+                                        else tr(R.string.l_resume_receiving_bcb430)
                                     )
                                 }
                             if (record?.files?.isNotEmpty() == true)
@@ -315,25 +377,35 @@ fun ScanScreen(
                                     enabled = !state.refreshingAvailability,
                                 ) {
                                     Text(
-                                        if (state.refreshingAvailability) "Checking availability…"
-                                        else "Refresh availability"
+                                        if (state.refreshingAvailability)
+                                            tr(R.string.l_checking_availability_24f241)
+                                        else tr(R.string.l_refresh_availability_812724)
                                     )
                                 }
                             if (record?.receiptPending == true) {
-                                Text("Files are saved. The sender’s delivery receipt is pending.")
+                                Text(
+                                    tr(
+                                        R.string
+                                            .l_files_are_saved_the_sender_s_delivery_receipt_is_pending_8c3671
+                                    )
+                                )
                                 TextButton(onClick = viewModel::retryReceipt) {
-                                    Text("Retry receipt")
+                                    Text(tr(R.string.l_retry_receipt_78de8a))
                                 }
                             }
                         }
                         ScanInputKind.UPLOAD -> {
                             Text(
-                                if (state.uploaded) "Files sent" else "Send to this receive link",
+                                if (state.uploaded) tr(R.string.l_files_sent_564c79)
+                                else tr(R.string.l_send_to_this_receive_link_c3894e),
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                             if (!state.uploaded) {
                                 Text(
-                                    "Choose files deliberately to send to the server above. Its file limit is checked before uploading."
+                                    tr(
+                                        R.string
+                                            .l_choose_files_deliberately_to_send_to_the_server_above_its_file_li_bd9395
+                                    )
                                 )
                                 Text(
                                     pluralStringResource(
@@ -344,9 +416,11 @@ fun ScanScreen(
                                 )
                                 if (state.maxUploadFiles > 0)
                                     Text(
-                                        "${state.remainingUploadFiles ?: "…"} file allocations remaining. Unfinished uploads also count; deletion does not restore the allowance."
+                                        state.remainingUploadFiles?.let {
+                                            plural(R.plurals.allocations_remaining, it, it)
+                                        } ?: tr(R.string.ui_unknown_files_remaining)
                                     )
-                                Text(state.uploadCapacityMessage)
+                                Text(state.uploadCapacityMessage.text())
                                 state.uploadFiles.forEach { uri ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
@@ -354,50 +428,55 @@ fun ScanScreen(
                                             modifier = Modifier.weight(1f),
                                         )
                                         TextButton(onClick = { viewModel.removeUpload(uri) }) {
-                                            Text("Remove")
+                                            Text(tr(R.string.l_remove_e96390))
                                         }
                                     }
                                 }
                                 TextButton(onClick = viewModel::refreshUploadPolicy) {
-                                    Text("Refresh capacity")
+                                    Text(tr(R.string.l_refresh_capacity_61f820))
                                 }
                                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) {
-                                    Text("Add files")
+                                    Text(tr(R.string.l_add_files_c06342))
                                 }
                                 Button(
                                     onClick = viewModel::upload,
                                     enabled = state.uploadFiles.isNotEmpty(),
                                 ) {
-                                    Text("Send files")
+                                    Text(tr(R.string.l_send_files_ea4b35))
                                 }
                             }
                         }
                         ScanInputKind.PAIRING -> {
                             Text(
-                                "Set up this account",
+                                tr(R.string.l_set_up_this_account_6308a7),
                                 style = MaterialTheme.typography.headlineSmall,
                             )
-                            Text("This replaces your current app login only after you confirm.")
+                            Text(
+                                tr(
+                                    R.string
+                                        .l_this_replaces_your_current_app_login_only_after_you_confirm_dc01cc
+                                )
+                            )
                             (accountState.testResult as? TestResult.Error)?.let {
-                                Text(it.message, color = MaterialTheme.colorScheme.error)
+                                Text(it.message.text(), color = MaterialTheme.colorScheme.error)
                             }
                             if (accountState.isTesting) CircularProgressIndicator()
                             else
                                 Button(onClick = { pairingConfirmation = true }) {
-                                    Text("Set up account")
+                                    Text(tr(R.string.l_set_up_account_ddd0f7))
                                 }
                         }
                         null -> {
                             Text(
-                                "Receive encrypted files without signing in.",
+                                tr(R.string.l_receive_encrypted_files_without_signing_in_fb4a07),
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             if (!historical)
                                 EmbeddedScanner(onCode = ::accept, onError = viewModel::error)
                             OutlinedTextField(
                                 value = paste,
-                                onValueChange = { paste = it },
-                                label = { Text("Paste link") },
+                                onValueChange = viewModel::setInputDraft,
+                                label = { Text(tr(R.string.l_paste_link_035922)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 2,
                                 maxLines = 4,
@@ -407,10 +486,13 @@ fun ScanScreen(
                                 enabled = paste.isNotBlank(),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("Receive files")
+                                Text(tr(R.string.l_receive_files_bf1734))
                             }
                             Text(
-                                "Transfers up to 100 MiB start automatically. Larger transfers ask for confirmation. Files are saved in Downloads/psst.zip and never opened automatically.",
+                                tr(
+                                    R.string
+                                        .l_transfers_up_to_100_mib_start_automatically_larger_transfers_ask__621d73
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -421,18 +503,18 @@ fun ScanScreen(
     if (secondary)
         AlertDialog(
             onDismissRequest = { secondary = false },
-            title = { Text("Transfer options") },
+            title = { Text(tr(R.string.l_transfer_options_c9f040)) },
             text = {
                 Column {
                     Text(state.origin)
                     AbuseReportButton(state.reportReference)
                     if (state.pendingReceipts > 0)
                         TextButton(onClick = viewModel::retryAllReceipts, enabled = !state.busy) {
-                            Text("Retry receipts")
+                            Text(tr(R.string.l_retry_receipts_bc4f30))
                         }
                     if (state.pendingCleanup > 0)
                         TextButton(onClick = viewModel::retryCleanup, enabled = !state.busy) {
-                            Text("Retry upload cleanup")
+                            Text(tr(R.string.l_retry_upload_cleanup_532a80))
                         }
                     if (!historical)
                         TextButton(
@@ -442,7 +524,7 @@ fun ScanScreen(
                             },
                             enabled = !state.busy,
                         ) {
-                            Text("Scan again")
+                            Text(tr(R.string.l_scan_again_f6ab55))
                         }
                     TextButton(
                         onClick = {
@@ -451,55 +533,79 @@ fun ScanScreen(
                         },
                         enabled = !state.busy,
                     ) {
-                        Text("History")
+                        Text(tr(R.string.l_history_90ccd6))
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { secondary = false }) { Text("Close") } },
+            confirmButton = {
+                TextButton(onClick = { secondary = false }) { Text(tr(R.string.l_close_bbfa77)) }
+            },
         )
     state.downloadConsent
         ?.takeIf { !state.busy }
         ?.let { consent ->
             AlertDialog(
                 onDismissRequest = viewModel::dismissDownloadConsent,
-                title = { Text("Download these files?") },
+                title = { Text(tr(R.string.l_download_these_files_f0f150)) },
                 text = {
                     Text(
-                        "${consent.files.size} ${if (consent.files.size == 1) "file" else "files"} from ${consent.origin}\n\n" +
-                            "Total: ${android.text.format.Formatter.formatFileSize(context, consent.totalBytes)}\n" +
-                            "Still to save: ${android.text.format.Formatter.formatFileSize(context, consent.remainingBytes)}\n\n" +
+                        plural(
+                            R.plurals.download_consent_origin,
+                            consent.files.size.toLong(),
+                            consent.files.size,
+                            consent.origin,
+                        ) +
+                            "\n\n" +
+                            tr(R.string.l_total_1_s_n_e4c487, (displayBytes(consent.totalBytes))) +
+                            tr(
+                                R.string.l_still_to_save_1_s_n_n_28ca8e,
+                                (displayBytes(consent.remainingBytes)),
+                            ) +
                             (if (consent.totalBytes > 100L * 1024 * 1024)
-                                "This transfer exceeds 100 MiB and may use mobile data. "
+                                tr(
+                                    R.string
+                                        .l_this_transfer_exceeds_100_mib_and_may_use_mobile_data_c67f5a
+                                )
                             else "") +
                             (if (consent.skippedBlobIds.isNotEmpty())
-                                "${consent.skippedBlobIds.size} files have no download attempts left and will be skipped: " +
+                                plural(
+                                    R.plurals.files_skipped,
+                                    consent.skippedBlobIds.size.toLong(),
+                                    consent.skippedBlobIds.size,
                                     consent.files
                                         .filter { it.blobId in consent.skippedBlobIds }
                                         .joinToString(", ") {
                                             compactHistoryTitle(receivedFilenameLabel(it.name), 48)
-                                        } +
-                                    ". "
+                                        },
+                                ) + "\n\n"
                             else "") +
-                            "Downloads keep at least 256 MiB of storage free.",
+                            tr(R.string.l_downloads_keep_at_least_256_mib_of_storage_free_167089),
                         modifier =
                             Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()),
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = viewModel::confirmDownload) { Text("Download") }
+                    TextButton(onClick = viewModel::confirmDownload) {
+                        Text(tr(R.string.l_download_a479c9))
+                    }
                 },
                 dismissButton = {
-                    TextButton(onClick = viewModel::dismissDownloadConsent) { Text("Cancel") }
+                    TextButton(onClick = viewModel::dismissDownloadConsent) {
+                        Text(tr(R.string.l_cancel_77dfd2))
+                    }
                 },
             )
         }
     if (stopConfirmation)
         AlertDialog(
             onDismissRequest = { stopConfirmation = false },
-            title = { Text("Stop transfer?") },
+            title = { Text(tr(R.string.l_stop_transfer_73baee)) },
             text = {
                 Text(
-                    "Files already saved stay in Downloads/psst.zip. Receiving can be resumed while the link remains available. An interrupted upload will be cleaned up."
+                    tr(
+                        R.string
+                            .l_files_already_saved_stay_in_downloads_psst_zip_receiving_can_be_r_93f4a0
+                    )
                 )
             },
             confirmButton = {
@@ -510,20 +616,26 @@ fun ScanScreen(
                         onBack()
                     }
                 ) {
-                    Text("Stop transfer")
+                    Text(tr(R.string.l_stop_transfer_d0b705))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { stopConfirmation = false }) { Text("Keep transferring") }
+                TextButton(onClick = { stopConfirmation = false }) {
+                    Text(tr(R.string.l_keep_transferring_08f378))
+                }
             },
         )
     if (pairingConfirmation)
         AlertDialog(
             onDismissRequest = { pairingConfirmation = false },
-            title = { Text("Set up account?") },
+            title = { Text(tr(R.string.l_set_up_account_a77621)) },
             text = {
                 Text(
-                    "Connect to ${state.origin} and replace your current login? Your local received files stay on this device."
+                    tr(
+                        R.string
+                            .l_connect_to_1_s_and_replace_your_current_login_your_local_received_295f40,
+                        (state.origin),
+                    )
                 )
             },
             confirmButton = {
@@ -535,11 +647,13 @@ fun ScanScreen(
                         }
                     }
                 ) {
-                    Text("Set up account")
+                    Text(tr(R.string.l_set_up_account_ddd0f7))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pairingConfirmation = false }) { Text("Cancel") }
+                TextButton(onClick = { pairingConfirmation = false }) {
+                    Text(tr(R.string.l_cancel_77dfd2))
+                }
             },
         )
 }
@@ -556,26 +670,32 @@ private fun ScannedSendContent(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            state.sharedTitle ?: "Send to this receive link",
+            state.sharedTitle ?: tr(R.string.l_send_to_this_receive_link_c3894e),
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(state.origin, style = MaterialTheme.typography.bodySmall)
         if (state.origin.startsWith("http://"))
-            Text("HTTP · unencrypted connection", color = MaterialTheme.colorScheme.error)
+            Text(
+                tr(R.string.l_http_unencrypted_connection_7ad9ab),
+                color = MaterialTheme.colorScheme.error,
+            )
         Text(
             pluralStringResource(
                 R.plurals.files_selected_count,
                 state.uploadFiles.size,
                 state.uploadFiles.size,
-            ) + (state.remainingUploadFiles?.let { " · $it files remaining" } ?: "")
+            ) +
+                (state.remainingUploadFiles?.let {
+                    " · " + plural(R.plurals.files_remaining, it, it)
+                } ?: "")
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.notice?.let { Text(it) }
+                state.error?.let { Text(it.text(), color = MaterialTheme.colorScheme.error) }
+                state.notice?.let { Text(it.text()) }
             }
             items(state.uploadFiles, key = { it.toString() }) { uri ->
                 Card {
@@ -585,33 +705,38 @@ private fun ScannedSendContent(
                     ) {
                         Text(viewModel.uploadName(uri), Modifier.weight(1f))
                         if (!state.busy)
-                            TextButton(onClick = { viewModel.removeUpload(uri) }) { Text("Remove") }
+                            TextButton(onClick = { viewModel.removeUpload(uri) }) {
+                                Text(tr(R.string.l_remove_e96390))
+                            }
                     }
                 }
             }
-            item { Text(state.uploadCapacityMessage, style = MaterialTheme.typography.bodySmall) }
+            item {
+                Text(state.uploadCapacityMessage.text(), style = MaterialTheme.typography.bodySmall)
+            }
             if (!state.busy && !state.uploaded)
                 item {
                     TextButton(onClick = viewModel::refreshUploadPolicy) {
-                        Text("Refresh capacity")
+                        Text(tr(R.string.l_refresh_capacity_61f820))
                     }
                 }
         }
         if (state.busy) {
-            Text(state.stage)
+            Text(state.stage.label())
             LinearProgressIndicator(Modifier.fillMaxWidth())
-            TextButton(onClick = viewModel::cancel) { Text("Cancel") }
-        } else if (state.uploaded) Text("Files sent", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = viewModel::cancel) { Text(tr(R.string.l_cancel_77dfd2)) }
+        } else if (state.uploaded)
+            Text(tr(R.string.l_files_sent_564c79), style = MaterialTheme.typography.titleMedium)
         else {
             OutlinedButton(onClick = addFiles, modifier = Modifier.fillMaxWidth()) {
-                Text("Add files")
+                Text(tr(R.string.l_add_files_c06342))
             }
             Button(
                 onClick = viewModel::upload,
                 enabled = state.uploadFiles.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Send files")
+                Text(tr(R.string.l_send_files_ea4b35))
             }
         }
     }

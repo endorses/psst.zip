@@ -1,3 +1,4 @@
+import { message as m, date, number } from "./i18n/index.ts";
 export interface Totals {
   uploaded_bytes: number;
   downloaded_bytes: number;
@@ -45,9 +46,10 @@ export interface Overview {
   received_files_uploaded: number;
   traffic: TrafficReport;
 }
-export const measurementExplanation =
-  "Application transfer traffic counts encrypted file and manifest bytes, including retries and partial transfers. It excludes HTTP/TLS overhead, assets, backups and other services. Provider billing may differ; transmitted bytes do not prove files were saved.";
+export const measurementExplanation = m(
+  "applicationTransferTrafficCountsEncryptedFileAndManifestBytes",
+);
 
 export function utcTime(value: string) {
-  return new Date(value).toLocaleString(undefined, { timeZone: "UTC" }) + " UTC";
+  return date(value, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
 }

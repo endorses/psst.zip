@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, type DisplayText } from "$lib/i18n";
+
   import type { Snippet } from "svelte";
   import type { User } from "$lib/account";
   import Icon from "./Icon.svelte";
@@ -18,37 +20,63 @@
     children: Snippet;
   } = $props();
   const items = ["Send", "Receive", "Scan", "History", "Settings"] as const;
+  function tabLabel(value: string): DisplayText {
+    return (
+      (
+        {
+          Send: m("send"),
+          Receive: m("receive"),
+          Scan: m("scan"),
+          History: m("history"),
+          Settings: m("settings"),
+          Overview: m("overview"),
+          Users: m("users"),
+          Traffic: m("traffic"),
+          Security: m("security"),
+          Server: m("server"),
+          Resources: m("resources"),
+          Account: m("account"),
+          Devices: m("devices"),
+          Usage: m("usage"),
+        } as Record<string, DisplayText>
+      )[value] ?? value
+    );
+  }
 </script>
 
 {#if user?.role === "user" && !user.must_change_password && inboxId}
   <div class="owner-workspace">
     <aside>
-      <p class="sidebar-label">Your workspace</p>
-      <nav aria-label="Account navigation">
+      <p class="sidebar-label">{$t(m("yourWorkspace"))}</p>
+      <nav aria-label={$t(m("accountNavigation"))}>
         {#each items as item}
           <a
             href={item === "Receive" ? returnUrl : `/?view=${item.toLowerCase()}`}
-            aria-label={item === "Scan" ? "Scan QR code" : item}
+            aria-label={$t(item === "Scan" ? m("scanQRCode") : tabLabel(item))}
             aria-current={item === "Receive" ? "location" : undefined}
             class:active={item === "Receive"}
           >
-            <Icon name={item === "Scan" ? "QRCode" : item} /><span>{item}</span>
+            <Icon name={item === "Scan" ? "QRCode" : item} /><span>{$t(tabLabel(item))}</span>
           </a>
         {/each}
       </nav>
-      <section class="account-card" aria-label="Signed-in account">
+      <section class="account-card" aria-label={$t(m("signedInAccount"))}>
         <a class="identity" href="/?view=account"
-          ><span class="avatar" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span
-          ><span><span class="muted small">Signed in as</span><strong>{user.username}</strong></span
+          ><span class="avatar" aria-hidden="true"
+            >{$t(user.username.slice(0, 1).toUpperCase())}</span
+          ><span
+            ><span class="muted small">{$t(m("signedInAs"))}</span><strong
+              >{$t(user.username)}</strong
+            ></span
           ></a
         >
         <button onclick={onlogout} disabled={signingOut}
-          ><Icon name="SignOut" size={17} />Sign out</button
+          ><Icon name="SignOut" size={17} />{$t(m("signOut"))}</button
         >
       </section>
     </aside>
     <div class="owner-content">
-      <a class="back-link" href={returnUrl}>← Back to received files</a>{@render children()}
+      <a class="back-link" href={returnUrl}>{$t(m("backToReceivedFiles"))}</a>{@render children()}
     </div>
   </div>
 {:else}
@@ -204,7 +232,10 @@
       padding: 0.7rem 0.1rem;
     }
     nav span {
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      max-width: 100%;
+      text-align: center;
     }
   }
 </style>

@@ -1,9 +1,20 @@
 import Foundation
+@testable import Psst
 import XCTest
 
-@testable import Psst
-
 final class WorkflowPresentationTests: XCTestCase {
+    private var priorLanguage = AppLanguage.system
+    override func setUp() {
+        super.setUp()
+        priorLanguage = LanguageSettings.shared.preference
+        LanguageSettings.shared.preference = .en
+    }
+
+    override func tearDown() {
+        LanguageSettings.shared.preference = priorLanguage
+        super.tearDown()
+    }
+
     func testExplicitTitleValidationUsesScalarsAndPreservesUnicode() throws {
         XCTAssertNil(try SharedLinkTitle.normalize(nil))
         XCTAssertNil(try SharedLinkTitle.normalize(" \u{3000}"))
@@ -19,7 +30,8 @@ final class WorkflowPresentationTests: XCTestCase {
     func testSharedTitlePrefersExplicitMetadataWithoutPublishingLocalFilename() throws {
         var record = TransferRecord(
             id: "id", direction: .sent, state: .complete, createdAt: Date(), fileCount: 2, totalSize: 0, shareURL: "local-key-link", title: "private.txt",
-            customTitle: "Local label")
+            customTitle: "Local label"
+        )
         XCTAssertNil(record.sharedTitle)
         XCTAssertEqual(record.displayTitle, "Local label")
         record.sharedTitle = "Shared title"
@@ -31,7 +43,7 @@ final class WorkflowPresentationTests: XCTestCase {
         record.state = .exhausted
         XCTAssertFalse(record.linkActive)
         XCTAssertEqual(record.statusText, "Download limit reached")
-        XCTAssertEqual(record.shareURL, "local-key-link")  // Keep local data; suppress link actions.
+        XCTAssertEqual(record.shareURL, "local-key-link") // Keep local data; suppress link actions.
     }
 
     func testMergedStreamsHaveOneChronologicalWindowWithBoundedBuffers() throws {
@@ -43,7 +55,7 @@ final class WorkflowPresentationTests: XCTestCase {
         func page(_ items: [Int], _ cursor: Int?) -> ([Int], Int?) {
             let start = cursor ?? 0
             let end = min(start + 50, items.count)
-            return (Array(items[start..<end]), end < items.count ? end : nil)
+            return (Array(items[start ..< end]), end < items.count ? end : nil)
         }
         var all: [Int] = []
         while merge.hasMore {
@@ -55,13 +67,14 @@ final class WorkflowPresentationTests: XCTestCase {
                 right: {
                     rightCalls += 1
                     return page(right, $0)
-                }, precedes: >)
+                }, precedes: >
+            )
             all += merge.visible.suffix(50)
             XCTAssertLessThanOrEqual(merge.visible.count, 100)
             XCTAssertLessThanOrEqual(merge.left.items.count, 50)
             XCTAssertLessThanOrEqual(merge.right.items.count, 50)
         }
-        XCTAssertEqual(all, Array((0..<400).reversed()))
+        XCTAssertEqual(all, Array((0 ..< 400).reversed()))
         XCTAssertEqual(leftCalls, 4)
         XCTAssertEqual(rightCalls, 4)
         XCTAssertTrue(merge.trimmed)
@@ -70,22 +83,23 @@ final class WorkflowPresentationTests: XCTestCase {
     func testFailedReadPreservesCommittedWindowAndCursorAndDeletedRowsDisappear() throws {
         enum Failure: Error { case unavailable }
         var committed = BoundedHistoryMerge<Int, Int>()
-        try committed.load(left: { _ in (Array((50..<100).reversed()), 1) }, right: { _ in ([], nil) }, precedes: >)
+        try committed.load(left: { _ in (Array((50 ..< 100).reversed()), 1) }, right: { _ in ([], nil) }, precedes: >)
         var pending = committed
         XCTAssertThrowsError(try pending.load(left: { _ in throw Failure.unavailable }, right: { _ in ([], nil) }, precedes: >))
-        XCTAssertEqual(committed.visible, Array((50..<100).reversed()))
+        XCTAssertEqual(committed.visible, Array((50 ..< 100).reversed()))
         XCTAssertEqual(committed.left.next, 1)
         committed.updateVisible { $0 == 80 ? nil : $0 }
         XCTAssertFalse(committed.visible.contains(80))
         try committed.load(
             left: { cursor in
                 XCTAssertEqual(cursor, 1)
-                return (Array((0..<50).reversed()), nil)
+                return (Array((0 ..< 50).reversed()), nil)
             },
             right: { _ in
                 XCTFail("Ended source queried")
                 return ([], nil)
-            }, precedes: >)
+            }, precedes: >
+        )
         XCTAssertEqual(committed.visible.count, 99)
         XCTAssertFalse(committed.hasMore)
     }
@@ -107,7 +121,8 @@ final class WorkflowPresentationTests: XCTestCase {
         XCTAssertEqual(page.next_cursor, "next")
         let slot = Data(
             #"{"paginated":true,"transfers":[],"slots":[{"id":"01234567-89ab-cdef-0123-456789abcdef","title":"Travel","status":"waiting","file_count":0,"completed_files":0,"total_size":0,"summary":{"state":"ready","file_count":0,"completed_files":0,"total_size":0}}],"next_cursor":null}"#
-                .utf8)
+                .utf8
+        )
         do {
             _ = try await HistorySnapshot.load(kind: "transfer") { _ in slot }
             XCTFail("Accepted receive link in sent-only page")

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, LocalizedError, errorText, type DisplayText } from "$lib/i18n";
+
   import { accountRequest } from "$lib/account";
   import {
     validateAccountTrafficSnapshot,
@@ -11,8 +13,8 @@
   let { accountId, username }: { accountId?: string; username?: string } = $props();
   let snapshot = $state<TrafficSnapshot | AccountTrafficSnapshot | null>(null),
     busy = $state(false),
-    error = $state(""),
-    notice = $state("");
+    error = $state<DisplayText>(""),
+    notice = $state<DisplayText>("");
   let inherit = $state(true),
     budgetGiB = $state<number | undefined>(),
     open = $state(false);
@@ -48,7 +50,7 @@
       if (run === generation) accept(next);
     } catch (cause) {
       if (run === generation)
-        error = cause instanceof Error ? cause.message : "Could not load account traffic.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotLoadAccountTraffic");
     } finally {
       if (run === generation) busy = false;
     }
@@ -66,8 +68,7 @@
         !snapshot ||
         bytes > snapshot.policy.server_budget_bytes)
     ) {
-      error =
-        "Enter a positive whole-byte budget no larger than the server budget, or use the server default.";
+      error = m("enterAPositiveWholeByteBudgetNoLargerThan");
       return;
     }
     busy = true;
@@ -79,14 +80,14 @@
         }),
       );
       if (next.account_budget_bytes !== bytes)
-        throw new Error("The server did not accept this account budget. Refresh before retrying.");
+        throw new LocalizedError(m("theServerDidNotAcceptThisAccountBudgetRefresh"));
       if (run === generation) {
         accept(next);
-        notice = "Account traffic budget saved. Existing traffic charges remain.";
+        notice = m("accountTrafficBudgetSavedExistingTrafficChargesRemain");
       }
     } catch (cause) {
       if (run === generation)
-        error = cause instanceof Error ? cause.message : "Could not save account traffic budget.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotSaveAccountTrafficBudget");
     } finally {
       if (run === generation) busy = false;
     }
@@ -101,32 +102,40 @@
   class="account-traffic"
 >
   <summary
-    >{accountId
-      ? `Traffic budget for ${username ?? "account"}`
-      : "Account traffic budget and usage"}</summary
+    >{$t(
+      accountId
+        ? m("trafficBudgetForValue", { arg0: username ?? "account" })
+        : m("accountTrafficBudgetAndUsage"),
+    )}</summary
   >
   {#if error}<p class="error" role="alert">
-      {error} Previous usage may be stale; unsaved values remain.
+      {$t(error)}
+      {$t(m("previousUsageMayBeStaleUnsavedValuesRemain"))}
     </p>{/if}
-  {#if notice}<p class="success" role="status">{notice}</p>{/if}
+  {#if notice}<p class="success" role="status">{$t(notice)}</p>{/if}
   {#if snapshot}
     <p class="muted small">
-      {snapshot.policy.enforcement_enabled
-        ? "Budget enforcement is on."
-        : "Budget enforcement is off."}
-      {snapshot.policy.basis === "outbound"
-        ? "Only outbound downloads count."
-        : "Uploads and downloads count."} Server and account budgets apply together. Receive-link submissions
-      are charged to the owner.
+      {$t(
+        snapshot.policy.enforcement_enabled
+          ? m("budgetEnforcementIsOn")
+          : m("budgetEnforcementIsOff_ef543"),
+      )}
+      {$t(
+        snapshot.policy.basis === "outbound"
+          ? m("onlyOutboundDownloadsCount")
+          : m("uploadsAndDownloadsCount"),
+      )}
+      {$t(m("serverAndAccountBudgetsApplyTogetherReceiveLinkSubmissions"))}
     </p>
     <TrafficBudgetUsage {snapshot} enabled={snapshot.policy.enforcement_enabled} />
     {#if accountId && "account_budget_bytes" in snapshot}<form onsubmit={save}>
         <label class="check"
-          ><input type="checkbox" disabled={busy} bind:checked={inherit} />Use the server's default
-          account budget ({formatSize(snapshot.policy.default_account_budget_bytes)})</label
+          ><input type="checkbox" disabled={busy} bind:checked={inherit} />{$t(
+            m("useTheServerSDefaultAccountBudget"),
+          )}{$t(formatSize(snapshot.policy.default_account_budget_bytes))})</label
         >
         <label
-          >Account traffic budget (GiB)<input
+          >{$t(m("accountTrafficBudgetGiB"))}<input
             type="number"
             min={1 / 1024 ** 3}
             step="any"
@@ -136,15 +145,16 @@
           /></label
         >
         <p class="muted small">
-          Effective account budget: {formatSize(snapshot.effective_budget_bytes)}. The server budget
-          also limits this account. Lowering the budget may stop transfers; deleting files never
-          refunds traffic.
+          {$t(m("effectiveAccountBudget"))}
+          {$t(formatSize(snapshot.effective_budget_bytes))}{$t(
+            m("theServerBudgetAlsoLimitsThisAccountLoweringThe"),
+          )}
         </p>
-        <button class="primary" disabled={busy}>Save account traffic budget</button>
+        <button class="primary" disabled={busy}>{$t(m("saveAccountTrafficBudget"))}</button>
       </form>{/if}
   {/if}
   <button disabled={busy} onclick={load}
-    >{busy ? "Loading account traffic…" : "Refresh account traffic"}</button
+    >{$t(busy ? m("loadingAccountTraffic") : m("refreshAccountTraffic"))}</button
   >
 </details>
 

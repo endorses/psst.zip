@@ -1,18 +1,30 @@
 import AVFoundation
 import Foundation
+@testable import Psst
 import UIKit
 import Vision
 import XCTest
 
-@testable import Psst
-
 @MainActor
 final class NavigationHistoryTests: XCTestCase {
+    private var priorLanguage = AppLanguage.system
+    override func setUp() {
+        super.setUp()
+        priorLanguage = LanguageSettings.shared.preference
+        LanguageSettings.shared.preference = .en
+    }
+
+    override func tearDown() {
+        LanguageSettings.shared.preference = priorLanguage
+        super.tearDown()
+    }
+
     private let session = DeviceSession(serverURL: "https://one.example", userID: "user", username: "name", token: "token", sessionID: "session", expiresAt: "later")
     private func owned(_ id: String, slot: Bool = false, date: TimeInterval = 10) -> TransferRecord {
         TransferRecord(
             id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date), fileCount: 1, totalSize: 10, serverURL: session.serverURL,
-            ownerID: session.userID, isSlot: slot)
+            ownerID: session.userID, isSlot: slot
+        )
     }
 
     private func local(_ origin: String = "https://one.example", date: TimeInterval = 20) -> GuestDownload {
@@ -123,7 +135,7 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document")
         XCTAssertNil(relaunched.visible(for: session).first(where: { $0.isSlot == true })?.customTitle)
         XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.title, "report.pdf")
-        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey))  // Migration retains its original source.
+        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey)) // Migration retains its original source.
         let another = DeviceSession(serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other", expiresAt: "later")
         XCTAssertTrue(relaunched.visible(for: another).isEmpty)
     }
@@ -166,8 +178,11 @@ final class NavigationHistoryTests: XCTestCase {
         let largePath = String(repeating: "a", count: 9 * 1024 * 1024)
         XCTAssertThrowsError(
             try store.mutate(ids: [first.localID, second.localID]) { records in
-                for index in records.indices { records[index].customTitle = largePath }
-            })
+                for index in records.indices {
+                    records[index].customTitle = largePath
+                }
+            }
+        )
         XCTAssertNil(try store.record(first.localID)?.customTitle)
         XCTAssertNil(try store.record(second.localID)?.customTitle)
     }
@@ -220,7 +235,7 @@ final class NavigationHistoryTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let file = directory.appendingPathComponent("history.json")
-        let original = (0..<130).map { owned("old-" + String($0)) }
+        let original = (0 ..< 130).map { owned("old-" + String($0)) }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let originalData = try encoder.encode(original)
@@ -235,7 +250,9 @@ final class NavigationHistoryTests: XCTestCase {
         repeat {
             let page = try store.page(session: session, after: next)
             XCTAssertLessThanOrEqual(page.records.count, 50)
-            for record in page.records { XCTAssertTrue(ids.insert(record.id).inserted) }
+            for record in page.records {
+                XCTAssertTrue(ids.insert(record.id).inserted)
+            }
             next = page.next
         } while next != nil
         XCTAssertEqual(ids, Set(original.map(\.id)))

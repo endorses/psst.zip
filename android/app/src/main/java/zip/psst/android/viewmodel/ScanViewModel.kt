@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import zip.psst.android.R
 import zip.psst.android.data.GuestDownload
 import zip.psst.android.data.GuestDownloadConsent
 import zip.psst.android.data.GuestDownloadPreflight
@@ -24,6 +25,8 @@ import zip.psst.android.data.reconcileGuestOutput
 import zip.psst.android.data.resolveGuestUpload
 import zip.psst.android.data.uploadChunkedFile
 import zip.psst.android.data.validatePreparedGuestUpload
+import zip.psst.android.i18n.*
+import zip.psst.android.i18n.ScanStage
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.crypto.ChunkedFileCrypto
@@ -38,17 +41,18 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 data class ScanState(
+    val inputDraft: String = "",
     val origin: String = "",
     val sharedTitle: String? = null,
     val reportReference: AbuseReportReference? = null,
     val kind: ScanInputKind? = null,
     val busy: Boolean = false,
-    val stage: String = "",
+    val stage: ScanStage = ScanStage.NONE,
     val bytes: Long = 0,
     val totalBytes: Long? = null,
     val fileIndex: Int = 0,
-    val error: String? = null,
-    val notice: String? = null,
+    val error: UiText? = null,
+    val notice: UiText? = null,
     val record: GuestDownload? = null,
     val history: List<GuestDownload> = emptyList(),
     val uploadFiles: List<Uri> = emptyList(),
@@ -60,7 +64,7 @@ data class ScanState(
     val maxUploadFiles: Int = 0,
     val remainingUploadFiles: Long? = null,
     val uploadCapacity: UploadCapacity? = null,
-    val uploadCapacityMessage: String = "Checking receive capacity…",
+    val uploadCapacityMessage: UiText = message(R.string.l_checking_receive_capacity_50448a),
     val fileAttempts: Map<String, Long?> = emptyMap(),
     val refreshingAvailability: Boolean = false,
 )
@@ -71,7 +75,7 @@ data class GuestHistoryState(
     val importing: Boolean = true,
     val importErrors: Boolean = false,
     val loading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /** ViewModel retains only in-memory input; secret keys never enter navigation/saved bundles. */
@@ -138,7 +142,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             loading = false,
                             error =
-                                "Local history could not be read. The current page and saved files have been retained. Retry.",
+                                message(
+                                    R.string
+                                        .l_local_history_could_not_be_read_the_current_page_and_saved_files__654bc9
+                                ),
                         )
                     }
                 }
@@ -148,6 +155,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         viewModelScope.coroutineContext[Job]?.invokeOnCompletion { store.close() }
         super.onCleared()
+    }
+
+    fun setInputDraft(value: String) {
+        _state.update { it.copy(inputDraft = value) }
     }
 
     fun classify(raw: String): Boolean {
@@ -160,6 +171,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             rawPairing = if (parsed.kind == ScanInputKind.PAIRING) raw else null
             _state.value =
                 ScanState(
+                    inputDraft = _state.value.inputDraft,
                     origin = parsed.link?.origin ?: parsed.pairing!!.serverUrl,
                     reportReference = parsed.link?.let(AbuseReportReference::fromLink),
                     kind = parsed.kind,
@@ -174,6 +186,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             rawPairing = null
             _state.value =
                 ScanState(
+                    inputDraft = _state.value.inputDraft,
                     reportReference = reportReference,
                     origin = reportReference?.origin.orEmpty(),
                     history = _state.value.history,
@@ -181,7 +194,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     pendingReceipts = _state.value.pendingReceipts,
                 )
             error(
-                "This is not a supported psst.zip QR code or link. Scan again or paste a valid link."
+                message(
+                    R.string
+                        .l_this_is_not_a_supported_psst_zip_qr_code_or_link_scan_again_or_pa_f5aedb
+                )
             )
             false
         }
@@ -192,11 +208,17 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     fun accountConnected() {
         clear()
         _state.update {
-            it.copy(notice = "Account connected. You can now send files and create receive links.")
+            it.copy(
+                notice =
+                    message(
+                        R.string
+                            .l_account_connected_you_can_now_send_files_and_create_receive_links_3d6c3b
+                    )
+            )
         }
     }
 
-    fun error(message: String) {
+    fun error(message: UiText) {
         _state.update { it.copy(error = message) }
     }
 
@@ -241,16 +263,19 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     record = current,
                     error = null,
                     downloadConsent = null,
-                    stage =
-                        if (current.complete) "Saved in Downloads/psst.zip"
-                        else "Interrupted — ready to resume",
+                    stage = if (current.complete) ScanStage.SAVED else ScanStage.RESUMABLE,
                 )
             }
             refreshDownloadAvailability()
             if (current.receiptPending) retryReceipt()
             return true
         } catch (_: Exception) {
-            error("Could not reopen this local record. Saved files remain in Downloads/psst.zip.")
+            error(
+                message(
+                    R.string
+                        .l_could_not_reopen_this_local_record_saved_files_remain_in_download_23ca76
+                )
+            )
             return false
         }
     }
@@ -263,7 +288,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             clear()
             refreshHistory()
         } catch (_: Exception) {
-            error("Could not remove local history.")
+            error(message(R.string.l_could_not_remove_local_history_de6a5e))
         }
     }
 
@@ -326,7 +351,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissDownloadConsent() {
-        _state.update { it.copy(downloadConsent = null, stage = "Receiving cancelled") }
+        _state.update { it.copy(downloadConsent = null, stage = ScanStage.CANCELLED) }
     }
 
     fun receive(redownloadMissing: Boolean = false) = receive(redownloadMissing, null)
@@ -340,7 +365,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         busy = true,
                         error = null,
-                        stage = "Inspecting transfer",
+                        stage = ScanStage.INSPECTING,
                         bytes = 0,
                         totalBytes = null,
                         downloadConsent = null,
@@ -359,9 +384,12 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         _state.update {
                             it.copy(
                                 record = record,
-                                stage = "Some saved files are missing",
+                                stage = ScanStage.MISSING,
                                 error =
-                                    "Choose Redownload missing files to fetch removed copies. The link may have expired or reached its download limit.",
+                                    message(
+                                        R.string
+                                            .l_choose_redownload_missing_files_to_fetch_removed_copies_the_link__3d6573
+                                    ),
                             )
                         }
                         return@launch
@@ -383,8 +411,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     run {
                         val transfer = client.transfers.get(record.transferId)
                         if (transfer.status == TransferStatus.EXHAUSTED)
-                            throw IllegalStateException(
-                                "Download limit reached. Saved local copies remain available."
+                            throw UiFailureException(
+                                message(
+                                    R.string
+                                        .l_download_limit_reached_saved_local_copies_remain_available_ef7380
+                                )
                             )
                         require(
                             transfer.id == record.transferId &&
@@ -413,8 +444,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     else emptyMap()
                             )
                         }
-                        require(record.saved.isEmpty() || record.files == manifest.files) {
-                            "The file list changed after some files were saved"
+                        uiRequire(record.saved.isEmpty() || record.files == manifest.files) {
+                            message(
+                                R.string.l_the_file_list_changed_after_some_files_were_saved_e08cb6
+                            )
                         }
                         record = record.copy(files = manifest.files, sharedTitle = transfer.title)
                         store.save(record)
@@ -436,13 +469,13 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             redownloadMissing,
                             exhaustedBlobIds,
                         )
-                    require(
+                    uiRequire(
                         record.files.any { f ->
                             f.blobId !in preflight.skippedBlobIds &&
                                 record.saved.none { it.blobId == f.blobId }
                         }
                     ) {
-                        "No download attempts remain for the missing files"
+                        message(R.string.l_no_download_attempts_remain_for_the_missing_files_1e5c2c)
                     }
                     saver.requireSpace(preflight.remainingBytes)
                     if (GuestDownloadPreflight.needsConsent(preflight, approved)) {
@@ -450,7 +483,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             it.copy(
                                 record = record,
                                 downloadConsent = preflight,
-                                stage = "Confirm download",
+                                stage = ScanStage.CONFIRM,
                             )
                         }
                         return@launch
@@ -466,7 +499,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                 it.copy(
                                     stage = stage,
                                     fileIndex = index,
-                                    bytes = if (stage == "Downloading") 0 else it.bytes,
+                                    bytes = if (stage == ScanStage.DOWNLOADING) 0 else it.bytes,
                                     totalBytes = ChunkedFileCrypto.wireSize(file.size),
                                     record = record,
                                 )
@@ -504,33 +537,39 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update {
                         it.copy(
                             record = record,
-                            stage =
-                                if (allSaved) "Saved in Downloads/psst.zip"
-                                else "Available files saved",
+                            stage = if (allSaved) ScanStage.SAVED else ScanStage.AVAILABLE_SAVED,
                             notice =
                                 if (allSaved) null
                                 else
-                                    "${preflight.skippedBlobIds.size} files could not be downloaded because their attempt limits were reached.",
+                                    pluralMessage(
+                                        R.plurals.files_unavailable,
+                                        preflight.skippedBlobIds.size.toLong(),
+                                        preflight.skippedBlobIds.size,
+                                    ),
                         )
                     }
                     if (allSaved) record = sendReceipt(client, record)
                 } catch (e: CancellationException) {
                     _state.update {
                         it.copy(
-                            stage =
-                                if (record.complete) "Saved in Downloads/psst.zip" else "Paused",
+                            stage = if (record.complete) ScanStage.SAVED else ScanStage.PAUSED,
                             error =
                                 if (record.complete) null
                                 else
-                                    "Receiving stopped. Saved files are kept; resume while the link is available.",
+                                    message(
+                                        R.string
+                                            .l_receiving_stopped_saved_files_are_kept_resume_while_the_link_is_a_78143e
+                                    ),
                         )
                     }
                     throw e
                 } catch (e: zip.psst.shared.api.TransferPolicyException) {
-                    _state.update { it.copy(stage = e.title, error = e.message) }
+                    _state.update {
+                        it.copy(stage = ScanStage.forFailure(e), error = failureText(e))
+                    }
                 } catch (e: InsufficientDownloadSpaceException) {
-                    _state.update { it.copy(stage = "More storage needed") }
-                    error(requireNotNull(e.message))
+                    _state.update { it.copy(stage = ScanStage.STORAGE) }
+                    error(failureText(e))
                 } catch (e: Exception) {
                     val trafficError =
                         client?.let { api ->
@@ -539,11 +578,17 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     _state.update {
-                        it.copy(stage = trafficError?.title ?: "Receiving interrupted")
+                        it.copy(
+                            stage =
+                                trafficError?.let(ScanStage::forFailure) ?: ScanStage.INTERRUPTED
+                        )
                     }
                     error(
-                        trafficError?.message
-                            ?: "Could not receive the files. Check your connection and available storage. The link may be expired, revoked, at its download limit, or contain invalid encrypted data. Saved files are kept."
+                        trafficError?.let(::failureText)
+                            ?: message(
+                                R.string
+                                    .l_could_not_receive_the_files_check_your_connection_and_available_s_bf341e
+                            )
                     )
                 } finally {
                     withContext(NonCancellable) {
@@ -616,7 +661,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         if (job?.isActive == true) return
         job =
             viewModelScope.launch(Dispatchers.IO) {
-                _state.update { it.copy(busy = true, stage = "Sending delivery receipts") }
+                _state.update { it.copy(busy = true, stage = ScanStage.RECEIPTS) }
                 try {
                     val records = store.pendingDownloads(downloadReceiptCursor)
                     if (records.isEmpty()) downloadReceiptCursor = null
@@ -645,7 +690,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     throw e
                 } catch (_: Exception) {
                     error(
-                        "Saved files are safe. Delivery receipts will remain pending until the server is reachable."
+                        message(
+                            R.string
+                                .l_saved_files_are_safe_delivery_receipts_will_remain_pending_until__ceaf93
+                        )
                     )
                 } finally {
                     _state.update { it.copy(busy = false) }
@@ -658,9 +706,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         if (job?.isActive == true) return
         job =
             viewModelScope.launch(Dispatchers.IO) {
-                _state.update {
-                    it.copy(busy = true, stage = "Removing interrupted uploads", error = null)
-                }
+                _state.update { it.copy(busy = true, stage = ScanStage.CLEANUP, error = null) }
                 try {
                     var failed = false
                     val uploads = store.uploads(cleanupCursor)
@@ -688,13 +734,19 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     if (failed)
                         error(
-                            "Some interrupted uploads could not be cleaned up. Retry when their server is reachable; server expiry still applies."
+                            message(
+                                R.string
+                                    .l_some_interrupted_uploads_could_not_be_cleaned_up_retry_when_their_897009
+                            )
                         )
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
                     error(
-                        "Some interrupted uploads could not be cleaned up. Retry when their server is reachable; server expiry still applies."
+                        message(
+                            R.string
+                                .l_some_interrupted_uploads_could_not_be_cleaned_up_retry_when_their_897009
+                        )
                     )
                 } finally {
                     _state.update { it.copy(busy = false) }
@@ -708,22 +760,23 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>()
                 .contentResolver
                 .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { if (it.moveToFirst()) it.getString(0) else "File" } ?: "File"
+                ?.use { if (it.moveToFirst()) it.getString(0) else tr(R.string.l_file_2c3caf) }
+                ?: tr(R.string.l_file_2c3caf)
         } catch (_: Exception) {
-            "File"
+            tr(R.string.l_file_2c3caf)
         }
 
     fun selectUpload(uris: List<Uri>) {
         if (job?.isActive == true || _state.value.uploaded || uris.isEmpty()) return
         try {
             val selected = appendGuestSelection(_state.value.uploadFiles, uris)
-            require(selected.all { it.scheme == "content" }) {
-                "Choose files from the document picker"
+            uiRequire(selected.all { it.scheme == "content" }) {
+                message(R.string.l_choose_files_from_the_document_picker_d11a92)
             }
             _state.update { it.copy(uploadFiles = selected, error = null) }
             refreshUploadPolicy()
         } catch (e: IllegalArgumentException) {
-            error(e.message ?: "Could not select these files")
+            error(failureText(e) ?: message(R.string.l_could_not_select_these_files_ba479d))
         }
     }
 
@@ -742,9 +795,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         busy = true,
                         error = null,
-                        stage = "Checking receive link",
+                        stage = ScanStage.CHECKING,
                         uploadCapacity = null,
-                        uploadCapacityMessage = "Checking receive capacity…",
+                        uploadCapacityMessage = message(R.string.l_checking_receive_capacity_50448a),
                     )
                 }
                 val client = ApiClient.anonymous(link.origin)
@@ -759,8 +812,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     // every selected file before the authoritative pre-allocation refresh.
                     val sizes = selected.map { uploadSize(it) }
                     if (sizes.all { it != null } && selected.isNotEmpty()) {
-                        require(sizes.filterNotNull().all { it <= limit }) {
-                            "A selected file exceeds this server's per-file limit"
+                        uiRequire(sizes.filterNotNull().all { it <= limit }) {
+                            message(
+                                R.string
+                                    .l_a_selected_file_exceeds_this_server_s_per_file_limit_7568e8
+                            )
                         }
                         policy.validateForSubmission(
                             link.id,
@@ -770,7 +826,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     } else if (selected.isNotEmpty()) {
                         requireNotNull(policy.uploadCapacity) {
-                                "Receive capacity could not be checked. Refresh and try again."
+                                message(
+                                    R.string
+                                        .l_receive_capacity_could_not_be_checked_refresh_and_try_again_722ee1
+                                )
                             }
                             .validateSelection(
                                 selected.size,
@@ -779,8 +838,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         _state.update {
                             it.copy(
                                 uploadCapacityMessage =
-                                    it.uploadCapacityMessage +
-                                        " Some file sizes will be checked before sending."
+                                    combinedMessages(
+                                        listOf(
+                                            it.uploadCapacityMessage,
+                                            message(
+                                                R.string
+                                                    .l_some_file_sizes_will_be_checked_before_sending_69808b
+                                            ),
+                                        )
+                                    )
                             )
                         }
                     }
@@ -790,7 +856,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update {
                         it.copy(
                             uploadCapacityMessage =
-                                "Capacity is unavailable or out of date. Refresh before sending; your files are still selected."
+                                message(
+                                    R.string
+                                        .l_capacity_is_unavailable_or_out_of_date_refresh_before_sending_you_d5fd19
+                                )
                         )
                     }
                     error(zip.psst.android.data.receiveCapacityError(e))
@@ -829,7 +898,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         if (it.uploadCapacity == capacity && !capacity.isFresh())
                             it.copy(
                                 uploadCapacityMessage =
-                                    "Capacity is out of date. Refresh before sending; your files are still selected."
+                                    message(
+                                        R.string
+                                            .l_capacity_is_out_of_date_refresh_before_sending_your_files_are_sti_c21ef7
+                                    )
                             )
                         else it
                     }
@@ -838,11 +910,22 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         val message =
             when {
                 capacity == null || !capacity.isFresh() || capacity.state == "unknown" ->
-                    "Receive capacity could not be checked. Refresh and try again."
+                    message(
+                        R.string
+                            .l_receive_capacity_could_not_be_checked_refresh_and_try_again_722ee1
+                    )
                 capacity.state == "blocked" ->
-                    "This receive link cannot accept files right now. Remove files or refresh and try again."
+                    message(
+                        R.string
+                            .l_this_receive_link_cannot_accept_files_right_now_remove_files_or_r_3a5187
+                    )
                 else ->
-                    "Up to ${capacity.availableFiles} files and ${android.text.format.Formatter.formatFileSize(getApplication(), requireNotNull(capacity.availableWireBytes))} of encrypted data available for this submission. Capacity is checked again before sending."
+                    message(
+                        R.string
+                            .l_up_to_1_s_files_and_2_s_of_encrypted_data_available_for_this_subm_165c0f,
+                        (capacity.availableFiles),
+                        (UiByteCount(requireNotNull(capacity.availableWireBytes))),
+                    )
             }
         _state.update {
             it.copy(
@@ -869,24 +952,27 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 var complete = false
                 var prepared: PreparedGuestUpload? = null
                 var cleanup: zip.psst.android.data.GuestUploadCleanup? = null
-                _state.update { it.copy(busy = true, error = null, stage = "Preparing upload") }
+                _state.update { it.copy(busy = true, error = null, stage = ScanStage.PREPARING) }
                 try {
-                    require(link.receiveVersion == 2) {
-                        "This older receive link no longer accepts uploads"
+                    uiRequire(link.receiveVersion == 2) {
+                        message(R.string.l_this_older_receive_link_no_longer_accepts_uploads_f47bfb)
                     }
                     val availability = guest.slots.availability(link.id)
                     availability.validateInvitation(link.id, link.key)
                     val maxBytes = guest.limits.get().maxFileSize
                     publishUploadPolicy(availability, maxBytes)
                     requireNotNull(availability.uploadCapacity) {
-                            "Receive capacity could not be checked. Refresh and try again; your files are still selected."
+                            message(
+                                R.string
+                                    .l_receive_capacity_could_not_be_checked_refresh_and_try_again_your__93d95b
+                            )
                         }
                         .validateSelection(
                             uris.size,
                             uris.size.toLong() * ChunkedFileCrypto.FRAME_OVERHEAD,
                         )
-                    require(uris.all { it.scheme == "content" }) {
-                        "Choose files from the document picker"
+                    uiRequire(uris.all { it.scheme == "content" }) {
+                        message(R.string.l_choose_files_from_the_document_picker_d11a92)
                     }
                     val resolver = getApplication<Application>().contentResolver
                     val sources =
@@ -896,7 +982,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                 resolver.getType(uri) ?: "application/octet-stream",
                                 {
                                     requireNotNull(resolver.openInputStream(uri)) {
-                                        "Cannot read selected file"
+                                        message(R.string.l_cannot_read_selected_file_dd9248)
                                     }
                                 },
                             )
@@ -937,7 +1023,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         ensureActive()
                         _state.update {
                             it.copy(
-                                stage = "Uploading",
+                                stage = ScanStage.UPLOADING,
                                 fileIndex = index + 1,
                                 bytes = 0,
                                 totalBytes = file.wireBytes,
@@ -966,19 +1052,24 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     scoped.transfers.complete(child.id)
                     complete = true
-                    _state.update { it.copy(uploaded = true, stage = "Files sent", error = null) }
+                    _state.update { it.copy(uploaded = true, stage = ScanStage.SENT, error = null) }
                 } catch (e: CancellationException) {
-                    _state.update { it.copy(stage = "Upload cancelled") }
+                    _state.update { it.copy(stage = ScanStage.UPLOAD_CANCELLED) }
                     throw e
                 } catch (e: zip.psst.shared.api.TransferPolicyException) {
-                    _state.update { it.copy(stage = e.title, error = e.message) }
+                    _state.update {
+                        it.copy(stage = ScanStage.forFailure(e), error = failureText(e))
+                    }
                 } catch (e: IllegalArgumentException) {
                     _state.update {
                         it.copy(
-                            stage = "Check selected files",
-                            error = e.message,
+                            stage = ScanStage.SELECTION,
+                            error = failureText(e),
                             uploadCapacityMessage =
-                                "Capacity may have changed. Refresh and try again; your files are still selected.",
+                                message(
+                                    R.string
+                                        .l_capacity_may_have_changed_refresh_and_try_again_your_files_are_st_8b5635
+                                ),
                         )
                     }
                 } catch (e: Exception) {
@@ -986,10 +1077,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         zip.psst.android.data.classifyTrafficFailure(e) {
                             guest.slots.trafficStatus(link.id)
                         }
-                    trafficError?.let { policy -> _state.update { it.copy(stage = policy.title) } }
+                    trafficError?.let { policy ->
+                        _state.update { it.copy(stage = ScanStage.forFailure(policy)) }
+                    }
                     error(
-                        trafficError?.message
-                            ?: "Could not send files. Check your connection, file sizes and whether the receive link is still available."
+                        trafficError?.let(::failureText)
+                            ?: message(
+                                R.string
+                                    .l_could_not_send_files_check_your_connection_file_sizes_and_whether_2d1f4b
+                            )
                     )
                 } finally {
                     withContext(NonCancellable) {
@@ -1019,19 +1115,25 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                             _state.update {
                                                 it.copy(
                                                     uploaded = true,
-                                                    stage = "Files sent",
+                                                    stage = ScanStage.SENT,
                                                     error = null,
                                                     notice =
                                                         if (resolution.journalCleared) null
                                                         else
-                                                            "Files were sent. Cleanup can be retried later.",
+                                                            message(
+                                                                R.string
+                                                                    .l_files_were_sent_cleanup_can_be_retried_later_2e3639
+                                                            ),
                                                 )
                                             }
                                         else if (!resolution.journalCleared)
                                             _state.update {
                                                 it.copy(
                                                     notice =
-                                                        "Upload stopped. Cleanup can be retried later."
+                                                        message(
+                                                            R.string
+                                                                .l_upload_stopped_cleanup_can_be_retried_later_0f81d2
+                                                        )
                                                 )
                                             }
                                     } finally {
@@ -1043,17 +1145,23 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                                     _state.update {
                                         it.copy(
                                             uploaded = true,
-                                            stage = "Files sent",
+                                            stage = ScanStage.SENT,
                                             error = null,
                                             notice =
-                                                "Files were sent. Cleanup can be retried later.",
+                                                message(
+                                                    R.string
+                                                        .l_files_were_sent_cleanup_can_be_retried_later_2e3639
+                                                ),
                                         )
                                     }
                                 else
                                     _state.update {
                                         it.copy(
                                             notice =
-                                                "Upload stopped, but its incomplete server files could not be removed. They will remain until server expiry."
+                                                message(
+                                                    R.string
+                                                        .l_upload_stopped_but_its_incomplete_server_files_could_not_be_remov_33f9ec
+                                                )
                                         )
                                     }
                             }

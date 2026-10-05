@@ -1,3 +1,4 @@
+import { message as m, LocalizedError, type DisplayText } from "./i18n/index.ts";
 export interface AdministratorSecurity {
   enabled: boolean;
   recovery_codes_remaining: number;
@@ -23,15 +24,13 @@ export function validateAdministratorSecurity(value: unknown): AdministratorSecu
     status.recovery_codes_remaining > 10 ||
     (status.recent_until !== null && !utc(status.recent_until))
   )
-    throw new Error("The server returned unsupported administrator security settings.");
+    throw new LocalizedError(m("theServerReturnedUnsupportedAdministratorSecuritySettings"));
   return status;
 }
 export function validateRecentAuthentication(value: unknown): { recent_until: string } {
   const result = value as { recent_until: unknown };
   if (!result || !utc(result.recent_until))
-    throw new Error(
-      "The server did not confirm recent authentication. Review your session and try again.",
-    );
+    throw new LocalizedError(m("theServerDidNotConfirmRecentAuthenticationReviewYour"));
   return { recent_until: result.recent_until };
 }
 export function validateEnrollment(value: unknown): Enrollment {
@@ -44,19 +43,19 @@ export function validateEnrollment(value: unknown): Enrollment {
     enrollment.otpauth_url.length > 4096 ||
     !utc(enrollment.expires_at)
   )
-    throw new Error("The server returned unsupported authenticator enrollment details.");
+    throw new LocalizedError(m("theServerReturnedUnsupportedAuthenticatorEnrollmentDetails"));
   let url: URL;
   try {
     url = new URL(enrollment.otpauth_url);
   } catch {
-    throw new Error("The server returned an invalid authenticator URI.");
+    throw new LocalizedError(m("theServerReturnedAnInvalidAuthenticatorURI"));
   }
   if (
     url.protocol !== "otpauth:" ||
     url.hostname !== "totp" ||
     url.searchParams.get("secret") !== enrollment.secret
   )
-    throw new Error("The authenticator QR code does not match the manual secret.");
+    throw new LocalizedError(m("theAuthenticatorQRCodeDoesNotMatchTheManual"));
   return enrollment;
 }
 export function validateRecoveryCodes(value: unknown): string[] {
@@ -71,27 +70,25 @@ export function validateRecoveryCodes(value: unknown): string[] {
     ) ||
     new Set(result.recovery_codes).size !== 10
   )
-    throw new Error(
-      "Recovery codes were not returned in a supported format. Sign in again and regenerate them before relying on recovery.",
-    );
+    throw new LocalizedError(m("recoveryCodesWereNotReturnedInASupportedFormat"));
   return [...result.recovery_codes];
 }
-export function administratorSecurityMessage(code: unknown): string | null {
+export function administratorSecurityMessage(code: unknown): DisplayText | null {
   switch (code) {
     case "recent_authentication_required":
-      return "Confirm your administrator identity, then submit this action again. Your unsaved values remain here.";
+      return m("confirmYourAdministratorIdentityThenSubmitThisActionAgain");
     case "administrator_factor_required":
-      return "Enter an authenticator code or a recovery code to finish administrator sign-in.";
+      return m("enterAnAuthenticatorCodeOrARecoveryCodeTo");
     case "administrator_factor_invalid":
-      return "That authenticator or recovery code was not accepted. Check the code and try again.";
+      return m("thatAuthenticatorOrRecoveryCodeWasNotAcceptedCheck");
     case "administrator_authentication_invalid":
-      return "The administrator password was not accepted. Check it and try again.";
+      return m("theAdministratorPasswordWasNotAcceptedCheckItAnd");
     case "enrollment_expired":
-      return "This enrollment expired. Cancel it and start again.";
+      return m("thisEnrollmentExpiredCancelItAndStartAgain");
     case "enrollment_pending":
-      return "An enrollment is already pending. Cancel it in the browser where it began, or wait for it to expire.";
+      return m("anEnrollmentIsAlreadyPendingCancelItInThe");
     case "administrator_authentication_locked":
-      return "Too many administrator verification attempts. Wait before trying again.";
+      return m("tooManyAdministratorVerificationAttemptsWaitBeforeTryingAgain");
     default:
       return null;
   }

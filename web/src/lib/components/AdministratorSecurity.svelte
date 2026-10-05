@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, errorText, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { brandedQr } from "$lib/branded-qr";
@@ -19,7 +21,7 @@
     qr = $state(""),
     code = $state("");
   let busy = $state(false),
-    error = $state(""),
+    error = $state<DisplayText>(""),
     confirmation = $state<"disable" | "regenerate" | null>(null),
     now = $state(Date.now());
   let generation = 0,
@@ -34,7 +36,7 @@
       if (!disposed && run === generation) security = next;
     } catch (cause) {
       if (!disposed && run === generation)
-        error = cause instanceof Error ? cause.message : "Could not load administrator security.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotLoadAdministratorSecurity");
     } finally {
       if (!disposed && run === generation) busy = false;
     }
@@ -54,7 +56,7 @@
       if (!disposed && run === generation) qr = image;
     } catch (cause) {
       if (!disposed && run === generation)
-        error = cause instanceof Error ? cause.message : "Could not start authenticator setup.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotStartAuthenticatorSetup");
     } finally {
       if (!disposed && run === generation) busy = false;
     }
@@ -69,9 +71,7 @@
     try {
       await accountRequest("/admin/security/enrollment", "DELETE", {});
     } catch {
-      if (!disposed)
-        error =
-          "The local setup secret was discarded. Server cancellation could not be confirmed; pending enrollment expires within five minutes.";
+      if (!disposed) error = m("theLocalSetupSecretWasDiscardedServerCancellationCould");
     }
   }
   async function confirm(event: SubmitEvent) {
@@ -92,7 +92,7 @@
       onchanged(codes);
     } catch (cause) {
       if (!disposed && run === generation)
-        error = cause instanceof Error ? cause.message : "Could not confirm the authenticator.";
+        error = cause instanceof Error ? errorText(cause) : m("couldNotConfirmTheAuthenticator");
     } finally {
       onmutation(false);
       if (!disposed && run === generation) {
@@ -119,7 +119,8 @@
       }
     } catch (cause) {
       if (!disposed && run === generation)
-        error = cause instanceof Error ? cause.message : "Could not change authenticator security.";
+        error =
+          cause instanceof Error ? errorText(cause) : m("couldNotChangeAuthenticatorSecurity");
     } finally {
       onmutation(false);
       if (!disposed && run === generation) busy = false;
@@ -142,26 +143,21 @@
 </script>
 
 <section aria-labelledby="administrator-security-title">
-  <h2 id="administrator-security-title">Administrator account security</h2>
-  <p class="muted">
-    Use an authenticator app plus your password. TOTP helps protect server administration but is not
-    phishing-resistant. Use a trusted HTTPS connection and keep recovery codes private.
-  </p>
-  {#if error && !confirmation}<p class="error" role="alert">{error}</p>{/if}
+  <h2 id="administrator-security-title">{$t(m("administratorAccountSecurity"))}</h2>
+  <p class="muted">{$t(m("useAnAuthenticatorAppPlusYourPasswordTOTPHelps"))}</p>
+  {#if error && !confirmation}<p class="error" role="alert">{$t(error)}</p>{/if}
   {#if security}
     <p>
-      <strong>{security.enabled ? "Authenticator enabled" : "Authenticator not set up"}</strong
+      <strong
+        >{$t(security.enabled ? m("authenticatorEnabled") : m("authenticatorNotSetUp"))}</strong
       >{#if security.enabled}
-        · {security.recovery_codes_remaining} recovery codes remaining{/if}
+        · {$t(security.recovery_codes_remaining)} {$t(m("recoveryCodesRemaining"))}{/if}
     </p>
     {#if enrollment}
-      <p>
-        Scan this code with your authenticator app, or enter the setup key manually. The QR code is
-        generated in this browser; no secret is sent to an external QR service.
-      </p>
-      {#if qr}<img class="qr" src={qr} alt="Authenticator enrollment QR code" />{/if}
+      <p>{$t(m("scanThisCodeWithYourAuthenticatorAppOrEnter"))}</p>
+      {#if qr}<img class="qr" src={qr} alt={$t(m("authenticatorEnrollmentQRCode"))} />{/if}
       <label
-        >Manual setup key<input
+        >{$t(m("manualSetupKey"))}<input
           readonly
           value={enrollment.secret}
           autocomplete="off"
@@ -169,17 +165,16 @@
         /></label
       >
       {#if Date.parse(enrollment.expires_at) <= now}<p class="error" role="alert">
-          This enrollment expired. Cancel it and start again.
+          {$t(m("thisEnrollmentExpiredCancelItAndStartAgain"))}
         </p>
       {:else}<p class="muted small">
-          Setup expires in {Math.max(
-            0,
-            Math.ceil((Date.parse(enrollment.expires_at) - now) / 1000),
-          )} seconds.
+          {$t(m("setupExpiresIn"))}
+          {$t(Math.max(0, Math.ceil((Date.parse(enrollment.expires_at) - now) / 1000)))}
+          {$t(m("seconds_5d992"))}
         </p>{/if}
       <form onsubmit={confirm}>
         <label
-          >Authenticator setup code<input
+          >{$t(m("authenticatorSetupCode"))}<input
             type="text"
             inputmode="numeric"
             autocomplete="one-time-code"
@@ -191,21 +186,20 @@
           /></label
         >
         <button class="primary" disabled={busy || Date.parse(enrollment.expires_at) <= now}
-          >Confirm authenticator</button
+          >{$t(m("confirmAuthenticator"))}</button
         >
-        <button type="button" disabled={busy} onclick={cancel}>Cancel authenticator setup</button>
+        <button type="button" disabled={busy} onclick={cancel}
+          >{$t(m("cancelAuthenticatorSetup"))}</button
+        >
       </form>
-      <p class="muted small">
-        Confirming ends all sessions. Save the recovery codes shown next, then sign in again. Wait
-        for the next authenticator code, or use a recovery code for immediate sign-in.
-      </p>
+      <p class="muted small">{$t(m("confirmingEndsAllSessionsSaveTheRecoveryCodesShown"))}</p>
     {:else if security.enabled}
       <button
         disabled={busy}
         onclick={() => {
           confirmation = "regenerate";
           error = "";
-        }}>Regenerate recovery codes</button
+        }}>{$t(m("regenerateRecoveryCodes"))}</button
       >
       <button
         class="danger"
@@ -213,28 +207,30 @@
         onclick={() => {
           confirmation = "disable";
           error = "";
-        }}>Disable authenticator</button
+        }}>{$t(m("disableAuthenticator"))}</button
       >
     {:else}<p class="notice">
-        Your administrator account currently relies on its password alone. Existing accounts can
-        continue signing in while setting up protection.
+        {$t(m("yourAdministratorAccountCurrentlyReliesOnItsPasswordAlone"))}
       </p>
-      <button class="primary" disabled={busy} onclick={begin}>Set up authenticator</button>{/if}
+      <button class="primary" disabled={busy} onclick={begin}>{$t(m("setUpAuthenticator"))}</button
+      >{/if}
   {/if}
   {#if !enrollment}<button disabled={busy} onclick={load}
-      >{busy ? "Loading security settings…" : "Refresh administrator security"}</button
+      >{$t(busy ? m("loadingSecuritySettings") : m("refreshAdministratorSecurity"))}</button
     >{/if}
 </section>
 {#if confirmation}<IncidentConfirmDialog
-    title={confirmation === "disable"
-      ? "Disable administrator authenticator?"
-      : "Replace all recovery codes?"}
+    title={$t(
+      confirmation === "disable"
+        ? m("disableAdministratorAuthenticator")
+        : m("replaceAllRecoveryCodes"),
+    )}
     description={confirmation === "disable"
-      ? "Remove your authenticator and every recovery code. All sessions will end, including this browser. Your next sign-in will rely on your password alone until you set up another authenticator."
-      : "Invalidate every old recovery code and end all sessions, including this browser. Save the new codes shown next, then sign in again. Your authenticator remains enabled."}
+      ? m("removeYourAuthenticatorAndEveryRecoveryCodeAllSessions")
+      : m("invalidateEveryOldRecoveryCodeAndEndAllSessions")}
     action={confirmation === "disable"
-      ? "Disable authenticator and sign out"
-      : "Replace codes and sign out"}
+      ? m("disableAuthenticatorAndSignOut")
+      : m("replaceCodesAndSignOut")}
     {busy}
     {error}
     oncancel={() => {

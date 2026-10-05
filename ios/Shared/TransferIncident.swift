@@ -95,7 +95,7 @@ enum TransferIncident: Error, LocalizedError, Equatable {
             "This link is no longer available. Ask the sender for a new link. Files already saved on this device are still available."
         case let .budget(retryAt):
             if let retryAt {
-                "A transfer traffic budget has been reached. Your saved files are safe. Retry after \(retryAt.formatted(date: .abbreviated, time: .shortened)), or contact the server administrator."
+                L10n.datedMessage("A transfer traffic budget has been reached. Your saved files are safe. Retry after %@, or contact the server administrator.", date: retryAt)
             } else {
                 "A transfer traffic budget has been reached. Your saved files are safe. Retry in the next billing cycle, or contact the server administrator."
             }

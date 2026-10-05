@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, number, LocalizedError, type DisplayText } from "$lib/i18n";
+
   import { onMount } from "svelte";
   import { accountRequest } from "$lib/account";
   import { utcTime } from "$lib/admin";
@@ -28,61 +30,61 @@
     degraded: boolean;
   }
   const actions = new Map([
-    ["settings.file_size_changed", "File size limit changed"],
-    ["settings.abuse_contact_changed", "Abuse contact changed"],
-    ["settings.resource_policy_changed", "Resource limits changed"],
-    ["settings.traffic_policy_changed", "Traffic policy changed"],
-    ["settings.traffic_chart_changed", "Traffic monitor settings changed"],
-    ["settings.account_traffic_changed", "Account traffic limit changed"],
-    ["transfers.paused", "Public transfers paused"],
-    ["transfers.resumed", "Public transfers resumed"],
-    ["account.created", "Account created"],
-    ["account.enabled", "Account enabled"],
-    ["account.disabled", "Account sign-in disabled"],
-    ["account.shutdown", "Account shut down"],
-    ["account.password_changed", "Password changed"],
-    ["account.password_reset", "Password reset"],
-    ["session.revoked", "Session revoked"],
-    ["pairing.created", "Login QR code created"],
-    ["pairing.redeemed", "Device connected"],
-    ["pairing.revoked", "Login QR code revoked"],
-    ["administrator.signed_in", "Administrator signed in"],
-    ["administrator.reauthenticated", "Administrator identity verified"],
-    ["administrator.factor_enabled", "Authenticator enabled"],
-    ["administrator.factor_disabled", "Authenticator disabled"],
-    ["administrator.factor_reset", "Authenticator reset"],
-    ["administrator.recovery_rotated", "Recovery codes replaced"],
-    ["administrator.recovery_used", "Recovery code used"],
-    ["transfer.revoked", "Send link revoked"],
-    ["slot.revoked", "Receive link revoked"],
-    ["authentication.login_rejected", "Sign-in rejected"],
-    ["authentication.pairing_rejected", "Device connection rejected"],
-    ["authentication.factor_rejected", "Administrator verification rejected"],
-    ["authentication.throttled", "Authentication rate limited"],
+    ["settings.file_size_changed", m("fileSizeLimitChanged")],
+    ["settings.abuse_contact_changed", m("abuseContactChanged")],
+    ["settings.resource_policy_changed", m("resourceLimitsChanged")],
+    ["settings.traffic_policy_changed", m("trafficPolicyChanged")],
+    ["settings.traffic_chart_changed", m("trafficMonitorSettingsChanged")],
+    ["settings.account_traffic_changed", m("accountTrafficLimitChanged")],
+    ["transfers.paused", m("publicTransfersPaused")],
+    ["transfers.resumed", m("publicTransfersResumed")],
+    ["account.created", m("accountCreated")],
+    ["account.enabled", m("accountEnabled")],
+    ["account.disabled", m("accountSignInDisabled")],
+    ["account.shutdown", m("accountShutDown")],
+    ["account.password_changed", m("passwordChanged")],
+    ["account.password_reset", m("passwordReset")],
+    ["session.revoked", m("sessionRevoked")],
+    ["pairing.created", m("loginQRCodeCreated")],
+    ["pairing.redeemed", m("deviceConnected")],
+    ["pairing.revoked", m("loginQRCodeRevoked")],
+    ["administrator.signed_in", m("administratorSignedIn")],
+    ["administrator.reauthenticated", m("administratorIdentityVerified")],
+    ["administrator.factor_enabled", m("authenticatorEnabled")],
+    ["administrator.factor_disabled", m("authenticatorDisabled")],
+    ["administrator.factor_reset", m("authenticatorReset")],
+    ["administrator.recovery_rotated", m("recoveryCodesReplaced")],
+    ["administrator.recovery_used", m("recoveryCodeUsed")],
+    ["transfer.revoked", m("sendLinkRevoked")],
+    ["slot.revoked", m("receiveLinkRevoked")],
+    ["authentication.login_rejected", m("signInRejected")],
+    ["authentication.pairing_rejected", m("deviceConnectionRejected")],
+    ["authentication.factor_rejected", m("administratorVerificationRejected")],
+    ["authentication.throttled", m("authenticationRateLimited")],
   ]);
   const origins = new Map([
-    ["administrator", "Administrator"],
-    ["account", "Account"],
-    ["capability", "Public link"],
-    ["local", "Local operator"],
-    ["system", "System"],
+    ["administrator", m("administrator")],
+    ["account", m("account")],
+    ["capability", m("publicLink")],
+    ["local", m("localOperator")],
+    ["system", m("system")],
   ]);
   const outcomes = new Map([
-    ["succeeded", "Succeeded"],
-    ["rejected", "Rejected"],
+    ["succeeded", m("succeeded")],
+    ["rejected", m("rejected")],
   ]);
   const targets = new Map([
-    ["user", "Account"],
-    ["session", "Session"],
-    ["transfer", "Transfer"],
-    ["slot", "Receive link"],
-    ["server", "Server"],
-    ["pairing", "Login QR code"],
-    ["authentication", "Authentication"],
+    ["user", m("account")],
+    ["session", m("session")],
+    ["transfer", m("transfer")],
+    ["slot", m("receiveLink")],
+    ["server", m("server")],
+    ["pairing", m("loginQRCode")],
+    ["authentication", m("authentication")],
   ]);
   let result = $state<EventPage | null>(null);
   let busy = $state(false);
-  let error = $state("");
+  let error = $state<DisplayText>("");
   let before = $state<number | undefined>();
   let previous = $state<(number | undefined)[]>([]);
   let disposed = false;
@@ -146,7 +148,7 @@
         controller.signal,
       );
       if (disposed) return;
-      if (!validPage(next, cursor)) throw new Error("Invalid activity response");
+      if (!validPage(next, cursor)) throw new LocalizedError(m("invalidActivityResponse"));
       previous =
         direction === "older"
           ? [...previous, before]
@@ -156,7 +158,7 @@
       before = cursor;
       result = next;
     } catch {
-      if (!disposed) error = "Security activity could not be loaded. Try again.";
+      if (!disposed) error = m("securityActivityCouldNotBeLoadedTryAgain");
     } finally {
       if (!disposed) busy = false;
     }
@@ -170,76 +172,84 @@
   });
 </script>
 
-{#if resource}<h2>Related security activity</h2>{:else}<h1>Security activity</h1>{/if}
+{#if resource}<h2>{$t(m("relatedSecurityActivity"))}</h2>{:else}<h1>
+    {$t(m("securityActivity"))}
+  </h1>{/if}
 <p class="muted">
-  {resource
-    ? "Activity for this resource, including relevant owner and receive-link changes while its metadata remains available."
-    : "Recent account and administration events on this server."}
+  {$t(
+    resource
+      ? m("activityForThisResourceIncludingRelevantOwnerAndReceive")
+      : m("recentAccountAndAdministrationEventsOnThisServer"),
+  )}
 </p>
-<p class="muted small">
-  Retained for up to 90 days and 10,000 entries, with separate limits for event categories. Repeated
-  events may be grouped. Older activity is removed as these limits are reached.
-</p>
-<p class="muted small">
-  Records account IDs, actions and outcomes, without passwords, login codes, link secrets, filenames
-  or file contents.
-</p>
+<p class="muted small">{$t(m("retainedForUpToDaysAndEntriesWithSeparate"))}</p>
+<p class="muted small">{$t(m("recordsAccountIDsActionsAndOutcomesWithoutPasswordsLogin"))}</p>
 <div class="activity-controls">
-  <button onclick={() => load()} disabled={busy}><Icon name="Refresh" /> Latest activity</button>
-  <nav aria-label="Security activity pages">
-    <button onclick={() => load("newer")} disabled={busy || !previous.length}>Newer</button>
+  <button onclick={() => load()} disabled={busy}
+    ><Icon name="Refresh" /> {$t(m("latestActivity"))}</button
+  >
+  <nav aria-label={$t(m("securityActivityPages"))}>
+    <button onclick={() => load("newer")} disabled={busy || !previous.length}
+      >{$t(m("newer"))}</button
+    >
     <button
       onclick={() => load("older")}
-      disabled={busy || !result?.next_before || previous.length >= 199}>Older</button
+      disabled={busy || !result?.next_before || previous.length >= 199}>{$t(m("older"))}</button
     >
   </nav>
 </div>
 {#if error}<p class="error" role="alert">
-    {error}
-    {result ? "The previous activity remains below and may be stale." : ""}
+    {$t(error)}
+    {$t(result ? m("thePreviousActivityRemainsBelowAndMayBeStale") : "")}
   </p>{/if}
 {#if result?.degraded}<p class="error" role="alert">
-    Security recording is degraded. Some events may be missing; this history is incomplete.
+    {$t(m("securityRecordingIsDegradedSomeEventsMayBeMissing"))}
   </p>{/if}
 <p class="muted small" role="status">
-  {busy
-    ? "Loading security activity…"
-    : result
-      ? `Page ${previous.length + 1} · ${result.events.length} ${result.events.length === 1 ? "entry" : "entries"}`
-      : "Security activity unavailable."}
+  {$t(
+    busy
+      ? m("loadingSecurityActivity")
+      : result
+        ? m("activityPageCount", { page: previous.length + 1, count: result.events.length })
+        : m("securityActivityUnavailable"),
+  )}
 </p>
 {#if result}
-  {#if !result.events.length}<p>No security activity in this retained page.</p>
+  {#if !result.events.length}<p>{$t(m("noSecurityActivityInThisRetainedPage"))}</p>
   {:else}
-    <ol class="activity-list" aria-label="Security events" aria-busy={busy}>
+    <ol class="activity-list" aria-label={$t(m("securityEvents"))} aria-busy={busy}>
       {#each result.events as event (event.id)}
         <li>
           <div class="activity-heading">
-            <strong>{actions.get(event.kind) ?? "Security event"}</strong><span class="outcome"
-              >{outcomes.get(event.outcome) ?? "Unknown outcome"}</span
+            <strong>{$t(actions.get(event.kind) ?? m("securityEvent"))}</strong><span
+              class="outcome">{$t(outcomes.get(event.outcome) ?? m("unknownOutcome"))}</span
             >
           </div>
-          <time datetime={event.occurred_at} class="muted small">{utcTime(event.occurred_at)}</time>
+          <time datetime={event.occurred_at} class="muted small"
+            >{$t(utcTime(event.occurred_at))}</time
+          >
           <dl>
             <div>
-              <dt>Source</dt>
-              <dd>{origins.get(event.origin) ?? "Other source"}</dd>
+              <dt>{$t(m("source"))}</dt>
+              <dd>{$t(origins.get(event.origin) ?? m("otherSource"))}</dd>
             </div>
             <div>
-              <dt>Occurrences</dt>
-              <dd>{event.count.toLocaleString()}</dd>
+              <dt>{$t(m("occurrences"))}</dt>
+              <dd>{$t(number(event.count))}</dd>
             </div>
             <div>
-              <dt>Actor</dt>
+              <dt>{$t(m("actor"))}</dt>
               <dd>
-                {#if event.actor_id}<code>{event.actor_id}</code>{:else}Not recorded{/if}
+                {#if event.actor_id}<code>{$t(event.actor_id)}</code>{:else}{$t(
+                    m("notRecorded"),
+                  )}{/if}
               </dd>
             </div>
             <div>
-              <dt>Target</dt>
+              <dt>{$t(m("target"))}</dt>
               <dd>
-                {targets.get(event.target_type) ?? "Other resource"}{#if event.target_id}<code
-                    >{event.target_id}</code
+                {$t(targets.get(event.target_type) ?? m("otherResource"))}{#if event.target_id}<code
+                    >{$t(event.target_id)}</code
                   >{/if}
               </dd>
             </div>

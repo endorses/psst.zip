@@ -6,9 +6,9 @@ enum ShareSelectionError: Error, Equatable {
     var message: String {
         switch self {
         case .tooLarge:
-            String(localized: "Files are encrypted in chunks. The server sets the maximum file size.")
+            L10n.message("Files are encrypted in chunks. The server sets the maximum file size.")
         case .unreadable:
-            String(localized: "Some selected files could not be loaded. Nothing was sent. Share the files again.")
+            L10n.message("Some selected files could not be loaded. Nothing was sent. Share the files again.")
         }
     }
 }

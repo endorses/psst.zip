@@ -1,3 +1,4 @@
+import { message as m, date, number, dateArgument, LocalizedError } from "./i18n/index.ts";
 import { transferStateError } from "./incident-state.ts";
 
 /** Enforcement is separate from the traffic chart's optional monitoring allowance. */
@@ -41,7 +42,7 @@ export interface AccountTrafficSnapshot extends TrafficStatus {
   account_budget_bytes: number | null;
   effective_budget_bytes: number;
 }
-export class TrafficLimitError extends Error {
+export class TrafficLimitError extends LocalizedError {
   code: "traffic_budget_exhausted" | "traffic_accounting_unavailable" | "traffic_policy_changed";
   retryAt: string | null;
   constructor(
@@ -50,10 +51,12 @@ export class TrafficLimitError extends Error {
   ) {
     super(
       code === "traffic_policy_changed"
-        ? "Server transfer limits changed. Saved files are safe. Retry to use the new limits."
+        ? m("serverTransferLimitsChangedSavedFilesAreSafeRetry")
         : code === "traffic_budget_exhausted"
-          ? `This transfer's traffic budget is exhausted.${retryAt ? ` The next cycle starts ${new Date(retryAt).toISOString().replace("T", " ").replace(".000Z", " UTC")}.` : ""} Wait for the next cycle or ask the server administrator, then retry manually.`
-          : "Traffic accounting is unavailable. Transfers have stopped until the server can safely account for them. Ask the server administrator, then retry manually.",
+          ? m("thisTransferSTrafficBudgetIsExhaustedValueWait", {
+              arg0: retryAt ? m("nextTrafficCycle", { date: dateArgument(retryAt, true) }) : "",
+            })
+          : m("trafficAccountingIsUnavailableTransfersHaveStoppedUntilThe"),
     );
     this.code = code;
     this.retryAt = retryAt;
@@ -108,9 +111,7 @@ export function validateTrafficPolicy(value: unknown): TrafficPolicy {
       p.max_streams_per_slot,
     ].some((n) => n > 4096)
   )
-    throw new Error(
-      "Enter positive whole-byte budgets and rates, stream limits from 1 to 4096, bandwidth up to 10240 MiB/s, and a UTC cycle day from 1 to 31.",
-    );
+    throw new LocalizedError(m("enterPositiveWholeByteBudgetsAndRatesStreamLimits"));
   return p;
 }
 export function validateTrafficStatus(value: unknown): TrafficStatus {
@@ -137,9 +138,7 @@ export function validateTrafficStatus(value: unknown): TrafficStatus {
     !positive(s.usage.budget_bytes) ||
     s.usage.remaining_bytes > s.usage.budget_bytes
   )
-    throw new Error(
-      "The server returned an unsupported traffic budget status. Refresh before changing settings.",
-    );
+    throw new LocalizedError(m("theServerReturnedAnUnsupportedTrafficBudgetStatusRefresh"));
   return s;
 }
 export function validateTrafficSnapshot(value: unknown): TrafficSnapshot {
@@ -147,7 +146,7 @@ export function validateTrafficSnapshot(value: unknown): TrafficSnapshot {
   validateTrafficStatus(s);
   validateTrafficPolicy(s.policy);
   if (!positive(s.lease_bytes) || s.lease_bytes > 65536)
-    throw new Error("The server returned an unsupported traffic reservation size.");
+    throw new LocalizedError(m("theServerReturnedAnUnsupportedTrafficReservationSize"));
   return s;
 }
 export function validateAccountTrafficSnapshot(value: unknown): AccountTrafficSnapshot {
@@ -158,7 +157,7 @@ export function validateAccountTrafficSnapshot(value: unknown): AccountTrafficSn
     (s.account_budget_bytes !== null && !positive(s.account_budget_bytes)) ||
     !positive(s.effective_budget_bytes)
   )
-    throw new Error("The server returned an unsupported account traffic policy.");
+    throw new LocalizedError(m("theServerReturnedAnUnsupportedAccountTrafficPolicy"));
   return s;
 }
 

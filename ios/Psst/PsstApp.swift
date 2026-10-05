@@ -22,7 +22,7 @@ struct PsstApp: App {
                 .environment(historyStore)
                 .environment(guestStore)
                 .environment(guestTransfer)
-                .modifier(PsstAppearance())
+                .modifier(PsstAppearance()).modifier(PsstLanguage())
         }
     }
 }

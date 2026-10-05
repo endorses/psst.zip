@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import zip.psst.android.PsstApplication
+import zip.psst.android.R
 import zip.psst.android.data.refreshHistoryEntry
+import zip.psst.android.i18n.*
 import zip.psst.shared.model.UrlHelper
 import java.time.Instant
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -27,7 +29,7 @@ data class TransferDetailUiState(
     val expiresAt: String? = null,
     val shareUrl: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val offline: Boolean = false,
     val maxDownloads: Int = 0,
     val exhaustedFiles: Int = 0,
@@ -49,7 +51,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     _uiState.value =
                         TransferDetailUiState(
                             error =
-                                app.getString(
+                                message(
                                     zip.psst.android.R.string
                                         .ui_sign_in_to_the_account_that_created_this_transfer_to_view_its_det
                                 )
@@ -79,7 +81,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     _uiState.value =
                         TransferDetailUiState(
                             error =
-                                app.getString(
+                                message(
                                     zip.psst.android.R.string
                                         .ui_this_transfer_is_not_available_to_the_signed_in_account
                                 )
@@ -102,7 +104,7 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                                 totalSize = row.totalSize,
                                 expiresAt =
                                     row.expiresAt?.let { Instant.ofEpochMilli(it).toString() },
-                                error = app.getString(zip.psst.android.R.string.unavailable_key),
+                                error = message(zip.psst.android.R.string.unavailable_key),
                             )
                         return@launch
                     }
@@ -170,10 +172,12 @@ class TransferDetailViewModel(application: Application) : AndroidViewModel(appli
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: zip.psst.shared.api.TransferPolicyException) {
-                        _uiState.value = _uiState.value.copy(offline = false, error = e.message)
+                        _uiState.value =
+                            _uiState.value.copy(offline = false, error = failureText(e))
                         return@launch
                     } catch (e: zip.psst.shared.api.AuthenticationRequiredException) {
-                        _uiState.value = _uiState.value.copy(offline = false, error = e.message)
+                        _uiState.value =
+                            _uiState.value.copy(offline = false, error = failureText(e))
                         return@launch
                     } catch (_: Exception) {
                         _uiState.value = _uiState.value.copy(offline = true)

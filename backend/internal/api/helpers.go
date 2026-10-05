@@ -15,8 +15,41 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, ErrorResponse{Error: msg})
+// Stable presentation codes accompany diagnostics; clients never classify English prose.
+func writeError(w http.ResponseWriter, status int, msg string, codes ...string) {
+	code := defaultErrorCode(status)
+	if len(codes) > 0 {
+		code = codes[0]
+	}
+	w.Header().Set("X-Psst-Error-Code", code)
+	writeJSON(w, status, ErrorResponse{Error: msg, Code: code})
+}
+
+func defaultErrorCode(status int) string {
+	switch status {
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return "invalid_request"
+	case http.StatusUnauthorized:
+		return "authentication_required"
+	case http.StatusForbidden:
+		return "permission_denied"
+	case http.StatusNotFound:
+		return "resource_not_found"
+	case http.StatusConflict:
+		return "request_conflict"
+	case http.StatusGone:
+		return "resource_revoked"
+	case http.StatusRequestEntityTooLarge:
+		return "payload_too_large"
+	case http.StatusTooManyRequests:
+		return "rate_limited"
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return "request_timeout"
+	case http.StatusServiceUnavailable:
+		return "service_unavailable"
+	default:
+		return "internal_error"
+	}
 }
 
 // Empty bodies remain supported for legacy creation clients. Every nonempty

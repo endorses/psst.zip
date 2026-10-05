@@ -12,10 +12,11 @@ struct UploadProgress {
 }
 
 enum BufferedUpload {
-    static let maxFileBytes = 1024 * 1024 * 1024 * 1024
+    static let maxFileBytes = Int(LocalUploadFailure.maximumFileBytes)
     static func mimeType(for url: URL) -> String {
         UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
     }
+
     static func sizes(_ urls: [URL], limit: Int) throws -> [Int64] {
         guard !urls.isEmpty, urls.count <= 100 else { throw AccountError.request }
         return try urls.map { url in
@@ -26,11 +27,7 @@ enum BufferedUpload {
                 }
             }
             guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { throw AccountError.request }
-            guard size >= 0, size <= limit else {
-                throw NSError(
-                    domain: "Psst", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Each file must be no larger than %lld MiB."), Int64(limit / 1024 / 1024))])
-            }
+            try LocalUploadFailure.validateSize(Int64(size), limitBytes: Int64(limit))
             return Int64(size)
         }
     }
@@ -90,7 +87,9 @@ enum BufferedUpload {
                     name: url.lastPathComponent, size: size,
                     mimeType: mimeType(for: url),
                     blobId: URL(string: resourceURL)?.lastPathComponent ?? resourceURL,
-                    encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: encryptionID))
+                    encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: encryptionID
+                )
+            )
         }
         return files
     }

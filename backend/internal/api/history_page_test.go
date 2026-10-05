@@ -136,7 +136,7 @@ func TestAccountHistoryStrictQueriesScopesAndFailedCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 	failed := historyRequest(t, h, "", "owner-session", 503)
-	if len(failed) != 1 || failed["error"] != "history unavailable" {
+	if len(failed) != 2 || failed["code"] != "service_unavailable" || failed["error"] != "history unavailable" {
 		t.Fatal("partial history on query failure", failed)
 	}
 }

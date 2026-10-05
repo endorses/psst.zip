@@ -1,0 +1,2390 @@
+[
+  {
+    "key": "\n\nDescribe your concern here. Do not include link secrets, passwords or private files.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "\nHTTP sends login credentials without transport encryption. Use only on a trusted development network.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "\nResource type: %@\nResource ID: %@",
+    "arguments": ["%@", "%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "\nThis replaces the current account.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": " + %lld files",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": " · %lld files",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%@ Files are encrypted automatically.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "%@ Files are encrypted in chunks.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "%lld download attempts per file",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld download attempts remaining",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld file allowances used · No optional file-count limit",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files have reached their download limit. Receive only the available files?",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files remaining",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files saved in psst.zip Documents",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files selected",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld files · %@",
+    "arguments": ["%lld", "%@"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "%lld of %lld file allowances used",
+    "arguments": ["%lld", "%lld"],
+    "plural": "count",
+    "comment": "Second integer (maximum allowance) selects one/other; keep both integer arguments."
+  },
+  {
+    "key": "%lld received files total",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "A delivery confirmation could not be read. Its original job has been preserved; other confirmations can continue.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A local history scalar or checkpoint entry exceeds the recovery limit. Original history and keys are preserved; recovery is paused.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A previously saved file is missing. Choose Download missing files to receive it again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A saved inbox checkpoint has an invalid identity or unsafe path. Original history and keys are preserved; recovery is paused.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A saved-file checkpoint could not be checked. Existing files are preserved; retry when storage is available.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A selected file changed. Refresh the selection before sending again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A transfer traffic budget has been reached.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "A transfer traffic budget has been reached. Your saved files are safe. Retry after %@, or contact the server administrator.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "A transfer traffic budget has been reached. Your saved files are safe. Retry in the next billing cycle, or contact the server administrator.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Account budget per cycle",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Account budget remaining",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Account changed",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Account traffic has been recorded since %@.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Add files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Administrator accounts manage the server on the website. Sign in with a regular account to transfer files. You can still scan public links without signing in.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "All",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Allow camera access to scan a QR code.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Already saved files are safe. Check your connection and free storage, then retry. The link may have expired, been revoked, or reached its download limit; retry cannot restore an unavailable file.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Appearance",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Available files saved",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Back",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Back to newest",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Camera access help",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Camera settings",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Camera unavailable. Retry, or cancel and sign in manually.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Camera unavailable. Retry, paste a link, or choose a QR image.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Cancel",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Change password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Change server or account",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Changing password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Charged in this cycle",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Charges include active reservations and conservative charges after an interrupted accounting operation. Deleting files does not restore traffic allowance.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Check your current password. The new password must differ and contain 12–72 UTF-8 bytes.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Check your username and password, then try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Checked %@",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Checking receive capacity…",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Checking traffic…",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose QR image",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose an image containing one readable psst.zip QR code.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose an image containing one server login QR code.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose another filter or page to see more entries.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose the original files to create a new send link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose up to 100 readable files within this server’s per-file limit. Your previous selection is unchanged.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Choose your own password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Confirm password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connect account",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connect to this server",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connect to this server using its single-use login code.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connect to this server?",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connected",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connecting will replace the active account on this device.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Connection",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Conservative download charges",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Conservative upload charges",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Contact address copied.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Copy contact address",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Copy link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Copy report details",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not change your password. Reconnect and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not connect. Check the server address and network.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not connect. Check your network and server address, then retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not create a receive link. Sign in or reconnect, then retry creating it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not finish receiving",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not revoke this link. Its history entry has been kept. Reconnect or sign in again, then retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not revoke your session. Reconnect and retry signing out.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not save the shared title. Reconnect and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not save the transfer securely. Check device storage and try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not select these files. Check file access and the server’s file-size limit.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not send these files. Check the connection, file sizes and whether the receive link is still available. Select Send to retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not update local history. Free storage and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Could not update this page. Your last loaded page is still available. Reconnect to retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Create a new send link to share these files again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Create a receive link for someone to send you files, nearby or elsewhere.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Create another link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Create receive link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Create replacement link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Creating link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Current password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Dark",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Decrypting file list",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Delivery confirmations could not be saved or read. Saved files and existing confirmation records are preserved. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Details",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Details & help",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Deutsch",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Done",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download limit reached",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download limit reached. Already saved files remain available. Ask the sender for a new link for missing files.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download limit reached. Saved copies remain available.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download missing files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download missing files again? The server may no longer permit another download.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download started",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Downloaded",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Downloaded history could not be read. The previous page has been kept. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Downloading",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Downloads per file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Each file allocation uses one slot, including unfinished uploads. Deleting files does not restore slots.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Each file can be downloaded this many times. Starting a download uses an attempt, even if it is interrupted. Saved copies cannot be recalled.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Each file must be no larger than %@.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Locally validated per-file byte limit. Format the raw size in the current locale using binary units; never use remote exception prose."
+  },
+  {
+    "key": "Enable camera access for psst.zip in system Settings, then return here. You can also paste a link or choose a QR image.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Encrypted connection",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Encrypting",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "English",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Enter a server origin such as https://files.example.com, without a path.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Enter a whole number from 1 to 2147483647.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Expired",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Expires",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Export file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "File",
+    "arguments": [],
+    "plural": null,
+    "comment": "Safe generated fallback filename; do not translate real filenames."
+  },
+  {
+    "key": "File %lld",
+    "arguments": ["%lld"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "File count updating",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "File transfer",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files already saved remain available. Unfinished uploads stay in History so you can revoke them.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files are encrypted in chunks. The server sets the maximum file size.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files downloaded on this device will appear here, including while signed out.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files received",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files saved locally",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files sent",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Files → psst.zip → Received",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "First page",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "HTTP connection",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "HTTP sends login credentials without transport encryption. Use it only for local development on a trusted network; the server must explicitly allow it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "HTTP · Unencrypted connection",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Help & contact",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Hide password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Hide passwords",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "History",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "History filter",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "History source",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Home",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "How traffic is counted",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Idle",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Imported %lld records. Your original history is preserved.",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Inbox totals are updating.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Inspecting transfer",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Instance: %@",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Keep going",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Language",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Last updated",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Legacy item",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Light",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Limit downloads per file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Limit files received",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Link and details",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Link copied",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Link limits",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Load more",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local history contains malformed JSON or metadata. Original history and keys are preserved; recovery is paused.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local history could not be opened or imported. Existing records and keys have been preserved. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local history could not be read. The previous entries are preserved. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local history could not be refreshed. The previous entries are preserved.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local history is not ready. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local links could not be read. The previous page has been kept. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local received history could not be opened or imported. Existing files, history and keys have been preserved. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Local received history could not be read. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Maximum %lld files · Allowance use updating",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Maximum number of files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Name (optional)",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Name this receive link (optional)",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "New password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Next",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Next cycle",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No completed submissions on this page.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No email app could be opened. Copy the contact address and report details instead.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No entries on this page",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No items to share",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No optional download limit",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No optional download limit. Expiry and server limits still apply.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No optional file-count limit",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No optional file-count limit. Server limits still apply.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "No transfers yet",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Not enough free space to receive these files while keeping 256 MiB available. Free some storage and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Not saved",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Not signed in",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Observed downloads",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Observed uploads",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Offline — showing last known status",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "On this device",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Only the instance address, resource type and ID are included. Link secrets, encryption keys and file names are excluded. Nothing is sent automatically.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Open %@",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Open file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Page %lld",
+    "arguments": ["%lld"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Partially saved",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Password changed. Sign in with your new password to continue.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Password changed. Sign in with your new password.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Passwords do not match.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Paste a complete link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Paste server login code",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Pre-account history is preserved. Manage pre-account server resources from the administrator website.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Preparing files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Preparing local history",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Preparing saved confirmations and upload cleanup…",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Preparing upload",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Previous",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "QR camera preview",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Ready to download",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Ready to receive",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Ready to send",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive %lld files (%@)?",
+    "arguments": ["%lld", "%@"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Receive available files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive capacity could not be checked. Refresh and try again; your files are still selected.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive link creation stopped. Its record remains in History so you can revoke it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Receive links",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Received files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Refresh",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Refresh availability",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Refresh traffic usage",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Remaining file allowance updating",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Remove %@",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Remove from history",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Remove from history? Saved files remain and the sender’s link keeps working.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Rename",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Rename shared title",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Replace your temporary password before continuing.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Report abuse",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Report details",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Report details copied.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Reserved downloads",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Reserved uploads",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Resume receiving",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry camera",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry capacity check",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry confirmation",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry creating link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry delivery confirmations",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry pending work",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry revocation",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry shown files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Retry upload",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Return to History in the current account.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Return to send files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Return to sent files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Return to transfer",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Review and send the message in your email app. The server operator handles reports; this does not revoke the link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Revoke and delete",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Revoke and delete?",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Revoked",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Save",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Save %lld files (%@)?",
+    "arguments": ["%lld", "%@"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Save file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Save files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Save shown files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Save these files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saved",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saved file",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saved files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saved on this device",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saved. Delivery confirmation will retry when connected.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saving",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saving files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Saving stopped. Already saved files are safe. Retry saving to continue this receive link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan QR code",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan a psst.zip code or paste a link. Files are saved in Files → psst.zip → Received.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan a server login QR code. Transfer links belong in Scan.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan again",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Scan server login QR code",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Secure storage is unavailable. Check the app’s signing configuration.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Security",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Send encrypted files with a link or QR code, nearby or elsewhere.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Send files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Send files to the owner of this link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sent",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sent files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server & account",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server URL",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server login",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server operator",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server traffic accounting is unavailable. Your saved files are safe. Retry once the server administrator has resolved it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server transfer limits changed. Your saved files are safe. Retry to use the new limits.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Server-wide budgets, bandwidth, pauses and link limits also apply. These figures are not a reservation or a provider's bill.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Settings",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Share",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Share %@",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Share receive link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Shareable link QR code",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Shared title (optional)",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Show QR / Share link",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Show password",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Show passwords",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Shown files saved locally",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Shown to people using this link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Shown to people using this link. Leave empty to clear the shared title.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign in",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign in again",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign in again to continue.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign in to continue this task.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign out",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Sign-in failed. Check your credentials, connection, and server address. HTTPS is required unless development HTTP is enabled.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Signing in",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Some delivery confirmations are waiting for a connection. Saved files remain available. Retry when connected.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Some saved cleanup records could not be read. They are preserved; other cleanup will continue. Restore local storage or retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Some saved confirmation records could not be read. They are preserved; other confirmations will continue. Restore local storage or retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Some selected files could not be loaded. Nothing was sent. Share the files again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Some unfinished upload cleanup is still pending. Check the connection and device storage, then retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Stop",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Stop saving?",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Stop upload?",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Stopped",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Submission %lld",
+    "arguments": ["%lld"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "System",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Technical details",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Test connection",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The account changed. Return to your original account to continue.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The account changed. Share the files again to choose this account.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The budget counts downloads from the server.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The budget counts uploads and downloads.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The encrypted file list is invalid or exceeds this app’s limits.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The file list changed since this transfer was inspected. Already saved files are safe. Ask the sender for a new link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The original local history source changed during recovery. Restore the unchanged original and retry. Records and keys are preserved.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The selected files exceed the remaining receive capacity. Remove files or refresh and try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The server administrator has paused file transfers. Your saved files are safe. Retry after the administrator resumes transfers.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The server sets the maximum file size.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "The upload will stop when this extension closes. Unfinished uploads stay in History so you can revoke them.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Theme",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This device does not have the encryption key. You can manage this item, but open its full link on the device that created it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This device has no private receive key. Save the files on the device that created this link. You can still revoke the link from History.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This disables the link and removes its server files. Receive links stop accepting uploads. Copies already saved by anyone remain.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This is not a supported psst.zip link or server login code. Scan again or paste a complete link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This link expired or was revoked.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This link is no longer available. Ask the sender for a new link. Files already saved on this device are still available.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This login code could not be used. Generate a fresh code and check the connection.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This login code is invalid, expired, or already used. Generate a new code on the website.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This older receive link no longer accepts uploads. You can save existing files or create a new receive link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This receive key cannot be used for this submission.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This receive link cannot accept these files right now. Remove files or refresh and try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This receive link has an invalid identity.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This server does not support the requested private receive protocol or link limit. Ask its administrator to update it before creating this link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This server does not support this operation. Ask its administrator to update it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This submission uses an invalid or unsupported receive format.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This transfer exceeds the supported total size. Ask for smaller transfers.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This transfer is already stored with a different key. Its existing files and key were preserved.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This transfer is not ready or has expired. Ask the sender for an available download link.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This transfer will use device storage and network data. Continue only if you trust the sender.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This transfer’s key is unavailable. Scan or paste the original link again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "This uses device storage and network data. Only continue if you trust the senders.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "To connect with a QR code, sign in on the website and open Settings → Connected devices.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Too many files for the remaining receive capacity. Remove files or refresh and try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Too many sign-in attempts. Wait a moment and try again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Traffic accounting is unavailable. Transfers may be stopped until the administrator resolves it.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Traffic budget enforcement is off.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Traffic budget enforcement is on.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Traffic usage could not be refreshed. Previously shown figures may be out of date.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Transfer traffic",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Turn flashlight off",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Turn flashlight on",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Unfinished upload cleanup could not be read or saved. Existing cleanup credentials are preserved. Restore storage access and retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Unfinished upload cleanup will retry when connected.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Up to %@ per file.",
+    "arguments": ["%@"],
+    "plural": null,
+    "comment": "Keep technical identifiers and user-provided values unchanged."
+  },
+  {
+    "key": "Up to %lld download attempts per file",
+    "arguments": ["%lld"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Up to %lld files · %@ per file",
+    "arguments": ["%lld", "%@"],
+    "plural": "count",
+    "comment": "Whole message; first integer selects one/other."
+  },
+  {
+    "key": "Updating page",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Upload could not start. Sign in or check your connection, then retry.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Upload stopped",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Upload stopped. Its server record remains in History; retry or revoke it there.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Upload stopped. The server files were removed.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Uploading",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Usage",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Usage & traffic",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Use 12–72 UTF-8 bytes and a password different from your current one. Afterwards, sign in again with the new password.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Use a server address other people can reach. Your files are encrypted automatically before upload.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Use at most 200 characters without control characters for the shared title.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Use login code",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "User cancelled",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Username",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "View in History",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Waiting for files",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Write email",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Your other sessions will be signed out.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Your session expired. Sign in again.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "psst.zip",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "psst.zip abuse report",
+    "arguments": [],
+    "plural": null,
+    "comment": "Shared app and extension UI."
+  }
+]

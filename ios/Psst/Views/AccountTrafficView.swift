@@ -11,46 +11,46 @@ struct AccountTrafficView: View {
 
     var body: some View {
         Form {
-            Section("Transfer traffic") {
+            Section(L10n.text("Transfer traffic")) {
                 if let snapshot {
-                    Text(status(snapshot)).foregroundStyle(snapshot.state == "ready" ? PsstTheme.secondary : PsstTheme.warning)
-                    LabeledContent("Account budget per cycle", value: bytes(snapshot.usage.budgetBytes))
-                    LabeledContent("Charged in this cycle", value: bytes(snapshot.usage.chargedBytes))
-                    LabeledContent("Account budget remaining", value: bytes(snapshot.usage.remainingBytes))
+                    Text(L10n.text(status(snapshot))).foregroundStyle(snapshot.state == "ready" ? PsstTheme.secondary : PsstTheme.warning)
+                    LabeledContent(L10n.text("Account budget per cycle"), value: bytes(snapshot.usage.budgetBytes))
+                    LabeledContent(L10n.text("Charged in this cycle"), value: bytes(snapshot.usage.chargedBytes))
+                    LabeledContent(L10n.text("Account budget remaining"), value: bytes(snapshot.usage.remainingBytes))
                     if let end = TransferIncident.retryDate(snapshot.cycle.end) {
-                        LabeledContent("Next cycle", value: end.formatted(date: .abbreviated, time: .shortened))
+                        LabeledContent(L10n.text("Next cycle"), value: L10n.date(end, time: true))
                     }
-                    Text(snapshot.policy.basis == "outbound" ? "The budget counts downloads from the server." : "The budget counts uploads and downloads.")
+                    Text(L10n.text(snapshot.policy.basis == "outbound" ? "The budget counts downloads from the server." : "The budget counts uploads and downloads."))
                         .font(.footnote).foregroundStyle(PsstTheme.secondary)
-                    DisclosureGroup("How traffic is counted") {
-                        LabeledContent("Observed uploads", value: bytes(snapshot.usage.observedUploadedBytes))
-                        LabeledContent("Observed downloads", value: bytes(snapshot.usage.observedDownloadedBytes))
-                        LabeledContent("Reserved uploads", value: bytes(snapshot.usage.reservedUploadedBytes))
-                        LabeledContent("Reserved downloads", value: bytes(snapshot.usage.reservedDownloadedBytes))
-                        LabeledContent("Conservative upload charges", value: bytes(snapshot.usage.conservativeUploadedBytes))
-                        LabeledContent("Conservative download charges", value: bytes(snapshot.usage.conservativeDownloadedBytes))
+                    DisclosureGroup(L10n.text("How traffic is counted")) {
+                        LabeledContent(L10n.text("Observed uploads"), value: bytes(snapshot.usage.observedUploadedBytes))
+                        LabeledContent(L10n.text("Observed downloads"), value: bytes(snapshot.usage.observedDownloadedBytes))
+                        LabeledContent(L10n.text("Reserved uploads"), value: bytes(snapshot.usage.reservedUploadedBytes))
+                        LabeledContent(L10n.text("Reserved downloads"), value: bytes(snapshot.usage.reservedDownloadedBytes))
+                        LabeledContent(L10n.text("Conservative upload charges"), value: bytes(snapshot.usage.conservativeUploadedBytes))
+                        LabeledContent(L10n.text("Conservative download charges"), value: bytes(snapshot.usage.conservativeDownloadedBytes))
                         if let start = TransferIncident.retryDate(snapshot.recordingStartedAt) {
-                            Text("Account traffic has been recorded since \(start.formatted(date: .abbreviated, time: .shortened)).")
+                            Text(L10n.text(L10n.format("Account traffic has been recorded since %@.", L10n.date(start, time: true))))
                         }
-                        Text("Charges include active reservations and conservative charges after an interrupted accounting operation. Deleting files does not restore traffic allowance.")
+                        Text(L10n.text("Charges include active reservations and conservative charges after an interrupted accounting operation. Deleting files does not restore traffic allowance."))
                     }.font(.footnote)
-                    Text("Server-wide budgets, bandwidth, pauses and link limits also apply. These figures are not a reservation or a provider's bill.")
+                    Text(L10n.text("Server-wide budgets, bandwidth, pauses and link limits also apply. These figures are not a reservation or a provider's bill."))
                         .font(.footnote).foregroundStyle(PsstTheme.secondary)
                     if let checkedAt {
-                        Text("Checked \(checkedAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text(L10n.text(L10n.format("Checked %@", L10n.date(checkedAt, time: true))))
                             .font(.caption).foregroundStyle(PsstTheme.secondary)
                     }
                 }
                 if let error {
-                    Text(error).foregroundStyle(PsstTheme.warning)
+                    Text(L10n.text(error)).foregroundStyle(PsstTheme.warning)
                 }
-                Button(busy ? "Checking traffic…" : "Refresh traffic usage") {
+                Button(L10n.text(busy ? "Checking traffic…" : "Refresh traffic usage")) {
                     Task { await refresh() }
                 }.disabled(busy)
             }
         }
         .modifier(PsstStyle())
-        .navigationTitle("Transfer traffic").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(L10n.text("Transfer traffic")).navigationBarTitleDisplayMode(.inline)
         .task(id: config.session?.sessionID) {
             snapshot = nil
             checkedAt = nil
@@ -73,7 +73,7 @@ struct AccountTrafficView: View {
     }
 
     private func bytes(_ value: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+        L10n.bytes(value, binary: true)
     }
 
     @MainActor

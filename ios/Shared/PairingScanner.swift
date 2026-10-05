@@ -6,6 +6,7 @@ import Vision
 
 struct PairingScanner: UIViewControllerRepresentable {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.locale) private var locale
     var allowsPaste = false
     var isActive = true
     let onCode: (String) -> Void
@@ -14,6 +15,8 @@ struct PairingScanner: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ScannerController, context _: Context) {
+        _ = locale
+        controller.refreshLanguage()
         controller.setActive(isActive && scenePhase == .active)
     }
 
@@ -44,6 +47,9 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     private var configured = false
     private var camera: AVCaptureDevice?
     private let message = UILabel()
+    private var messageKey: String?
+    private var torchEnabled = false
+    private var retryKey = "Retry camera"
     private let torch = UIButton(type: .system)
     private let retry = UIButton(type: .system)
     private var observers: [NSObjectProtocol] = []
@@ -69,9 +75,9 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         message.adjustsFontForContentSizeCategory = true
         view.addSubview(message)
         torch.setImage(UIImage(systemName: "flashlight.off.fill"), for: .normal)
-        torch.accessibilityLabel = "Turn flashlight on"
+        torch.accessibilityLabel = L10n.text("Turn flashlight on")
         torch.addTarget(self, action: #selector(toggleTorch), for: .touchUpInside)
-        retry.setTitle("Retry camera", for: .normal)
+        retry.setTitle(L10n.text("Retry camera"), for: .normal)
         retry.addTarget(self, action: #selector(retryCamera), for: .touchUpInside)
         for button in [torch, retry] {
             button.tintColor = .white; button.backgroundColor = UIColor.black.withAlphaComponent(0.6)
@@ -109,7 +115,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         case .notDetermined:
             guard !permissionPending else { return }
             permissionPending = true
-            message.text = "Allow camera access to scan a QR code."
+            showMessage("Allow camera access to scan a QR code.")
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -140,7 +146,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
             DispatchQueue.main.async {
                 guard self.active, !self.delivered else { return }
                 if running {
-                    self.message.text = nil; self.torch.isHidden = !hasTorch; self.updateTorch(false)
+                    self.showMessage(nil); self.torch.isHidden = !hasTorch; self.updateTorch(false)
                 } else {
                     self.showError()
                 }
@@ -174,7 +180,8 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
 
     private func updateTorch(_ enabled: Bool) {
         torch.setImage(UIImage(systemName: enabled ? "flashlight.on.fill" : "flashlight.off.fill"), for: .normal)
-        torch.accessibilityLabel = enabled ? "Turn flashlight off" : "Turn flashlight on"
+        torchEnabled = enabled
+        torch.accessibilityLabel = L10n.text(enabled ? "Turn flashlight off" : "Turn flashlight on")
     }
 
     @objc private func toggleTorch() {
@@ -197,7 +204,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     @objc private func retryCamera() {
         guard active, !delivered else { return }
         if AVCaptureDevice.authorizationStatus(for: .video) == .denied || AVCaptureDevice.authorizationStatus(for: .video) == .restricted {
-            message.text = "Enable camera access for psst.zip in system Settings, then return here. You can also paste a link or choose a QR image."
+            showMessage("Enable camera access for psst.zip in system Settings, then return here. You can also paste a link or choose a QR image.")
             return
         }
         queue.async { [self] in turnTorchOff(); capture.stopRunning(); configured = false }
@@ -220,11 +227,23 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
 
     private func showError() {
         guard active, !delivered else { return }
-        message.text = allowsPaste ? "Camera unavailable. Retry, paste a link, or choose a QR image." : "Camera unavailable. Retry, or cancel and sign in manually."
+        showMessage(allowsPaste ? "Camera unavailable. Retry, paste a link, or choose a QR image." : "Camera unavailable. Retry, or cancel and sign in manually.")
         torch.isHidden = true
         let denied = AVCaptureDevice.authorizationStatus(for: .video) == .denied || AVCaptureDevice.authorizationStatus(for: .video) == .restricted
-        retry.setTitle(denied ? "Camera access help" : "Retry camera", for: .normal)
+        retryKey = denied ? "Camera access help" : "Retry camera"
+        retry.setTitle(L10n.text(retryKey), for: .normal)
         retry.isHidden = false
+    }
+
+    private func showMessage(_ key: String?) {
+        messageKey = key
+        message.text = key.map(L10n.text)
+    }
+
+    func refreshLanguage() {
+        message.text = messageKey.map(L10n.text)
+        retry.setTitle(L10n.text(retryKey), for: .normal)
+        updateTorch(torchEnabled)
     }
 
     func metadataOutput(_: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from _: AVCaptureConnection) {

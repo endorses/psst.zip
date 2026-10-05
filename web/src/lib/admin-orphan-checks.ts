@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { accountRequest } from "./account.ts";
 
 export interface OrphanChecks {
@@ -46,6 +47,6 @@ export async function loadOrphanChecks(signal?: AbortSignal): Promise<OrphanChec
     !optionalTime(value.oldest_pending_at) ||
     (value.scan_error_code !== undefined && value.scan_error_code !== "scan_failed")
   )
-    throw new Error("Invalid orphan-check response");
+    throw new LocalizedError(m("invalidOrphanCheckResponse"));
   return value;
 }

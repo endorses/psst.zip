@@ -1,3 +1,4 @@
+import { message as m, LocalizedError } from "./i18n/index.ts";
 import { base64urlDecode, base64urlEncode } from "./crypto.ts";
 
 type StoredKey = { publicKey: string; privateKey: string };
@@ -10,7 +11,7 @@ export function storeReceiveKey(
   pair: { publicKey: Uint8Array; privateKey: Uint8Array },
 ): void {
   if (pair.publicKey.length !== 32 || pair.privateKey.length !== 32)
-    throw new Error("Invalid receive key");
+    throw new LocalizedError(m("invalidReceiveKey"));
   const record: StoredKey = {
     publicKey: base64urlEncode(new Uint8Array(pair.publicKey).buffer),
     privateKey: base64urlEncode(new Uint8Array(pair.privateKey).buffer),
@@ -18,7 +19,7 @@ export function storeReceiveKey(
   const value = JSON.stringify(record);
   localStorage.setItem(keyName(owner, slot), value);
   if (localStorage.getItem(keyName(owner, slot)) !== value)
-    throw new Error("Could not save the receive key on this device.");
+    throw new LocalizedError(m("couldNotSaveTheReceiveKeyOnThisDevice"));
 }
 
 export function loadReceiveKey(
@@ -43,10 +44,10 @@ export function removeReceiveKey(owner: string, slot: string): void {
 }
 
 export function decodeReceivePublicKey(value: string): Uint8Array<ArrayBuffer> {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error("Invalid receive public key");
+  if (!/^[A-Za-z0-9_-]{43}$/.test(value)) throw new LocalizedError(m("invalidReceivePublicKey"));
   const key = new Uint8Array(base64urlDecode(value));
   if (key.length !== 32 || base64urlEncode(key.buffer) !== value)
-    throw new Error("Invalid receive public key");
+    throw new LocalizedError(m("invalidReceivePublicKey"));
   return key;
 }
 
@@ -55,7 +56,7 @@ export function parseReceiveFragment(fragment: string): {
   publicKey: Uint8Array<ArrayBuffer>;
 } {
   if (!fragment.startsWith("v2."))
-    throw new Error("This receive link uses an unsupported version. Ask its owner for a new link.");
+    throw new LocalizedError(m("thisReceiveLinkUsesAnUnsupportedVersionAskIts"));
   const encoded = fragment.slice(3);
   return { encoded, publicKey: decodeReceivePublicKey(encoded) };
 }

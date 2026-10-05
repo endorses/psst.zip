@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t } from "$lib/i18n";
+
   import type { TrafficStatus } from "$lib/traffic-policy";
   import { formatSize } from "$lib/upload-job.svelte";
   import { utcTime } from "$lib/admin";
@@ -7,58 +9,61 @@
 
 <div class="budget-usage">
   {#if snapshot.state === "unavailable"}<p class="error" role="alert">
-      Traffic accounting is unavailable. Enforced transfers stop until accounting recovers.
-      Administrative and recovery controls remain available.
+      {$t(m("trafficAccountingIsUnavailableEnforcedTransfersStopUntilAccounting"))}
     </p>
   {:else if snapshot.state === "exhausted"}<p class="notice" role="status">
-      A server or account traffic budget is exhausted. Account headroom alone cannot override the
-      server budget. Retry manually after {utcTime(snapshot.cycle.end)} or after an administrator changes
-      the budget.
+      {$t(m("aServerOrAccountTrafficBudgetIsExhaustedAccount"))}
+      {$t(utcTime(snapshot.cycle.end))}
+      {$t(m("orAfterAnAdministratorChangesTheBudget"))}
     </p>
   {:else}<p>
-      <strong>{enabled === false ? "Budget enforcement is off" : "Traffic budget available"}</strong
+      <strong
+        >{$t(enabled === false ? m("budgetEnforcementIsOff") : m("trafficBudgetAvailable"))}</strong
       >
     </p>{/if}
   <p>
-    <strong>{formatSize(snapshot.usage.charged_bytes)}</strong> charged ·
-    <strong>{formatSize(snapshot.usage.remaining_bytes)}</strong>
-    remaining of {formatSize(snapshot.usage.budget_bytes)}
+    <strong>{$t(formatSize(snapshot.usage.charged_bytes))}</strong>
+    {$t(m("charged"))} <strong>{$t(formatSize(snapshot.usage.remaining_bytes))}</strong>
+    {$t(m("remainingOf"))}
+    {$t(formatSize(snapshot.usage.budget_bytes))}
   </p>
   <progress
-    aria-label="Transfer traffic budget charged"
+    aria-label={$t(m("transferTrafficBudgetCharged"))}
     max={snapshot.usage.budget_bytes}
     value={Math.min(snapshot.usage.charged_bytes, snapshot.usage.budget_bytes)}
   ></progress>
   <p class="muted small">
-    Cycle {utcTime(snapshot.cycle.start)} to {utcTime(snapshot.cycle.end)} (end exclusive). Measured since
-    {utcTime(snapshot.recording_started_at)}; the initial cycle may be partial.
+    {$t(m("cycle"))}
+    {$t(utcTime(snapshot.cycle.start))}
+    {$t(m("to"))}
+    {$t(utcTime(snapshot.cycle.end))}
+    {$t(m("endExclusiveMeasuredSince"))}
+    {$t(utcTime(snapshot.recording_started_at))}{$t(m("theInitialCycleMayBePartial"))}
   </p>
   <details>
-    <summary>What is charged</summary>
+    <summary>{$t(m("whatIsCharged"))}</summary>
     <dl>
-      <dt>Observed upload / download</dt>
+      <dt>{$t(m("observedUploadDownload"))}</dt>
       <dd>
-        {formatSize(snapshot.usage.observed_uploaded_bytes)} / {formatSize(
-          snapshot.usage.observed_downloaded_bytes,
+        {$t(formatSize(snapshot.usage.observed_uploaded_bytes))} / {$t(
+          formatSize(snapshot.usage.observed_downloaded_bytes),
         )}
       </dd>
-      <dt>Reserved upload / download</dt>
+      <dt>{$t(m("reservedUploadDownload"))}</dt>
       <dd>
-        {formatSize(snapshot.usage.reserved_uploaded_bytes)} / {formatSize(
-          snapshot.usage.reserved_downloaded_bytes,
+        {$t(formatSize(snapshot.usage.reserved_uploaded_bytes))} / {$t(
+          formatSize(snapshot.usage.reserved_downloaded_bytes),
         )}
       </dd>
-      <dt>Conservative upload / download</dt>
+      <dt>{$t(m("conservativeUploadDownload"))}</dt>
       <dd>
-        {formatSize(snapshot.usage.conservative_uploaded_bytes)} / {formatSize(
-          snapshot.usage.conservative_downloaded_bytes,
+        {$t(formatSize(snapshot.usage.conservative_uploaded_bytes))} / {$t(
+          formatSize(snapshot.usage.conservative_downloaded_bytes),
         )}
       </dd>
     </dl>
     <p class="muted small">
-      Charged traffic includes observed bytes, active reservations and conservative charges retained
-      after interruptions. Only the selected traffic basis counts toward the budget. Deleting links
-      or files does not refund traffic. A new UTC cycle starts a new budget.
+      {$t(m("chargedTrafficIncludesObservedBytesActiveReservationsAndConservative"))}
     </p>
   </details>
 </div>

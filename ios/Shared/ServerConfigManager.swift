@@ -11,10 +11,13 @@ final class ServerConfigManager {
     private(set) var advertisedLimit: Int64?
     private(set) var limitOrigin: String?
     private var advertisedAbuseContact: String?
-    var abuseContactEmail: String? { limitOrigin == serverURL ? advertisedAbuseContact : nil }
+    var abuseContactEmail: String? {
+        limitOrigin == serverURL ? advertisedAbuseContact : nil
+    }
+
     var limitDescription: String {
         guard limitOrigin == serverURL, let advertisedLimit else { return "The server sets the maximum file size." }
-        return "Up to " + ByteCountFormatter.string(fromByteCount: advertisedLimit, countStyle: .binary) + " per file."
+        return L10n.format("Up to %@ per file.", L10n.bytes(advertisedLimit, binary: true))
     }
 
     func refreshLimit() async {
@@ -94,7 +97,7 @@ final class ServerConfigManager {
     }
 
     var indicator: String {
-        session.map { $0.username + " · " + (URL(string: $0.serverURL)?.host ?? $0.serverURL) } ?? String(localized: "Not signed in")
+        session.map { $0.username + " · " + (URL(string: $0.serverURL)?.host ?? $0.serverURL) } ?? L10n.message("Not signed in")
     }
 
     func reload() {

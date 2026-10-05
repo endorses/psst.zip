@@ -1,5 +1,7 @@
 package zip.psst.android.data
 
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 import zip.psst.shared.crypto.ChunkedFileCrypto
 import zip.psst.shared.crypto.ReceiveEnvelope
 import zip.psst.shared.model.FileMetadata
@@ -40,8 +42,8 @@ internal class PreparedGuestUpload(val files: List<PreparedGuestFile>) : Closeab
 
 internal fun <T> appendGuestSelection(previous: List<T>, added: List<T>): List<T> {
     val selection = (previous + added).distinct()
-    require(selection.size <= TransferLimits.MAX_FILES) {
-        "Select at most 100 files. Remove files before adding more."
+    uiRequire(selection.size <= TransferLimits.MAX_FILES) {
+        message(R.string.l_select_at_most_100_files_remove_files_before_adding_more_ac3446)
     }
     return selection
 }
@@ -53,21 +55,23 @@ internal suspend fun prepareGuestUpload(
     maxFileBytes: Long,
     availableSpace: () -> Long = { directory.usableSpace },
 ): PreparedGuestUpload {
-    require(sources.size in 1..TransferLimits.MAX_FILES) { "Select between 1 and 100 files" }
-    require(maxFileBytes in 1..ChunkedFileCrypto.MAX_FILE_SIZE) {
-        "This server cannot accept the selected files"
+    uiRequire(sources.size in 1..TransferLimits.MAX_FILES) {
+        message(R.string.l_select_between_1_and_100_files_808241)
+    }
+    uiRequire(maxFileBytes in 1..ChunkedFileCrypto.MAX_FILE_SIZE) {
+        message(R.string.l_this_server_cannot_accept_the_selected_files_e648fe)
     }
     val initialSpace = availableSpace()
-    require(initialSpace >= UPLOAD_DISK_RESERVE) {
-        "More local storage is needed to prepare these files. Free space and try again."
+    uiRequire(initialSpace >= UPLOAD_DISK_RESERVE) {
+        message(R.string.l_more_local_storage_is_needed_to_prepare_these_files_free_space_an_baec9b)
     }
     val budget = minOf(MAX_SPOOL_BYTES, initialSpace - UPLOAD_DISK_RESERVE)
     var totalPlain = 0L
     val files = mutableListOf<PreparedGuestFile>()
     try {
         for (source in sources) {
-            require(source.mimeType.length <= 255 && source.name.length <= 1024) {
-                "A selected document has invalid file details"
+            uiRequire(source.mimeType.length <= 255 && source.name.length <= 1024) {
+                message(R.string.ui_local_selected_invalid)
             }
             currentCoroutineContext().ensureActive()
             val snapshot = File.createTempFile("psst-guest-upload-", ".partial", directory)
@@ -80,21 +84,27 @@ internal suspend fun prepareGuestUpload(
                         currentCoroutineContext().ensureActive()
                         val count = input.read(buffer)
                         if (count < 0) break
-                        require(count > 0) {
-                            "The selected document provider stopped responding. Try selecting the file again."
+                        uiRequire(count > 0) {
+                            message(
+                                R.string
+                                    .l_the_selected_document_provider_stopped_responding_try_selecting_t_7d427a
+                            )
                         }
-                        require(
+                        uiRequire(
                             count.toLong() <= budget - totalPlain &&
                                 availableSpace() >= UPLOAD_DISK_RESERVE + count
                         ) {
-                            "More local storage is needed to prepare these files. Free space or remove files and try again."
+                            message(
+                                R.string
+                                    .l_more_local_storage_is_needed_to_prepare_these_files_free_space_or_650a7e
+                            )
                         }
-                        require(length <= ChunkedFileCrypto.MAX_FILE_SIZE - count) {
-                            "Selected file is too large"
+                        uiRequire(length <= ChunkedFileCrypto.MAX_FILE_SIZE - count) {
+                            message(R.string.l_selected_file_is_too_large_561cb5)
                         }
                         length += count
-                        require(length <= maxFileBytes) {
-                            "A selected file exceeds this server's per-file limit"
+                        uiRequire(length <= maxFileBytes) {
+                            message(R.string.ui_selected_limit_exceeded)
                         }
                         output.write(buffer, 0, count)
                         totalPlain += count
@@ -117,8 +127,8 @@ internal suspend fun validatePreparedGuestUpload(
     refresh: suspend () -> Pair<SlotAvailability, Long>,
 ): SlotAvailability {
     val (policy, maxFileBytes) = refresh()
-    require(prepared.files.all { it.snapshot.length() <= maxFileBytes }) {
-        "The server's file limit changed. Remove oversized files and try again; your files are still selected."
+    uiRequire(prepared.files.all { it.snapshot.length() <= maxFileBytes }) {
+        message(R.string.l_the_server_s_file_limit_changed_remove_oversized_files_and_try_ag_19f9f5)
     }
     policy.validateForSubmission(slotId, publicKey, prepared.files.size, prepared.totalWireBytes)
     // Blob IDs and encryption contexts have fixed lengths, so this matches the final wire size.
@@ -138,8 +148,8 @@ internal suspend fun validatePreparedGuestUpload(
         )
     val manifestBytes =
         Json.encodeToString(manifest).encodeToByteArray().size.toLong() + ReceiveEnvelope.MIN_BYTES
-    require(manifestBytes <= requireNotNull(policy.uploadCapacity).manifestReserveBytes) {
-        "The selected files' details exceed this server's manifest limit. Select fewer files and try again."
+    uiRequire(manifestBytes <= uiRequireNotNull(policy.uploadCapacity).manifestReserveBytes) {
+        message(R.string.l_the_selected_files_details_exceed_this_server_s_manifest_limit_se_05f591)
     }
     return policy
 }

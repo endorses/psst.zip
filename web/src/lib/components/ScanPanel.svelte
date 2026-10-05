@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { message as m, t, translate, type DisplayText } from "$lib/i18n";
+
   import { onMount, tick } from "svelte";
   import { beforeNavigate } from "$app/navigation";
   import ReceiveUploadPanel from "./ReceiveUploadPanel.svelte";
@@ -8,8 +10,8 @@
   let { authorize }: { authorize: () => Promise<boolean> } = $props();
   let video = $state<HTMLVideoElement>();
   let paste = $state(""),
-    error = $state(""),
-    status = $state(""),
+    error = $state<DisplayText>(""),
+    status = $state<DisplayText>(""),
     running = $state(false),
     busy = $state(false);
   let cameras = $state<MediaDeviceInfo[]>([]),
@@ -26,13 +28,12 @@
       uploadActive &&
       to?.url.pathname === "/" &&
       to.url.searchParams.get("view") !== "scan" &&
-      !confirm("Stop upload and leave? Selected files will be cleared.")
+      !confirm(translate(m("stopUploadAndLeaveSelectedFilesWillBeCleared")))
     )
       cancel();
   });
   async function scanAgain() {
-    if (uploadActive && !confirm("Stop upload and scan again? Selected files will be cleared."))
-      return;
+    if (uploadActive && !confirm(translate(m("stopUploadAndScanAgainSelectedFilesWillBe")))) return;
     await start();
   }
   let stream: MediaStream | undefined,
@@ -60,7 +61,7 @@
     const parsed = classifyScanInput(raw);
     if (!parsed) {
       target = null;
-      error = "This is not a supported psst.zip link or QR code.";
+      error = m("thisIsNotASupportedPsstZipLinkOr");
       return;
     }
     stop();
@@ -71,8 +72,8 @@
     target = parsed;
     status =
       parsed.kind === "pairing"
-        ? "This server login code belongs in the mobile app. Open account setup there to connect it."
-        : "Link ready. Review the destination before opening it.";
+        ? m("thisServerLoginCodeBelongsInTheMobileApp")
+        : m("linkReadyReviewTheDestinationBeforeOpeningIt");
   }
   async function start() {
     stop();
@@ -82,7 +83,7 @@
     if (!secure || disposed) return;
     const current = generation;
     busy = true;
-    status = "Requesting camera access…";
+    status = m("requestingCameraAccess");
     try {
       if (!(await authorize()) || disposed || current !== generation) return;
       const acquired = await navigator.mediaDevices.getUserMedia({
@@ -109,7 +110,7 @@
       camera = stream?.getVideoTracks()[0]?.getSettings().deviceId ?? camera;
       running = true;
       busy = false;
-      status = "Point the camera at a psst.zip QR code.";
+      status = m("pointTheCameraAtAPsstZipQRCode");
       void frame(current);
     } catch (cause) {
       if (disposed || current !== generation) return;
@@ -117,8 +118,8 @@
       status = "";
       error =
         cause instanceof DOMException && cause.name === "NotAllowedError"
-          ? "Camera access was denied. Allow it in your browser settings, or paste a link or choose a QR image."
-          : "The camera is unavailable or busy. Try another camera, paste a link, or choose a QR image.";
+          ? m("cameraAccessWasDeniedAllowItInYourBrowser")
+          : m("theCameraIsUnavailableOrBusyTryAnotherCamera");
     } finally {
       if (current === generation) busy = false;
     }
@@ -156,7 +157,7 @@
     target = null;
     error = "";
     busy = true;
-    status = "Reading QR image…";
+    status = m("readingQRImage");
     const current = generation;
     let bitmap: ImageBitmap | undefined;
     try {
@@ -184,8 +185,7 @@
       if (current === generation) await accept(result.data);
     } catch {
       if (!disposed && current === generation) {
-        error =
-          "Could not read a QR code. Choose a clear PNG or JPEG up to 10 MiB and 16 megapixels, or paste its link.";
+        error = m("couldNotReadAQRCodeChooseAClear");
         status = "";
       }
     } finally {
@@ -212,7 +212,7 @@
     function hide() {
       if (document.hidden) {
         stop();
-        status = "Camera paused. Choose Scan again when you return.";
+        status = m("cameraPausedChooseScanAgainWhenYouReturn");
       }
     }
     function leave() {
@@ -235,69 +235,67 @@
     keyString={invitation.hash.slice(1)}
     onactive={(active) => (uploadActive = active)}
   />
-  <button class="scan-again" onclick={scanAgain}><Icon name="QRCode" />Scan again</button>
+  <button class="scan-again" onclick={scanAgain}><Icon name="QRCode" />{$t(m("scanAgain"))}</button>
 {:else if target}
   <div class="destination">
     {#if target.kind === "pairing"}
-      <h1>Server login code</h1>
-      <p role="status">{status}</p>
+      <h1>{$t(m("serverLoginCode"))}</h1>
+      <p role="status">{$t(status)}</p>
     {:else}
-      <h1>{target.kind === "download" ? "Download link" : "Receive link"}</h1>
-      <p class="server">{target.origin}</p>
+      <h1>{$t(target.kind === "download" ? m("downloadLink") : m("receiveLink"))}</h1>
+      <p class="server">{$t(target.origin)}</p>
       {#if target.origin !== location.origin}<p class="muted">
-          This link opens a different server. Your account on this server stays unchanged.
+          {$t(m("thisLinkOpensADifferentServerYourAccountOn"))}
         </p>{/if}
       <button class="primary" onclick={open}
-        >Open {target.kind === "download" ? "download" : "receive"} link<Icon
+        >{$t(target.kind === "download" ? m("openDownloadLink") : m("openReceiveLink"))}<Icon
           name="Arrow"
         /></button
       >
     {/if}
-    <button class="scan-again" onclick={scanAgain}><Icon name="QRCode" />Scan again</button>
+    <button class="scan-again" onclick={scanAgain}
+      ><Icon name="QRCode" />{$t(m("scanAgain"))}</button
+    >
   </div>
 {:else}
-  <h1>Scan QR code</h1>
-  <p class="muted">
-    Open a file link from another device. QR images and camera frames stay in your browser.
-  </p>
+  <h1>{$t(m("scanQRCode"))}</h1>
+  <p class="muted">{$t(m("openAFileLinkFromAnotherDeviceQRImages"))}</p>
   <div class="camera-panel">
-    <video bind:this={video} muted playsinline aria-label="QR camera preview"
+    <video bind:this={video} muted playsinline aria-label={$t(m("qrCameraPreview"))}
       ><track kind="captions" /></video
     >
     {#if !running}<div class="camera-placeholder">
-        <Icon name="QRCode" size={48} /><span>{busy ? "Preparing scanner…" : "Camera preview"}</span
+        <Icon name="QRCode" size={48} /><span
+          >{$t(busy ? m("preparingScanner") : m("cameraPreview"))}</span
         >
       </div>{/if}
   </div>
-  {#if !secure}<p class="notice">
-      Camera scanning needs HTTPS or localhost. On a plain HTTP LAN address, paste a link or choose
-      a QR image below.
-    </p>{/if}
-  {#if cameras.length > 1}<label for="scan-camera">Camera</label><select
+  {#if !secure}<p class="notice">{$t(m("cameraScanningNeedsHTTPSOrLocalhostOnAPlain"))}</p>{/if}
+  {#if cameras.length > 1}<label for="scan-camera">{$t(m("camera"))}</label><select
       id="scan-camera"
       bind:value={camera}
       onchange={() => void start()}
       disabled={busy}
       >{#each cameras as device, index}<option value={device.deviceId}
-          >{device.label || `Camera ${index + 1}`}</option
+          >{$t(device.label || m("cameraValue", { arg0: index + 1 }))}</option
         >{/each}</select
     >{/if}
   <div class="scan-actions">
     {#if secure}<button onclick={() => (running ? stop() : void start())} disabled={busy}
-        ><Icon name="QRCode" />{running ? "Stop camera" : "Scan again"}</button
+        ><Icon name="QRCode" />{$t(running ? m("stopCamera") : m("scanAgain"))}</button
       >{/if}
     <label class="image-picker"
-      ><Icon name="Upload" />Choose QR image<input
+      ><Icon name="Upload" />{$t(m("chooseQRImage"))}<input
         type="file"
         accept="image/png,image/jpeg"
         onchange={image}
         disabled={busy}
-        aria-label="Choose QR image"
+        aria-label={$t(m("chooseQRImage"))}
       /></label
     >
   </div>
-  {#if status}<p role="status">{status}</p>{/if}
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if status}<p role="status">{$t(status)}</p>{/if}
+  {#if error}<p class="error" role="alert">{$t(error)}</p>{/if}
 
   <form
     onsubmit={(event) => {
@@ -305,16 +303,18 @@
       void inspectPaste();
     }}
   >
-    <label for="scan-link">Paste link</label><textarea
+    <label for="scan-link">{$t(m("pasteLink"))}</label><textarea
       id="scan-link"
       bind:value={paste}
       maxlength="4096"
       rows="3"
       autocomplete="off"
       spellcheck="false"
-      placeholder="Paste a psst.zip link"
+      placeholder={$t(m("pasteAPsstZipLink"))}
     ></textarea>
-    <button type="submit" disabled={!paste.trim() || busy}>Review link<Icon name="Arrow" /></button>
+    <button type="submit" disabled={!paste.trim() || busy}
+      >{$t(m("reviewLink"))}<Icon name="Arrow" /></button
+    >
   </form>
 {/if}
 

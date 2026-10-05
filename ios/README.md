@@ -2,6 +2,58 @@
 
 The app and share extension are generated from `project.yml` using XcodeGen. Display branding is psst.zip; existing bundle identifiers, App Group, protocol identifiers and storage keys remain compatible.
 
+## Localization
+
+Settings offers System, English and Deutsch independently of the account. The
+App Group preference is shared with the extension. `Shared/Localization.swift`
+resolves the first supported system language and regional formatting, with an
+English fallback. SwiftUI and UIKit redraw presentation without replacing view
+identity, restarting camera capture or changing transfer state. Permission
+prompts use the operating system's language through each target's localized
+`InfoPlist.strings`.
+
+Add source keys and translations to `Shared/en.lproj` and `Shared/de.lproj`.
+Whole-message counts belong in `Localizable.stringsdict`; preserve placeholder
+types and ordering, and update `Shared/localization-inventory.json` with the
+message purpose and arguments. Register additional languages in `AppLanguage`,
+`project.yml`, the catalog checker, and both targets' permission resources.
+Use the repository German glossary, keep psst.zip unchanged, and preserve
+user-entered titles, filenames, usernames, addresses and protocol identifiers.
+Present those values verbatim. Retained failures use stable keys or deferred
+typed arguments so switching language also updates visible errors. Never match
+arbitrary server prose to determine behavior or show it as a translation.
+
+From the repository root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_pages.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_abuse_report.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_guest_store.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_receive_checkpoints.py
+```
+
+The portable tests compile actual Foundation presentation/storage helpers with
+explicit platform boundary stubs in an offline Swift Docker container. They
+validate catalog lookup, plurals, regional formatting, preference sharing,
+deferred failures and unchanged user data; they do not build SwiftUI, UIKit or
+the Kotlin framework bridge. Temporary test workspaces are removed afterward.
+
+- [ ] On macOS, regenerate and build the app and embedded extension with the
+      commands below, then run XCTest with `-testLanguage en -testRegion US` and
+      separately `-testLanguage de -testRegion DE`. Confirm both bundles include
+      their native string/plural and permission resources.
+- [ ] In both appearances on a simulator/device, verify enlarged German text,
+      VoiceOver names/announcements, camera permission and torch controls, and
+      app/extension language agreement. Switch language with selected files,
+      active/failed transfers, login drafts and receipt retries; verify unchanged
+      sessions, navigation, checkpoint identities and saved-file actions.
+
+These native checks remain pending in the Linux workspace because Xcode and
+iOS devices are unavailable. Source and portable checks are separate evidence.
+
 ## Building and testing on macOS
 
 Use macOS with Xcode 16 or later, XcodeGen, and a JDK supported by the repository Gradle wrapper. Set `JAVA_HOME`; the shared Gradle project also configures Android, so install its SDK and set `ANDROID_HOME`.

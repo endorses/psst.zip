@@ -45,22 +45,28 @@ class PairingCode(
     companion object {
         @Throws(Exception::class)
         fun parse(raw: String): PairingCode {
-            require(raw.length <= 4096) { "This is not a server login QR code" }
+            clientRequire(raw.length <= 4096, "pairing_invalid") {
+                "This is not a server login QR code"
+            }
             val pairing =
                 try {
                     Json.decodeFromString<PairingCode>(raw)
                 } catch (_: Exception) {
-                    throw IllegalArgumentException("This is not a server login QR code")
+                    throw ClientFailureException(
+                        "This is not a server login QR code",
+                        "pairing_invalid",
+                    )
                 }
-            require(
+            clientRequire(
                 pairing.type == "psst-pairing" &&
                     pairing.version == 1 &&
-                    pairing.code.matches(Regex("[A-Za-z0-9_-]{32,128}"))
+                    pairing.code.matches(Regex("[A-Za-z0-9_-]{32,128}")),
+                "pairing_invalid",
             ) {
                 "This is not a supported server login QR code"
             }
             val normalizedOrigin = ServerOrigin.normalize(pairing.serverUrl)
-            require(normalizedOrigin != null) {
+            clientRequire(normalizedOrigin != null, "pairing_server_invalid") {
                 "The pairing code contains an invalid server address"
             }
             return PairingCode(pairing.type, pairing.version, normalizedOrigin, pairing.code)
@@ -99,7 +105,18 @@ class AuthApi(
                     setBody(mapOf("current_password" to currentPassword, "password" to password))
                 }
             if (response.status.value == 401) throw AuthenticationRequiredException()
-            require(response.status.value == 204) {
+            response.checkAccountRestriction()
+            clientRequire(
+                response.status.value == 204,
+                response.headers["X-Psst-Error-Code"]?.takeIf {
+                    it in setOf("incorrect_password", "invalid_password", "password_reused")
+                }
+                    ?: when (response.status.value) {
+                        403 -> "incorrect_password"
+                        400 -> "invalid_password"
+                        else -> "password_change_failed"
+                    },
+            ) {
                 when (response.status.value) {
                     403 -> "The current password is incorrect."
                     400 -> "Use a different password containing 12–72 UTF-8 bytes."
@@ -162,7 +179,27 @@ class AuthApi(
                     setBody(values)
                 }
             response.checkAccountRestriction()
-            check(response.status.value in 200..299) {
+            clientCheck(
+                response.status.value in 200..299,
+                response.headers["X-Psst-Error-Code"]?.takeIf {
+                    it in
+                        setOf(
+                            "https_required",
+                            "same_origin_required",
+                            "invalid_credentials",
+                            "pairing_invalid",
+                            "pairing_already_connected",
+                        )
+                }
+                    ?: when (response.status.value) {
+                        400,
+                        401,
+                        403 -> if (path == "login") "invalid_credentials" else "pairing_invalid"
+                        429 -> "authentication_rate_limited"
+                        404 -> "authentication_unsupported"
+                        else -> "authentication_unavailable"
+                    },
+            ) {
                 when (response.status.value) {
                     400,
                     401,
@@ -177,7 +214,9 @@ class AuthApi(
                 }
             }
             response.body<AuthSession>().also {
-                require(it.token.isNotBlank()) { "The server returned an invalid session" }
+                clientRequire(it.token.isNotBlank(), "invalid_session") {
+                    "The server returned an invalid session"
+                }
             }
         }
 
@@ -189,7 +228,7 @@ class AuthApi(
                     expectSuccess = false
                     token?.let { bearerAuth(it) }
                 }
-            check(response.status.value in listOf(204, 401)) {
+            clientCheck(response.status.value in listOf(204, 401), "signout_failed") {
                 "Could not sign out on the server. Try again when connected."
             }
         }

@@ -24,22 +24,21 @@ struct TransferDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 if let vm = sendViewModel {
-                    if let title = vm.record?.sharedTitle { Text(title).font(.title2.bold()) }
+                    if let title = vm.record?.sharedTitle {
+                        Text(verbatim: title).font(.title2.bold())
+                    }
                     sendStatus(vm)
-                    Text(
-                        String(
-                            format: String(localized: "%lld files · %@"), Int64(vm.fileURLs.count), ByteCountFormatter.string(fromByteCount: vm.selectionSize, countStyle: .file))
-                    ).font(.caption)
+                    Text(L10n.text(L10n.format("%lld files · %@", Int64(vm.fileURLs.count), L10n.bytes(vm.selectionSize)))).font(.caption)
                     if vm.record?.linkActive != false, let url = vm.shareURL {
                         LinkCard(url: url)
                     }
-                    DisclosureGroup("Files") {
+                    DisclosureGroup(L10n.text("Files")) {
                         ForEach(Array(vm.fileNames.enumerated()), id: \.offset) { _, name in
                             Text(verbatim: name).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
                         }
                     }
                     if vm.maxDownloads > 0 {
-                        Text("Up to \(vm.maxDownloads) download attempts per file").font(.footnote)
+                        Text(L10n.text(L10n.format("Up to %lld download attempts per file", Int64(vm.maxDownloads)))).font(.footnote)
                     }
                     if vm.record?.linkActive != false, let expiry = vm.expiresAt {
                         expiryLabel(expiry)
@@ -48,116 +47,134 @@ struct TransferDetailView: View {
                 if let vm = receiveViewModel {
                     receiveStatus(vm)
                     if let record = vm.record {
-                        Text(record.safeDisplayTitle).font(.headline)
+                        Text(verbatim: record.safeDisplayTitle).font(.headline)
                         if !record.canDecryptInbox {
-                            Text("This device has no private receive key. Save the files on the device that created this link. You can still revoke the link from History.").font(
-                                .footnote)
+                            Text(L10n.text("This device has no private receive key. Save the files on the device that created this link. You can still revoke the link from History.")).font(
+                                .footnote
+                            )
                         }
                         if record.receiveProtocol != 2 {
-                            Text("This older receive link no longer accepts uploads. You can save existing files or create a new receive link.").font(.footnote)
+                            Text(L10n.text("This older receive link no longer accepts uploads. You can save existing files or create a new receive link.")).font(.footnote)
                         }
                         if let limit = record.maxFiles, limit > 0 {
                             if let used = record.reservedFiles {
-                                Text("\(max(0, Int64(limit) - used)) files remaining").font(.footnote)
+                                Text(L10n.text(L10n.format("%lld files remaining", Int64(max(0, Int64(limit) - used))))).font(.footnote)
                             } else {
-                                Text("Remaining file allowance updating").font(.footnote)
+                                Text(L10n.text("Remaining file allowance updating")).font(.footnote)
                             }
                         }
                         HStack {
-                            Button("Rename") {
+                            Button(L10n.text("Rename")) {
                                 titleDraft = record.sharedTitle ?? record.customTitle ?? ""
                                 renaming = true
                             }
                             Spacer()
                             if vm.uploadURL != nil, (vm.totalReceivedFiles ?? Int64(vm.pageFileCount)) > 0 {
-                                Button("Show QR / Share link") { showingLink = true }
+                                Button(L10n.text("Show QR / Share link")) { showingLink = true }
                             }
                         }
-                        if let titleError { Text(titleError).foregroundStyle(PsstTheme.error) }
-                        DisclosureGroup("Details") {
-                            Text(record.id).font(.caption).textSelection(.enabled)
-                            if let policy = record.linkPolicySummary { Text(policy).font(.caption) }
-                            Text(record.serverURL ?? "").font(.caption)
+                        if let titleError {
+                            Text(L10n.text(titleError)).foregroundStyle(PsstTheme.error)
+                        }
+                        DisclosureGroup(L10n.text("Details")) {
+                            Text(verbatim: record.id).font(.caption).textSelection(.enabled)
+                            if let policy = record.linkPolicySummary {
+                                Text(L10n.text(policy)).font(.caption)
+                            }
+                            Text(verbatim: record.serverURL ?? "").font(.caption)
                         }
                     }
-                    if let url = vm.uploadURL, (vm.totalReceivedFiles ?? Int64(vm.pageFileCount)) == 0 { LinkCard(url: url) }
+                    if let url = vm.uploadURL, (vm.totalReceivedFiles ?? Int64(vm.pageFileCount)) == 0 {
+                        LinkCard(url: url)
+                    }
                     if let consent = vm.pendingConsent {
-                        Text("Save \(consent.fileCount) files (" + ByteCountFormatter.string(fromByteCount: consent.total, countStyle: .binary) + ")?").font(.headline)
-                        Text(vm.record?.serverURL ?? "").font(.caption)
-                        Text("This uses device storage and network data. Only continue if you trust the senders.").font(.footnote)
-                        Button("Save these files") { vm.confirmSaving() }.buttonStyle(PrimaryAction())
-                        Button("Cancel") { vm.cancelSaving() }
+                        Text(L10n.text(L10n.format("Save %lld files (%@)?", Int64(consent.fileCount), L10n.bytes(consent.total, binary: true)))).font(.headline)
+                        Text(verbatim: vm.record?.serverURL ?? "").font(.caption)
+                        Text(L10n.text("This uses device storage and network data. Only continue if you trust the senders.")).font(.footnote)
+                        Button(L10n.text("Save these files")) { vm.confirmSaving() }.buttonStyle(PrimaryAction())
+                        Button(L10n.text("Cancel")) { vm.cancelSaving() }
                     }
                     if vm.canSave, !vm.isSaving, vm.pendingConsent == nil {
                         Button(LocalizedStringKey(vm.savingError == nil ? "Save shown files" : "Retry shown files")) { vm.save() }.buttonStyle(PrimaryAction()).disabled(
-                            vm.refreshing)
+                            vm.refreshing
+                        )
                     }
                     if vm.pageWindow.loaded {
                         VStack(spacing: 8) {
-                            Text("Received files").font(.headline)
+                            Text(L10n.text("Received files")).font(.headline)
                             ForEach(Array(vm.arrivals.enumerated()), id: \.element.transferId) { index, arrival in
                                 HStack {
                                     Image(systemName: "tray.and.arrow.down")
-                                    Text("Submission \(index + 1)")
+                                    Text(L10n.text(L10n.format("Submission %lld", Int64(index + 1))))
                                     Spacer()
-                                    Text("\(arrival.fileCount) files").foregroundStyle(PsstTheme.secondary)
+                                    Text(L10n.text(L10n.format("%lld files", Int64(arrival.fileCount)))).foregroundStyle(PsstTheme.secondary)
                                 }.font(.subheadline)
                             }
                             if let total = vm.totalReceivedFiles {
-                                Text("\(total) received files total").font(.caption).foregroundStyle(PsstTheme.secondary)
+                                Text(L10n.text(L10n.format("%lld received files total", Int64(total)))).font(.caption).foregroundStyle(PsstTheme.secondary)
                             } else {
-                                Text("Inbox totals are updating.").font(.caption).foregroundStyle(PsstTheme.secondary)
+                                Text(L10n.text("Inbox totals are updating.")).font(.caption).foregroundStyle(PsstTheme.secondary)
                             }
                             if vm.arrivals.isEmpty {
-                                Text("No completed submissions on this page.").font(.footnote)
+                                Text(L10n.text("No completed submissions on this page.")).font(.footnote)
                             }
-                            if vm.refreshing { ProgressView("Updating page") }
+                            if vm.refreshing {
+                                ProgressView(L10n.text("Updating page"))
+                            }
                         }
                     }
                     if let message = vm.savingError {
-                        Text(message).foregroundStyle(PsstTheme.error)
+                        Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
                     }
                     if let message = vm.connectionError {
-                        Text(message).foregroundStyle(PsstTheme.warning)
+                        Text(L10n.text(message)).foregroundStyle(PsstTheme.warning)
                     }
                     if let updated = vm.lastUpdated {
                         HStack {
-                            Text("Last updated")
+                            Text(L10n.text("Last updated"))
                             Text(updated, style: .relative)
                         }.font(.caption).foregroundStyle(PsstTheme.secondary)
                     }
-                    Button("Refresh") { Task { _ = await vm.refresh() } }.disabled(vm.isSaving || vm.refreshing || vm.pendingConsent != nil)
+                    Button(L10n.text("Refresh")) { Task { _ = await vm.refresh() } }.disabled(vm.isSaving || vm.refreshing || vm.pendingConsent != nil)
                     if !vm.receivedFileURLs.isEmpty {
-                        Text(String(format: String(localized: "%lld files saved in psst.zip Documents"), Int64(vm.receivedFileURLs.count))).font(.headline)
+                        Text(L10n.text(L10n.format("%lld files saved in psst.zip Documents", Int64(vm.receivedFileURLs.count)))).font(.headline)
                         ForEach(vm.receivedFileURLs, id: \.absoluteString) { url in
                             HStack {
                                 Button {
                                     preview = url
                                 } label: {
                                     Label(GuestFiles.displayName(url.lastPathComponent), systemImage: "doc").lineLimit(2).frame(minHeight: 44)
-                                }.accessibilityHint("Open file")
+                                }.accessibilityHint(L10n.text("Open file"))
                                 Spacer()
-                                ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Export file")
+                                ShareLink(item: url) { Image(systemName: "square.and.arrow.up").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel(L10n.text("Export file"))
                             }
                         }
                     }
                     if vm.pageWindow.canGoBack || vm.pageWindow.nextCursor != nil {
                         HStack {
-                            if vm.pageWindow.canGoBack { Button("Previous") { Task { await vm.previousPage() } }.disabled(!vm.canGoPrevious) }
+                            if vm.pageWindow.canGoBack {
+                                Button(L10n.text("Previous")) { Task { await vm.previousPage() } }.disabled(!vm.canGoPrevious)
+                            }
                             Spacer()
-                            Text("Page \(vm.pageWindow.number)").font(.caption)
+                            Text(L10n.text(L10n.format("Page %lld", Int64(vm.pageWindow.number)))).font(.caption)
                             Spacer()
-                            if vm.pageWindow.nextCursor != nil { Button("Next") { Task { await vm.nextPage() } }.disabled(!vm.canGoNext) }
+                            if vm.pageWindow.nextCursor != nil {
+                                Button(L10n.text("Next")) { Task { await vm.nextPage() } }.disabled(!vm.canGoNext)
+                            }
                         }
-                        if vm.pageWindow.number > 1 { Button("First page") { Task { await vm.firstPage() } }.disabled(!vm.canBrowse) }
+                        if vm.pageWindow.number > 1 {
+                            Button(L10n.text("First page")) { Task { await vm.firstPage() } }.disabled(!vm.canBrowse)
+                        }
                     }
-                    if let onCreateAnother { Button("Create another link", action: onCreateAnother).disabled(active) }
+                    if let onCreateAnother {
+                        Button(L10n.text("Create another link"), action: onCreateAnother).disabled(active)
+                    }
                     if vm.record?.linkActive != false, let expiry = vm.expiresAt {
                         expiryLabel(expiry)
                     }
                 }
                 if active {
-                    Button("Stop", role: .destructive) {
+                    Button(L10n.text("Stop"), role: .destructive) {
                         leaveAfterStop = false
                         stopping = true
                     }.frame(minHeight: 44)
@@ -170,7 +187,7 @@ struct TransferDetailView: View {
         .toolbar {
             if !rootInbox {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Back") {
+                    Button(L10n.text("Back")) {
                         if active {
                             leaveAfterStop = true
                             stopping = true
@@ -183,14 +200,18 @@ struct TransferDetailView: View {
         }
         .sheet(isPresented: $showingLink) {
             NavigationStack {
-                ScrollView { if let url = receiveViewModel?.uploadURL { LinkCard(url: url).padding() } }.navigationTitle("Share receive link").toolbar {
-                    Button("Done") { showingLink = false }
+                ScrollView {
+                    if let url = receiveViewModel?.uploadURL {
+                        LinkCard(url: url).padding()
+                    }
+                }.navigationTitle(L10n.text("Share receive link")).toolbar {
+                    Button(L10n.text("Done")) { showingLink = false }
                 }
             }
         }
-        .alert("Rename shared title", isPresented: $renaming) {
-            TextField("Shared title (optional)", text: $titleDraft)
-            Button("Save") {
+        .alert(L10n.text("Rename shared title"), isPresented: $renaming) {
+            TextField(L10n.text("Shared title (optional)"), text: $titleDraft)
+            Button(L10n.text("Save")) {
                 Task {
                     do {
                         try await receiveViewModel?.rename(titleDraft)
@@ -198,21 +219,21 @@ struct TransferDetailView: View {
                     } catch { titleError = (error as? SharedLinkTitle.Failure)?.localizedDescription ?? "Could not save the shared title. Reconnect and retry." }
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.text("Cancel"), role: .cancel) {}
         } message: {
-            Text("Shown to people using this link.")
+            Text(L10n.text("Shown to people using this link."))
         }
         .confirmationDialog(LocalizedStringKey(sendViewModel?.active == true ? "Stop upload?" : "Stop saving?"), isPresented: $stopping, titleVisibility: .visible) {
-            Button("Stop", role: .destructive) {
+            Button(L10n.text("Stop"), role: .destructive) {
                 sendViewModel?.stop()
                 receiveViewModel?.cancelSaving()
                 if leaveAfterStop {
                     dismiss()
                 }
             }
-            Button("Keep going", role: .cancel) {}
+            Button(L10n.text("Keep going"), role: .cancel) {}
         } message: {
-            Text("Files already saved remain available. Unfinished uploads stay in History so you can revoke them.")
+            Text(L10n.text("Files already saved remain available. Unfinished uploads stay in History so you can revoke them."))
         }
         .task(id: "\(scenePhase)-\(receiveViewModel?.record?.localID ?? "")-\(receiveViewModel?.record?.receiveProtocol ?? 0)") {
             if scenePhase == .active {
@@ -232,50 +253,50 @@ struct TransferDetailView: View {
 
     @ViewBuilder private func sendStatus(_ vm: SendViewModel) -> some View {
         switch vm.state {
-        case .idle: Text("Ready to send")
+        case .idle: Text(L10n.text("Ready to send"))
         case .encrypting:
-            ProgressView("Preparing files")
+            ProgressView(L10n.text("Preparing files"))
             Text(verbatim: vm.currentFile).font(.caption)
         case let .uploading(value):
-            ProgressView("Uploading", value: value)
+            ProgressView(L10n.text("Uploading"), value: value)
             if let progress = vm.progress {
                 Text(verbatim: progress.name).font(.caption)
-                Text(
-                    ByteCountFormatter.string(fromByteCount: progress.sent, countStyle: .file) + " / " + ByteCountFormatter.string(fromByteCount: progress.total, countStyle: .file)
-                ).font(.caption)
+                Text(L10n.text(L10n.bytes(progress.sent) + " / " + L10n.bytes(progress.total))).font(.caption)
             }
         case .complete:
             if vm.record?.state == .exhausted {
-                Label("Download limit reached", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.secondary)
-                Text("Create a new send link to share these files again.").font(.footnote)
-                if let onCreateReplacement { Button("Create replacement link", action: onCreateReplacement).buttonStyle(PrimaryAction()) }
+                Label(L10n.text("Download limit reached"), systemImage: "checkmark.circle").foregroundStyle(PsstTheme.secondary)
+                Text(L10n.text("Create a new send link to share these files again.")).font(.footnote)
+                if let onCreateReplacement {
+                    Button(L10n.text("Create replacement link"), action: onCreateReplacement).buttonStyle(PrimaryAction())
+                }
             } else {
-                Label(vm.record?.statusText ?? "Ready to download", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+                Label(L10n.text(vm.record?.statusText ?? "Ready to download"), systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
             }
         case let .failed(message):
-            Text(message).foregroundStyle(PsstTheme.error)
-            Button("Retry upload") { vm.start() }.buttonStyle(PrimaryAction())
+            Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
+            Button(L10n.text("Retry upload")) { vm.start() }.buttonStyle(PrimaryAction())
         }
     }
 
     @ViewBuilder private func receiveStatus(_ vm: ReceiveViewModel) -> some View {
         switch vm.state {
-        case .idle, .creating: ProgressView("Creating link")
-        case .waiting: Text(vm.record?.statusText ?? String(localized: "Waiting for files")).font(.headline)
-        case .downloading: ProgressView("Saving files")  // Download byte progress is not exposed by the shared API.
-        case .decrypting: ProgressView("Preparing files")
-        case .complete: Label("Shown files saved locally", systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+        case .idle, .creating: ProgressView(L10n.text("Creating link"))
+        case .waiting: Text(L10n.text(vm.record?.statusText ?? L10n.message("Waiting for files"))).font(.headline)
+        case .downloading: ProgressView(L10n.text("Saving files")) // Download byte progress is not exposed by the shared API.
+        case .decrypting: ProgressView(L10n.text("Preparing files"))
+        case .complete: Label(L10n.text("Shown files saved locally"), systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
         case let .failed(message):
-            Text(message).foregroundStyle(PsstTheme.error)
+            Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
             if vm.record == nil {
-                Button("Retry creating link") { Task { await vm.createDropSlot() } }
+                Button(L10n.text("Retry creating link")) { Task { await vm.createDropSlot() } }
             }
         }
     }
 
     private func expiryLabel(_ date: Date) -> some View {
         HStack {
-            Text("Expires")
+            Text(L10n.text("Expires"))
             Text(date, style: .relative)
         }.font(.caption).foregroundStyle(PsstTheme.secondary)
     }
