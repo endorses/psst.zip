@@ -21,6 +21,24 @@ xcodebuild -project Psst.xcodeproj -scheme Psst \
 
 Select an installed simulator name from `xcrun simctl list devices available` if necessary. Format Swift with `swiftformat ios --swiftversion 5.9` from the repository root before committing subsequent changes. The generated project is ignored; edit `project.yml` and regenerate it.
 
+CI now defines a separate **Native iOS app, extension and XCTest** job on
+`macos-15`, selecting Xcode 26.0.1 explicitly and using the repository Gradle
+wrapper with JDK 25. The shared Kotlin 2.3.21 version lists Xcode 26.0 in its
+[compatibility table](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html);
+the chosen Xcode and iOS simulator runtime are listed in the
+[runner image manifest](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md).
+The job regenerates the project, builds the main app, checks its embedded share
+extension exists, then runs the complete native test target, including CryptoKit
+interoperability and persistence tests. It retains the `.xcresult` bundle for
+seven days. A missing toolchain or simulator fails the job rather than selecting
+an unverified fallback. This job can also be started through **Run workflow**.
+
+The job definition has not executed in this Linux workspace, which has no Xcode
+or configured Git remote. Preserve the unchecked native gates below until a
+successful run supplies actual build/test results. An unsigned simulator build
+does not establish physical-device signing, Keychain/App Group provisioning,
+camera behavior or share-extension memory limits.
+
 The pre-build script builds the shared Kotlin framework, including the authenticated `ApiClient` initializer. The same shared Swift send implementation, theme, login form, scanner and strings are included in the app and extension.
 
 For physical-device builds, select the same development team for both targets and register `group.zip.psst.ios`. Both targets must be provisioned for the shared Keychain access group `$(AppIdentifierPrefix)zip.psst.ios.shared`. The `SharedKeychainGroup` Info.plist value must resolve to the same prefix as that entitlement. Sessions and new resource keys/deletion capabilities use `AfterFirstUnlockThisDeviceOnly` Keychain items; bearer tokens are never copied to App Group preferences. A Keychain signing mismatch is an error, not a fallback to unprotected storage. Camera permission is needed for QR pairing in either target.

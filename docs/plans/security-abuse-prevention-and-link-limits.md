@@ -1494,3 +1494,29 @@ and iOS guest storage/queues still need bounded local reads and writes.
 - [ ] Complete native iOS/physical Android, publicly trusted ACME/operator
       deployment and the other full-plan gates. This checkpoint is not a
       release-completion decision.
+
+### Native iOS verification automation, 2026-10-05
+
+- [x] Add a separate native macOS CI job rather than treating Linux source or
+      portable-provider checks as an iOS build. Select the listed Xcode 26.0.1
+      toolchain on `macos-15`, with JDK 25 and the committed Gradle wrapper.
+      Regenerate the Xcode project, build the real Kotlin framework/app/share
+      extension, and check the extension is embedded in the application product.
+      Select an available iPhone simulator from the intended iOS 26.0 runtime
+      and run the complete native XCTest target without automatic test retries.
+      Retain the native `.xcresult` bundle for seven days and permit manual
+      workflow dispatch. No account credentials or private production data are
+      supplied to this job.
+- [x] Validate the workflow with official actionlint 1.7.12: no findings.
+      Independently parse YAML and check embedded shell/Python syntax. Run
+      `python3 ios/scripts/check_sources.py`: source/configuration checks pass,
+      explicitly not a Swift build. Prettier formatting and diff checks pass;
+      the private actionlint module/build caches are removed. Document the
+      exact toolchain references, native job and evidence boundary in
+      `ios/README.md`.
+- [ ] Execute the native macOS job and inspect actual app/extension build and
+      XCTest results. The current host is Linux, `xcodebuild` and XcodeGen are
+      absent, and this checkout has no configured Git remote; defining a CI job
+      cannot establish a native pass. Keep the original native/platform gates
+      open. Physical-device signing, Keychain/App Group provisioning, cameras,
+      interruption behavior and extension memory still need their own checks.
