@@ -115,7 +115,7 @@ changing SDK setup does not establish native build success.
 - [x] Separate reconciliation batch-contract validation from the production
       two-second time budget. Retain the 64-row, restart, busy-resource and cursor
       assertions, plus production-entry-point cancellation/deadline checks.
-- [ ] Verify backend lint and the complete race suite locally, and repeat the
+- [x] Verify backend lint and the complete race suite locally, and repeat the
       affected reconciliation checks.
 - [ ] Verify the backend GitHub job after publication.
 
@@ -132,7 +132,17 @@ The workflow now uses `-race -p 2 -timeout 30m`. Local lint passed using CI's Go
 detection. A prepared-statement experiment did not improve the count-retention
 test because the SQLite driver reparses SQL on execution; that experiment was
 removed, preserving all 10,010 update mutations and the 100,010-event global
-retention test. Complete local-suite and GitHub verification remain pending.
+retention test. The complete local race suite passed on Go 1.27.1 with the same
+`-race -p 2 -timeout 30m` flags (API package: 379 seconds; database package: 527
+seconds). GitHub verification on CI's Go 1.26.8 remains pending.
+
+The fixes are published in `d1e4268`; GitHub run `37423344109` passed repository
+security and Android/shared checks. Its backend race job is still pending.
+Broader CI remains blocked by a separate native iOS compilation failure:
+`CryptoProvider.ios.kt` cannot resolve `CCCryptorGCMOneshotEncrypt` and
+`CCCryptorGCMOneshotDecrypt`. Per the project's unexpected-issues instruction,
+that separate failure was recorded without changing mobile cryptography in this
+backend timing repair.
 
 ### Release artifacts and image-based installation
 
