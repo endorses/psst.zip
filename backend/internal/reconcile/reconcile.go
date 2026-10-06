@@ -105,6 +105,12 @@ func Sweep(ctx context.Context, q *database.Queries, fs store.FileStore) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	return sweepBatch(ctx, q, fs)
+}
+
+// sweepBatch enforces per-pass row and cursor bounds. Its caller supplies the
+// deadline independently of those bounds.
+func sweepBatch(ctx context.Context, q *database.Queries, fs store.FileStore) error {
 	batch, err := q.NextReconciliationBatch(ctx)
 	if err != nil {
 		_ = q.MarkReconciliationScanFailure(ctx)

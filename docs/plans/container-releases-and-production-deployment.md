@@ -107,6 +107,33 @@ zero errors and warnings. Workflow YAML and both explicit mobile SDK requests
 were checked. Native builds/tests remain pending until the GitHub jobs run;
 changing SDK setup does not establish native build success.
 
+### Backend race-test timing repairs
+
+- [x] Give the complete CI race suite an explicit bounded package timeout and
+      limit simultaneous package runs to reduce database-heavy contention.
+      Preserve every test, real migrations, and retention boundary workloads.
+- [x] Separate reconciliation batch-contract validation from the production
+      two-second time budget. Retain the 64-row, restart, busy-resource and cursor
+      assertions, plus production-entry-point cancellation/deadline checks.
+- [ ] Verify backend lint and the complete race suite locally, and repeat the
+      affected reconciliation checks.
+- [ ] Verify the backend GitHub job after publication.
+
+Diagnosis: the initial GitHub API and database test binaries each exceeded Go's
+default ten-minute package limit. The named tests had only just started and were
+running migrations. The two large database history retention checks passed but
+took 119 and 63 seconds. The reconciliation contract test also assumed all 64
+rows would finish within the production two-second sweep budget under race
+instrumentation. These repairs do not change production time limits, schema
+migrations, retention thresholds, or the mobile protocol.
+
+The workflow now uses `-race -p 2 -timeout 30m`. Local lint passed using CI's Go
+1.26.8 toolchain. The affected reconciliation checks passed three times with race
+detection. A prepared-statement experiment did not improve the count-retention
+test because the SQLite driver reparses SQL on execution; that experiment was
+removed, preserving all 10,010 update mutations and the 100,010-event global
+retention test. Complete local-suite and GitHub verification remain pending.
+
 ### Release artifacts and image-based installation
 
 - [ ] Add `deploy/compose.release.yml` using `image:` references for both services,

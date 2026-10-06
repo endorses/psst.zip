@@ -270,6 +270,10 @@ func TestCleanupIntentAndRetiredPayloadsAreNotRecreated(t *testing.T) {
 }
 func TestSweepBoundedCursorRestartAndBusyFairness(t *testing.T) {
 	f := setup(t)
+	// Verify row bounds, restart and lock fairness independently of the production
+	// wall-clock budget. The cancellation tests below still exercise Sweep.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	for i := 0; i < 70; i++ {
 		transfer := "available"
 		if i == 0 {
@@ -283,7 +287,7 @@ func TestSweepBoundedCursorRestartAndBusyFairness(t *testing.T) {
 	}
 	defer unlock()
 	counted := &failingStore{FileStore: f.disk}
-	if err = Sweep(context.Background(), f.q, counted); err != nil {
+	if err = sweepBatch(ctx, f.q, counted); err != nil {
 		t.Fatal(err)
 	}
 	if counted.inspected != 63 {
@@ -301,7 +305,7 @@ func TestSweepBoundedCursorRestartAndBusyFairness(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.q = database.NewQueries(f.db)
-	if err = Sweep(context.Background(), f.q, counted); err != nil {
+	if err = sweepBatch(ctx, f.q, counted); err != nil {
 		t.Fatal(err)
 	}
 	if counted.inspected != 69 {
@@ -312,10 +316,10 @@ func TestSweepBoundedCursorRestartAndBusyFairness(t *testing.T) {
 		t.Fatal(status, err)
 	}
 	unlock()
-	if err = Sweep(context.Background(), f.q, counted); err != nil {
+	if err = sweepBatch(ctx, f.q, counted); err != nil {
 		t.Fatal(err)
 	}
-	if err = Sweep(context.Background(), f.q, counted); err != nil {
+	if err = sweepBatch(ctx, f.q, counted); err != nil {
 		t.Fatal(err)
 	}
 	status, err = f.q.ReconciliationStatus(context.Background())

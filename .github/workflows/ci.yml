@@ -56,7 +56,10 @@ jobs:
           working-directory: backend
 
       - name: Test
-        run: go test -v -count=1 -race ./...
+        # Real SQLite migrations and retention-boundary workloads are expensive
+        # under race instrumentation. Keep all checks and give each package a
+        # bounded budget with less contention between database-heavy packages.
+        run: go test -v -count=1 -race -p 2 -timeout 30m ./...
 
       - name: Build
         run: go build -o server ./cmd/server
