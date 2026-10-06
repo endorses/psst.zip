@@ -1,0 +1,182 @@
+# Candidate verification only. This workflow cannot publish packages or releases,
+# attest artifacts, access production, or advertise a deployment-ready bundle.
+name: Release candidate verification
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    name: Validate version tag and main ancestry
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require an exact version tag reachable from main
+        id: tag
+        run: |
+          python3 tools/prepare_release_candidate.py validate-tag \
+            --root . --ref "$GITHUB_REF" --event-sha "$GITHUB_SHA" \
+            --github-output "$GITHUB_OUTPUT"
+
+  ci:
+    name: Exact tagged commit CI
+    needs: validate-tag
+    # A same-repository reusable workflow comes from the caller's tagged commit.
+    # All five existing jobs must succeed; an old successful main run is insufficient.
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  resolve-bases:
+    name: Resolve official multi-platform base indexes
+    needs: [validate-tag, ci]
+    runs-on: ubuntu-24.04
+    outputs:
+      golang_image: ${{ steps.bases.outputs.golang_image }}
+      alpine_image: ${{ steps.bases.outputs.alpine_image }}
+      node_image: ${{ steps.bases.outputs.node_image }}
+      caddy_image: ${{ steps.bases.outputs.caddy_image }}
+      buildkit_image: ${{ steps.bases.outputs.buildkit_image }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # verified upstream v4
+        with:
+          version: v0.37.1
+      - name: Resolve once and verify immutable index architecture coverage
+        id: bases
+        env:
+          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+        run: |
+          python3 tools/prepare_release_candidate.py resolve-bases \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --output "$RUNNER_TEMP/candidate-bases.json" \
+            --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-bases.json
+          if-no-files-found: error
+          retention-days: 1
+
+  build-and-smoke:
+    name: Native candidate pair (${{ matrix.arch }})
+    needs: [validate-tag, ci, resolve-bases]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-records
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # verified upstream v4
+        with:
+          version: v0.37.1
+          driver-opts: image=${{ needs.resolve-bases.outputs.buildkit_image }}
+      - name: Build locally using the shared immutable bases
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+          GO_IMAGE: ${{ needs.resolve-bases.outputs.golang_image }}
+          RUNTIME_IMAGE: ${{ needs.resolve-bases.outputs.alpine_image }}
+          NODE_IMAGE: ${{ needs.resolve-bases.outputs.node_image }}
+          CADDY_IMAGE: ${{ needs.resolve-bases.outputs.caddy_image }}
+          BUILDX_METADATA_PROVENANCE: max
+        run: |
+          # Docker --load cannot retain registry attestations. These are local
+          # candidate builds with metadata, not authenticated release provenance.
+          docker buildx build --platform "$PLATFORM" --load --provenance=false \
+            --metadata-file "$RUNNER_TEMP/candidate-records/backend-build.json" \
+            --tag "psst-candidate-backend:$ARCH" \
+            --build-arg "GO_IMAGE=$GO_IMAGE" --build-arg "RUNTIME_IMAGE=$RUNTIME_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file backend/Dockerfile backend
+          docker buildx build --platform "$PLATFORM" --load --provenance=false \
+            --metadata-file "$RUNNER_TEMP/candidate-records/web-build.json" \
+            --tag "psst-candidate-web:$ARCH" \
+            --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file web/Dockerfile .
+      - name: Verify the native pair in a disposable stack
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+        run: |
+          python3 tools/verify_release_images.py \
+            --backend-image "psst-candidate-backend:$ARCH" \
+            --web-image "psst-candidate-web:$ARCH" \
+            --platform "$PLATFORM" --version "$CANDIDATE_VERSION" \
+            --revision "$SOURCE_COMMIT"
+      - name: Record actual toolchains and tested image pair
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker image save --output "$RUNNER_TEMP/candidate-pair.tar" \
+            "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH"
+          python3 tools/prepare_release_candidate.py record-build \
+            --candidate "$RUNNER_TEMP/candidate-records/candidate-bases.json" \
+            --platform "$PLATFORM" \
+            --backend-metadata "$RUNNER_TEMP/candidate-records/backend-build.json" \
+            --web-metadata "$RUNNER_TEMP/candidate-records/web-build.json" \
+            --archive "$RUNNER_TEMP/candidate-pair.tar" \
+            --output "$RUNNER_TEMP/candidate-records/candidate-result.json"
+          # Images stay local. Metadata records the tested pair; no unreviewed
+          # candidate image archive is distributed before runtime license review.
+          printf '%s\n' \
+            'Native candidate smoke passed. No registry or release was published.' \
+            'Metadata is not authenticated provenance or deployment approval.' \
+            'Updater, vulnerability approval, runtime licenses and hosted source links remain release gates.' \
+            >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove only local candidate image artifacts
+        if: always()
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          rm -f -- "$RUNNER_TEMP/candidate-pair.tar"
+          for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH"; do
+            if docker image inspect "$image" >/dev/null 2>&1; then
+              docker image rm "$image"
+            fi
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-records-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-records
+          if-no-files-found: error
+          retention-days: 1

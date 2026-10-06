@@ -6,6 +6,34 @@ are a separate manual action. The release publishing and updater tooling are
 being implemented; these templates alone do not establish a verified release. No
 tagged container release has been published through this release process yet.
 
+## Release candidate checks
+
+The current `.github/workflows/release.yml` verifies candidates without publishing
+images or a GitHub Release. It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
+the tag's full source commit to match the triggering event and be reachable from
+`main`, and calls the reusable CI workflow from that same commit. All five CI
+jobs remain required, including native iOS and Android/shared checks.
+
+After CI succeeds, it resolves the application base-image indexes and BuildKit
+builder once and checks their AMD64 and ARM64 coverage. Separate native runners
+build and smoke-test the paired images for each architecture, recording the
+pinned bases and actual toolchains. Only candidate metadata is uploaded as
+temporary Actions artifacts. Image archives remain private to each runner and
+are removed after checking. These outputs are not authenticated release manifests
+or installable deployment bundles.
+
+Docker's local `--load` exporter can report a configuration digest in its
+`containerimage.digest` field. Candidate records retain that raw metadata, but
+those values must not be used as registry manifest or index digests. The future
+publisher must resolve and verify the digests actually stored in the registry.
+
+The workflow has read-only repository permissions and no registry publishing,
+attestation or production credentials. Main-branch pushes still run CI only.
+Publication will be added after its provenance, version-reservation, dependency
+review and source/license gates are implemented; production deployment will
+remain a separate manual operation. Tag ancestry checks do not configure branch
+or tag protection; those repository settings are a separate maintainer task.
+
 ## Compose requirements and image selection
 
 Use Docker Compose **2.24.4 or later**. The external gateway overlay uses Compose's

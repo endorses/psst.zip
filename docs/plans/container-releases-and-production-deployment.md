@@ -445,7 +445,9 @@ released bundles. Preparation does not modify a production installation.
 Application dependency inventories and full available license/notice texts are
 included in both images and the bundle. CI checks inventory freshness against
 locked dependencies, and checks named operator environment files as sensitive
-inputs. Hosted legal/source discovery, both native clients' notices and selected
+inputs. Generated notices normalize whitespace without changing legal words;
+inventories retain upstream and distributed-text hashes. Hosted legal/source
+discovery, both native clients' notices and selected
 runtime/base distribution obligations still require the separate licensing gate.
 
 GoReleaser no longer competes for image publication. Its existing root-level
@@ -462,6 +464,11 @@ and persistence of the account/session after removing bootstrap credentials and
 recreating the backend. All fixture containers, volumes, networks and temporary
 files were removed. Dependency notice checks and formatting passed.
 
+This checkpoint is committed as `6c384e4`. The complete-history security scan
+passed. Building a bundle twice from that committed tree produced identical
+bytes with 42 allowlisted members and the exact source commit; both temporary
+archives were removed. The two local smoke image tags were removed as well.
+
 ARM64 execution, public registry pulls, provenance, public ACME renewal, complete
 license/source-offer review, update/rollback fault injection, and live migration
 remain pending. The previous successful GitHub run covers its recorded source
@@ -469,13 +476,21 @@ commit; the new CI steps are not claimed to have run on GitHub yet.
 
 ### CI and publication
 
-- [ ] Refactor `.github/workflows/ci.yml` as needed so a release workflow can gate
+- [x] Refactor `.github/workflows/ci.yml` as needed so a release workflow can gate
       publication on tests for the exact tagged commit, not an unrelated previous
       successful run on `main`.
-- [ ] Preserve backend race tests, web checks/unit/browser tests, Android build
+- [x] Preserve backend race tests, web checks/unit/browser tests, Android build
       and shared tests, and native iOS app, embedded share extension, and XCTest
       checks. Protocol changes require equivalent Android and iOS work and
       interoperability checks before release.
+- [x] Implement a read-only release-candidate workflow for strict version tags
+      reachable from `main`, gated by the reusable CI at the exact tagged commit.
+      Resolve immutable application and BuildKit bases once, verify both platform
+      descriptors, and define native AMD64/ARM64 paired image builds and smoke
+      checks. Upload metadata only while distribution gates remain unfinished.
+- [ ] Run the new reusable CI and complete candidate workflow on GitHub, including
+      the native ARM64 image pair. Local structural checks do not establish that
+      this new workflow passed on hosted runners.
 - [ ] Add `.github/workflows/release.yml` for reviewed `vMAJOR.MINOR.PATCH` tags
       reachable from the protected release branch. Build both architectures with
       Buildx and publish the paired images only after the release gates pass.
@@ -500,6 +515,30 @@ commit; the new CI steps are not claimed to have run on GitHub yet.
       Copy the already built release rather than independently rebuilding it;
       record and verify destination digests. A mirror failure must not invalidate
       an otherwise complete GHCR release or silently select a different build.
+
+### Read-only release candidate checkpoint
+
+The release workflow currently verifies candidates; it does not publish images,
+releases, attestations or deployment bundles. It has `contents: read` permissions
+and no registry, production or signing credentials. All Actions in CI and the
+candidate workflow are pinned to verified upstream commits, and checkouts disable
+persisted credentials. All five source CI jobs and their commands were preserved.
+
+Strict tag/event/ancestry checks precede reusable CI. The two native build jobs
+are gated on all CI jobs and share resolved index digests for Go, Alpine, Node,
+Caddy and BuildKit. Build records include actual toolchain output and local image
+metadata, explicitly separated from future registry manifest/index digests.
+Candidate metadata has one-day artifact retention; image archives remain local
+and are removed together with candidate tags. No candidate is advertised as
+deployment-ready. Branch/tag protection remains an unperformed repository setup.
+
+Verification: eight candidate boundary regressions passed. Real resolution of all
+five official multi-platform indexes passed, including immutable reinspection and
+AMD64/ARM64 descriptor coverage. A disposable scratch image confirmed actual
+Buildx `--load` metadata fields and was cleaned up. The source CI refactor passed
+parsed-YAML preservation checks; both workflows passed actionlint v1.7.12 and
+formatting. All 33 release/candidate/Compose tests passed in 3.09s. Complete hosted CI,
+the native candidate matrix, publication and production deployment remain pending.
 
 ### VPS update tooling
 
