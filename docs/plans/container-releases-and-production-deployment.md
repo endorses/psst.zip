@@ -77,10 +77,10 @@ requirements rather than introducing a competing restore procedure.
       with disposable regression fixtures including partially staged changes.
 
 Local verification: 16 disposable hook/checker regression tests passed with the
-CI-pinned Gitleaks v8.30.1 build. Staged and complete-history scans are required
-again after the license rewrite. Repository-security CI is configured; its first
-GitHub execution remains pending until publication. Native Android/iOS jobs are
-preserved and have not been rerun for these repository-tooling changes.
+CI-pinned Gitleaks v8.30.1 build. Staged and complete-history scans passed again
+after the license rewrite. The first GitHub repository-security job passed.
+Existing web and native SDK setup failures were discovered during that initial
+run and are tracked below.
 
 Publication setup: the public repository is `endorses/psst.zip`. The project
 license history was rewritten to AGPL-3.0-only before publication. All 81
@@ -88,6 +88,24 @@ pre-publication commits were compared: only the project license and project READ
 license declaration changed; authors, dates, messages, parent structure, and all
 other file contents/modes were preserved. The complete original history and
 old/new commit mapping are retained privately outside the published repository.
+
+### Initial CI repairs
+
+- [x] Configure both Android and iOS SDK setup to request `platform-tools`
+      explicitly, avoiding the action's obsolete `tools` default. Pin the verified
+      SDK setup action revision.
+- [x] Pass complete fixture key pairs to independent WebCrypto HPKE tests so they
+      work on Node 22 without exporting non-extractable private keys. Preserve the
+      RFC9180, shared mobile interoperability fixtures, and authentication checks.
+- [ ] Verify the repaired web job on GitHub, including its browser checks.
+- [ ] Verify Android assembly/shared tests and native iOS app, embedded share
+      extension, and XCTest checks on GitHub after the SDK setup fix.
+
+Local repair verification: all 110 web integration tests passed on Node 22.23.3;
+all six receive-crypto tests also passed on Node 26.10.0. `npm run check` reported
+zero errors and warnings. Workflow YAML and both explicit mobile SDK requests
+were checked. Native builds/tests remain pending until the GitHub jobs run;
+changing SDK setup does not establish native build success.
 
 ### Release artifacts and image-based installation
 

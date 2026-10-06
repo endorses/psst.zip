@@ -115,7 +115,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Assemble and test
         run: ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
@@ -132,7 +134,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
       - uses: gradle/actions/setup-gradle@v4
       - name: Prepare build tools
         run: |

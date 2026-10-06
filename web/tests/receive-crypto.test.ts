@@ -61,13 +61,17 @@ test("RFC9180 exact-suite Base vector decrypts with noble and independent WebCry
   assert.deepEqual([rfc.mode, rfc.kem_id, rfc.kdf_id, rfc.aead_id], [0, 32, 1, 2]);
   for (const provider of [HPKE, noble]) {
     const suite = cipherSuite(provider);
+    // Supplying both keys avoids exporting non-extractable private keys on runtimes
+    // such as Node 22, which do not provide subtle.getPublicKey().
+    const recipient = {
+      privateKey: await suite.DeserializePrivateKey(bytes(rfc.skRm)),
+      publicKey: await suite.DeserializePublicKey(bytes(rfc.pkRm)),
+    };
     assert.deepEqual(
-      await suite.Open(
-        await suite.DeserializePrivateKey(bytes(rfc.skRm)),
-        bytes(rfc.enc),
-        bytes(rfc.ct),
-        { info: bytes(rfc.info), aad: bytes(rfc.aad) },
-      ),
+      await suite.Open(recipient, bytes(rfc.enc), bytes(rfc.ct), {
+        info: bytes(rfc.info),
+        aad: bytes(rfc.aad),
+      }),
       bytes(rfc.pt),
     );
   }
@@ -90,13 +94,12 @@ test("production empty-AAD fixture has exact context and decrypts on WebCrypto",
   assert.equal(Buffer.from(info).toString("hex"), fixture.context_info);
   assert.deepEqual(await openSubmissionKey(privateKey, publicKey, slot, child, wrapped), key);
   const native = cipherSuite(HPKE);
+  const recipient = {
+    privateKey: await native.DeserializePrivateKey(privateKey),
+    publicKey: await native.DeserializePublicKey(publicKey),
+  };
   assert.deepEqual(
-    await native.Open(
-      await native.DeserializePrivateKey(privateKey),
-      wrapped.slice(0, 32),
-      wrapped.slice(32),
-      { info },
-    ),
+    await native.Open(recipient, wrapped.slice(0, 32), wrapped.slice(32), { info }),
     key,
   );
   assert.equal(typeof fixture.tink_wrapped_key, "string", "Independent Tink fixture is required");
