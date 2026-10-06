@@ -241,6 +241,32 @@ as `Any`, while `FailureDescriptions.describe(error:)` requires `KotlinThrowable
 - [x] Commit verified bridge repairs locally. Installed security/format hooks
       passed. Clean task-owned temporary artifacts and keep the commit unpushed.
 
+### Native client creation and observer cleanup
+
+Run [`37437714861`](https://github.com/endorses/psst.zip/actions/runs/37437714861)
+on `9b8db47` passed all four Linux jobs. Native compilation progressed past the
+error presenter and reported actor-isolated observer access from
+`ServerConfigManager.deinit`, plus an unavailable `HttpClientFactoryKt` facade.
+
+- [x] Move notification registration cleanup into a Foundation-only owner whose
+      destructor can run on any executor. Retain token/server-scoped session
+      guards and the scanner's serial capture dispatch. Apply the same ownership
+      repair to the scanner's equivalent notification cleanup.
+- [x] Add a shared `ApiClient(config, sessionToken)` constructor backed by the
+      platform HTTP client and replace all four obsolete Swift factory references.
+      Keep explicit test-client construction and anonymous client scope intact.
+- [x] Verify Android assembly and shared tests after the common API change.
+      Assembly and all 175 shared tests passed, with zero failures/errors.
+- [x] Verify observer cleanup under Swift 6 strict concurrency. All four lifetime
+      checks passed, including final release off the actor and sibling isolation.
+      A negative control confirms unsafe actor-owned-token cleanup is rejected.
+- [x] Run iOS source/localization gates and format the changed Kotlin, Swift and
+      Python files. These checks do not constitute native UIKit compilation.
+- [ ] Verify the native app, embedded extension and XCTest with macOS/Xcode.
+      The Kotlin-to-Swift constructor export and UIKit compile remain pending.
+- [x] Commit the verified client/lifetime repairs locally. Installed security/format
+      hooks passed. Clean task-owned temporary artifacts and keep the commit unpushed.
+
 ### Release artifacts and image-based installation
 
 - [ ] Add `deploy/compose.release.yml` using `image:` references for both services,

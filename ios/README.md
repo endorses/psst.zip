@@ -40,6 +40,7 @@ From the repository root:
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
+PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_notification_observers.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_pages.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_sync.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_abuse_report.py
@@ -60,6 +61,13 @@ observed exported signature. Eighteen tests passed, including classified errors,
 unknown/foreign error fallback and incident priority. The fake boundary does not
 execute the Kotlin classifier or validate generated Kotlin/Native interoperability;
 those checks remain in the native app/extension/XCTest job.
+
+The observer-lifetime harness compiles the actual Foundation registration owner
+under Swift 6 complete concurrency checking. It verifies observer removal after
+UI-actor and background final release while preserving unrelated registrations,
+and rejects a deliberately unsafe actor-owned-token deinitializer. All four
+checks passed. This verifies cleanup ownership, not UIKit camera behavior or
+native app/share-extension compilation.
 
 - [ ] On macOS, regenerate and build the app and embedded extension with the
       commands below, then run XCTest with `-testLanguage en -testRegion US` and

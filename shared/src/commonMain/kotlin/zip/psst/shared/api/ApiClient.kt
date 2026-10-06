@@ -39,6 +39,12 @@ class ApiClient(
     // Preserve the two-argument initializer exported to the existing Swift client.
     constructor(config: ServerConfig, httpClient: HttpClient) : this(config, httpClient, null)
 
+    // Swift callers should not depend on the generated facade for an expect/actual function.
+    constructor(
+        config: ServerConfig,
+        sessionToken: String?,
+    ) : this(config, createPlatformHttpClient(), sessionToken)
+
     val transfers: TransferApi = TransferApi(httpClient, config, sessionToken)
     val slots: SlotApi = SlotApi(httpClient, config, sessionToken)
     val tus: TusClient = TusClient(httpClient, config.normalizedBaseUrl, sessionToken)

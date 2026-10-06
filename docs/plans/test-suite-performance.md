@@ -244,3 +244,26 @@ from generated Kotlin/Native and native Xcode verification.
 - [ ] Verify native app, embedded extension and XCTest on macOS/Xcode.
 - [x] Commit verified bridge changes locally. Installed security/format hooks
       passed. Remove task-owned temporary artifacts and keep the commit unpushed.
+
+## Native client and observer lifetime repairs
+
+Run [`37437714861`](https://github.com/endorses/psst.zip/actions/runs/37437714861)
+on `9b8db47` passed web, backend, Android/shared and security. The repaired error
+presenter compiled; native Swift next reported `ServerConfigManager`'s actor-owned
+notification tokens being accessed from its nonisolated destructor, plus the
+unavailable `HttpClientFactoryKt` file facade.
+
+- [x] Remove actor-isolated notification cleanup from both the configuration
+      manager and scanner. Their separate Foundation registration owner removes
+      only its own tokens and retains existing session guards/camera dispatch.
+- [x] Replace all four Swift factory-facade calls using a shared platform-client
+      constructor and the existing validated anonymous factory.
+- [x] Rebuild Android and run shared tests. Assembly and all 175 tests passed.
+- [x] Compile the actual observer owner with Swift 6 complete concurrency checks.
+      Four lifetime checks passed, including background final release and sibling
+      isolation; a deliberately unsafe actor destructor fails its negative control.
+- [x] Run source/localization checks and format Kotlin, Swift, Python and docs.
+- [ ] Verify native app, embedded extension and XCTest on macOS/Xcode, including
+      the exported constructor and actual UIKit/AVFoundation source compilation.
+- [x] Commit verified repairs locally. Installed security/format hooks passed.
+      Clean task-owned temporary artifacts and keep the commit unpushed.

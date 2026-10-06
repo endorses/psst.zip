@@ -72,7 +72,7 @@ final class DownloadAcknowledgements {
                 }
                 let client = ApiClient(
                     config: ServerConfig(baseUrl: receipt.origin),
-                    httpClient: HttpClientFactoryKt.createPlatformHttpClient(), sessionToken: token)
+                    sessionToken: token)
                 defer { client.close() }
                 do {
                     try await client.transfers.acknowledgeDownload(transferId: receipt.transferID)
