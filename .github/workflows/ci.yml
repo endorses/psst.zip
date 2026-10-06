@@ -101,6 +101,8 @@ jobs:
 
       - name: Disposable administrator authentication lifecycle
         env:
+          # Keep Node's disposable database and state marker under the same root.
+          TMPDIR: ${{ runner.temp }}
           PSST_TEST_STATE_FILE: ${{ runner.temp }}/psst-admin-security-state.json
           PSST_TEST_BACKEND_PORT: "18789"
           PSST_TEST_BACKEND_URL: http://127.0.0.1:18789

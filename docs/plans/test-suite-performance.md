@@ -190,3 +190,33 @@ scanning is also required before publication. The verified changes are committed
 locally; no push was made. Task-owned temporary logs, traces and measurement
 scripts were removed after recording results; fixture databases and build
 artifacts are not committed.
+
+## GitHub verification and follow-up CI faults
+
+Run [`37433228153`](https://github.com/endorses/psst.zip/actions/runs/37433228153)
+on `3a05f71` confirms the performance changes on GitHub: backend completed in
+8 minutes 43 seconds (its race step took 6 minutes 10 seconds), versus the
+previous 18-minute backend job. Its initial job setup consumed about two minutes.
+The complete main browser suite passed in a 5-minute 41-second step; type checks
+and Node integration tests passed. Android/shared completed in 2 minutes
+39 seconds, and repository security passed.
+
+The web job's failure was the separate administrator lifecycle startup: its
+state marker was placed under `runner.temp`, whereas Node's `os.tmpdir()` used
+its default root. The fix sets `TMPDIR` to `runner.temp` for that step and keeps
+all disposable-database safety restrictions. Native iOS failed in `ibtool`
+because the share-extension storyboard declared `targetRuntime="AppleSDK"`.
+The native build and XCTest suite remain unverified until a successful Xcode run.
+
+- [x] Identify both failed CI steps and distinguish them from the passing suites.
+- [x] Align the administrator fixture's Node temporary root with the CI state path.
+- [x] Verify the administrator lifecycle with the repaired workflow environment.
+      All three tests passed in 33.748 seconds; the temporary marker/database
+      cleanup was verified. The safety checks and authentication limits remain.
+- [x] Repair the iOS storyboard and check its configuration on Linux. XML parsing
+      and iOS source gates passed; the source gate now checks the target runtime
+      and initial share-controller wiring.
+- [ ] Verify the native app, embedded extension and XCTest suite on macOS/Xcode.
+- [x] Commit these follow-up fixes locally; installed security/format hooks
+      passed. Task-owned temporary logs and validation files were removed.
+      Keep publication under user control; no new push was made.

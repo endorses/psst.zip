@@ -146,10 +146,13 @@ backend timing repair.
 
 ### Remaining CI repairs, held locally
 
-Further commits must remain local until the outstanding failures are fixed.
-The interrupted documentation push did not complete; the public branch remains
-at `d1e4268`. A Mac is unavailable, so native Apple validation must remain
-explicitly pending even after all Linux checks pass.
+The performance/mobile repair `3a05f71` is now published. GitHub run
+[`37433228153`](https://github.com/endorses/psst.zip/actions/runs/37433228153)
+passed repository security, backend, Android/shared and the complete main
+browser suite. The separate administrator lifecycle stopped before test setup,
+and the native iOS build failed while compiling the share-extension storyboard.
+Further fixes remain local. A Mac is unavailable, so native Apple validation
+must remain explicitly pending until a successful Xcode run.
 
 - [x] Replace unresolved iOS CommonCrypto GCM functions with the pinned maintained
       CryptoKit provider and selected-Xcode Swift linker configuration. Preserve
@@ -191,7 +194,28 @@ Performance work and exact local measurements are recorded in
 [`test-suite-performance.md`](test-suite-performance.md). The user approved
 expanded localhost test execution and local Git writes, resolving the earlier
 sandbox restrictions. Native iOS validation still requires macOS/Xcode. All
-repairs are committed locally and remain unpushed under the user's instruction.
+performance repairs are committed in `3a05f71`; the follow-up fixes described
+below remain local under the user's no-push instruction.
+
+### Follow-up CI fixes after the performance run
+
+- [x] Diagnose the failed steps in run `37433228153`. The main browser suite
+      passed; the administrator lifecycle was rejected because its state file
+      used GitHub's `runner.temp` while Node used its default temporary root.
+      iOS `ibtool` rejected the storyboard's `AppleSDK` target runtime.
+- [x] Set `TMPDIR` to `runner.temp` for the administrator lifecycle step so the
+      disposable database, state marker and safety checks share the same root.
+      Retain the private marker and harness-owned database restrictions.
+- [x] Verify the three real administrator lifecycle tests using the exact
+      workflow environment with a separate temporary runner directory. All
+      three passed in 33.748 seconds, with marker/database cleanup verified.
+- [x] Correct the share-extension storyboard runtime while preserving its
+      controller and extension entry wiring. XML parsing and iOS source gates
+      passed; the gate now rejects invalid runtime/controller declarations.
+- [ ] On macOS/Xcode, verify the repaired app/extension build and native XCTest
+      through the existing CI commands. Linux source checks do not replace this.
+- [x] Commit verified follow-up fixes locally. Installed security/format hooks
+      passed, temporary diagnostic files were removed, and nothing was pushed.
 
 ### Release artifacts and image-based installation
 

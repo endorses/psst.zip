@@ -5,6 +5,7 @@ import json
 import pathlib
 import plistlib
 import re
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,22 @@ extension = plist("PsstShareExtension/Info.plist")
 assert app["CFBundleDisplayName"] == extension["CFBundleDisplayName"] == "psst.zip"
 assert app["CFBundleIdentifier"] == "zip.psst.ios"
 assert extension["CFBundleIdentifier"] == "zip.psst.ios.share-extension"
+# Catch malformed Interface Builder metadata without implying ibtool validation.
+# Preserve the share extension's storyboard entry point and controller wiring.
+share_storyboard_name = extension["NSExtension"]["NSExtensionMainStoryboard"]
+share_storyboard = ET.fromstring(
+    read(f"PsstShareExtension/{share_storyboard_name}.storyboard")
+)
+assert share_storyboard.attrib["targetRuntime"] == "iOS.CocoaTouch"
+share_controller = share_storyboard.find(
+    ".//viewController[@id='{}']".format(
+        share_storyboard.attrib["initialViewController"]
+    )
+)
+assert share_controller is not None
+assert share_controller.attrib["customClass"] == "ShareViewController"
+assert share_controller.attrib["customModule"] == "PsstShareExtension"
+assert share_controller.attrib["customModuleProvider"] == "target"
 for path in (
     "Psst/Psst.entitlements",
     "PsstShareExtension/PsstShareExtension.entitlements",
