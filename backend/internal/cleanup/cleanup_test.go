@@ -15,7 +15,7 @@ import (
 
 func TestCleanupSkipsBusyTransferAndRetries(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestCleanupSkipsBusyTransferAndRetries(t *testing.T) {
 
 func TestSweepRetainsTrafficTotalsAndContinuesAfterRetentionFailure(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestSweepRetainsTrafficTotalsAndContinuesAfterRetentionFailure(t *testing.T
 
 func TestSecurityAuditRetentionFailureDoesNotBlockPayloadCleanup(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestSecurityAuditRetentionFailureDoesNotBlockPayloadCleanup(t *testing.T) {
 
 func TestCanceledCleanupWorkerDoesNotPerformStartupWork(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}

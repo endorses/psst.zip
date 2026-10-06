@@ -11,7 +11,7 @@ import (
 )
 
 func TestAdminCleanupResultAfterConcurrentPayloadCompletion(t *testing.T) {
-	db, err := database.Open(filepath.Join(t.TempDir(), "cleanup.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "cleanup.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

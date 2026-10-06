@@ -18,6 +18,9 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
     );
     expect(login.ok(), await login.text()).toBe(true);
     const observer = await observerContext.newPage();
+    // Advance browser polling deadlines while all mutations and feed requests
+    // still go through the real server. Authentication uses the server clock.
+    await observer.clock.install();
     let snapshots = 0,
       feeds = 0,
       payloads = 0;
@@ -45,6 +48,7 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
     await expect(page.getByRole("heading", { name: "Ready to share" })).toBeVisible();
     const link = await page.getByLabel("Full link").inputValue();
     const transferId = new URL(link).pathname.split("/").at(-1)!;
+    await observer.clock.fastForward(10_000);
     await expect(observer.locator(".resource").filter({ hasText: title })).toBeVisible({
       timeout: 15000,
     });
@@ -54,6 +58,7 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
         await request.patch(`/api/v1/transfers/${transferId}/title`, { data: { title: renamed } })
       ).ok(),
     ).toBe(true);
+    await observer.clock.fastForward(10_000);
     await expect(observer.locator(".resource").filter({ hasText: renamed })).toBeVisible({
       timeout: 15000,
     });
@@ -61,6 +66,7 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Save file", exact: true }).click();
     expect((await download).suggestedFilename()).toBe("sync.txt");
+    await observer.clock.fastForward(10_000);
     await expect(observer.locator(".resource").filter({ hasText: renamed })).toContainText(
       "Download limit reached",
       { timeout: 15000 },
@@ -82,11 +88,13 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
     });
     await page.getByRole("button", { name: "Send files", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Files sent" })).toBeVisible();
+    await observer.clock.fastForward(10_000);
     await expect(observer.locator(".resource").filter({ hasText: inboxTitle })).toContainText(
       "1 file received",
       { timeout: 15000 },
     );
     expect((await request.delete(`/api/v1/slots/${slot.id}`)).ok()).toBe(true);
+    await observer.clock.fastForward(10_000);
     await expect(observer.locator(".resource").filter({ hasText: inboxTitle })).toHaveCount(0, {
       timeout: 15000,
     });
@@ -120,6 +128,7 @@ test("two clients reconcile real send, rename, exhaustion, receive and revoke wi
     await expect(observer.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
     await observer.unroute("**/api/v1/auth/history/changes?*");
     expect((await request.delete(`/api/v1/transfers/${transferId}`)).ok()).toBe(true);
+    await observer.clock.fastForward(20_000);
     await observer.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(observer.locator(".resource").filter({ hasText: renamed })).toHaveCount(0);
     expect(snapshots).toBe(process.env.PSST_TEST_STATE_FILE ? 2 : 1);

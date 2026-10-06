@@ -4,6 +4,7 @@ ktor = "3.1.1"
 kotlinx-coroutines = "1.10.1"
 kotlinx-serialization = "1.8.0"
 skie = "0.10.12"
+cryptography = "0.6.0"
 android-minSdk = "26"
 android-compileSdk = "35"
 
@@ -21,9 +22,11 @@ ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", 
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+cryptography-provider-cryptokit = { module = "dev.whyoleg.cryptography:cryptography-provider-cryptokit", version.ref = "cryptography" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 skie = { id = "co.touchlab.skie", version.ref = "skie" }
 android-library = { id = "com.android.library", version = "8.13.2" }
+cryptography = { id = "dev.whyoleg.cryptography", version.ref = "cryptography" }

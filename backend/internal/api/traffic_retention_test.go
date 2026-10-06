@@ -10,7 +10,7 @@ import (
 )
 
 func TestTrafficReportClockRollbackNeverShowsPartialCycle(t *testing.T) {
-	db, err := database.Open(filepath.Join(t.TempDir(), "traffic.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "traffic.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

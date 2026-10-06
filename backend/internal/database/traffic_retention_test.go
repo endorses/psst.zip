@@ -60,16 +60,35 @@ func TestTrafficRetentionMigrationSeedsLifetimeOnce(t *testing.T) {
 func TestTrafficRetentionBoundedBatchesLifetimeAndLateLeases(t *testing.T) {
 	q, _ := resourceFixture(t)
 	now := time.Date(2030, 3, 31, 12, 0, 0, 0, time.UTC)
-	for i := 0; i < 1200; i++ {
-		date := now.AddDate(0, 0, -i)
-		if err := q.AddTraffic(date, TrafficTotals{UploadedBytes: 1, DownloadedBytes: 2, FilesUploaded: 3, FilesDelivered: 1, StandaloneFilesUploaded: 1, ReceivedFilesUploaded: 2}); err != nil {
-			t.Fatal(err)
-		}
-		for _, owner := range []string{"one", "two"} {
-			if _, err := q.db.Exec(`INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down,conservative_up,conservative_down) VALUES(?,?,1,2,3,4)`, owner, date.Format("2006-01-02")); err != nil {
-				t.Fatal(err)
-			}
-		}
+	if err := q.AddTraffic(now, TrafficTotals{UploadedBytes: 1, DownloadedBytes: 2, FilesUploaded: 3, FilesDelivered: 1, StandaloneFilesUploaded: 1, ReceivedFilesUploaded: 2}); err != nil {
+		t.Fatal(err)
+	}
+	// Retention needs the full 1200-day history, not 3600 setup commits. Keep
+	// real traffic writes above and below; seed the remaining identical rows
+	// and lifetime counters atomically without changing maintenance or limits.
+	tx, err := q.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.Exec(`WITH RECURSIVE days(i) AS (
+ SELECT 1 UNION ALL SELECT i+1 FROM days WHERE i<1199
+) INSERT INTO traffic_days(date,uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded)
+ SELECT date(?,'-'||i||' days'),1,2,3,1,1,2 FROM days`, now.Format("2006-01-02")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down,conservative_up,conservative_down)
+ SELECT owner,date,1,2,3,4 FROM traffic_days CROSS JOIN (SELECT 'one' AS owner UNION ALL SELECT 'two')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`UPDATE traffic_retention SET
+ (uploaded_bytes,downloaded_bytes,files_uploaded,files_delivered,standalone_files_uploaded,received_files_uploaded)=
+ (SELECT SUM(uploaded_bytes),SUM(downloaded_bytes),SUM(files_uploaded),SUM(files_delivered),SUM(standalone_files_uploaded),SUM(received_files_uploaded) FROM traffic_days)
+ WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 	old := now.AddDate(0, 0, -1199)
 	live, err := q.ReserveTraffic("one", false, 17, old)
@@ -144,11 +163,13 @@ func TestTrafficRetentionBoundedBatchesLifetimeAndLateLeases(t *testing.T) {
 func TestTrafficRetentionPreservesEveryBillingDayAndPreviousCycle(t *testing.T) {
 	q, _ := resourceFixture(t)
 	now := time.Date(2028, 3, 30, 10, 0, 0, 0, time.UTC)
-	for i := 0; i < 450; i++ {
-		date := now.AddDate(0, 0, -i).Format("2006-01-02")
-		if _, err := q.db.Exec(`INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down,conservative_up,conservative_down) VALUES('owner',?,?,?,3,4)`, date, i+1, i+2); err != nil {
-			t.Fatal(err)
-		}
+	// One bulk statement creates every billing-day fixture with the same
+	// per-day charges; the real pruning and all 31 cycle comparisons remain.
+	if _, err := q.db.Exec(`WITH RECURSIVE days(i) AS (
+ SELECT 0 UNION ALL SELECT i+1 FROM days WHERE i<449
+) INSERT INTO traffic_owner_days(owner,date,observed_up,observed_down,conservative_up,conservative_down)
+ SELECT 'owner',date(?,'-'||i||' days'),i+1,i+2,3,4 FROM days`, now.Format("2006-01-02")); err != nil {
+		t.Fatal(err)
 	}
 	p := DefaultTrafficPolicy()
 	type key struct {

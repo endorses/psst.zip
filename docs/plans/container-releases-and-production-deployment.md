@@ -117,7 +117,7 @@ changing SDK setup does not establish native build success.
       assertions, plus production-entry-point cancellation/deadline checks.
 - [x] Verify backend lint and the complete race suite locally, and repeat the
       affected reconciliation checks.
-- [ ] Verify the backend GitHub job after publication.
+- [x] Verify the backend GitHub job after publication.
 
 Diagnosis: the initial GitHub API and database test binaries each exceeded Go's
 default ten-minute package limit. The named tests had only just started and were
@@ -134,15 +134,64 @@ test because the SQLite driver reparses SQL on execution; that experiment was
 removed, preserving all 10,010 update mutations and the 100,010-event global
 retention test. The complete local race suite passed on Go 1.27.1 with the same
 `-race -p 2 -timeout 30m` flags (API package: 379 seconds; database package: 527
-seconds). GitHub verification on CI's Go 1.26.8 remains pending.
+seconds). GitHub's backend job also passed on CI's Go 1.26.8 in run `37423344109`.
 
 The fixes are published in `d1e4268`; GitHub run `37423344109` passed repository
-security and Android/shared checks. Its backend race job is still pending.
+security, Android/shared and the complete backend lint/race/build checks.
 Broader CI remains blocked by a separate native iOS compilation failure:
 `CryptoProvider.ios.kt` cannot resolve `CCCryptorGCMOneshotEncrypt` and
 `CCCryptorGCMOneshotDecrypt`. Per the project's unexpected-issues instruction,
 that separate failure was recorded without changing mobile cryptography in this
 backend timing repair.
+
+### Remaining CI repairs, held locally
+
+Further commits must remain local until the outstanding failures are fixed.
+The interrupted documentation push did not complete; the public branch remains
+at `d1e4268`. A Mac is unavailable, so native Apple validation must remain
+explicitly pending even after all Linux checks pass.
+
+- [x] Replace unresolved iOS CommonCrypto GCM functions with the pinned maintained
+      CryptoKit provider and selected-Xcode Swift linker configuration. Preserve
+      AES-256 keys, 12-byte nonces, appended 16-byte tags, empty-message
+      authentication, and both app/share-extension use of the shared framework.
+- [x] Add independent AES-GCM vectors and modified-input rejection checks for
+      Android/shared tests and native iOS XCTest through the exported provider.
+- [x] Rebuild Android and run all shared tests after the dependency change.
+      Android assembly and 175 shared tests passed, including four new AES-GCM
+      compatibility tests with no failures or errors.
+- [x] Repair missing portable Swift harness dependencies and verify the affected
+      suites, source gates, localization and Swift syntax parsing. All 171 tests
+      across 12 portable harnesses passed; the crypto harness uses official Swift
+      6.2.4 to resolve the older image's Observation runtime linker failure.
+- [x] Diagnose and fix reproducible browser-suite failures, retaining test
+      coverage, real authentication limits and a disposable backend.
+- [x] Verify complete browser checks, the opt-in administrator lifecycle, web
+      type checks and production build locally. Type checks and production build
+      passed; the initial full browser rerun had 187 passes, five existing opt-in
+      skips and a page-loading failure. Tracing identified Chromium host network
+      changes cancelling local module requests. The final unchanged browser
+      suite passed in a temporary loopback-only namespace: 188 tests, five
+      existing opt-in skips, zero failures, four minutes. The separate
+      administrator lifecycle passed all three tests in 34.131 seconds. Final
+      web type checks reported zero errors/warnings and the static build passed.
+- [ ] On macOS/Xcode, build the app and embedded share extension and run native
+      XCTest, including the new exported-provider compatibility tests. Use the
+      commands in `ios/README.md` and CI's selected Xcode 26.0.1 toolchain.
+- [ ] Publish the complete repair only when the remaining validation limitations
+      have been resolved in accordance with the user's no-push instruction.
+
+The complete Go 1.26.8 backend race suite passed after all fixture changes:
+698 cases in 216.919 seconds (3 minutes 37 seconds), versus 371.634 seconds
+before the bulk-fixture pass with the same toolchain and flags. Database took
+186.463 seconds versus 350.531 seconds. Lint reported zero issues and the
+production backend build passed.
+
+Performance work and exact local measurements are recorded in
+[`test-suite-performance.md`](test-suite-performance.md). The user approved
+expanded localhost test execution and local Git writes, resolving the earlier
+sandbox restrictions. Native iOS validation still requires macOS/Xcode. All
+repairs are committed locally and remain unpushed under the user's instruction.
 
 ### Release artifacts and image-based installation
 

@@ -45,7 +45,7 @@ func setupAuthFixtureIn(t *testing.T, authorized bool, dir string) *testEnv {
 	dbPath := dir + "/test.db"
 	storagePath := dir + "/files"
 
-	db, err := database.Open(dbPath)
+	db, err := openFixture(dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

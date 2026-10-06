@@ -26,7 +26,7 @@ func (s *incidentFailureStore) DeleteAll(id string) error {
 }
 func TestIncidentCleanupBatchesAdvancePastFailuresAndRetainReservations(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}

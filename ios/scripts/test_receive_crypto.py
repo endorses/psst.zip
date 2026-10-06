@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import tempfile
 
+from localization_harness import add_localization
+
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = (
     "ReceiveCrypto",
@@ -36,11 +38,24 @@ def main() -> None:
                     "@testable import Psst", "@testable import ReceiveCryptoHarness"
                 )
             )
+        for name in ("SharedLinkTitle", "TransferRecord"):
+            shutil.copy2(ROOT / "ios" / "Shared" / f"{name}.swift", sources)
+        (sources / "BoundaryStubs.swift").write_text("""import Foundation
+// Account/keychain boundaries are not exercised by this crypto/presentation harness.
+struct DeviceSession: Equatable {
+    var serverURL: String
+    var userID: String
+    var canTransfer = true
+}
+enum SecretStore {
+    static func read(_ key: String) -> Data? { nil }
+    static func write(_ data: Data, name: String) throws {}
+}
+""")
         shutil.copy2(ROOT / "docs/security/fixtures/hpke-receive-v2.json", tests)
         (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
-let package = Package(
-    name: "ReceiveCryptoHarness",
+let package = Package(name: "ReceiveCryptoHarness",
     dependencies: [.package(url: "https://github.com/apple/swift-crypto.git", exact: "3.12.3"),
                    .package(url: "https://github.com/apple/swift-asn1.git", exact: "1.6.0")],
     targets: [
@@ -49,6 +64,7 @@ let package = Package(
                     resources: [.copy("hpke-receive-v2.json")])
     ])
 """)
+        add_localization(sources, work / "Package.swift", "ReceiveCryptoHarness")
         # Restore host ownership even on test failure, so TemporaryDirectory can
         # remove all caches made by the container without elevated host cleanup.
         script = (
@@ -64,7 +80,7 @@ let package = Package(
                 f"{work}:/work",
                 "-w",
                 "/work",
-                "swift:6.0-noble",
+                "swift:6.2-noble",
                 "bash",
                 "-c",
                 script,

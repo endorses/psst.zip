@@ -11,17 +11,53 @@ export const adminCredentials = {
     process.env.PSST_TEST_PASSWORD ?? process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
 };
 export const credentials = { username: "browser-member", password: "Browser-member-final-2026" };
+type SessionCookies = Awaited<ReturnType<APIRequestContext["storageState"]>>["cookies"];
+const browserSessions = new WeakMap<Page, () => Promise<SessionCookies>>();
+const administratorSessions = new Map<string, SessionCookies>();
+const administratorPages = new WeakMap<Page, SessionCookies>();
 export const test = base.extend<
   { adminRequest: APIRequestContext },
-  { apiToken: string; adminToken: string }
+  { apiToken: string; adminToken: string; memberWebCookies: () => Promise<SessionCookies> }
 >({
-  page: async ({ page }, use, testInfo) => {
+  page: async ({ page, memberWebCookies, adminToken }, use, testInfo) => {
     testInfo.setTimeout(Math.max(testInfo.timeout, 180000));
-    // Tests share one loopback client. Let the real 20/s global bucket refill
-    // after the preceding test and API setup before the page initializes.
-    await page.waitForTimeout(1000);
-    await use(page);
+    browserSessions.set(page, memberWebCookies);
+    administratorPages.set(page, administratorSessions.get(adminToken)!);
+    try {
+      await use(page);
+    } finally {
+      browserSessions.delete(page);
+      administratorPages.delete(page);
+    }
   },
+  memberWebCookies: [
+    async ({ playwright, apiToken }, use) => {
+      // apiToken initializes the member and completes its required password change.
+      void apiToken;
+      const baseURL = process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:4173";
+      const context = await playwright.request.newContext({
+        baseURL,
+        extraHTTPHeaders: { Origin: baseURL },
+      });
+      await use(async () => {
+        const current = await context.get("/api/v1/auth/me");
+        if (current.status() === 401) {
+          const login = await retryAuth(() =>
+            context.post("/api/v1/auth/login", {
+              data: { ...credentials, session_type: "web", device_name: "Browser member fixture" },
+            }),
+          );
+          expect(login.ok(), await login.text()).toBe(true);
+        } else expect(current.ok(), await current.text()).toBe(true);
+        const cookies = (await context.storageState()).cookies;
+        if (!cookies.some((cookie) => cookie.name === "psst_session"))
+          throw new Error("Member web session cookie missing");
+        return cookies;
+      });
+      await context.dispose();
+    },
+    { scope: "worker", timeout: 180000 },
+  ],
   adminToken: [
     async ({ playwright }, use) => {
       const context = await playwright.request.newContext({
@@ -38,12 +74,16 @@ export const test = base.extend<
         }),
       );
       expect(response.ok(), await response.text()).toBe(true);
-      const token = (await context.storageState()).cookies.find(
-        (cookie) => cookie.name === "psst_session",
-      )?.value;
+      const cookies = (await context.storageState()).cookies;
+      const token = cookies.find((cookie) => cookie.name === "psst_session")?.value;
       if (!token) throw new Error("Administrator web session cookie missing");
-      await use(token);
-      await context.dispose();
+      administratorSessions.set(token, cookies);
+      try {
+        await use(token);
+      } finally {
+        administratorSessions.delete(token);
+        await context.dispose();
+      }
     },
     { scope: "worker", timeout: 180000 },
   ],
@@ -162,7 +202,7 @@ export async function submitLogin(page: Page, loginCredentials = credentials) {
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     const response = await result;
     if (response.status() !== 429) {
-      expect(response.ok(), await response.text()).toBe(true);
+      expect(response.ok(), response.ok() ? undefined : await response.text()).toBe(true);
       return;
     }
     if (attempt === 3) {
@@ -196,7 +236,19 @@ export async function authenticate(page: Page, loginCredentials = credentials) {
   await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
 }
 export async function signIn(page: Page) {
+  const cookies = browserSessions.get(page);
+  if (!cookies) throw new Error("signIn requires the authenticated browser fixture");
+  // Non-authentication tests start with a real server session in a fresh context.
+  // Explicit authenticate/submitLogin still exercise the actual sign-in UI.
+  await page.context().addCookies(await cookies());
   await page.goto("/");
-  await authenticate(page);
+  await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
+}
+export async function openAdmin(page: Page, path = "/") {
+  const cookies = administratorPages.get(page);
+  if (!cookies) throw new Error("openAdmin requires the authenticated browser fixture");
+  await page.context().addCookies(cookies);
+  await page.goto(path);
+  await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
 }
 export { expect };

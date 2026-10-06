@@ -239,7 +239,7 @@ authenticatedTest(
     expect(headers.authorization).toBeUndefined();
     await expect(page.getByRole("heading", { name: "Files sent", exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Receive", exact: true }).click();
-    await page.getByRole("link", { name: "1 file · Save file", exact: true }).click();
+    await page.getByRole("link", { name: "1 file · View files", exact: true }).click();
     await expect(page.getByText("scanned.txt", { exact: true })).toBeVisible();
     const saved = page.waitForEvent("download");
     await page.getByRole("button", { name: "Save file", exact: true }).click();

@@ -1,4 +1,4 @@
-import { test, expect, authenticate, adminCredentials, signIn, submitLogin } from "./auth-fixture";
+import { test, expect, authenticate, openAdmin, signIn, submitLogin } from "./auth-fixture";
 
 test("temporary password is mandatory, mismatch remains local, replacement invalidates the session", async ({
   page,
@@ -46,8 +46,7 @@ test("admin shell redirects transfer routes and shows persistent traffic setting
   const created = await request.post("/api/v1/slots");
   expect(created.ok()).toBe(true);
   const slot = await created.json();
-  await page.goto("/?view=send");
-  await authenticate(page, adminCredentials);
+  await openAdmin(page, "/?view=send");
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Account navigation" }).getByRole("link"),
@@ -209,8 +208,7 @@ test("admin metrics and resources distinguish unavailable, degraded and stale da
   const source = await (await adminRequest.get("/api/v1/admin/traffic")).json();
   source.status = "degraded";
   await page.route("**/api/v1/admin/traffic", (route) => route.fulfill({ json: source }));
-  await page.goto("/?view=traffic");
-  await authenticate(page, adminCredentials);
+  await openAdmin(page, "/?view=traffic");
   await expect(page.getByRole("alert")).toContainText("accounting is degraded");
   await page.route("**/api/v1/admin/traffic?**", (route) => route.abort());
   await page.getByRole("button", { name: "Show traffic" }).click();
@@ -314,8 +312,7 @@ test("a real 367-day traffic range fits phone and desktop while the numeric tabl
   first.setUTCDate(first.getUTCDate() - 366);
   const from = first.toISOString().slice(0, 10);
   expect(from >= (await report.json()).history_retained_from).toBe(true);
-  await page.goto("/?view=traffic");
-  await authenticate(page, adminCredentials);
+  await openAdmin(page, "/?view=traffic");
   await expect(page.getByRole("heading", { name: "Selected period", exact: true })).toBeVisible();
   await page.getByLabel("From (UTC)", { exact: true }).fill(from);
   await page.getByLabel("Through (UTC, inclusive)", { exact: true }).fill(through);

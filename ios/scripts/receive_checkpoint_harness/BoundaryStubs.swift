@@ -11,7 +11,9 @@ final class NSFileCoordinator {
         let rawValue: Int
         static let forReplacing = Self(rawValue: 1)
     }
-    func coordinate(writingItemAt url: URL, options: WritingOptions, error: inout NSError?, byAccessor: (URL) -> Void) { byAccessor(url) }
+    func coordinate(writingItemAt url: URL, options: WritingOptions, error: inout NSError?, byAccessor: (URL) -> Void) {
+        byAccessor(url)
+    }
 }
 struct DeviceSession: Equatable {
     var serverURL: String
@@ -23,11 +25,14 @@ struct DeviceSession: Equatable {
     var accountID: String { serverURL + "|" + userID }
     var canTransfer = true
 }
-enum AccountError: Error { case storage, changed }
+enum AccountError: Error { case storage, changed, request, unavailable }
 enum HistoryFilter { case all, sent, receive }
 enum AccountHTTP {
     static func origin(_ value: String) throws -> String { value }
-    static func request(server: String, path: String, method: String, token: String, body: [String: String]? = nil, maximumBytes: Int = 1_048_576, timeout: TimeInterval = 15)
+    static func request(
+        server: String, path: String, method: String = "GET", token: String, body: [String: String]? = nil,
+        maximumBytes: Int = 1_048_576, timeout: TimeInterval = 15
+    )
         async throws -> Data
     { throw AccountError.storage }
 }

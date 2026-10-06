@@ -21,10 +21,11 @@ test("a server that ignores selected download policy cannot publish a send link"
   await page
     .getByLabel("Choose files")
     .setInputFiles({ name: "secret.txt", mimeType: "text/plain", buffer: Buffer.from("private") });
+  await page.locator("summary").filter({ hasText: "Link settings" }).click();
   await page.locator("summary").filter({ hasText: "Link limits" }).click();
   await page.getByRole("checkbox", { name: "Limit downloads per file" }).check();
   await page.getByRole("button", { name: "Send files", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("server did not accept the download limit");
+  await expect(page.getByRole("alert")).toContainText("server did not accept the link settings");
   await expect(page.getByLabel("Full link")).toHaveCount(0);
   expect(fileRequests).toBe(0);
   expect(id).not.toBe("");

@@ -25,9 +25,14 @@ def main():
         for name in (
             "HistoryRecordDatabase",
             "HistoryJSONStream",
+            "HistorySnapshot",
+            "HistorySync",
+            "HistoryRefresh",
+            "ServerTimestamp",
             "ReceiveHistoryStream",
             "TransferRecord",
             "SharedLinkTitle",
+            "TransferIncident",
             "ReceiveCheckpoint",
             "ReceiveCheckpointStorage",
         ):

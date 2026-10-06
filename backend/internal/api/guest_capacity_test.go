@@ -25,7 +25,7 @@ func guestCapacityAPI(t *testing.T, configuredFileLimits ...int) (http.Handler, 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "db.sqlite")
 	storage := filepath.Join(dir, "payloads")
-	db, err := database.Open(dbPath)
+	db, err := openFixture(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}

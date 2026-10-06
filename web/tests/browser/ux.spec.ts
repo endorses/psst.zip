@@ -90,6 +90,7 @@ test("logout clears selected private files and local labels never appear in anot
 });
 
 test("live history keeps known data when offline and recovers automatically", async ({ page }) => {
+  await page.clock.install();
   await signIn(page);
   await page.getByRole("link", { name: "Receive", exact: true }).click();
   await page.getByRole("button", { name: "Create receive link", exact: true }).click();
@@ -97,11 +98,17 @@ test("live history keeps known data when offline and recovers automatically", as
   await expect(page.getByRole("img", { name: "QR code for shared link" })).toBeVisible();
   await page.getByRole("link", { name: "History", exact: true }).click();
   await expect(page.locator("article").first()).toBeVisible();
-  await page.route("**/api/v1/auth/resources?*", (route) => route.abort());
-  await expect(page.getByText(/Offline — last updated/)).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await page.route("**/api/v1/auth/history/changes?*", (route) => route.abort());
+  await page.clock.fastForward(10_000);
+  const stale = page
+    .getByRole("alert")
+    .filter({ hasText: "The displayed page may be out of date" });
+  await expect(stale).toBeVisible({ timeout: 15000 });
   await expect(page.locator("article").first()).toBeVisible();
-  await page.unroute("**/api/v1/auth/resources?*");
-  await expect(page.getByText(/Offline — last updated/)).toHaveCount(0, { timeout: 15000 });
+  await page.unroute("**/api/v1/auth/history/changes?*");
+  await page.clock.fastForward(20_000);
+  await expect(stale).toHaveCount(0, { timeout: 15000 });
 });
 
 test("pairing replaces QR on redemption and cancel invalidates the unused code", async ({
@@ -114,13 +121,14 @@ test("pairing replaces QR on redemption and cancel invalidates the unused code",
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("link", { name: "Connected devices", exact: true }).click();
   async function issue() {
-    const response = page.waitForResponse(
-      (r) => r.url().endsWith("/auth/pairings") && r.request().method() === "POST",
-    );
+    const response = page
+      .waitForResponse((r) => r.url().endsWith("/auth/pairings") && r.request().method() === "POST")
+      .then(async (result) => {
+        expect(result.ok()).toBe(true);
+        return result.json();
+      });
     await page.getByRole("button", { name: /Show login QR code|Generate new code/ }).click();
-    const result = await response;
-    expect(result.ok(), await result.text()).toBe(true);
-    return result.json();
+    return response;
   }
   const first = await issue();
   await page.getByRole("button", { name: "Cancel pairing" }).click();
@@ -282,10 +290,10 @@ test("receive history reopens the original link and failed saving retries only t
     .getByRole("button", { name: "View files" })
     .click();
   await expect(page).toHaveURL(new RegExp(`slot=${slotId}`));
-  await expect(page.getByRole("link", { name: "2 files · Save files" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "2 files · View files" })).toBeVisible();
   const info = await (await request.get(`/api/v1/slots/${slotId}`)).json();
   const transferId = info.transfers[0].transfer_id;
-  await page.getByRole("link", { name: "2 files · Save files" }).click();
+  await page.getByRole("link", { name: "2 files · View files" }).click();
   await expect(page.getByRole("heading", { name: "Save files" })).toBeVisible();
   let requests = 0,
     failNext = false;

@@ -3,7 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.android.library)
     alias(libs.plugins.skie)
+    alias(libs.plugins.cryptography)
 }
+
+// Resolve Swift libraries from the selected Xcode, including versioned CI installations.
+cryptography { configureSwiftLinkerOpts.set(true) }
 
 kotlin {
     androidTarget {
@@ -38,7 +42,10 @@ kotlin {
             implementation("com.google.crypto.tink:tink-android:1.23.0")
         }
 
-        iosMain.dependencies { implementation(libs.ktor.client.darwin) }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+            implementation(libs.cryptography.provider.cryptokit)
+        }
     }
 }
 

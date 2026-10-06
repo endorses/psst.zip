@@ -225,7 +225,7 @@ func TestInboxEventHubLimitsAndConcurrentRelease(t *testing.T) {
 func TestInboxEventInitialAuthorizationFailureIsDelivered(t *testing.T) {
 	for _, databaseFailure := range []bool{false, true} {
 		t.Run(fmt.Sprint(databaseFailure), func(t *testing.T) {
-			db, err := database.Open(t.TempDir() + "/events.db")
+			db, err := openFixture(t.TempDir() + "/events.db")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -320,7 +320,7 @@ func TestInboxEventOverflowInterruptsBlockedWrite(t *testing.T) {
 func TestInboxEventQueuedMessageRechecksReadAuthority(t *testing.T) {
 	for _, databaseFailure := range []bool{false, true} {
 		t.Run(fmt.Sprint(databaseFailure), func(t *testing.T) {
-			db, err := database.Open(t.TempDir() + "/events.db")
+			db, err := openFixture(t.TempDir() + "/events.db")
 			if err != nil {
 				t.Fatal(err)
 			}

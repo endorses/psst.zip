@@ -2,6 +2,17 @@
 
 The app and share extension are generated from `project.yml` using XcodeGen. Display branding is psst.zip; existing bundle identifiers, App Group, protocol identifiers and storage keys remain compatible.
 
+The Kotlin framework uses the pinned cryptography-kotlin CryptoKit provider for
+AES-256-GCM through public Apple APIs. Its Gradle plugin resolves Swift libraries
+from the selected Xcode installation; keep `DEVELOPER_DIR` consistent for Gradle
+and Xcode, including CI's versioned Xcode 26.0.1 installation. Both the app and
+share extension link the same shared framework. Ciphertexts retain the existing
+appended 16-byte authentication tag and separate 12-byte nonce format.
+`AesGcmCompatibilityTests` exercises that exported Kotlin provider in native
+XCTest with independent vectors, empty messages and authentication failures;
+Android runs the equivalent shared compatibility tests. Portable Linux tests and
+Swift parsing do not establish native compilation, linkage or XCTest success.
+
 ## Localization
 
 Settings offers System, English and Deutsch independently of the account. The
@@ -80,14 +91,18 @@ wrapper with JDK 25. The shared Kotlin 2.3.21 version lists Xcode 26.0 in its
 [compatibility table](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html);
 the chosen Xcode and iOS simulator runtime are listed in the
 [runner image manifest](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md).
-The job regenerates the project, builds the main app, checks its embedded share
-extension exists, then runs the complete native test target, including CryptoKit
-interoperability and persistence tests. It retains the `.xcresult` bundle for
+The job regenerates the project, selects its simulator and uses
+`build-for-testing` to compile the app, embedded extension and XCTest products
+once. It checks the embedded extension exists, then runs the complete native
+test target with `test-without-building`, including CryptoKit interoperability
+and persistence tests. Both commands use the same destination and derived data,
+avoiding a second build and repeated shared-framework Gradle scripts. See
+[Apple's command-line testing documentation](https://developer.apple.com/library/archive/technotes/tn2339/_index.html). It retains the `.xcresult` bundle for
 seven days. A missing toolchain or simulator fails the job rather than selecting
 an unverified fallback. This job can also be started through **Run workflow**.
 
-The job definition has not executed in this Linux workspace, which has no Xcode
-or configured Git remote. Preserve the unchecked native gates below until a
+The native build and XCTest commands cannot execute in this Linux workspace,
+which has no Xcode. Preserve the unchecked native gates below until a
 successful run supplies actual build/test results. An unsigned simulator build
 does not establish physical-device signing, Keychain/App Group provisioning,
 camera behavior or share-extension memory limits.
@@ -187,9 +202,9 @@ Both scanned downloads and owner inbox saves preflight manifests and free space.
 
 ### Receive encryption validation
 
-Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy, limit parser, history collector and incident error mapper against pinned Apple `swift-crypto` 3.12.3. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve, integer limits, bounded history and strict pause/revocation status-code matching. This verifies portable implementations; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
+Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy, limit parser, history collector and incident error mapper against pinned Apple `swift-crypto` 3.12.3. This harness uses the official `swift:6.2-noble` image (verified with Swift 6.2.4); the other portable harnesses retain `swift:6.0-noble`. Swift 6.2 resolves a Swift 6.0 Observation runtime linker failure exposed by the crypto dependency. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve, integer limits, bounded history and strict pause/revocation status-code matching. This verifies portable implementations; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
 
-- [x] Seven portable Swift tests passed through the Docker harness, including all three provider fixtures and low-order inputs. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate.
+- [x] All 19 receive-crypto harness tests passed, including independent provider fixtures, low-order inputs, history and incident mapping. Across all 12 portable harnesses, 171 tests passed. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate; localization validation passed for 398 keys, 19 plurals and both permission bundles.
 - [ ] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
 - [ ] Verify owner-only receive retrieval and acknowledgements, private-key survival after relaunch, a second paired device without keys, lost finalization responses, receive-file exhaustion and one-attempt multi-file sends on physical iOS.
 - [ ] Verify large-inbox confirmation, changed manifests while confirming, exhausted-file subsets, retries retaining local files and limits, new-link/account-switch draft reset, and share-extension limit entry with VoiceOver and Dynamic Type.

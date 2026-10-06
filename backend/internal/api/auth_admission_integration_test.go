@@ -25,7 +25,7 @@ import (
 func admissionRouter(t *testing.T) (*Server, http.Handler) {
 	t.Helper()
 	root := t.TempDir()
-	db, err := database.Open(filepath.Join(root, "state.db"))
+	db, err := openFixture(filepath.Join(root, "state.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestReceiveBudgetReservationConcurrentAndCumulative(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "quota.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "quota.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestReceiveBudgetReservationConcurrentAndCumulative(t *testing.T) {
 	}
 }
 func TestAuthenticationMigrationPreservesLegacyOwnership(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "auth.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "auth.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestAuthenticationMigrationPreservesLegacyOwnership(t *testing.T) {
 // Cancellation must invalidate a grant throughout its precise lifetime, including
 // the fractional portion of its final second. Both replacement and DELETE use it.
 func TestPairingCancellationAndReplacementAtFractionalExpiry(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "fractional-pairing.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "fractional-pairing.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -205,7 +205,11 @@ export class HistoryController {
             request.signal,
           );
         }
-        if (snapshotChanged && page && this.current(epoch)) await this.options.page(page);
+        let rendered = false;
+        if (snapshotChanged && page && this.current(epoch)) {
+          await this.options.page(page);
+          rendered = true;
+        }
         if (this.supported && state) {
           try {
             for (let index = 0; index < HISTORY_SYNC_BATCHES && this.current(epoch); index++) {
@@ -235,6 +239,7 @@ export class HistoryController {
               state = { ...state, cursor: batch.next_cursor };
               if (batch.changes.length) {
                 await this.render(epoch);
+                rendered = true;
                 this.channel?.postMessage(this.options.scope);
               }
               if (!batch.has_more) break;
@@ -259,9 +264,14 @@ export class HistoryController {
                 this.cursor,
               );
             await this.render(epoch);
+            rendered = true;
           }
         }
         if (this.current(epoch)) {
+          // An empty successful feed still recovers a previous transport error.
+          // Reuse the bounded cache page once to clear its stale UI warning.
+          if (this.failures > 0 && !rendered) await this.render(epoch);
+          if (!this.current(epoch)) return true;
           this.failures = 0;
           this.retryNotBefore = 0;
         }

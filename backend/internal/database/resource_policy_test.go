@@ -12,7 +12,7 @@ import (
 func resourceFixture(t *testing.T) (*Queries, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "resources.db")
-	db, err := Open(path)
+	db, err := openFixture(path)
 	if err != nil {
 		t.Fatal(err)
 	}

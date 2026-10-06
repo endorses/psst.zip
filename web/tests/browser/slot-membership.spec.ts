@@ -100,7 +100,11 @@ test("invalid membership and denied access never fetch the manifest", async ({ p
   ]) {
     result = { ...data.membership, ...override };
     await page.goto(`/d/${transfer}?inbox=${slot}`);
-    await expect(page.getByRole("alert")).toContainText("Could not open these files");
+    await expect(page.getByRole("alert")).toContainText(
+      "recipient_public_key" in override
+        ? "This file does not match the expected inbox"
+        : "Invalid inbox membership",
+    );
   }
   result = { error: "private error" };
   for (status of [401, 403, 404, 410]) {

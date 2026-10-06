@@ -64,7 +64,9 @@ test("retained chart dates are constrained and expired requests preserve the pri
   const through = page.getByLabel("Through (UTC, inclusive)", { exact: true });
   await expect(from).toHaveAttribute("min", report.history_retained_from);
   await expect(through).toHaveAttribute("min", report.range.from);
-  await expect(page.getByText(/Daily details are retained for 400 days/)).toContainText(
+  const retention = page.locator("p").filter({ hasText: "Daily details are retained for" });
+  await expect(retention).toContainText(/Daily details are retained for\s+400\s+days/);
+  await expect(retention).toContainText(
     "Measured lifetime totals preserve all recorded traffic, including older days",
   );
   await expect(
@@ -84,10 +86,10 @@ test("retained chart dates are constrained and expired requests preserve the pri
   await expect(alert).toContainText("This period is outside the available daily history");
   await expect(alert).toContainText("The previous measurements remain below and may be stale");
   await expect(alert).not.toContainText("Internal storage diagnostic");
-  await expect(page.getByText("2026-10-01 through 2026-10-04 (inclusive, UTC)")).toBeVisible();
+  await expect(page.getByText("Oct 1, 2026 through Oct 4, 2026 (inclusive, UTC)")).toBeVisible();
   await expect(
-    page.getByText("Uploaded 1.0 KiB · Downloaded 2.0 KiB · Combined 3.0 KiB"),
-  ).toBeVisible();
+    page.locator("p").filter({ hasText: /Uploaded[\s\S]*Downloaded[\s\S]*Combined/ }),
+  ).toHaveText(/Uploaded\s+1\.0 KiB\s+Downloaded\s+2\.0 KiB\s+Combined\s+3\.0 KiB/);
   await page.getByText("Daily traffic data (exact bytes)", { exact: true }).click();
   await expect(page.getByRole("table")).toContainText("3,072");
   await expect(from).toHaveValue("2025-08-31");

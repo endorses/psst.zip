@@ -31,7 +31,7 @@ func (w *failingTrafficWriter) WriteHeader(int)           {}
 func (w *failingTrafficWriter) Write([]byte) (int, error) { return 2, io.ErrClosedPipe }
 
 func TestTrafficIOCountsPartialFailuresAndExcludesErrors(t *testing.T) {
-	db, err := database.Open(filepath.Join(t.TempDir(), "meter.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "meter.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestTrafficIOCountsPartialFailuresAndExcludesErrors(t *testing.T) {
 }
 
 func TestTrafficFlushBoundedAndFailureVisible(t *testing.T) {
-	db, err := database.Open(filepath.Join(t.TempDir(), "flush.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "flush.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

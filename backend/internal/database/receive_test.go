@@ -71,7 +71,7 @@ func TestSlotReservationClassifiesRevocationBeforeQuota(t *testing.T) {
 
 func TestReceiveFileAllowanceConcurrentCumulativeAndRestartSafe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "receive.db")
-	db, err := Open(path)
+	db, err := openFixture(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestReceiveFileAllowanceConcurrentCumulativeAndRestartSafe(t *testing.T) {
 	}
 }
 func TestReceiveFileAllowanceRollbackAndByteQuota(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "rollback.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "rollback.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

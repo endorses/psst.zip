@@ -175,10 +175,10 @@
         errorMessage = errorText(err);
       } else if (hasStatus(err, 401, 403)) {
         errorMessage = m("signInAsTheInboxOwnerToSaveThese");
-      } else if (err instanceof Error && err instanceof LocalizedError) {
-        errorMessage = errorText(err);
       } else if (hasStatus(err, 404, 410)) {
         errorMessage = m("thisTransferHasExpiredOrWasRevokedAskThe");
+      } else if (err instanceof Error && err instanceof LocalizedError) {
+        errorMessage = errorText(err);
       } else {
         errorMessage = m("couldNotOpenTheseFilesCheckYourConnectionAnd");
       }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestInboxEventQueryCancelsWhileWaitingForDatabaseConnection(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "events.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "events.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

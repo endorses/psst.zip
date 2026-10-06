@@ -13,6 +13,7 @@ import (
 
 	"github.com/endorses/psst.zip/backend/internal/database"
 	"github.com/endorses/psst.zip/backend/internal/store"
+	"github.com/endorses/psst.zip/backend/internal/testutil"
 )
 
 type fixture struct {
@@ -26,7 +27,7 @@ func setup(t *testing.T) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.db")
-	db, err := database.Open(path)
+	db, err := testutil.OpenDatabase(path, database.Open)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 
 func TestHistorySyncExpiryCleanupPublishesInactiveAndRemoval(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "history.db"))
+	db, err := openFixture(filepath.Join(dir, "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

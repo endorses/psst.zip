@@ -17,19 +17,7 @@ func TestTransferFileListBoundsHistoricalMetadata(t *testing.T) {
 			}
 			// Model pre-limit/restored metadata without passing through HTTP creation's
 			// current configurable per-transfer cap.
-			tx, err := q.db.Begin()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = tx.Rollback() }()
-			for i := 0; i < count; i++ {
-				if _, err = tx.Exec(`INSERT INTO files(id,transfer_id,size,upload_offset,upload_complete,download_count) VALUES(?,'legacy',7,7,1,2)`, fmt.Sprintf("legacy-%04d", i)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err = tx.Commit(); err != nil {
-				t.Fatal(err)
-			}
+			seedHistoricalTransferFileRows(t, q, "legacy", "legacy-%04d", count, 7, 7, true, 2)
 			files, err := q.ListFilesContext(context.Background(), "legacy")
 			if count > MaxTransferFiles {
 				if !errors.Is(err, ErrTransferFileLimit) || files != nil {
@@ -58,11 +46,7 @@ func TestTransferFileListObservesCancellationAndIndexedScope(t *testing.T) {
 	if err := q.CreateFile("only", "small", 1); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 101; i++ {
-		if err := q.CreateFile(fmt.Sprint(i), "large", 1); err != nil {
-			t.Fatal(err)
-		}
-	}
+	seedTransferFileRows(t, q, "large", "%d", 101, 1, 0, false, 0)
 	files, err := q.ListFiles("small")
 	if err != nil || len(files) != 1 || files[0].ID != "only" {
 		t.Fatal(files, err)
@@ -84,11 +68,7 @@ func TestTransferFileAllocationSerializesProtocolCeiling(t *testing.T) {
 	if err := q.CreateSlotTransfer("slot", "child", until, 0, nil); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < MaxTransferFiles-1; i++ {
-		if err := q.CreateFile(fmt.Sprint(i), "child", 60); err != nil {
-			t.Fatal(err)
-		}
-	}
+	seedTransferFileRows(t, q, "child", "%d", MaxTransferFiles-1, 60, 0, false, 0)
 	otherDB, err := Open(path)
 	if err != nil {
 		t.Fatal(err)

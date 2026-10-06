@@ -10,6 +10,13 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: viewport.width < 500 ? "dark" : "light" });
+    await page.route("**/api/v1/config", async (route) => {
+      const response = await route.fetch();
+      const config = await response.json();
+      // These dialog fixtures exercise bounded legacy history pages.
+      delete config.history_sync_version;
+      await route.fulfill({ response, json: config });
+    });
     let slots = Array.from({ length: 30 }, (_, index) =>
       historySlot({
         id: historyID(index),
@@ -70,7 +77,7 @@ for (const viewport of [
     await page.keyboard.press("Escape");
     await expect(dialog).toBeVisible();
     release();
-    await expect(dialog.getByRole("alert")).toContainText("Please retry revocation.");
+    await expect(dialog.getByRole("alert")).toContainText("The server is currently unavailable.");
     await confirm.click();
     await expect(dialog).toHaveCount(0);
     await expect(row).toHaveCount(0);

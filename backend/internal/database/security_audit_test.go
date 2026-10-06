@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -12,6 +13,25 @@ func auditEvent(kind, origin string) SecurityEvent {
 	return SecurityEvent{Kind: kind, Origin: origin, TargetType: "server", Outcome: "succeeded"}
 }
 
+// Seed routine events in one statement, retaining all production SQL triggers.
+// The boundary/age operations being tested still go through Append/Prune.
+func seedSecurityEvents(t *testing.T, tx *sql.Tx, e SecurityEvent, count int) {
+	t.Helper()
+	if _, err := tx.Exec(`WITH RECURSIVE events(n) AS (SELECT 1 WHERE ?>0 UNION ALL SELECT n+1 FROM events WHERE n<?)
+ INSERT INTO security_events(occurred_at,bucket,kind,origin,actor_id,target_type,target_id,outcome,event_count)
+ SELECT ?,?,?,?,?,?,?,?,1 FROM events`, count, count, time.Now().UTC().Format(securityAuditTimeLayout), securityEventBucket(e), e.Kind, e.Origin, e.ActorID, e.TargetType, e.TargetID, e.Outcome); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertAuditBucket(t *testing.T, tx *sql.Tx, bucket string, want int) {
+	t.Helper()
+	var actual, retained int
+	if err := tx.QueryRow(`SELECT COUNT(*),(SELECT retained FROM security_audit_buckets WHERE bucket=?) FROM security_events WHERE bucket=?`, bucket, bucket).Scan(&actual, &retained); err != nil || actual != want || retained != want {
+		t.Fatalf("%s rows=%d counter=%d want=%d error=%v", bucket, actual, retained, want, err)
+	}
+}
+
 func TestSecurityAuditBucketsProtectAdministration(t *testing.T) {
 	q, _ := resourceFixture(t)
 	tx, err := q.db.Begin()
@@ -20,14 +40,22 @@ func TestSecurityAuditBucketsProtectAdministration(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, group := range []struct {
-		kind, origin string
-		total        int
-	}{{"settings.file_size_changed", "administrator", 8005}, {"transfer.revoked", "capability", 1105}, {"authentication.login_rejected", "system", 1105}} {
-		for i := 0; i < group.total; i++ {
-			if err = q.AppendSecurityEvent(tx, auditEvent(group.kind, group.origin)); err != nil {
+		kind, origin, bucket string
+		maximum, total       int
+	}{{"settings.file_size_changed", "administrator", "administration", 8000, 8005}, {"transfer.revoked", "capability", "lifecycle", 1000, 1105}, {"authentication.login_rejected", "system", "authentication", 1000, 1105}} {
+		e := auditEvent(group.kind, group.origin)
+		seeded := group.maximum - 1
+		seedSecurityEvents(t, tx, e, seeded)
+		assertAuditBucket(t, tx, group.bucket, seeded)
+		for i := seeded; i < group.total; i++ {
+			if err = q.AppendSecurityEvent(tx, e); err != nil {
 				t.Fatal(err)
 			}
+			if i == seeded {
+				assertAuditBucket(t, tx, group.bucket, group.maximum)
+			}
 		}
+		assertAuditBucket(t, tx, group.bucket, group.maximum)
 	}
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -110,11 +138,8 @@ func TestSecurityAuditAgePruningBoundedAndRefills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 600; i++ {
-		if err = q.AppendSecurityEvent(tx, auditEvent("transfers.paused", "local")); err != nil {
-			t.Fatal(err)
-		}
-	}
+	defer func() { _ = tx.Rollback() }()
+	seedSecurityEvents(t, tx, auditEvent("transfers.paused", "local"), 600)
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
 	}

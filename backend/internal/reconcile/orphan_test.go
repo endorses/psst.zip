@@ -442,10 +442,10 @@ func TestOrphanWorkerObservesDiskThenStopsBeforeGrace(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
-	go func() { RunOrphans(ctx, f.q, f.disk, 5*time.Millisecond); close(done) }()
+	go func() { RunOrphans(ctx, f.q, f.disk, 50*time.Millisecond); close(done) }()
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
-	poll := time.NewTicker(5 * time.Millisecond)
+	poll := time.NewTicker(25 * time.Millisecond)
 	defer poll.Stop()
 	observed := false
 	for !observed {
@@ -463,7 +463,9 @@ func TestOrphanWorkerObservesDiskThenStopsBeforeGrace(t *testing.T) {
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	// A canceled sweep can finish durable progress using separate 500ms
+	// contexts. Allow that bounded cleanup plus race-instrumented scheduling.
+	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not stop")
 	}
 	if info, err := f.disk.Inspect("new/file"); err != nil || !info.Exists {

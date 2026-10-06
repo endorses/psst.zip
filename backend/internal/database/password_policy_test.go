@@ -13,7 +13,7 @@ import (
 
 func passwordPolicyDB(t *testing.T) (*sql.DB, *Queries) {
 	t.Helper()
-	db, err := Open(filepath.Join(t.TempDir(), "password-policy.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "password-policy.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

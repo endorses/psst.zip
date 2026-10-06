@@ -10,7 +10,7 @@ import (
 
 func TestTrafficConcurrentDurabilityAndOverflow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "traffic.db")
-	db, err := Open(path)
+	db, err := openFixture(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestTrafficConcurrentDurabilityAndOverflow(t *testing.T) {
 }
 
 func TestTrafficFileEventsSurviveDeletionAndReceiptRetry(t *testing.T) {
-	db, err := Open(filepath.Join(t.TempDir(), "events.db"))
+	db, err := openFixture(filepath.Join(t.TempDir(), "events.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

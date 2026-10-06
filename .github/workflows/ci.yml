@@ -153,14 +153,6 @@ jobs:
           python3 ios/scripts/check_sources.py
           cd ios
           xcodegen generate
-      - name: Build app and embedded share extension
-        working-directory: ios
-        run: |
-          xcodebuild -project Psst.xcodeproj -scheme Psst \
-            -sdk iphonesimulator -configuration Debug \
-            -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
-            CODE_SIGNING_ALLOWED=NO build
-          test -d "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
       - name: Select installed iOS simulator
         run: |
           python3 - <<'PY'
@@ -176,6 +168,15 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a") as output:
               output.write(f'PSST_IOS_SIMULATOR_ID={devices[0]["udid"]}\n')
           PY
+      - name: Build app, embedded extension and XCTest products once
+        working-directory: ios
+        run: |
+          xcodebuild -project Psst.xcodeproj -scheme Psst \
+            -sdk iphonesimulator -configuration Debug \
+            -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
+            CODE_SIGNING_ALLOWED=NO build-for-testing
+          test -d "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
       - name: Run native XCTest suite
         working-directory: ios
         run: |
@@ -184,7 +185,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
             -resultBundlePath "$RUNNER_TEMP/psst-ios-tests.xcresult" \
-            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test-without-building
       - name: Preserve native test results
         if: always()
         uses: actions/upload-artifact@v4

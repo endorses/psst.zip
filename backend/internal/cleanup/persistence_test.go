@@ -17,7 +17,7 @@ import (
 func TestCleanupPartialDeletionRetainsReservationAndResumesAfterRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.db")
-	db, err := database.Open(path)
+	db, err := openFixture(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestCleanupPartialDeletionRetainsReservationAndResumesAfterRestart(t *testi
 }
 func TestCleanupExhaustedPayloadWaitsForFinalReaderAndPreservesMetadata(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestCleanupExhaustedPayloadWaitsForFinalReaderAndPreservesMetadata(t *testi
 }
 func TestCleanupMetadataDeletionFailureRetainsReservationAndRetries(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func (s uncertainDeletionStore) DeleteAllBounded(ctx context.Context, id string,
 
 func TestCleanupUncertainDeletionRetainsMetadataAndReservation(t *testing.T) {
 	dir := t.TempDir()
-	db, err := database.Open(filepath.Join(dir, "db"))
+	db, err := openFixture(filepath.Join(dir, "db"))
 	if err != nil {
 		t.Fatal(err)
 	}

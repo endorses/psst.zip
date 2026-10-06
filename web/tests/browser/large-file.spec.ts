@@ -43,7 +43,7 @@ test("a file over 100 MiB uploads in bounded frames and saves through OPFS with 
     (await request.patch("/api/v1/admin/settings", { data: { max_file_size: 1024 * 1024 } })).ok(),
   ).toBe(true);
   await page.goto(link);
-  const download = page.waitForEvent("download");
+  const download = page.waitForEvent("download", { timeout: 90000 });
   await page.getByRole("button", { name: "Save file", exact: true }).click();
   const file = await download,
     path = (await file.path())!;

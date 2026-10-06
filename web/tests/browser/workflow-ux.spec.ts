@@ -84,7 +84,7 @@ browserTest(
     await expect(page.getByRole("heading", { name: "Wedding photos", exact: true })).toBeVisible();
     const files = page.getByRole("region", { name: "Received files", exact: true });
     await expect(
-      files.getByRole("link", { name: "1 file · Save file", exact: true }),
+      files.getByRole("link", { name: "1 file · View files", exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Received files pages" })).toHaveCount(0);
     await expect(page.getByLabel("Link title (optional)")).toHaveCount(0);
@@ -110,6 +110,13 @@ browserTest(
   "History filter requests matching records beyond the all-page and uses shared names",
   async ({ page }) => {
     await mockOwner(page, historyID(900));
+    await page.route("**/api/v1/config", async (route) => {
+      const response = await route.fetch();
+      const config = await response.json();
+      // The mocked pages below use the bounded legacy history protocol.
+      delete config.history_sync_version;
+      await route.fulfill({ response, json: config });
+    });
     const kinds: string[] = [];
     await page.route("**/api/v1/auth/resources?*", (route) => {
       const kind = new URL(route.request().url()).searchParams.get("kind") ?? "";
@@ -168,7 +175,7 @@ test("a named receive link saves in the signed-in workspace and returns to its i
     await guest.getByRole("button", { name: "Send files", exact: true }).click();
     await expect(guest.getByRole("heading", { name: "Files sent" })).toBeVisible();
     const files = page.getByRole("region", { name: "Received files", exact: true });
-    const item = files.getByRole("link", { name: "1 file · Save file", exact: true });
+    const item = files.getByRole("link", { name: "1 file · View files", exact: true });
     await expect(item).toBeVisible({ timeout: 10000 });
     await item.click();
     await expect(page.getByRole("navigation", { name: "Account navigation" })).toBeVisible();
@@ -183,7 +190,7 @@ test("a named receive link saves in the signed-in workspace and returns to its i
     await page.getByRole("link", { name: "Back to received files" }).click();
     await expect(page.getByRole("heading", { name: "Wedding photos", exact: true })).toBeVisible();
     await expect(
-      files.getByRole("link", { name: "1 file · Save file", exact: true }),
+      files.getByRole("link", { name: "1 file · View files", exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Received files pages" })).toHaveCount(0);
   } finally {

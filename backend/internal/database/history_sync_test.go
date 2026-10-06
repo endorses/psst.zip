@@ -187,24 +187,28 @@ func TestHistorySyncCountAndAgeRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	cursor := historyWatermark(t, q, "alice")
-	tx, err := q.db.Begin()
-	if err != nil {
+	var initialCount int
+	if err := q.db.QueryRow(`SELECT COUNT(*) FROM history_sync_events`).Scan(&initialCount); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10010; i++ {
-		if _, err = tx.Exec(`UPDATE transfers SET title=? WHERE id='send'`, fmt.Sprint(i)); err != nil {
+	// The fixture starts exactly at the production account cap. Only the few
+	// mutations that reach/past the boundary need the full metadata write path.
+	seeded := 10000 - initialCount
+	seedHistoryEvents(t, q, seeded, 1, "send", "upsert")
+	assertHistoryFixtureBoundary(t, q, 10000)
+	for i := seeded; i < 10010; i++ {
+		title := fmt.Sprint(i)
+		if err := q.RenameLinkTitle(context.Background(), "transfer", "send", "alice", &title); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err = tx.Commit(); err != nil {
+	var count, stateCount, accountCount, accountFloor, globalFloor int
+	err := q.db.QueryRow(`SELECT COUNT(*),(SELECT event_count FROM history_sync_state),(SELECT event_count FROM history_sync_accounts WHERE owner_id='alice'),(SELECT floor FROM history_sync_accounts WHERE owner_id='alice'),(SELECT global_floor FROM history_sync_state) FROM history_sync_events`).Scan(&count, &stateCount, &accountCount, &accountFloor, &globalFloor)
+	if err != nil {
 		t.Fatal(err)
 	}
-	var count, stateCount, accountCount int
-	if err = q.db.QueryRow(`SELECT COUNT(*),(SELECT event_count FROM history_sync_state),(SELECT event_count FROM history_sync_accounts WHERE owner_id='alice') FROM history_sync_events`).Scan(&count, &stateCount, &accountCount); err != nil {
-		t.Fatal(err)
-	}
-	if count > 10000 || count != stateCount || count != accountCount {
-		t.Fatal("log count drift/unbounded", count, stateCount, accountCount)
+	if count != initialCount+10010-256 || count != stateCount || count != accountCount || accountFloor != 256 || globalFloor != 0 {
+		t.Fatal("log count drift/unbounded or wrong prune batch", count, stateCount, accountCount, accountFloor, globalFloor)
 	}
 	if _, err = q.AccountHistoryChanges(context.Background(), "alice", 100, cursor); !errors.Is(err, ErrHistorySyncReset) {
 		t.Fatal("pruned cursor accepted", err)
@@ -301,22 +305,33 @@ func TestHistorySyncSnapshotHandoffUnderConcurrentMutation(t *testing.T) {
 }
 func TestHistorySyncGlobalRetentionAndMetadataEstimate(t *testing.T) {
 	q := historyFixture(t)
+	if err := q.CreateTransfer("global-boundary", time.Now().Add(time.Hour), 0, nil, "alice"); err != nil {
+		t.Fatal(err)
+	}
 	cursor := historyWatermark(t, q, "alice")
 	// An indexed log may fill globally before any individual account reaches its
 	// bound. Simulate twenty independent accounts producing a legitimate journal.
-	if _, err := q.db.Exec(`UPDATE history_sync_state SET revision=100010 WHERE id=1;
- WITH RECURSIVE revisions(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM revisions WHERE n<100010)
- INSERT INTO history_sync_events(revision,owner_id,kind,resource_id,action)
- SELECT n,CASE WHEN n%20=0 THEN 'alice' ELSE 'account-'||(n%20) END,'transfer','retained','remove' FROM revisions`); err != nil {
+	var initialCount int
+	if err := q.db.QueryRow(`SELECT COUNT(*) FROM history_sync_events`).Scan(&initialCount); err != nil {
 		t.Fatal(err)
 	}
-	var count, stateCount int
+	seedHistoryEvents(t, q, 100000-initialCount, 20, "retained", "remove")
+	assertHistoryFixtureBoundary(t, q, 100000)
+	for i := 0; i < 10; i++ {
+		title := fmt.Sprint(i)
+		if err := q.RenameLinkTitle(context.Background(), "transfer", "global-boundary", "alice", &title); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count, stateCount, accountDrift, largestAccount int
 	var floor int64
-	if err := q.db.QueryRow(`SELECT COUNT(*),(SELECT event_count FROM history_sync_state),(SELECT global_floor FROM history_sync_state) FROM history_sync_events`).Scan(&count, &stateCount, &floor); err != nil {
+	if err := q.db.QueryRow(`SELECT COUNT(*),(SELECT event_count FROM history_sync_state),(SELECT global_floor FROM history_sync_state),
+ (SELECT COUNT(*) FROM history_sync_accounts a WHERE a.event_count<>(SELECT COUNT(*) FROM history_sync_events e WHERE e.owner_id=a.owner_id)),
+ (SELECT MAX(event_count) FROM history_sync_accounts) FROM history_sync_events`).Scan(&count, &stateCount, &floor, &accountDrift, &largestAccount); err != nil {
 		t.Fatal(err)
 	}
-	if count > 100000 || count != stateCount || floor == 0 {
-		t.Fatal("global cap/floor lost", count, stateCount, floor)
+	if count != 100010-256 || count != stateCount || floor != 256 || accountDrift != 0 || largestAccount > 10000 {
+		t.Fatal("global cap/floor lost or account counts drifted", count, stateCount, floor, accountDrift, largestAccount)
 	}
 	if _, err := q.AccountHistoryChanges(context.Background(), "alice", 50, cursor); !errors.Is(err, ErrHistorySyncReset) {
 		t.Fatal("global pruning did not reset cursor", err)

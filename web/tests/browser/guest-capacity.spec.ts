@@ -18,7 +18,10 @@ async function setup(page: Page) {
     route.fulfill({ status: 403, json: { code: "resource_limit" } }),
   );
 }
-const open = (page: Page) => page.goto(`/u/${guestSlotID}#v2.${guestPublicKey}`);
+async function open(page: Page) {
+  const response = await page.goto(`/u/${guestSlotID}#v2.${guestPublicKey}`);
+  expect(response?.status(), "Guest upload route must load before testing capacity").toBe(200);
+}
 
 test("accumulated picker additions include empty-file overhead and retain prior files when the next batch exceeds capacity", async ({
   page,

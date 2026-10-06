@@ -1,12 +1,11 @@
-import { test, expect, authenticate, adminCredentials } from "./auth-fixture";
+import { test, expect, openAdmin } from "./auth-fixture";
 
 test("persisted administrator contact reaches an anonymous recipient without link secrets", async ({
   page,
   browser,
   adminRequest,
 }) => {
-  await page.goto("/?view=server");
-  await authenticate(page, adminCredentials);
+  await openAdmin(page, "/?view=server");
   await page.getByRole("link", { name: "Server settings", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Page sections" })

@@ -91,6 +91,7 @@ test("administrator sign-in requires a factor; wrong codes keep the prompt and r
 test("enrollment uses local QR and one-time recovery codes survive revocation until acknowledged", async ({
   page,
 }) => {
+  await page.clock.install();
   await signedIn(page);
   let revoked = false;
   await page.route("**/api/v1/auth/me", (route) =>
@@ -120,7 +121,8 @@ test("enrollment uses local QR and one-time recovery codes survive revocation un
   await page.getByLabel("Authenticator setup code").fill("123456");
   await page.getByRole("button", { name: "Confirm authenticator", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Save your recovery codes" })).toBeVisible();
-  await page.waitForTimeout(3300);
+  // Advance the identity polling deadline while retaining its mocked response.
+  await page.clock.fastForward(3300);
   await expect(page.locator(".codes li")).toHaveCount(10);
   await expect(page.getByRole("button", { name: "Continue to sign in" })).toBeDisabled();
   expect(
@@ -140,6 +142,7 @@ test("enrollment uses local QR and one-time recovery codes survive revocation un
 test("an in-flight401 identity poll cannot discard a delayed successful enrollment response", async ({
   page,
 }) => {
+  await page.clock.install();
   await signedIn(page);
   let identityReads = 0;
   let pollRoute: Route | undefined;
@@ -156,6 +159,7 @@ test("an in-flight401 identity poll cannot discard a delayed successful enrollme
     heldConfirm = route;
   });
   await begin(page);
+  await page.clock.fastForward(3000);
   await expect.poll(() => !!pollRoute).toBe(true);
   await page.getByLabel("Authenticator setup code").fill("123456");
   await page.getByRole("button", { name: "Confirm authenticator", exact: true }).click();

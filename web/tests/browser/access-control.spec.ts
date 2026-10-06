@@ -1,4 +1,4 @@
-import { test, expect, signIn, authenticate, adminCredentials, retryAuth } from "./auth-fixture";
+import { test, expect, signIn, openAdmin, retryAuth } from "./auth-fixture";
 
 test("anonymous users cannot create transfers or receive links; public pages need no account", async ({
   playwright,
@@ -21,8 +21,7 @@ test("admin manages accounts while regular users cannot administer others", asyn
   playwright,
   baseURL,
 }) => {
-  await page.goto("/");
-  await authenticate(page, adminCredentials);
+  await openAdmin(page);
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Send", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Users", exact: true }).click();

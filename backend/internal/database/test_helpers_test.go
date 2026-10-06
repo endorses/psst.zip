@@ -3,9 +3,16 @@ package database
 import (
 	"database/sql"
 	"io"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/endorses/psst.zip/backend/internal/testutil"
 )
+
+func TestMain(m *testing.M) { os.Exit(testutil.Run(m)) }
+
+func openFixture(path string) (*sql.DB, error) { return testutil.OpenDatabase(path, Open) }
 
 func closeFixture(t *testing.T, closer io.Closer) {
 	t.Helper()

@@ -37,6 +37,12 @@ function startServer() {
       ADMIN_PASSWORD: "Test-admin-password-2026",
       AUTH_ALLOW_INSECURE_HTTP: "true",
       PUBLIC_URL: "http://127.0.0.1:4173",
+      // Functional cases share one loopback IP; limiter regressions cover the
+      // production defaults in the backend suite. Authentication limits remain.
+      RATE_LIMIT_GLOBAL: "200",
+      RATE_LIMIT_BURST: "400",
+      RATE_LIMIT_CREATION: "20",
+      RATE_LIMIT_CREATION_BURST: "50",
       LISTEN_ADDR: `127.0.0.1:${process.env.PSST_TEST_BACKEND_PORT || "8080"}`,
       DB_PATH: join(directory, "psst.db"),
       STORAGE_PATH: join(directory, "files"),

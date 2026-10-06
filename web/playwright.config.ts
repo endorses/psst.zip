@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/browser",
   workers: 1,
-  use: { locale: "en-US", baseURL: "http://127.0.0.1:4173" },
+  use: { locale: "en-US", baseURL: "http://127.0.0.1:4173", actionTimeout: 10000 },
   webServer: [
     {
       command: "node tests/browser/server.mjs",

@@ -199,9 +199,6 @@ for (const noSubtle of [false, true]) {
           ? { Authorization: `Bearer ${actor.token}` }
           : {};
         for (const path of paths) {
-          // Keep the real 20-request/second admission policy enabled. This is
-          // an authorization matrix, so deliberately pace its many denials.
-          await new Promise((resolve) => setTimeout(resolve, 75));
           const denied = await actor.context.get(path, { headers });
           expect(denied.status(), `${path}: ${await denied.text()}`).toBe(actor.status);
         }
