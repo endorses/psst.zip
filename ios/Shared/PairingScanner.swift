@@ -91,13 +91,13 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
         for name in [AVCaptureSession.runtimeErrorNotification, AVCaptureSession.wasInterruptedNotification] {
             observers.observe(name: name, object: capture, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, active, !self.delivered else { return }
-                    queue.async {
+                    guard let self, self.active, !self.delivered else { return }
+                    self.queue.async {
                         self.turnTorchOff()
                         self.capture.stopRunning()
                         self.configured = false
                     }
-                    showError()
+                    self.showError()
                 }
             }
         }

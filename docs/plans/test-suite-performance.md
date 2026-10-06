@@ -267,3 +267,15 @@ unavailable `HttpClientFactoryKt` file facade.
       the exported constructor and actual UIKit/AVFoundation source compilation.
 - [x] Commit verified repairs locally. Installed security/format hooks passed.
       Clean task-owned temporary artifacts and keep the commit unpushed.
+
+## Scanner callback capture follow-up
+
+Run [`37440453480`](https://github.com/endorses/psst.zip/actions/runs/37440453480)
+on `c18b364` passed all four Linux jobs. Native compilation progressed past the
+client/observer repairs and reported three implicit scanner callback captures.
+
+- [x] Make all scanner references explicit within the nested actor callback,
+      preserving weak ownership, serialized capture work and error presentation.
+- [x] Format Swift and run iOS source/localization checks. Both gates passed.
+- [ ] Commit and push verified CI repairs, as authorized on October 6.
+- [ ] Verify the native app, embedded extension and XCTest on macOS CI.

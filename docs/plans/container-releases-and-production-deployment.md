@@ -267,6 +267,19 @@ error presenter and reported actor-isolated observer access from
 - [x] Commit the verified client/lifetime repairs locally. Installed security/format
       hooks passed. Clean task-owned temporary artifacts and keep the commit unpushed.
 
+### Scanner callback capture follow-up
+
+Run [`37440453480`](https://github.com/endorses/psst.zip/actions/runs/37440453480)
+on `c18b364` passed all four Linux jobs. The native compiler accepted the observer
+owner and platform-client constructor, then reported three implicit captures in
+the scanner's nested main-actor notification callback.
+
+- [x] Qualify the scanner's active state, serial queue and error presentation with
+      explicit `self` references. Preserve weak capture and existing camera behavior.
+- [x] Format the scanner and run iOS source/localization checks. Both gates passed.
+- [ ] Commit and push verified CI repairs, as authorized on October 6.
+- [ ] Verify the app, embedded extension and XCTest on the next macOS CI run.
+
 ### Release artifacts and image-based installation
 
 - [ ] Add `deploy/compose.release.yml` using `image:` references for both services,
