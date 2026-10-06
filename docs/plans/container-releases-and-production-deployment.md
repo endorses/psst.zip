@@ -320,10 +320,33 @@ two history fixture expectations, and two secure-storage errors.
 - [x] Keep exact Vision QR decoding assertions and add plain/branded decoder
       diagnostics, pixel metadata and retained images for the next native run.
 - [x] Format changes and run source/localization/YAML checks. All passed.
-- [ ] Commit and push the verified runtime fixtures/signing diagnostics.
+- [x] Commit and push the verified runtime fixtures/signing diagnostics. Commit
+      `007e4e2` passed security/format hooks and was pushed.
 - [ ] Verify shared Keychain tests, history fixtures and all QR payload decoding
       on macOS; finish any repair indicated by the diagnostics.
 - [ ] Verify the complete GitHub workflow succeeds for the final pushed commit.
+
+### Native QR decoder fallback and simulator startup
+
+Run [`37445042420`](https://github.com/endorses/psst.zip/actions/runs/37445042420)
+on `007e4e2` passed all four Linux jobs, signed native compilation and signature
+verification. The history and real shared Keychain tests passed. Only the three
+QR payload assertions failed among 171 tests (approximately 120 seconds).
+Vision also failed to decode plain control QRs; Core Image decoded every branded
+payload exactly. The long native test step spent nearly six minutes starting
+the simulator before the actual suite began; oversized migration took 31 seconds.
+
+- [x] Use a Core Image fallback for still-image QR decoding when Vision produces
+      no payloads or cannot process the image. Preserve ambiguity rejection,
+      payload/file/pixel limits and security-scoped URL handling.
+- [x] Add native tests of complete branded download/upload/pairing payloads through the actual
+      production image reader, plus rejection of blank/multiple-code images.
+      Implementation is complete; native execution remains pending below.
+- [x] Start simulator boot after selection so it overlaps Kotlin/Swift compilation.
+      Preserve the same installed runtime, destination and full XCTest target.
+- [x] Format changes and run source/localization/YAML gates. All passed.
+- [ ] Commit and push the verified QR fallback/startup changes.
+- [ ] Verify the complete native suite and all five jobs on the final commit.
 
 ### Release artifacts and image-based installation
 

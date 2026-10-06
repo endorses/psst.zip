@@ -167,8 +167,12 @@ jobs:
                      if device.get("isAvailable") and device["name"].startswith("iPhone")]
           if not devices:
               raise SystemExit("Install an iOS 26.0 simulator for the selected Xcode toolchain")
+          device = devices[0]
+          # Let first boot overlap the Kotlin/Swift build instead of delaying XCTest.
+          if device.get("state") != "Booted":
+              subprocess.run(["xcrun", "simctl", "boot", device["udid"]], check=True)
           with open(os.environ["GITHUB_ENV"], "a") as output:
-              output.write(f'PSST_IOS_SIMULATOR_ID={devices[0]["udid"]}\n')
+              output.write(f'PSST_IOS_SIMULATOR_ID={device["udid"]}\n')
           PY
       - name: Build app, embedded extension and XCTest products once
         working-directory: ios

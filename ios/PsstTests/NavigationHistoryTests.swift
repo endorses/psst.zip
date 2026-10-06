@@ -1,9 +1,6 @@
 import AVFoundation
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import Foundation
 import UIKit
-import Vision
 import XCTest
 
 @testable import Psst
@@ -350,46 +347,63 @@ final class NavigationHistoryTests: XCTestCase {
             "{\"type\":\"psst-pairing\",\"version\":1,\"server_url\":\"\(origin)\",\"code\":\"\(key)\"}",
         ]
         for value in values {
-            let image = try XCTUnwrap(QRCodeGenerator.generate(from: value, size: 640)?.cgImage)
-            let request = VNDetectBarcodesRequest()
-            request.symbologies = [.qr]
-            try VNImageRequestHandler(cgImage: image).perform([request])
-            let decoded = request.results?.compactMap(\.payloadStringValue)
-            if decoded != [value] {
-                // Keep the production Vision requirement, but retain enough native evidence to
-                // distinguish renderer damage from a decoder or pixel-format limitation.
-                let filter = CIFilter.qrCodeGenerator()
-                filter.message = Data(value.utf8)
-                filter.correctionLevel = "H"
-                let output = try XCTUnwrap(filter.outputImage)
-                let quietBounds = output.extent.insetBy(dx: -4, dy: -4)
-                let background = CIImage(color: .white).cropped(to: quietBounds)
-                let plain = output.composited(over: background).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
-                let context = CIContext()
-                let plainImage = try XCTUnwrap(context.createCGImage(plain, from: plain.extent))
-                let plainRequest = VNDetectBarcodesRequest()
-                plainRequest.symbologies = [.qr]
-                try VNImageRequestHandler(cgImage: plainImage).perform([plainRequest])
-                let detector = try XCTUnwrap(
-                    CIDetector(
-                        ofType: CIDetectorTypeQRCode, context: context,
-                        options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
-                let coreImageDecoded = detector.features(in: CIImage(cgImage: image)).compactMap {
-                    ($0 as? CIQRCodeFeature)?.messageString
-                }
-                let evidence =
-                    "payloadBytes=\(value.utf8.count), branded=\(image.width)x\(image.height), bitsPerComponent=\(image.bitsPerComponent), bitsPerPixel=\(image.bitsPerPixel), bitmapInfo=\(image.bitmapInfo.rawValue), colorSpace=\(String(describing: image.colorSpace?.name)), VisionRevision=\(request.revision), plainVision=\(String(describing: plainRequest.results?.compactMap(\.payloadStringValue))), brandedCoreImage=\(coreImageDecoded)"
-                print("QR decoding diagnostic: \(evidence)")
-                for (name, diagnosticImage) in [("branded", image), ("plain-core-image", plainImage)] {
-                    let attachment = XCTAttachment(image: UIImage(cgImage: diagnosticImage))
-                    attachment.name = "QR \(name) \(value.utf8.count) bytes"
-                    attachment.lifetime = .keepAlways
-                    add(attachment)
-                }
-                XCTAssertEqual(decoded, [value], evidence)
-            } else {
-                XCTAssertEqual(decoded, [value])
-            }
+            let image = try XCTUnwrap(QRCodeGenerator.generate(from: value, size: 640))
+            XCTAssertEqual(try readQRImage(image), value)
         }
+    }
+
+    func testQRImageReaderRejectsBlankImages() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let size = CGSize(width: 640, height: 640)
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            UIColor.white.setFill()
+            renderer.cgContext.fill(CGRect(origin: .zero, size: size))
+        }
+        XCTAssertThrowsError(try readQRImage(image)) { error in
+            XCTAssertTrue(error is QRImageError)
+        }
+    }
+
+    func testQRImageReaderRejectsMultipleDistinctBrandedCodes() throws {
+        let origin = "https://a-long-self-hosted-transfer-server.example:8443"
+        let key = String(repeating: "A", count: 43)
+        let values = [
+            "\(origin)/d/123e4567-e89b-12d3-a456-426614174000#\(key)",
+            "\(origin)/u/123e4567-e89b-12d3-a456-426614174000#\(key)",
+        ]
+        let images = try values.map { value in
+            try XCTUnwrap(QRCodeGenerator.generate(from: value, size: 640))
+        }
+        // Each individual code must decode before checking that their combined image is rejected.
+        for (image, value) in zip(images, values) {
+            XCTAssertEqual(try readQRImage(image), value)
+        }
+        let padding: CGFloat = 40
+        let size = CGSize(
+            width: images[0].size.width + images[1].size.width + padding * 3,
+            height: max(images[0].size.height, images[1].size.height) + padding * 2)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let combined = UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            UIColor.white.setFill()
+            renderer.cgContext.fill(CGRect(origin: .zero, size: size))
+            images[0].draw(at: CGPoint(x: padding, y: padding))
+            images[1].draw(at: CGPoint(x: images[0].size.width + padding * 2, y: padding))
+        }
+        XCTAssertThrowsError(try readQRImage(combined)) { error in
+            XCTAssertTrue(error is QRImageError)
+        }
+    }
+
+    private func readQRImage(_ image: UIImage) throws -> String {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("qr.png")
+        try XCTUnwrap(image.pngData()).write(to: file)
+        return try QRImageReader.read(file)
     }
 }

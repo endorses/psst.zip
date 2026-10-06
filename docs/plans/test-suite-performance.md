@@ -316,6 +316,27 @@ on `9993fb7` passed all four Linux jobs and the full native build. XCTest ran
 - [x] Preserve exact QR Vision assertions while recording plain-image control,
       Core Image decoding, pixel metadata and retained native image attachments.
 - [x] Format changes and run source/localization/YAML checks. All passed.
-- [ ] Commit and push the verified runtime fixtures/signing diagnostics.
+- [x] Commit and push the verified runtime fixtures/signing diagnostics. Commit
+      `007e4e2` passed security/format hooks and was pushed.
 - [ ] Finish any QR or signing repair identified by the next native run.
 - [ ] Verify all 171 native tests and every GitHub CI job pass on the final commit.
+
+## Native QR decoder fallback and simulator startup
+
+Run [`37445042420`](https://github.com/endorses/psst.zip/actions/runs/37445042420)
+on `007e4e2` passed every Linux job, native compilation and bundle signatures.
+History/Keychain tests passed; only three QR assertions failed among 171 tests.
+Both branded and plain QRs failed Vision decoding, while Core Image decoded
+every branded payload correctly. Actual tests took about 120 seconds, with
+31 seconds for oversized migration. Startup before XCTest consumed nearly six
+minutes of the native test step.
+
+- [x] Add bounded still-image Core Image fallback when Vision finds no payloads
+      or processing fails, preserving ambiguity/size/security-scope checks.
+- [x] Add native tests of the real reader with exact branded payloads and blank/multiple-code
+      rejection instead of relying on a single decoder API. Execution remains pending.
+- [x] Start simulator boot before compilation to overlap first boot with build.
+      Keep the complete native suite and the same selected simulator destination.
+- [x] Format and run source/localization/YAML gates. All passed.
+- [ ] Commit and push the verified QR fallback/startup changes.
+- [ ] Verify all native XCTest cases and all five GitHub jobs pass.

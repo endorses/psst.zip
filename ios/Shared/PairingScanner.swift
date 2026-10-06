@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreImage
 import ImageIO
 import SwiftUI
 import UIKit
@@ -325,8 +326,26 @@ enum QRImageReader {
         else { throw QRImageError.unreadable }
         let request = VNDetectBarcodesRequest()
         request.symbologies = [.qr]
-        try VNImageRequestHandler(cgImage: image).perform([request])
-        let values = Set((request.results ?? []).compactMap(\.payloadStringValue))
+        var values: Set<String>
+        do {
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            values = Set((request.results ?? []).compactMap(\.payloadStringValue))
+        } catch {
+            values = []
+        }
+        if values.isEmpty {
+            // Vision can miss valid dense QR images even without a logo. Reuse the bounded,
+            // orientation-corrected thumbnail with Core Image's independent QR decoder.
+            guard
+                let detector = CIDetector(
+                    ofType: CIDetectorTypeQRCode, context: CIContext(),
+                    options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
+            else { throw QRImageError.unreadable }
+            values = Set(
+                detector.features(in: CIImage(cgImage: image)).compactMap {
+                    ($0 as? CIQRCodeFeature)?.messageString
+                })
+        }
         guard values.count == 1, let value = values.first, value.utf8.count <= 8192 else {
             throw QRImageError.unreadable
         }
