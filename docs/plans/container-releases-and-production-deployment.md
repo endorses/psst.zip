@@ -62,7 +62,7 @@ requirements rather than introducing a competing restore procedure.
 
 ### Repository publication checks
 
-- [ ] Finalize AGPL-3.0-only licensing before the first push. Rewrite project
+- [x] Finalize AGPL-3.0-only licensing before the first push. Rewrite project
       license files and project README declarations throughout the existing
       history as requested, preserving commit metadata and third-party licenses.
       Keep a private pre-rewrite backup outside the published repository.
@@ -81,6 +81,13 @@ CI-pinned Gitleaks v8.30.1 build. Staged and complete-history scans are required
 again after the license rewrite. Repository-security CI is configured; its first
 GitHub execution remains pending until publication. Native Android/iOS jobs are
 preserved and have not been rerun for these repository-tooling changes.
+
+Publication setup: the public repository is `endorses/psst.zip`. The project
+license history was rewritten to AGPL-3.0-only before publication. All 81
+pre-publication commits were compared: only the project license and project README
+license declaration changed; authors, dates, messages, parent structure, and all
+other file contents/modes were preserved. The complete original history and
+old/new commit mapping are retained privately outside the published repository.
 
 ### Release artifacts and image-based installation
 
