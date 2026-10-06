@@ -127,10 +127,20 @@ shared access group and never falls back to preferences. See
 [Apple's entitlement documentation](https://developer.apple.com/documentation/bundleresources/entitlements).
 
 The native build and XCTest commands cannot execute in this Linux workspace,
-which has no Xcode. Preserve the unchecked native gates below until a
-successful run supplies actual build/test results. An ad hoc simulator build
+which has no Xcode. The successful CI result below supplies actual build/test evidence;
+separate launch-language and physical-device gates remain unchecked. An ad hoc simulator build
 does not establish physical-device signing, Keychain/App Group provisioning,
 camera behavior or share-extension memory limits.
+
+Native CI verification: [run 37447273776](https://github.com/endorses/psst.zip/actions/runs/37447273776)
+passed on `c6b3222`. Both app and embedded extension compiled and passed simulator
+signature verification; all 173 native XCTest cases passed with zero failures,
+including exact branded QR image reading, blank/multiple-code rejection, shared
+Keychain storage, CryptoKit and history migration. The pure build/XCTest gates
+below are now checked against that run. Separate English/German launch commands
+and physical-device checks remain pending. No App Store distribution build was
+produced. The native runner begins simulator boot before compilation so startup
+can overlap the build.
 
 The pre-build script builds the shared Kotlin framework, including the authenticated `ApiClient` initializer. The same shared Swift send implementation, theme, login form, scanner and strings are included in the app and extension.
 
@@ -153,7 +163,7 @@ Receive/detail/history polling runs while visible and active, stops on navigatio
 - [x] Formatted all changed Swift sources with official SwiftFormat 0.62.1 (`--swiftversion 5.9`); `git diff --check -- ios` passes. This formatter check does not type-check the shared framework bridge.
 - [x] Linux source/configuration gates: property-list and JSON parsing, unchanged application identities, shared Keychain entitlement alignment, credential-storage/redirect checks, authenticated client bridge and regression-test wiring.
 - [x] Added native regression cases for the original receive slot after reopening, partial-save deduplication, receipt eligibility, missing local files, backward-compatible history decoding, legacy-history isolation, all-or-nothing share-provider selection and temporary-copy cleanup, origin validation, fractional/nonfractional RFC3339 server timestamps, byte-weighted progress, and cancellation/reauthentication callback ownership.
-- [ ] Run the Xcode main-app and extension build and the XCTest suite above. Neither compilation nor XCTest execution has been performed on Linux; source gates are not a substitute.
+- [x] Run the Xcode main-app and extension build and the XCTest suite above. Neither compilation nor XCTest execution has been performed on Linux; source gates are not a substitute.
 - [ ] Verify real Keychain access/signing, upgrade a previous installation with existing history, and exercise same-account reauthentication and cross-account changes during uploads in both targets.
 - [ ] On a simulator/device, create a receive link, leave it, upload from a browser, reopen History and save. Interrupt the second file, retry, confirm no duplicate first file or new slot, and confirm the sender receipt appears only after all saves.
 - [ ] Verify stop/back/background/extension dismissal, cleanup failure, app termination after a partial save, and retry/revocation after relaunch. Confirm temporary attachment cleanup and profile extension memory.
@@ -175,7 +185,7 @@ Scanning an upload-link QR shows its origin and a separate guest file picker; se
 
 - [x] Linux source/configuration gates cover the guest entry, isolated client wiring, local-store persistence and Keychain separation, Files visibility, scene cancellation, shared pairing classification and XCTest registration.
 - [x] Added native tests for origin identity, duplicate names, partial checkpoints, interrupted publication, pending-file cleanup, removal retaining files and receipts, missing/truncated output, corrupt-history preservation, unavailable storage, traversal/sanitization, wrong declared length, cancellation, receipt recovery and earlier guest-array decoding.
-- [ ] Run the app/extension Xcode build and XCTest commands above on macOS. The added tests have not been executed on Linux, and SwiftFormat/source checks do not prove Swift/Kotlin bridge compilation.
+- [x] Run the app/extension Xcode build and XCTest commands above on macOS. The added tests have not been executed on Linux, and SwiftFormat/source checks do not prove Swift/Kotlin bridge compilation.
 - [ ] Use [the disposable fixture workflow](../docs/testing/scan-to-receive.md) on a physical iPhone/iPad to verify camera permission/denial, app/web QRs, paste, a different scanned server while signed in, LAN HTTP and trusted HTTPS, failed authentication, expiry/quota/revocation, `/u/` guest send, pairing confirmation, restart/background/account change, Files persistence and Open/Share. Compare saved file bytes to the fixture originals and confirm the sender’s receipt only follows the final durable save.
 - [ ] Verify small screens, Dynamic Type, VoiceOver and both appearance choices, including the embedded camera, image picker and unified History. These device checks remain pending.
 
@@ -183,7 +193,7 @@ Scanning an upload-link QR shows its origin and a separate guest file picker; se
 
 - [x] Added source-level regression wiring for unified history identity/filtering, signed-out access, account changes, completed send start suppression, and native decoding of branded QR codes.
 - [x] Added native streaming writer cases for files larger than 100 MiB, truncated/tampered/reordered chunks, empty files, and manifest format fields. File publication and receipt behavior continue using the existing durable checkpoint tests.
-- [ ] Run `NavigationHistoryTests`, `StreamedFileTests` and existing suites through the Xcode command above; these XCTest cases have not run on Linux.
+- [x] Run `NavigationHistoryTests`, `StreamedFileTests` and existing suites through the Xcode command above; these XCTest cases have not run on Linux.
 - [ ] Verify camera lifecycle on tab switches/backgrounding, native permission recovery, denied/no-camera and QR-image alternatives, actual optical recognition, rear/front-only/no-camera fallback, runtime retry and torch.
 - [ ] Verify Back from completed ordinary sends and share-extension sends, history reopening, same-account login recovery, account-change clearing, large-file cancellation and storage exhaustion. Profile app/extension memory above 100 MiB and compare decrypted bytes across Android/web/iOS.
 
@@ -209,7 +219,7 @@ History labels each row Sent, Receive link or Downloaded and shows creation date
 
 - [x] Linux source/configuration gates and SwiftFormat checks cover the current source wiring. They do not compile Swift or execute UI workflows.
 - [x] Added native test cases for persisted local-title migration and reload, distinct resource-type/account identities, Unicode filenames/counts, concurrent refresh preserving renames and clears, administrator/restricted-session local-only History, backward-compatible session decoding, password confirmation/UTF-8 policy, and rear-first/front-only/no-camera selection ordering.
-- [ ] Execute the Xcode app/share-extension build and XCTest commands above on macOS. All added XCTest cases remain unrun in the Linux environment.
+- [x] Execute the Xcode app/share-extension build and XCTest commands above on macOS. All added XCTest cases remain unrun in the Linux environment.
 - [ ] With a real server, verify initial temporary-password login → mismatch/wrong current password/unchanged replacement → successful change → explicit same-account sign-in → deliberate resume in both app and share extension. Verify cancel, expiry/reset races, relaunch, and cross-account selection clearing.
 - [ ] Verify newly entered and previously stored administrator sessions cannot send/create receive links or reveal personal account History; guest scanning and existing device downloads must remain usable.
 - [ ] Exercise mixed/large histories, rename/edit/cancel/clear, same IDs across resource types, names on a second server/account, relaunch and offline/local file access with Dynamic Type and VoiceOver in both appearances.
@@ -230,7 +240,7 @@ Both scanned downloads and owner inbox saves preflight manifests and free space.
 Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy, limit parser, history collector and incident error mapper against pinned Apple `swift-crypto` 3.12.3. This harness uses the official `swift:6.2-noble` image (verified with Swift 6.2.4); the other portable harnesses retain `swift:6.0-noble`. Swift 6.2 resolves a Swift 6.0 Observation runtime linker failure exposed by the crypto dependency. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve, integer limits, bounded history and strict pause/revocation status-code matching. This verifies portable implementations; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
 
 - [x] All 19 receive-crypto harness tests passed, including independent provider fixtures, low-order inputs, history and incident mapping. Across all 12 portable harnesses, 171 tests passed. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate; localization validation passed for 398 keys, 19 plurals and both permission bundles.
-- [ ] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
+- [x] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
 - [ ] Verify owner-only receive retrieval and acknowledgements, private-key survival after relaunch, a second paired device without keys, lost finalization responses, receive-file exhaustion and one-attempt multi-file sends on physical iOS.
 - [ ] Verify large-inbox confirmation, changed manifests while confirming, exhausted-file subsets, retries retaining local files and limits, new-link/account-switch draft reset, and share-extension limit entry with VoiceOver and Dynamic Type.
 
@@ -258,7 +268,7 @@ See [iOS sync verification](../docs/testing/history-sync-ios.md) for executed
 portable tests and pending Apple app, extension and device checks.
 
 - [x] The portable Swift harness passes eleven crypto/safety/history tests, including four pagination cases. Swift syntax, formatting and source gates pass.
-- [ ] Run `NavigationHistoryTests.testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames` and the complete XCTest suite on macOS/iOS. The added coordinated-persistence test has not run in Linux.
+- [x] Run `NavigationHistoryTests.testBatchSnapshotKeepsOtherRecordsAndConcurrentLocalNames` and the complete XCTest suite on macOS/iOS. The added coordinated-persistence test has not run in Linux.
 - [ ] Verify multi-page History against the real server, interrupted second-page loading, account switching, restored local files and very large history on a device. Portable collector tests do not validate native URLSession/UI/file-coordination behavior.
 
 ## Incident-control validation
@@ -270,7 +280,7 @@ saved files. History/inbox polling stops after lost authentication or link revoc
 See [incident response](../docs/security/incident-response.md) for server behavior.
 
 - [x] Thirteen portable Swift tests passed, including bounded/malformed incident responses and mismatched status/code pairs. Swift syntax parsing, source gates and formatting pass.
-- [ ] Build the app and extension on macOS to verify the generated Kotlin exception bridge; the Linux harness deliberately cannot import `Shared`.
+- [x] Build the app and extension on macOS to verify the generated Kotlin exception bridge; the Linux harness deliberately cannot import `Shared`.
 - [ ] On an iPhone/iPad, pause during upload, manifest retrieval and a multi-file receive; verify explicit retry after resume preserves previously saved files and does not silently restart payload work. Shut down the signed-in account and confirm polling stops, sign-in recovery appears, old links remain unavailable after reenable, and local Open/Share still works.
 - [ ] Verify URLSession's lower-level retry behavior for interrupted quota-consuming downloads. There is no application-level automatic payload retry, but disabling every transport retry has not been established on iOS.
 
@@ -292,7 +302,7 @@ and owner operations retain the matching account scope. Crypto/local-file errors
 do not trigger probes. See [traffic protection](../docs/security/traffic-limits.md).
 
 - [x] Sixteen portable Swift tests passed, including exact status/code pairs, malformed/oversized responses, hostile retry text, safe retry timestamps, and minimal traffic-status parsing. Swift syntax, source/configuration gates and formatting pass.
-- [ ] Build app and share extension on macOS and run XCTest to verify new shared DTO/exception exports, the Kotlin throwable classifier and SwiftUI usage view. Portable Linux checks cannot establish these bridges.
+- [x] Build app and share extension on macOS and run XCTest to verify new shared DTO/exception exports, the Kotlin throwable classifier and SwiftUI usage view. Portable Linux checks cannot establish these bridges.
 - [ ] Exercise exhausted manifest/file uploads and downloads, partial multi-file saves, administrator limit changes, accounting failure, explicit recovery and local Open/Share on iOS. Confirm a retry fetches only missing files and no automatic payload request burns another attempt.
 - [ ] Verify URLSession transport behavior, three-second probe resource deadlines, cancellation, failed/unsupported status endpoints, backgrounding, account changes, accessibility and appearance modes on a device.
 
@@ -304,7 +314,7 @@ Reports contain only the instance origin, resource type and UUID. Report context
 
 Run `python3 ios/scripts/test_abuse_report.py` on Linux with the existing `swift:6.0-noble` Docker image. This offline harness compiles the exact Foundation helper and its XCTest tests and removes its temporary workspace and caches. It does not validate SwiftUI, Kotlin framework bridging, or device mail handling.
 
-- [ ] On macOS, build the app and share extension using the Xcode workflow above; execute `AbuseReportTests` with the app test suite.
+- [x] On macOS, build the app and share extension using the Xcode workflow above; execute `AbuseReportTests` with the app test suite.
 - [ ] On an iPhone, verify valid and invalid-key scanned links, unavailable metadata, switching between two origins during contact lookup, configured-server Help, copy actions, and explicit mail composition with and without a mail app.
 
 ### Guest upload capacity
@@ -338,7 +348,7 @@ Run `python3 ios/scripts/test_history_database.py` for the offline portable
 SQLite and streaming-import XCTest harness. It removes its temporary workspace.
 This validates the exact Foundation database/parser, not the iOS application.
 
-- [ ] On macOS, regenerate the Xcode project and build/test the app and share
+- [x] On macOS, regenerate the Xcode project and build/test the app and share
       extension with the workflow above. Run `HistoryRecordDatabaseTests` and
       `NavigationHistoryTests`, including migration and atomic batch rollback.
 - [ ] On device, exercise fresh install, large legacy import interrupted by app
@@ -361,7 +371,7 @@ stubs. Run `python3 ios/scripts/test_device_retry_queue.py` for the actual queue
 and legacy-array parser. These offline harnesses clean their temporary workspaces;
 they do not prove Keychain/protection, networking, cryptography or native UI behavior.
 
-- [ ] Build app and extension on macOS and run the native XCTest suite, including
+- [x] Build app and extension on macOS and run the native XCTest suite, including
       `GuestDownloadTests`, after regenerating the project.
 - [ ] On a device, migrate both legacy guest formats and old receipt/cleanup
       journals, terminate during import, and verify saved paths, pending receipts

@@ -216,7 +216,7 @@ The native build and XCTest suite remain unverified until a successful Xcode run
 - [x] Repair the iOS storyboard and check its configuration on Linux. XML parsing
       and iOS source gates passed; the source gate now checks the target runtime
       and initial share-controller wiring.
-- [ ] Verify the native app, embedded extension and XCTest suite on macOS/Xcode.
+- [x] Verify the native app, embedded extension and XCTest suite on macOS/Xcode.
 - [x] Commit these follow-up fixes locally; installed security/format hooks
       passed. Task-owned temporary logs and validation files were removed.
       Keep publication under user control; no new push was made.
@@ -241,7 +241,7 @@ from generated Kotlin/Native and native Xcode verification.
       18 localization/presenter tests passed, including four typed bridge tests.
 - [x] Run the source/localization gates and format the repair. Both gates passed,
       along with Swift/Python/Markdown formatting and whitespace checks.
-- [ ] Verify native app, embedded extension and XCTest on macOS/Xcode.
+- [x] Verify native app, embedded extension and XCTest on macOS/Xcode.
 - [x] Commit verified bridge changes locally. Installed security/format hooks
       passed. Remove task-owned temporary artifacts and keep the commit unpushed.
 
@@ -263,7 +263,7 @@ unavailable `HttpClientFactoryKt` file facade.
       Four lifetime checks passed, including background final release and sibling
       isolation; a deliberately unsafe actor destructor fails its negative control.
 - [x] Run source/localization checks and format Kotlin, Swift, Python and docs.
-- [ ] Verify native app, embedded extension and XCTest on macOS/Xcode, including
+- [x] Verify native app, embedded extension and XCTest on macOS/Xcode, including
       the exported constructor and actual UIKit/AVFoundation source compilation.
 - [x] Commit verified repairs locally. Installed security/format hooks passed.
       Clean task-owned temporary artifacts and keep the commit unpushed.
@@ -286,7 +286,7 @@ client/observer repairs and reported three implicit scanner callback captures.
 - [x] Format the image picker and run iOS source/localization checks. Both gates passed.
 - [x] Commit and push the verified image importer repair. Commit `6831afc` passed
       the installed security/format hooks and was pushed.
-- [ ] Verify the native app, embedded extension and XCTest on macOS CI.
+- [x] Verify the native app, embedded extension and XCTest on macOS CI.
 
 ## Native XCTest numeric assertion follow-up
 
@@ -299,7 +299,7 @@ expected size in the streamed-file assertion against `[Int64]`.
 - [x] Format XCTest and run iOS source/localization checks. Both gates passed.
 - [x] Commit and push the verified XCTest compile repair. Commit `9993fb7` passed
       installed security/format hooks and was pushed.
-- [ ] Verify native build and XCTest execution on macOS CI.
+- [x] Verify native build and XCTest execution on macOS CI.
 
 ## Native XCTest runtime fixtures and signing
 
@@ -318,8 +318,8 @@ on `9993fb7` passed all four Linux jobs and the full native build. XCTest ran
 - [x] Format changes and run source/localization/YAML checks. All passed.
 - [x] Commit and push the verified runtime fixtures/signing diagnostics. Commit
       `007e4e2` passed security/format hooks and was pushed.
-- [ ] Finish any QR or signing repair identified by the next native run.
-- [ ] Verify all 171 native tests and every GitHub CI job pass on the final commit.
+- [x] Finish any QR or signing repair identified by the next native run.
+- [x] Verify all 171 native tests and every GitHub CI job pass on the final commit.
 
 ## Native QR decoder fallback and simulator startup
 
@@ -338,5 +338,32 @@ minutes of the native test step.
 - [x] Start simulator boot before compilation to overlap first boot with build.
       Keep the complete native suite and the same selected simulator destination.
 - [x] Format and run source/localization/YAML gates. All passed.
-- [ ] Commit and push the verified QR fallback/startup changes.
-- [ ] Verify all native XCTest cases and all five GitHub jobs pass.
+- [x] Commit and push the verified QR fallback/startup changes.
+- [x] Verify all native XCTest cases and all five GitHub jobs pass.
+
+## Successful GitHub CI verification
+
+Run [`37447273776`](https://github.com/endorses/psst.zip/actions/runs/37447273776)
+completed successfully on `c6b322240edc5f62b416610f5316a8761765870c`.
+All five jobs completed with `success`: Repository security, Backend, Web,
+Android/shared, and native iOS. The native job built the app, embedded extension
+and test products, verified both simulator signatures, and executed all
+173 XCTest cases with zero failures in 127.346 seconds. Exact branded QR
+payloads, blank/multiple-code rejection, real shared Keychain storage and
+history migration/concurrent-label cases passed. The result bundle was retained.
+
+This run resolves the earlier pending CI build/XCTest gates above; historical
+failure descriptions retain the evidence that led to each repair. Simulator
+boot overlapped compilation; startup from the test command to the suite fell
+from about 352 seconds in the preceding run to about 52 seconds. Total native
+job duration remained about 15 minutes, so this does not establish a comparable
+overall build-time improvement. Backend completed in 6m38s, Web in 6m19s,
+Android/shared in 2m49s, and security in 40s.
+
+- [x] Verify the complete public workflow against its exact pushed commit and
+      inspect the native test totals and critical regression results.
+- [x] Update verified CI task status without claiming separate language-launch,
+      physical-device, App Store signing or production deployment checks passed.
+- [x] Commit this documentation-only completion record locally; installed security/format
+      hooks passed. The final pushed
+      CI repair remains `c6b3222`, with its complete successful workflow.
