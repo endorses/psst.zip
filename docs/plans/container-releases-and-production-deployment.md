@@ -217,6 +217,30 @@ below remain local under the user's no-push instruction.
 - [x] Commit verified follow-up fixes locally. Installed security/format hooks
       passed, temporary diagnostic files were removed, and nothing was pushed.
 
+### Native error bridge after the second CI run
+
+Run [`37435387491`](https://github.com/endorses/psst.zip/actions/runs/37435387491)
+on `eb635d3` passed web (including administrator lifecycle), backend,
+Android/shared and repository security. The corrected share-extension storyboard
+compiled. Kotlin framework generation completed, but native Swift compilation
+stopped in `ClientErrorPresentation.swift`: `NSError.kotlinException` is exported
+as `Any`, while `FailureDescriptions.describe(error:)` requires `KotlinThrowable`.
+
+- [x] Identify the exact native compiler error and check neighboring bridge uses.
+      `TransferTrafficRecovery` already uses a conditional `KotlinThrowable` cast.
+- [x] Cast only genuine Kotlin throwables before invoking the shared error
+      classifier; preserve fallback behavior for unclassified platform failures.
+- [x] Compile the actual Foundation presenter with a minimal portable bridge
+      target exposing the observed types. Check classified and unknown failures;
+      do not present this as a generated Kotlin/Native or native Xcode build.
+      All 18 presenter/localization tests passed, including four bridge regressions.
+- [x] Verify iOS source/localization gates and formatting. Both gates passed;
+      Swift/Python/Markdown formatting and whitespace checks passed.
+- [ ] Verify the app, embedded share extension and native XCTest on macOS/Xcode.
+      Native execution remains pending until the corresponding job passes.
+- [x] Commit verified bridge repairs locally. Installed security/format hooks
+      passed. Clean task-owned temporary artifacts and keep the commit unpushed.
+
 ### Release artifacts and image-based installation
 
 - [ ] Add `deploy/compose.release.yml` using `image:` references for both services,

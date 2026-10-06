@@ -220,3 +220,27 @@ The native build and XCTest suite remain unverified until a successful Xcode run
 - [x] Commit these follow-up fixes locally; installed security/format hooks
       passed. Task-owned temporary logs and validation files were removed.
       Keep publication under user control; no new push was made.
+
+## Native shared-exception bridge
+
+Run [`37435387491`](https://github.com/endorses/psst.zip/actions/runs/37435387491)
+on `eb635d3` passed all Linux jobs, including the previously failing real
+administrator lifecycle. The repaired iOS storyboard compiled and Kotlin
+framework generation completed. Native Swift compilation then exposed an
+unchecked `Any` value from `NSError.kotlinException` being passed to the shared
+classifier's required `KotlinThrowable` parameter.
+
+The existing portable localization harness compiled with `canImport(Shared)`
+false, excluding that bridge. Its improvement must exercise the actual presenter
+against the observed bridge types while clearly separating those boundary types
+from generated Kotlin/Native and native Xcode verification.
+
+- [x] Diagnose the precise native error and confirm all other jobs passed.
+- [x] Safely cast the Kotlin exception and retain unknown-error fallback/privacy.
+- [x] Verify the actual presenter with the shared-bridge branch compiled. All
+      18 localization/presenter tests passed, including four typed bridge tests.
+- [x] Run the source/localization gates and format the repair. Both gates passed,
+      along with Swift/Python/Markdown formatting and whitespace checks.
+- [ ] Verify native app, embedded extension and XCTest on macOS/Xcode.
+- [x] Commit verified bridge changes locally. Installed security/format hooks
+      passed. Remove task-owned temporary artifacts and keep the commit unpushed.

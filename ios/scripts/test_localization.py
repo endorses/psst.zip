@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run exact Foundation localization/presenter contracts; this is not an iOS build."""
+"""Run production Foundation presenters with a narrow fake Shared bridge.
+
+The Shared target models the exported error types so canImport(Shared) branches
+compile on Linux. It does not run Kotlin/Native or verify its exception bridge;
+native app, extension and XCTest verification still require macOS/Xcode.
+"""
 
 import os
 from pathlib import Path
@@ -14,9 +19,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix="psst-localization-swift-") as directory:
         work = Path(directory)
         sources = work / "Sources" / "LocalizationHarness"
+        shared = work / "Sources" / "Shared"
         tests = work / "Tests" / "LocalizationHarnessTests"
         sources.mkdir(parents=True)
+        shared.mkdir(parents=True)
         tests.mkdir(parents=True)
+        bridge_fixtures = ROOT / "scripts" / "localization_harness"
+        shutil.copy2(bridge_fixtures / "SharedBoundary.swift", shared)
+        shutil.copy2(bridge_fixtures / "SharedFailureBridgeTests.swift", tests)
         for name in (
             "Localization",
             "AppConstants",
@@ -56,8 +66,9 @@ enum ReceiveSafetyError: LocalizedError { case storage; var errorDescription: St
         (work / "Package.swift").write_text("""// swift-tools-version:5.9
 import PackageDescription
 let package = Package(name: "LocalizationHarness", defaultLocalization: "en", targets: [
- .target(name: "LocalizationHarness", resources: [.copy("en.lproj"), .copy("de.lproj")]),
- .testTarget(name: "LocalizationHarnessTests", dependencies: ["LocalizationHarness"])
+ .target(name: "Shared"),
+ .target(name: "LocalizationHarness", dependencies: ["Shared"], resources: [.copy("en.lproj"), .copy("de.lproj")]),
+ .testTarget(name: "LocalizationHarnessTests", dependencies: ["LocalizationHarness", "Shared"])
 ])
 """)
         subprocess.run(

@@ -53,6 +53,14 @@ validate catalog lookup, plurals, regional formatting, preference sharing,
 deferred failures and unchanged user data; they do not build SwiftUI, UIKit or
 the Kotlin framework bridge. Temporary test workspaces are removed afterward.
 
+The localization harness additionally builds a minimal fake `Shared` target so
+the production error presenter's conditional shared-bridge path is compiled.
+Its `NSError.kotlinException: Any?` and typed classifier parameter model the
+observed exported signature. Eighteen tests passed, including classified errors,
+unknown/foreign error fallback and incident priority. The fake boundary does not
+execute the Kotlin classifier or validate generated Kotlin/Native interoperability;
+those checks remain in the native app/extension/XCTest job.
+
 - [ ] On macOS, regenerate and build the app and embedded extension with the
       commands below, then run XCTest with `-testLanguage en -testRegion US` and
       separately `-testLanguage de -testRegion DE`. Confirm both bundles include
