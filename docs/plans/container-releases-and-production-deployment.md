@@ -267,7 +267,7 @@ error presenter and reported actor-isolated observer access from
 - [x] Commit the verified client/lifetime repairs locally. Installed security/format
       hooks passed. Clean task-owned temporary artifacts and keep the commit unpushed.
 
-### Scanner callback capture follow-up
+### Scanner callback and image importer follow-up
 
 Run [`37440453480`](https://github.com/endorses/psst.zip/actions/runs/37440453480)
 on `c18b364` passed all four Linux jobs. The native compiler accepted the observer
@@ -277,7 +277,15 @@ the scanner's nested main-actor notification callback.
 - [x] Qualify the scanner's active state, serial queue and error presentation with
       explicit `self` references. Preserve weak capture and existing camera behavior.
 - [x] Format the scanner and run iOS source/localization checks. Both gates passed.
-- [ ] Commit and push verified CI repairs, as authorized on October 6.
+- [x] Commit and push the scanner capture repair, as authorized on October 6.
+      Commit `f22959b` passed installed security/format hooks and was pushed.
+- [x] Fix the single-file QR image importer's URL result handling. Run
+      [`37441541438`](https://github.com/endorses/psst.zip/actions/runs/37441541438)
+      compiled the scanner and then reported an array-only `.first` access on
+      the main app's single `URL` result. Use the same direct URL handling as
+      the existing login image picker.
+- [x] Format the image picker and run iOS source/localization checks. Both gates passed.
+- [ ] Commit and push the verified image importer repair.
 - [ ] Verify the app, embedded extension and XCTest on the next macOS CI run.
 
 ### Release artifacts and image-based installation

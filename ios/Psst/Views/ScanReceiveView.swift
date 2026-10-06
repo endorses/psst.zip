@@ -45,7 +45,9 @@ struct ScanReceiveView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             if uploadLink != nil {
-                                Button(L10n.text(model.uploadComplete ? "Return to sent files" : "Return to send files")) {
+                                Button(
+                                    L10n.text(model.uploadComplete ? "Return to sent files" : "Return to send files")
+                                ) {
                                     uploadPresented = true
                                     if !capacityReady, !model.uploadComplete {
                                         refreshCapacity()
@@ -62,7 +64,9 @@ struct ScanReceiveView: View {
                             if let message = store.error {
                                 Text(L10n.text(message)).foregroundStyle(PsstTheme.error)
                             }
-                            if let reportContext, model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil {
+                            if let reportContext,
+                                model.currentID == nil || (try? store.find(model.currentID ?? "")) == nil
+                            {
                                 AbuseReportButton(context: reportContext).id(reportContext.id)
                             }
                             pairingPanel
@@ -88,7 +92,10 @@ struct ScanReceiveView: View {
                 }
             }
             .onAppear { visible = true }
-            .onDisappear { visible = false; stopPreflight() }
+            .onDisappear {
+                visible = false
+                stopPreflight()
+            }
             .onChange(of: isSelected) { _, selected in
                 if !selected {
                     stopPreflight()
@@ -96,27 +103,32 @@ struct ScanReceiveView: View {
             }
             .fileImporter(isPresented: $imagePicking, allowedContentTypes: [.image]) { result in
                 do {
-                    guard let url = try result.get().first else { return }
+                    let url = try result.get()
                     let raw = try QRImageReader.read(url)
                     cameraEnabled = false
                     accept(raw)
                 } catch { self.error = "Choose an image containing one readable psst.zip QR code." }
             }
-            .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) {
+                result in
                 do {
                     let values = try result.get()
                     refreshCapacity(adding: values)
-                } catch { self.error = "Could not select these files. Check file access and the server’s file-size limit." }
+                } catch {
+                    self.error = "Could not select these files. Check file access and the server’s file-size limit."
+                }
             }
-            .confirmationDialog(L10n.text("Download missing files again? The server may no longer permit another download."),
-                                isPresented: Binding(
-                                    get: { redownload != nil },
-                                    set: {
-                                        if !$0 {
-                                            redownload = nil
-                                        }
-                                    }
-                                ), titleVisibility: .visible) {
+            .confirmationDialog(
+                L10n.text("Download missing files again? The server may no longer permit another download."),
+                isPresented: Binding(
+                    get: { redownload != nil },
+                    set: {
+                        if !$0 {
+                            redownload = nil
+                        }
+                    }
+                ), titleVisibility: .visible
+            ) {
                 Button(L10n.text("Download missing files")) {
                     if let redownload {
                         model.resume(redownload, allowRedownload: true)
@@ -174,7 +186,11 @@ struct ScanReceiveView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label(L10n.text("Connect account"), systemImage: "person.crop.circle")
                 Text(L10n.text(pairingServer)).textSelection(.enabled)
-                Text(L10n.text(config.isConfigured ? "Connecting will replace the active account on this device." : "Connect to this server using its single-use login code."))
+                Text(
+                    L10n.text(
+                        config.isConfigured
+                            ? "Connecting will replace the active account on this device."
+                            : "Connect to this server using its single-use login code."))
                 Button(L10n.text("Connect to this server")) {
                     pairing = true
                     let request = pairingRequest.begin()
@@ -189,7 +205,8 @@ struct ScanReceiveView: View {
                         }
                         do { try await config.pair(raw: raw) } catch {
                             guard pairingRequest.isCurrent(request) else { return }
-                            self.error = "This login code could not be used. Generate a fresh code and check the connection."
+                            self.error =
+                                "This login code could not be used. Generate a fresh code and check the connection."
                         }
                     }
                     pairingRequest.attach(task, request: request)
@@ -210,7 +227,8 @@ struct ScanReceiveView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         if model.uploadComplete {
-                            Label(L10n.text("Files sent"), systemImage: "checkmark.circle").foregroundStyle(PsstTheme.success)
+                            Label(L10n.text("Files sent"), systemImage: "checkmark.circle").foregroundStyle(
+                                PsstTheme.success)
                         }
                         if let error {
                             Text(L10n.text(error)).foregroundStyle(PsstTheme.error)
@@ -220,7 +238,9 @@ struct ScanReceiveView: View {
                         }
                         progressPanel
                         if selected.isEmpty {
-                            ContentUnavailableView(L10n.text("Choose files"), systemImage: "doc.badge.plus", description: Text(L10n.text("Send files to the owner of this link.")))
+                            ContentUnavailableView(
+                                L10n.text("Choose files"), systemImage: "doc.badge.plus",
+                                description: Text(L10n.text("Send files to the owner of this link.")))
                         }
                         ForEach(selected, id: \.self) { url in
                             HStack {
@@ -234,7 +254,8 @@ struct ScanReceiveView: View {
                                     } label: {
                                         Image(systemName: "xmark.circle")
                                     }
-                                    .accessibilityLabel(L10n.text(L10n.format("Remove %@", url.lastPathComponent))).disabled(model.active)
+                                    .accessibilityLabel(L10n.text(L10n.format("Remove %@", url.lastPathComponent)))
+                                    .disabled(model.active)
                                 }
                             }.padding(.vertical, 8)
                         }
@@ -243,7 +264,9 @@ struct ScanReceiveView: View {
                         }
                         DisclosureGroup(L10n.text("Details & help")) {
                             if let uploadLimit {
-                                Text(L10n.text(L10n.format("Up to %@ per file.", L10n.bytes(uploadLimit, binary: true)))).font(.footnote)
+                                Text(
+                                    L10n.text(L10n.format("Up to %@ per file.", L10n.bytes(uploadLimit, binary: true)))
+                                ).font(.footnote)
                             }
                             if let reportContext {
                                 AbuseReportButton(context: reportContext).id(reportContext.id)
@@ -257,9 +280,11 @@ struct ScanReceiveView: View {
                 .safeAreaInset(edge: .bottom) {
                     VStack(spacing: 10) {
                         if !model.uploadComplete {
-                            Text(L10n.text(capacityMessage)).font(.caption).foregroundStyle(capacityReady ? PsstTheme.secondary : PsstTheme.warning)
+                            Text(L10n.text(capacityMessage)).font(.caption).foregroundStyle(
+                                capacityReady ? PsstTheme.secondary : PsstTheme.warning)
                             if !capacityReady {
-                                Button(L10n.text("Retry capacity check")) { refreshCapacity() }.disabled(model.active || checkingCapacity)
+                                Button(L10n.text("Retry capacity check")) { refreshCapacity() }.disabled(
+                                    model.active || checkingCapacity)
                             }
                             ViewThatFits(in: .horizontal) {
                                 HStack { uploadActions(uploadLink) }
@@ -396,24 +421,32 @@ struct ScanReceiveView: View {
                 defer { client.close() }
                 let limit = try await client.limits.get().maxFileSize
                 guard capacityRequest.isCurrent(request) else { return }
-                guard limit > 0, limit <= Int64(BufferedUpload.maxFileBytes) else { throw GuestUploadSelectionError.unavailable }
+                guard limit > 0, limit <= Int64(BufferedUpload.maxFileBytes) else {
+                    throw GuestUploadSelectionError.unavailable
+                }
                 uploadLimit = limit
                 let sizes: [Int64]
-                do { sizes = candidate.isEmpty ? [] : try BufferedUpload.sizes(candidate, limit: Int(limit)) } catch { throw GuestUploadSelectionError.invalidFiles }
+                do { sizes = candidate.isEmpty ? [] : try BufferedUpload.sizes(candidate, limit: Int(limit)) } catch {
+                    throw GuestUploadSelectionError.invalidFiles
+                }
                 let availability = try await client.slots.availability(slotId: link.id)
                 guard capacityRequest.isCurrent(request) else { return }
                 uploadTitle = try SharedLinkTitle.normalize(availability.title)
                 try GuestUploadPreflight.validate(availability, link: link, urls: candidate, sizes: sizes)
                 guard let capacity = availability.uploadCapacity,
-                      let files = capacity.availableFiles, capacity.availableWireBytes != nil
+                    let files = capacity.availableFiles, capacity.availableWireBytes != nil
                 else { throw GuestUploadSelectionError.unavailable }
                 selected = candidate
                 capacityReady = true
-                capacityMessage = L10n.typedFormat("Up to %lld files · %@ per file", .integer(Int64(files.int64Value)), .byteCount(limit, binary: true))
+                capacityMessage = L10n.typedFormat(
+                    "Up to %lld files · %@ per file", .integer(Int64(files.int64Value)), .byteCount(limit, binary: true)
+                )
             } catch {
                 guard capacityRequest.isCurrent(request) else { return }
-                capacityMessage = L10n.failure(error, fallback:
-                    (error as? GuestUploadSelectionError)?.localizedDescription ?? TransferIncident.from(error)?.localizedDescription
+                capacityMessage = L10n.failure(
+                    error,
+                    fallback: (error as? GuestUploadSelectionError)?.localizedDescription ?? TransferIncident.from(
+                        error)?.localizedDescription
                         ?? GuestUploadSelectionError.unavailable.localizedDescription)
             }
         }

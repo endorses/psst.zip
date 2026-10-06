@@ -268,7 +268,7 @@ unavailable `HttpClientFactoryKt` file facade.
 - [x] Commit verified repairs locally. Installed security/format hooks passed.
       Clean task-owned temporary artifacts and keep the commit unpushed.
 
-## Scanner callback capture follow-up
+## Scanner callback and image importer follow-up
 
 Run [`37440453480`](https://github.com/endorses/psst.zip/actions/runs/37440453480)
 on `c18b364` passed all four Linux jobs. Native compilation progressed past the
@@ -277,5 +277,12 @@ client/observer repairs and reported three implicit scanner callback captures.
 - [x] Make all scanner references explicit within the nested actor callback,
       preserving weak ownership, serialized capture work and error presentation.
 - [x] Format Swift and run iOS source/localization checks. Both gates passed.
-- [ ] Commit and push verified CI repairs, as authorized on October 6.
+- [x] Commit and push the scanner capture repair, as authorized on October 6.
+      Commit `f22959b` passed installed security/format hooks and was pushed.
+- [x] Handle the QR image picker result as a single URL, matching the existing
+      login image picker. Run
+      [`37441541438`](https://github.com/endorses/psst.zip/actions/runs/37441541438)
+      compiled the scanner and next reported `.first` on that single URL.
+- [x] Format the image picker and run iOS source/localization checks. Both gates passed.
+- [ ] Commit and push the verified image importer repair.
 - [ ] Verify the native app, embedded extension and XCTest on macOS CI.
