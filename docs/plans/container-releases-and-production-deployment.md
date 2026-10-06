@@ -285,8 +285,21 @@ the scanner's nested main-actor notification callback.
       the main app's single `URL` result. Use the same direct URL handling as
       the existing login image picker.
 - [x] Format the image picker and run iOS source/localization checks. Both gates passed.
-- [ ] Commit and push the verified image importer repair.
+- [x] Commit and push the verified image importer repair. Commit `6831afc` passed
+      the installed security/format hooks and was pushed.
 - [ ] Verify the app, embedded extension and XCTest on the next macOS CI run.
+
+### Native XCTest numeric assertion follow-up
+
+Run [`37442272581`](https://github.com/endorses/psst.zip/actions/runs/37442272581)
+on `6831afc` compiled the app and embedded extension. The test build then reported
+an `Int` expected value in a streamed-file assertion comparing `[Int64]` sizes.
+
+- [x] Give the streamed-file expected size an explicit `Int64` type; preserve the
+      sparse-file, raised-limit and processing-ceiling assertions.
+- [x] Format the XCTest source and run the iOS source/localization gates. Both passed.
+- [ ] Commit and push the verified XCTest compile repair.
+- [ ] Verify the full build and native XCTest execution on macOS CI.
 
 ### Release artifacts and image-based installation
 
