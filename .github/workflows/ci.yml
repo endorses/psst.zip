@@ -177,8 +177,10 @@ jobs:
             -sdk iphonesimulator -configuration Debug \
             -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
-            CODE_SIGNING_ALLOWED=NO build-for-testing
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build-for-testing
           test -d "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
+          codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app"
+          codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
       - name: Run native XCTest suite
         working-directory: ios
         run: |
@@ -187,7 +189,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
             -resultBundlePath "$RUNNER_TEMP/psst-ios-tests.xcresult" \
-            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test-without-building
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual test-without-building
       - name: Preserve native test results
         if: always()
         uses: actions/upload-artifact@v4

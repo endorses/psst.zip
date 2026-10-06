@@ -93,10 +93,11 @@ python3 ios/scripts/check_sources.py
 cd ios
 xcodegen generate
 xcodebuild -project Psst.xcodeproj -scheme Psst \
-  -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+  -sdk iphonesimulator -configuration Debug \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build
 xcodebuild -project Psst.xcodeproj -scheme Psst \
   -destination 'platform=iOS Simulator,name=iPhone 16' \
-  CODE_SIGNING_ALLOWED=NO test
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual test
 ```
 
 Select an installed simulator name from `xcrun simctl list devices available` if necessary. Format Swift with `swiftformat ios --swiftversion 5.9` from the repository root before committing subsequent changes. The generated project is ignored; edit `project.yml` and regenerate it.
@@ -117,9 +118,17 @@ avoiding a second build and repeated shared-framework Gradle scripts. See
 seven days. A missing toolchain or simulator fails the job rather than selecting
 an unverified fallback. This job can also be started through **Run workflow**.
 
+Simulator builds use ad hoc signing (`CODE_SIGN_IDENTITY=-`) for the app and
+extension, and verify both signatures before testing. This requires no Apple
+Developer credentials. Signing keeps the shared Keychain and App Group
+entitlements available to the actual storage tests. The unsigned native suite
+failed at shared Keychain writes. Production secret storage keeps its
+shared access group and never falls back to preferences. See
+[Apple's entitlement documentation](https://developer.apple.com/documentation/bundleresources/entitlements).
+
 The native build and XCTest commands cannot execute in this Linux workspace,
 which has no Xcode. Preserve the unchecked native gates below until a
-successful run supplies actual build/test results. An unsigned simulator build
+successful run supplies actual build/test results. An ad hoc simulator build
 does not establish physical-device signing, Keychain/App Group provisioning,
 camera behavior or share-extension memory limits.
 

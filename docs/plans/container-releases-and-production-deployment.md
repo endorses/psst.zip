@@ -298,8 +298,32 @@ an `Int` expected value in a streamed-file assertion comparing `[Int64]` sizes.
 - [x] Give the streamed-file expected size an explicit `Int64` type; preserve the
       sparse-file, raised-limit and processing-ceiling assertions.
 - [x] Format the XCTest source and run the iOS source/localization gates. Both passed.
-- [ ] Commit and push the verified XCTest compile repair.
+- [x] Commit and push the verified XCTest compile repair. Commit `9993fb7` passed
+      installed security/format hooks and was pushed.
 - [ ] Verify the full build and native XCTest execution on macOS CI.
+
+### Native XCTest runtime fixtures and signing
+
+Run [`37443155590`](https://github.com/endorses/psst.zip/actions/runs/37443155590)
+on `9993fb7` passed all four Linux jobs and the complete native build, including
+the embedded extension. Native XCTest ran 171 tests in approximately 96 seconds
+and reported seven failures across five cases: three QR payload assertions,
+two history fixture expectations, and two secure-storage errors.
+
+- [x] Correct the history fixtures: expect the catalog's singular file count and
+      persist the concurrent local rename using coordinated mutation before a
+      stale incoming update. Strengthen unloaded-record and label assertions.
+- [x] Enable ad hoc simulator signing and verify app/extension signatures before
+      testing. The unsigned run failed at shared Keychain writes; missing access
+      entitlements are the suspected cause. Keep production secure storage intact
+      and clean the oversized-inbox fixture's vault key after the test.
+- [x] Keep exact Vision QR decoding assertions and add plain/branded decoder
+      diagnostics, pixel metadata and retained images for the next native run.
+- [x] Format changes and run source/localization/YAML checks. All passed.
+- [ ] Commit and push the verified runtime fixtures/signing diagnostics.
+- [ ] Verify shared Keychain tests, history fixtures and all QR payload decoding
+      on macOS; finish any repair indicated by the diagnostics.
+- [ ] Verify the complete GitHub workflow succeeds for the final pushed commit.
 
 ### Release artifacts and image-based installation
 

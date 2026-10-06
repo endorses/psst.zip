@@ -297,5 +297,25 @@ expected size in the streamed-file assertion against `[Int64]`.
 - [x] Give that expected size an explicit `Int64` type. Keep all sparse-file,
       limit-refresh and processing-ceiling coverage intact.
 - [x] Format XCTest and run iOS source/localization checks. Both gates passed.
-- [ ] Commit and push the verified XCTest compile repair.
+- [x] Commit and push the verified XCTest compile repair. Commit `9993fb7` passed
+      installed security/format hooks and was pushed.
 - [ ] Verify native build and XCTest execution on macOS CI.
+
+## Native XCTest runtime fixtures and signing
+
+Run [`37443155590`](https://github.com/endorses/psst.zip/actions/runs/37443155590)
+on `9993fb7` passed all four Linux jobs and the full native build. XCTest ran
+171 tests in approximately 96 seconds, with seven failures across five cases.
+
+- [x] Fix stale singular-count and concurrent local-label fixtures, retaining
+      and strengthening persistence/concurrent-update assertions.
+- [x] Enable ad hoc simulator signing and verify both bundle signatures before
+      tests. Missing shared-access entitlements are the suspected cause of the
+      unsigned run's Keychain failures. Preserve actual secure-storage coverage
+      and clean the oversized-inbox fixture's vault key.
+- [x] Preserve exact QR Vision assertions while recording plain-image control,
+      Core Image decoding, pixel metadata and retained native image attachments.
+- [x] Format changes and run source/localization/YAML checks. All passed.
+- [ ] Commit and push the verified runtime fixtures/signing diagnostics.
+- [ ] Finish any QR or signing repair identified by the next native run.
+- [ ] Verify all 171 native tests and every GitHub CI job pass on the final commit.

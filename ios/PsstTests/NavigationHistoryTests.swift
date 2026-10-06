@@ -1,9 +1,12 @@
 import AVFoundation
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Foundation
-@testable import Psst
 import UIKit
 import Vision
 import XCTest
+
+@testable import Psst
 
 @MainActor
 final class NavigationHistoryTests: XCTestCase {
@@ -19,16 +22,21 @@ final class NavigationHistoryTests: XCTestCase {
         super.tearDown()
     }
 
-    private let session = DeviceSession(serverURL: "https://one.example", userID: "user", username: "name", token: "token", sessionID: "session", expiresAt: "later")
+    private let session = DeviceSession(
+        serverURL: "https://one.example", userID: "user", username: "name", token: "token", sessionID: "session",
+        expiresAt: "later")
     private func owned(_ id: String, slot: Bool = false, date: TimeInterval = 10) -> TransferRecord {
         TransferRecord(
-            id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date), fileCount: 1, totalSize: 10, serverURL: session.serverURL,
+            id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date),
+            fileCount: 1, totalSize: 10, serverURL: session.serverURL,
             ownerID: session.userID, isSlot: slot
         )
     }
 
     private func local(_ origin: String = "https://one.example", date: TimeInterval = 20) -> GuestDownload {
-        GuestDownload(id: GuestDownload.identity(origin: origin, transferID: "same"), origin: origin, transferID: "same", createdAt: Date(timeIntervalSince1970: date))
+        GuestDownload(
+            id: GuestDownload.identity(origin: origin, transferID: "same"), origin: origin, transferID: "same",
+            createdAt: Date(timeIntervalSince1970: date))
     }
 
     func testMixedHistoryOrdersFiltersAndPreservesBothMeanings() {
@@ -39,21 +47,29 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(all.map(\.date), [30, 20, 10].map { Date(timeIntervalSince1970: $0) })
         XCTAssertEqual(Set(all.map(\.id)).count, 3)
         for filter in [HistoryFilter.sent, .receive, .downloaded] {
-            XCTAssertEqual(HistoryEntry.combine(account: account, downloads: downloads, session: session, filter: filter).count, 1)
+            XCTAssertEqual(
+                HistoryEntry.combine(account: account, downloads: downloads, session: session, filter: filter).count, 1)
         }
     }
 
     func testSignedOutAndChangedAccountKeepLocalHistoryOnly() {
         let downloads = [local()]
-        XCTAssertEqual(HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: nil, filter: .all).count, 1)
-        let other = DeviceSession(serverURL: "https://two.example", userID: "other", username: "other", token: "other", sessionID: "other", expiresAt: "later")
-        XCTAssertEqual(HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: other, filter: .all).count, 1)
+        XCTAssertEqual(
+            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: nil, filter: .all).count, 1)
+        let other = DeviceSession(
+            serverURL: "https://two.example", userID: "other", username: "other", token: "other", sessionID: "other",
+            expiresAt: "later")
+        XCTAssertEqual(
+            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: other, filter: .all).count, 1)
     }
 
     func testEqualIDsAcrossOriginsAndTypesDoNotCollideAndSortStably() {
         let downloads = [local(), local("https://two.example")]
-        let first = HistoryEntry.combine(account: [owned("same"), owned("same", slot: true)], downloads: downloads, session: session, filter: .all)
-        let second = HistoryEntry.combine(account: [owned("same", slot: true), owned("same")], downloads: downloads.reversed(), session: session, filter: .all)
+        let first = HistoryEntry.combine(
+            account: [owned("same"), owned("same", slot: true)], downloads: downloads, session: session, filter: .all)
+        let second = HistoryEntry.combine(
+            account: [owned("same", slot: true), owned("same")], downloads: downloads.reversed(), session: session,
+            filter: .all)
         XCTAssertEqual(Set(first.map(\.id)).count, 4)
         XCTAssertEqual(first.map(\.id), second.map(\.id))
     }
@@ -84,7 +100,7 @@ final class NavigationHistoryTests: XCTestCase {
         record.title = "photo\u{061C}\u{200E}\u{200F}\u{202E}jpg.exe"
         record.fileCount = 2
         let original = record.title
-        XCTAssertEqual(record.safeDisplayTitle, "photo____jpg.exe + 1 files")
+        XCTAssertEqual(record.safeDisplayTitle, "photo____jpg.exe + 1 file")
         XCTAssertEqual(record.title, original)
         record.customTitle = "My personal label"
         XCTAssertEqual(record.safeDisplayTitle, "My personal label")
@@ -132,11 +148,14 @@ final class NavigationHistoryTests: XCTestCase {
         try store.add(owned("shared-id", slot: true))
         let relaunched = TransferHistoryStore(defaults: defaults, fileURL: file)
         XCTAssertEqual(relaunched.visible(for: session).count, 2)
-        XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document")
+        XCTAssertEqual(
+            relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document")
         XCTAssertNil(relaunched.visible(for: session).first(where: { $0.isSlot == true })?.customTitle)
         XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.title, "report.pdf")
-        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey)) // Migration retains its original source.
-        let another = DeviceSession(serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other", expiresAt: "later")
+        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey))  // Migration retains its original source.
+        let another = DeviceSession(
+            serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other",
+            expiresAt: "later")
         XCTAssertTrue(relaunched.visible(for: another).isEmpty)
     }
 
@@ -159,7 +178,8 @@ final class NavigationHistoryTests: XCTestCase {
         let restored = TransferHistoryStore(defaults: defaults, fileURL: file)
         XCTAssertEqual(restored.visible(for: session).count, 2)
         XCTAssertEqual(restored.visible(for: session).first(where: { $0.id == "refreshed" })?.fileCount, 250)
-        XCTAssertEqual(restored.visible(for: session).first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
+        XCTAssertEqual(
+            restored.visible(for: session).first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
         XCTAssertNotNil(restored.visible(for: session).first(where: { $0.id == "another" }))
     }
 
@@ -204,11 +224,18 @@ final class NavigationHistoryTests: XCTestCase {
         try store.add(local)
         try store.add(owned("unloaded"))
         let secondWriter = TransferHistoryStore(defaults: defaults, fileURL: file)
-        var updated = local
-        _ = try secondWriter.saveReceivedFile(parent: updated, transferID: "child", blobID: "file", path: "Received/file", size: 3, title: "file")
-        try secondWriter.completeReceivedTransfer(parent: updated, transferID: "child", blobIDs: ["file"], fileExists: { _, _ in true })
-        updated.customTitle = "Concurrent local name"
+        let updated = local
+        _ = try secondWriter.saveReceivedFile(
+            parent: updated, transferID: "child", blobID: "file", path: "Received/file", size: 3, title: "file")
+        try secondWriter.completeReceivedTransfer(
+            parent: updated, transferID: "child", blobIDs: ["file"], fileExists: { _, _ in true })
+        // Incoming status updates preserve persisted local names. Write the local
+        // edit through the coordinated mutation used for explicit device edits.
+        try secondWriter.mutate(ids: [updated.localID]) { records in
+            records[0].customTitle = "Concurrent local name"
+        }
         try secondWriter.update(updated)
+        XCTAssertEqual(try secondWriter.record(updated.localID)?.customTitle, "Concurrent local name")
         let unknown =
             #"{"paginated":true,"transfers":[],"slots":[{"id":"01234567-89ab-cdef-0123-456789abcdef","status":"has_uploads","file_count":null,"completed_files":null,"total_size":null,"summary":{"state":"updating","file_count":null,"completed_files":null,"total_size":null}}],"next_cursor":"more"}"#
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(unknown.utf8)), session: session)
@@ -218,13 +245,19 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(merged.shareURL, local.shareURL)
         XCTAssertNil(merged.savedFiles)
         XCTAssertNil(merged.savedTransfers)
-        XCTAssertTrue(try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?.isSaved(fileCount: 1) == true)
-        XCTAssertEqual(merged.customTitle, updated.customTitle)
-        XCTAssertNotEqual(store.visible(for: session).first { $0.id == "unloaded" }?.state, .revoked)
-        let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(of: "updating", with: "ready")
+        XCTAssertTrue(
+            try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?
+                .isSaved(fileCount: 1) == true)
+        XCTAssertEqual(merged.customTitle, "Concurrent local name")
+        XCTAssertEqual(store.visible(for: session).first { $0.id == "unloaded" }?.state, .complete)
+        let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(
+            of: "updating", with: "ready")
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(ready.utf8)), session: session)
         XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.fileCount, 1)
-        XCTAssertTrue(try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?.isSaved(fileCount: 1) == true)
+        XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.customTitle, "Concurrent local name")
+        XCTAssertTrue(
+            try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?
+                .isSaved(fileCount: 1) == true)
     }
 
     func testIndexedHistoryImportAndPagesPreserveEveryRecord() async throws {
@@ -235,7 +268,7 @@ final class NavigationHistoryTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let file = directory.appendingPathComponent("history.json")
-        let original = (0 ..< 130).map { owned("old-" + String($0)) }
+        let original = (0..<130).map { owned("old-" + String($0)) }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let originalData = try encoder.encode(original)
@@ -268,24 +301,36 @@ final class NavigationHistoryTests: XCTestCase {
             blocked.role = state == "admin" ? "admin" : "user"
             blocked.mustChangePassword = state == "restricted"
             XCTAssertFalse(blocked.canTransfer)
-            XCTAssertEqual(HistoryEntry.combine(account: [owned("same")], downloads: [local()], session: blocked, filter: .all).count, 1)
+            XCTAssertEqual(
+                HistoryEntry.combine(account: [owned("same")], downloads: [local()], session: blocked, filter: .all)
+                    .count, 1)
         }
     }
 
     func testOldDeviceSessionRemainsDecodableWithoutMandatoryChangeFlag() throws {
-        let json = #"{"serverURL":"https://one.example","userID":"one","username":"name","token":"test","sessionID":"session","expiresAt":"later","role":"user"}"#
+        let json =
+            #"{"serverURL":"https://one.example","userID":"one","username":"name","token":"test","sessionID":"session","expiresAt":"later","role":"user"}"#
         let stored = try JSONDecoder().decode(DeviceSession.self, from: Data(json.utf8))
         XCTAssertNil(stored.mustChangePassword)
         XCTAssertTrue(stored.canTransfer)
     }
 
     func testPasswordConfirmationAndBytePolicy() {
-        XCTAssertTrue(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "new secure password", confirmation: "new secure password"))
-        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "temporary password", confirmation: "temporary password"))
-        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "new secure password", confirmation: "new secure password "))
-        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: "short", confirmation: "short"))
+        XCTAssertTrue(
+            PasswordReplacementPolicy.valid(
+                current: "temporary password", replacement: "new secure password", confirmation: "new secure password"))
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(
+                current: "temporary password", replacement: "temporary password", confirmation: "temporary password"))
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(
+                current: "temporary password", replacement: "new secure password", confirmation: "new secure password ")
+        )
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(current: "temporary password", replacement: "short", confirmation: "short"))
         let long = String(repeating: "🔐", count: 19)
-        XCTAssertFalse(PasswordReplacementPolicy.valid(current: "temporary password", replacement: long, confirmation: long))
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(current: "temporary password", replacement: long, confirmation: long))
     }
 
     func testCameraSelectionPrefersRearAndKeepsFrontOnlyAndNoCameraCases() {
@@ -309,7 +354,42 @@ final class NavigationHistoryTests: XCTestCase {
             let request = VNDetectBarcodesRequest()
             request.symbologies = [.qr]
             try VNImageRequestHandler(cgImage: image).perform([request])
-            XCTAssertEqual(request.results?.compactMap(\.payloadStringValue), [value])
+            let decoded = request.results?.compactMap(\.payloadStringValue)
+            if decoded != [value] {
+                // Keep the production Vision requirement, but retain enough native evidence to
+                // distinguish renderer damage from a decoder or pixel-format limitation.
+                let filter = CIFilter.qrCodeGenerator()
+                filter.message = Data(value.utf8)
+                filter.correctionLevel = "H"
+                let output = try XCTUnwrap(filter.outputImage)
+                let quietBounds = output.extent.insetBy(dx: -4, dy: -4)
+                let background = CIImage(color: .white).cropped(to: quietBounds)
+                let plain = output.composited(over: background).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+                let context = CIContext()
+                let plainImage = try XCTUnwrap(context.createCGImage(plain, from: plain.extent))
+                let plainRequest = VNDetectBarcodesRequest()
+                plainRequest.symbologies = [.qr]
+                try VNImageRequestHandler(cgImage: plainImage).perform([plainRequest])
+                let detector = try XCTUnwrap(
+                    CIDetector(
+                        ofType: CIDetectorTypeQRCode, context: context,
+                        options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+                let coreImageDecoded = detector.features(in: CIImage(cgImage: image)).compactMap {
+                    ($0 as? CIQRCodeFeature)?.messageString
+                }
+                let evidence =
+                    "payloadBytes=\(value.utf8.count), branded=\(image.width)x\(image.height), bitsPerComponent=\(image.bitsPerComponent), bitsPerPixel=\(image.bitsPerPixel), bitmapInfo=\(image.bitmapInfo.rawValue), colorSpace=\(String(describing: image.colorSpace?.name)), VisionRevision=\(request.revision), plainVision=\(String(describing: plainRequest.results?.compactMap(\.payloadStringValue))), brandedCoreImage=\(coreImageDecoded)"
+                print("QR decoding diagnostic: \(evidence)")
+                for (name, diagnosticImage) in [("branded", image), ("plain-core-image", plainImage)] {
+                    let attachment = XCTAttachment(image: UIImage(cgImage: diagnosticImage))
+                    attachment.name = "QR \(name) \(value.utf8.count) bytes"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+                XCTAssertEqual(decoded, [value], evidence)
+            } else {
+                XCTAssertEqual(decoded, [value])
+            }
         }
     }
 }
