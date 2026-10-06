@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+repository_root=$(git rev-parse --show-toplevel)
+exec python3 "$repository_root/tools/check_repository.py" history

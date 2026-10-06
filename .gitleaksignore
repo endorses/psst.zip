@@ -1,0 +1,13 @@
+# Exact historical fixtures only. New findings still require individual review.
+# Malformed cursor token verifies rejection and response redaction.
+0ac927ca83051fa003d07b9194748601b3f408ba:backend/internal/api/admin_resources_test.go:generic-api-key:103
+# Standard numeric TOTP reference seed used only in ephemeral fixture databases.
+4093f845f9f3dfb44569b115be7faeb1204db93a:backend/internal/database/admin_security_test.go:generic-api-key:18
+# Deliberately public X25519 private key and wrapped-key ciphertexts in the shared
+# browser/Android/iOS HPKE interoperability vector, documented in crypto design.
+506cb78fe69b71c11304857be673d46c14824ce4:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:10
+506cb78fe69b71c11304857be673d46c14824ce4:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:16
+506cb78fe69b71c11304857be673d46c14824ce4:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:17
+506cb78fe69b71c11304857be673d46c14824ce4:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:19
+# Temporary loopback browser-test account verifies mandatory password replacement.
+45ac65a63a6e1a393327bd1a4bbdd5dd2ea31d17:web/tests/browser/administration.spec.ts:generic-api-key:9

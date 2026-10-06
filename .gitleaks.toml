@@ -1,0 +1,6 @@
+title = "psst.zip secret scanning"
+
+# Keep every built-in detector. Reviewed historical fixture findings are listed
+# individually in .gitleaksignore, never excluded by test directory or key type.
+[extend]
+useDefault = true

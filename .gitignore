@@ -36,7 +36,12 @@ Thumbs.db
 
 # Local server credentials
 .env
-.env.local
+.env.*
+!.env.example
+
+# Python tooling
+__pycache__/
+*.pyc
 
 # Generated native tooling state
 android/.kotlin/

@@ -97,6 +97,10 @@ android/     Android app (Jetpack Compose)
 ios/         iOS app (SwiftUI + share extension)
 ```
 
+Install the [repository hooks](hooks/README.md) before contributing. They check
+staged changes for credential leaks, sensitive files, and formatting, and scan
+Git history before pushes. CI repeats the security checks.
+
 ## Quick start (Docker Compose)
 
 ```bash
@@ -622,7 +626,13 @@ when updating a self-hosted instance.
 
 ## License
 
-GNU Affero General Public License, version 3 only (AGPL-3.0-only). See [LICENSE](LICENSE).
+Copyright 2026 The psst.zip Authors. Licensed under the GNU Affero General Public
+License, version 3 only (`AGPL-3.0-only`). See [LICENSE](LICENSE).
+
+If you modify psst.zip and let users interact with that version over a network,
+you must offer those users the corresponding source under the license's terms.
+Commercial use and paid hosting are allowed. Third-party dependencies and bundled
+assets retain their own licenses and notices.
 
 ## Scanning and brand assets
 

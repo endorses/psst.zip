@@ -7,6 +7,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  repository-security:
+    name: Repository security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.8"
+          cache: false
+
+      - name: Install pinned secret scanner
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+
+      - name: Reject sensitive files and oversized blobs
+        run: python3 tools/check_repository.py files
+
+      - name: Scan complete Git history
+        run: python3 tools/check_repository.py history
+
+      - name: Repository check regression tests
+        run: python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
