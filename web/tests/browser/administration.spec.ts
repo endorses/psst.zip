@@ -188,6 +188,9 @@ test("receive titles and renames are shared, clear restores fallback and reload 
   await row.getByRole("button", { name: "Rename" }).click();
   await row.getByLabel("Link title").fill("Shared renamed link");
   await row.getByRole("button", { name: "Save name" }).click();
+  // A click starts the save; wait for persistence and form closure before reloading.
+  await expect(row.getByText("Shared renamed link", { exact: true })).toBeVisible();
+  await expect(row.getByRole("button", { name: "Save name" })).toHaveCount(0);
   await page.reload();
   await expect(row.getByText("Shared renamed link", { exact: true })).toBeVisible();
   expect((await (await request.get(`/api/v1/slots/${id}/availability`)).json()).title).toBe(
