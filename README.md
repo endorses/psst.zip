@@ -149,6 +149,11 @@ For a separate TLS gateway in front of the bundled web proxy, see the
 [external-proxy deployment example](docs/security/deployment.md#external-tls-gateway-example),
 including exact proxy trust, private listeners and the disposable integration check.
 
+The [container release installation guide](docs/security/container-releases.md)
+describes image-based Compose templates, persistent storage identities, and
+release manifest verification. Release publication and the production updater
+are still being implemented; the templates do not constitute a published release.
+
 ## Accounts and connected devices
 
 Administrators land on **Overview** and manage **Users**, **Traffic** and **Server

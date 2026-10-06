@@ -59,7 +59,9 @@ def index_entries(root: Path) -> dict[str, tuple[str, str]]:
 def sensitive_path(path: str) -> bool:
     parts = PurePosixPath(path.lower()).parts
     name = parts[-1]
-    if name.startswith(".env") and name != ".env.example":
+    if (name.startswith(".env") or name.endswith(".env") or ".env." in name) and not (
+        name == ".env.example" or name.endswith(".env.example")
+    ):
         return True
     if name in {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"}:
         return True

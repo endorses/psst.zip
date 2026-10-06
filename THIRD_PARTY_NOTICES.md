@@ -1,5 +1,33 @@
 # Third-party notices
 
+## Container dependency inventories
+
+The backend ships version-matched Go module license and notice snapshots under
+`/app/licenses/dependencies`, with its inventory and consolidated notices in
+[`backend/licenses/`](backend/licenses/). The Go standard library license is
+copied from the actual image builder into `/app/licenses/go/LICENSE`.
+
+The web image serves its locked npm inventory and consolidated upstream notices
+under `/licenses/`, including runtime code declared as development dependencies
+in the build project. Regenerate the committed notices after dependency changes:
+
+```sh
+cd backend
+go mod download
+python3 scripts/generate-third-party-notices.py
+cd ../web
+npm ci
+node scripts/generate-third-party-notices.mjs
+```
+
+CI checks that inventories and notice texts match the committed locks. These
+generated snapshots normalize line endings and trailing whitespace while
+preserving the legal text. Inventories record both the original upstream hash
+and the hash of the distributed text. These
+inventories cover application dependencies. The selected Alpine/Caddy runtime
+distribution and native applications require separate release licensing review;
+these snapshots do not establish that all distribution obligations are complete.
+
 ## Administrator authenticator codes
 
 The backend uses [`pquerna/otp` v1.5.0](https://github.com/pquerna/otp) under the

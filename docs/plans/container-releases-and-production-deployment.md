@@ -149,15 +149,16 @@ Broader CI remains blocked by a separate native iOS compilation failure:
 that separate failure was recorded without changing mobile cryptography in this
 backend timing repair.
 
-### Remaining CI repairs, held locally
+### Performance and mobile CI repairs (initially held locally)
 
 The performance/mobile repair `3a05f71` is now published. GitHub run
 [`37433228153`](https://github.com/endorses/psst.zip/actions/runs/37433228153)
 passed repository security, backend, Android/shared and the complete main
 browser suite. The separate administrator lifecycle stopped before test setup,
 and the native iOS build failed while compiling the share-extension storyboard.
-Further fixes remain local. A Mac is unavailable, so native Apple validation
-must remain explicitly pending until a successful Xcode run.
+At that checkpoint, further fixes were held locally and native validation was
+pending. Subsequent authorized pushes and successful macOS runs resolved these
+gates, as recorded below.
 
 - [x] Replace unresolved iOS CommonCrypto GCM functions with the pinned maintained
       CryptoKit provider and selected-Xcode Swift linker configuration. Preserve
@@ -186,8 +187,8 @@ must remain explicitly pending until a successful Xcode run.
 - [x] On macOS/Xcode, build the app and embedded share extension and run native
       XCTest, including the new exported-provider compatibility tests. Use the
       commands in `ios/README.md` and CI's selected Xcode 26.0.1 toolchain.
-- [ ] Publish the complete repair only when the remaining validation limitations
-      have been resolved in accordance with the user's no-push instruction.
+- [x] Publish the complete repair following the user's later authorization to
+      push verified CI fixes; verify all five jobs on the exact pushed commit.
 
 The complete Go 1.26.8 backend race suite passed after all fixture changes:
 698 cases in 216.919 seconds (3 minutes 37 seconds), versus 371.634 seconds
@@ -198,9 +199,9 @@ production backend build passed.
 Performance work and exact local measurements are recorded in
 [`test-suite-performance.md`](test-suite-performance.md). The user approved
 expanded localhost test execution and local Git writes, resolving the earlier
-sandbox restrictions. Native iOS validation still requires macOS/Xcode. All
-performance repairs are committed in `3a05f71`; the follow-up fixes described
-below remain local under the user's no-push instruction.
+sandbox restrictions. Native iOS validation required macOS/Xcode and subsequently passed on GitHub.
+The performance repair was originally committed as `3a05f71`; the follow-up fixes
+described below were subsequently published with the user's authorization.
 
 ### Follow-up CI fixes after the performance run
 
@@ -378,26 +379,40 @@ Android/shared in 2m49s, and security in 40s.
 - [x] Update verified CI task status without claiming separate language-launch,
       physical-device, App Store signing or production deployment checks passed.
 - [x] Commit this documentation-only completion record locally; installed security/format
-      hooks passed. The final pushed
-      CI repair remains `c6b3222`, with its complete successful workflow.
+      hooks passed. At that checkpoint, the final pushed CI repair was `c6b3222`.
+
+### Current CI checkpoint after identity cleanup
+
+The identity rewrite and subsequent test synchronization repair are published.
+Run [`37501740872`](https://github.com/endorses/psst.zip/actions/runs/37501740872)
+passed all five jobs on `7e61e6073bfa3782fa78f1f3f1f492fa21c699b9`:
+Repository security (41s), Android/shared (3m1s), Web (5m36s), Backend (6m44s),
+and native iOS app, extension and XCTest (12m40s). The Web test now waits for a
+completed title save before reloading; a controlled delayed save reproduced the
+old failure and passed with the repair. This resolves the earlier CI/no-push
+status notes; historical run descriptions above retain their original evidence.
+
+Container publication, registry visibility, protected release/deployment setup,
+and production migration remain separate, unperformed gates. Passing source CI
+does not establish that release images or an updater have been verified.
 
 ### Release artifacts and image-based installation
 
-- [ ] Add `deploy/compose.release.yml` using `image:` references for both services,
+- [x] Add `deploy/compose.release.yml` using `image:` references for both services,
       with explicit release digests. Retain the source-build `docker-compose.yml`
       for development and operators who build from source.
-- [ ] Preserve current non-root users, read-only roots, capability restrictions,
+- [x] Preserve current non-root users, read-only roots, capability restrictions,
       resource limits, rotating logs, private backend networking, exact proxy
       trust, public ports, and persistent paths. Keep service and volume identities
       compatible with the existing installation.
-- [ ] Use the image's bundled Caddy configuration by default. Document deliberate
-      operator overrides and include their compatibility in preflight checks.
-      Keep hostname and public URL operator-configurable; psst.zip branding must
-      not hardcode the hosted instance into reusable deployment files.
-- [ ] Supply a release-compatible external TLS gateway overlay. Both proxy hops
+- [x] Use the image's bundled Caddy configuration by default and document deliberate
+      operator overrides. Keep hostname and public URL operator-configurable.
+- [ ] Include active operator Caddy overrides and their compatibility in updater
+      preflight checks before migrating an installation.
+- [x] Supply a release-compatible external TLS gateway overlay. Both proxy hops
       must use the selected web image digest and matching configuration; preserve
       the existing source-build overlay and its private network protections.
-- [ ] Define a detached release manifest containing version, source commit, architecture
+- [x] Define a detached release manifest containing version, source commit, architecture
       coverage, backend/web image digests, deployment bundle checksum, minimum
       Docker/Compose requirements, and migration/rollback notes. Clearly identify
       manifest-index digests versus architecture-specific image digests.
@@ -406,17 +421,51 @@ Android/shared in 2m49s, and security in 40s.
       it, outside the archive, so the bundle checksum is not self-referential.
       Exclude `.env`, passwords, private keys, database files, uploads, and all
       live installation state.
-- [ ] Attach OCI source, version, revision, and AGPL-3.0-only license metadata to both
-      images. Record resolved base-image digests and build toolchain versions.
+- [x] Attach OCI source, version, revision, and AGPL-3.0-only license metadata to both
+      images; allow digest-pinned build bases and define build records in the manifest.
+- [ ] Record actual resolved bases and toolchain versions for each published release,
+      and verify both advertised architectures before publication.
 - [ ] Include the license and required dependency notices in distributed images
       and bundles. Publish matching corresponding source, including build/install
       scripts, and provide a source-access link for each hosted version. Account
       for source offers and legal notices in web, Android, and iOS; review native
       store distribution terms separately before any store release.
-- [ ] Reconcile `.goreleaser.yml`, whose existing Docker configuration publishes
-      only a backend under an older image name. Establish one owner for container
-      publication while preserving any intended binary releases and existing
-      internal binary/protocol identities.
+- [x] Remove GoReleaser's backend-only Docker publication while retaining binary
+      builds and archives with license notices. The paired release workflow will
+      own container publication. Standalone binary release execution remains unverified.
+
+### Release artifact foundation checkpoint
+
+The image-based Compose templates, external gateway overlay, strict detached
+manifest contract and deterministic allowlisted bundle builder are implemented.
+Bundles currently declare `artifact-foundation`; the shared production updater
+and authenticated publication remain unfinished, so these are not deployable
+released bundles. Preparation does not modify a production installation.
+
+Application dependency inventories and full available license/notice texts are
+included in both images and the bundle. CI checks inventory freshness against
+locked dependencies, and checks named operator environment files as sensitive
+inputs. Hosted legal/source discovery, both native clients' notices and selected
+runtime/base distribution obligations still require the separate licensing gate.
+
+GoReleaser no longer competes for image publication. Its existing root-level
+`go mod tidy` hook is not verified for standalone binary releases; review that
+pre-hook before enabling binary publication. It is not used by container builds.
+
+Verification completed: 18 manifest/archive boundary tests and seven Compose
+regression tests passed in 2.902s; all 17 repository security tests passed in
+2.328s. Both images built from resolved official base-image index digests. The
+native `linux/amd64` smoke exercised image labels/non-root users, hardening,
+loopback-only ingress, compiled HTML and JavaScript, application and dependency
+license hashes, served source metadata, API/config, administrator authentication
+and persistence of the account/session after removing bootstrap credentials and
+recreating the backend. All fixture containers, volumes, networks and temporary
+files were removed. Dependency notice checks and formatting passed.
+
+ARM64 execution, public registry pulls, provenance, public ACME renewal, complete
+license/source-offer review, update/rollback fault injection, and live migration
+remain pending. The previous successful GitHub run covers its recorded source
+commit; the new CI steps are not claimed to have run on GitHub yet.
 
 ### CI and publication
 
@@ -533,10 +582,11 @@ Android/shared in 2m49s, and security in 40s.
 - [ ] Document the maintainer path from reviewed commit to version tag to ready
       release, and the operator path for manual SSH updates, Actions deployment,
       maintenance, backup, failure recovery, and rollback.
-- [ ] Choose the GitHub owner/repository, package namespace, and initial release
-      version; create the remote and configure branch/tag protection. Review the
-      repository and release inputs for accidental private deployment state
-      before making the project public.
+- [x] Choose and publish the GitHub repository `endorses/psst.zip`, following
+      reviewed licensing and complete-history secret checks.
+- [ ] Confirm the GHCR package namespace and initial release version, and configure
+      branch/tag protection before publication. Review release inputs for
+      accidental private deployment state.
 - [ ] Inspect the live installation's actual volume mappings and settings before
       migration. Preserve `/opt/psst.zip`, project name `psst-zip`, and the original
       local images/configuration as the first migration recovery baseline.

@@ -35,6 +35,14 @@ jobs:
       - name: Repository check regression tests
         run: python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
 
+      - name: Release artifact and Compose regression tests
+        run: python3 -m unittest discover -s tools -p 'test_release_*.py' -v
+
+      - name: Check distributed project licenses
+        run: |
+          cmp LICENSE backend/licenses/AGPL-3.0-only.txt
+          cmp LICENSE web/static/licenses/AGPL-3.0-only.txt
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -54,6 +62,11 @@ jobs:
         with:
           version: v2.13.0
           working-directory: backend
+
+      - name: Check dependency notices
+        run: |
+          go mod download
+          python3 scripts/generate-third-party-notices.py --check
 
       - name: Test
         # Real SQLite migrations and retention-boundary workloads are expensive
@@ -81,6 +94,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check dependency notices
+        run: node scripts/generate-third-party-notices.mjs --check
 
       - uses: actions/setup-go@v5
         with:

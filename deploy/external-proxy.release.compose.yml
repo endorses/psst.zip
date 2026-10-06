@@ -1,0 +1,46 @@
+# Apply after compose.release.yml. Requires Docker Compose 2.24.4 or later.
+# This example owns a separate external TLS gateway; do not combine it with
+# another listener on the same public ports.
+services:
+  caddy:
+    image: "${WEB_IMAGE:?Set WEB_IMAGE to the released web image digest}"
+    ports: !reset []
+    environment:
+      PSST_DOMAIN: "http://${PSST_DOMAIN:?Set PSST_DOMAIN to your public hostname}"
+      PSST_EXTERNAL_PROXY_CIDRS: "${PSST_EXTERNAL_PROXY_IP:-172.30.194.2}/32"
+    volumes:
+      - ./external-proxy/trusted-proxy.caddy:/etc/caddy/proxy-trust/external.caddy:ro
+    networks: !override
+      private:
+        ipv4_address: ${PSST_PROXY_IP:-172.30.193.3}
+      proxy:
+        ipv4_address: ${PSST_WEB_PROXY_IP:-172.30.194.3}
+
+  external-proxy:
+    extends:
+      file: compose.release.yml
+      service: caddy
+    image: "${WEB_IMAGE:?Set WEB_IMAGE to the released web image digest}"
+    volumes:
+      - ./external-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - external-proxy-data:/data
+      - external-proxy-config:/config
+    depends_on:
+      - caddy
+    networks: !override
+      proxy:
+        ipv4_address: ${PSST_EXTERNAL_PROXY_IP:-172.30.194.2}
+      edge:
+
+networks:
+  proxy:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${PSST_EXTERNAL_PROXY_SUBNET:-172.30.194.0/29}
+
+volumes:
+  external-proxy-data:
+    name: ${EXTERNAL_PROXY_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-psst-zip}_external-proxy-data}
+  external-proxy-config:
+    name: ${EXTERNAL_PROXY_CONFIG_VOLUME:-${COMPOSE_PROJECT_NAME:-psst-zip}_external-proxy-config}

@@ -116,7 +116,14 @@ class RepositoryChecks(unittest.TestCase):
         self.assertEqual(self.check("files").returncode, 0)
 
     def test_env_payload_and_mobile_artifacts_are_rejected(self) -> None:
-        for path in (".env.production", "uploads/example.txt", "app.ipa", "server.key"):
+        for path in (
+            ".env.production",
+            "deploy/release.env",
+            "deploy/release.env.backup",
+            "uploads/example.txt",
+            "app.ipa",
+            "server.key",
+        ):
             with self.subTest(path=path):
                 self.write(path, "generated\n")
                 self.git("add", path)
@@ -125,9 +132,10 @@ class RepositoryChecks(unittest.TestCase):
 
     def test_public_fixtures_and_env_example_are_allowed(self) -> None:
         self.write(".env.example", "PUBLIC_URL=https://example.invalid\n")
+        self.write("deploy/release.env.example", "PUBLIC_URL=https://example.invalid\n")
         self.write("tests/fixtures/public.json", '{"example": true}\n')
         self.write("tests/fixtures/public.crt", "public certificate fixture\n")
-        self.git("add", ".env.example", "tests")
+        self.git("add", ".env.example", "deploy/release.env.example", "tests")
         self.assertEqual(self.check().returncode, 0)
 
     def test_force_added_retcon_artifacts_remain_blocked_after_deletion(self) -> None:

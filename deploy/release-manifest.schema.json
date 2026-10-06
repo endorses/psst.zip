@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "psst.zip detached release manifest v1",
+  "description": "Structural checks only. tools/release_artifacts.py also enforces repository trust, source/version consistency, paired index/platform digests and archive safety. Verify provenance separately before executing release tooling. artifact-foundation is not a deployable release.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "payload_profile",
+    "source",
+    "platforms",
+    "images",
+    "bundle",
+    "requirements",
+    "notes",
+    "build"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "payload_profile": {
+      "enum": ["artifact-foundation", "deployment-ready"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["repository", "commit", "archive_url"],
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*/[a-z0-9][a-z0-9_.-]*$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "archive_url": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[a-z0-9.-]+/[a-z0-9_.-]+/archive/[0-9a-f]{40}\\.tar\\.gz$"
+        }
+      }
+    },
+    "platforms": {
+      "const": ["linux/amd64", "linux/arm64"]
+    },
+    "images": {
+      "type": "object",
+      "required": ["backend", "web"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "object",
+          "required": ["index", "platform_digests"],
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/psst-zip-(backend|web)@sha256:[0-9a-f]{64}$"
+            },
+            "platform_digests": {
+              "type": "object",
+              "required": ["linux/amd64", "linux/arm64"],
+              "additionalProperties": false,
+              "properties": {
+                "linux/amd64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "linux/arm64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        },
+        "web": {
+          "type": "object",
+          "required": ["index", "platform_digests"],
+          "additionalProperties": false,
+          "properties": {
+            "index": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/psst-zip-(backend|web)@sha256:[0-9a-f]{64}$"
+            },
+            "platform_digests": {
+              "type": "object",
+              "required": ["linux/amd64", "linux/arm64"],
+              "additionalProperties": false,
+              "properties": {
+                "linux/amd64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "linux/arm64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "required": ["name", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^psst\\.zip-deployment-v[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.gz$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "required": ["docker", "compose"],
+      "additionalProperties": false,
+      "properties": {
+        "docker": {
+          "const": "27.0.0"
+        },
+        "compose": {
+          "const": "2.24.4"
+        }
+      }
+    },
+    "notes": {
+      "type": "object",
+      "required": ["migration", "rollback", "checkpoint_required"],
+      "additionalProperties": false,
+      "properties": {
+        "migration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "rollback": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "checkpoint_required": {
+          "const": true
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "required": ["base_images", "toolchains"],
+      "additionalProperties": false,
+      "properties": {
+        "base_images": {
+          "type": "object",
+          "required": ["golang", "node", "alpine", "caddy"],
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._:/-]*@sha256:[0-9a-f]{64}$"
+          }
+        },
+        "toolchains": {
+          "type": "object",
+          "required": ["go", "node"],
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._+/-]*$"
+          }
+        }
+      }
+    }
+  }
+}

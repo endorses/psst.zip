@@ -26,6 +26,11 @@ archives:
   - id: default
     format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+      - src: backend/licenses/**
+        dst: licenses
 
 checksum:
   name_template: "checksums.txt"
@@ -37,28 +42,3 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
-
-dockers:
-  - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-amd64"
-    use: buildx
-    dockerfile: backend/Dockerfile
-    build_flag_templates:
-      - "--platform=linux/amd64"
-  - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-arm64"
-    use: buildx
-    dockerfile: backend/Dockerfile
-    goarch: arm64
-    build_flag_templates:
-      - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:latest"
-    image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/psst-zip-backend:{{ .Version }}-arm64"

@@ -1,0 +1,208 @@
+{
+  "inputs": {
+    "go.mod": "8d847a2ea9341c10954a89ce9c4bbbfd338c495936bf53d18e6dc315b64188e2",
+    "go.sum": "7210ec1c6220409d27a07d94a0e505f18b4a796dab9ba829d737839052fd9332"
+  },
+  "modules": [
+    {
+      "module": "github.com/boombuler/barcode",
+      "version": "v1.0.1-0.20190219062509-6c824513bacc",
+      "notices": [
+        {
+          "path": "dependencies/github.com/boombuler/barcode@v1.0.1-0.20190219062509-6c824513bacc/LICENSE",
+          "sha256": "36d2e94c565d51a5146d729e6be6a3d26168d473d97c94011b13700e82c622e4",
+          "upstream_sha256": "36d2e94c565d51a5146d729e6be6a3d26168d473d97c94011b13700e82c622e4"
+        }
+      ]
+    },
+    {
+      "module": "github.com/dustin/go-humanize",
+      "version": "v1.0.1",
+      "notices": [
+        {
+          "path": "dependencies/github.com/dustin/go-humanize@v1.0.1/LICENSE",
+          "sha256": "a973b4498c13eb74baa2a8e5c351426a6826f2fcdd909916dbe53ee2e755fd71",
+          "upstream_sha256": "a973b4498c13eb74baa2a8e5c351426a6826f2fcdd909916dbe53ee2e755fd71"
+        }
+      ]
+    },
+    {
+      "module": "github.com/go-chi/chi/v5",
+      "version": "v5.3.0",
+      "notices": [
+        {
+          "path": "dependencies/github.com/go-chi/chi/v5@v5.3.0/LICENSE",
+          "sha256": "a2d51b7515acfaff2f7a88688650f2fc4fd99561383e72bba2305e3db59a1647",
+          "upstream_sha256": "a2d51b7515acfaff2f7a88688650f2fc4fd99561383e72bba2305e3db59a1647"
+        }
+      ]
+    },
+    {
+      "module": "github.com/google/uuid",
+      "version": "v1.6.0",
+      "notices": [
+        {
+          "path": "dependencies/github.com/google/uuid@v1.6.0/LICENSE",
+          "sha256": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d",
+          "upstream_sha256": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d"
+        }
+      ]
+    },
+    {
+      "module": "github.com/mattn/go-isatty",
+      "version": "v0.0.20",
+      "notices": [
+        {
+          "path": "dependencies/github.com/mattn/go-isatty@v0.0.20/LICENSE",
+          "sha256": "08eab1118c80885fa1fa6a6dd7303f65a379fcb3733e063d20d1bbc2c76e6fa1",
+          "upstream_sha256": "08eab1118c80885fa1fa6a6dd7303f65a379fcb3733e063d20d1bbc2c76e6fa1"
+        }
+      ]
+    },
+    {
+      "module": "github.com/ncruces/go-strftime",
+      "version": "v0.1.9",
+      "notices": [
+        {
+          "path": "dependencies/github.com/ncruces/go-strftime@v0.1.9/LICENSE",
+          "sha256": "38ae43959daf953a393a585b2988672cb65a5a541aca0d0be5e72595a0a16883",
+          "upstream_sha256": "38ae43959daf953a393a585b2988672cb65a5a541aca0d0be5e72595a0a16883"
+        }
+      ]
+    },
+    {
+      "module": "github.com/pquerna/otp",
+      "version": "v1.5.0",
+      "notices": [
+        {
+          "path": "dependencies/github.com/pquerna/otp@v1.5.0/LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "upstream_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "dependencies/github.com/pquerna/otp@v1.5.0/NOTICE",
+          "sha256": "d0f366018ee5a094797635326617941d23215a4eee23f6b38df6213605e51588",
+          "upstream_sha256": "6aa75b508da9d9d1686352aa5f36bb5f926958c826cfccdf64ad721de4d125c1"
+        }
+      ]
+    },
+    {
+      "module": "github.com/remyoudompheng/bigfft",
+      "version": "v0.0.0-20230129092748-24d4a6f8daec",
+      "notices": [
+        {
+          "path": "dependencies/github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec/LICENSE",
+          "sha256": "dd26a7abddd02e2d0aba97805b31f248ef7835d9e10da289b22e3b8ab78b324d",
+          "upstream_sha256": "dd26a7abddd02e2d0aba97805b31f248ef7835d9e10da289b22e3b8ab78b324d"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/crypto",
+      "version": "v0.36.0",
+      "notices": [
+        {
+          "path": "dependencies/golang.org/x/crypto@v0.36.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/exp",
+      "version": "v0.0.0-20250408133849-7e4ce0ab07d0",
+      "notices": [
+        {
+          "path": "dependencies/golang.org/x/exp@v0.0.0-20250408133849-7e4ce0ab07d0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "golang.org/x/sys",
+      "version": "v0.32.0",
+      "notices": [
+        {
+          "path": "dependencies/golang.org/x/sys@v0.32.0/LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        }
+      ]
+    },
+    {
+      "module": "modernc.org/libc",
+      "version": "v1.65.0",
+      "notices": [
+        {
+          "path": "dependencies/modernc.org/libc@v1.65.0/COPYRIGHT-MUSL",
+          "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
+          "upstream_sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+        },
+        {
+          "path": "dependencies/modernc.org/libc@v1.65.0/LICENSE",
+          "sha256": "95ff867eb55a56935fa7492406cfa953fb7c13ca73f4c0a86ae05756b4605600",
+          "upstream_sha256": "95ff867eb55a56935fa7492406cfa953fb7c13ca73f4c0a86ae05756b4605600"
+        },
+        {
+          "path": "dependencies/modernc.org/libc@v1.65.0/LICENSE-GO",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+          "upstream_sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+        }
+      ]
+    },
+    {
+      "module": "modernc.org/mathutil",
+      "version": "v1.7.1",
+      "notices": [
+        {
+          "path": "dependencies/modernc.org/mathutil@v1.7.1/LICENSE",
+          "sha256": "bfa9bf72a72ca009fd62a8f84fca3dca67e51d93af96352723646599898b6cf5",
+          "upstream_sha256": "bfa9bf72a72ca009fd62a8f84fca3dca67e51d93af96352723646599898b6cf5"
+        }
+      ]
+    },
+    {
+      "module": "modernc.org/memory",
+      "version": "v1.10.0",
+      "notices": [
+        {
+          "path": "dependencies/modernc.org/memory@v1.10.0/LICENSE",
+          "sha256": "59895e669f48f168b6b858358f6005779cdf40a265f7828813061b56af67b496",
+          "upstream_sha256": "59895e669f48f168b6b858358f6005779cdf40a265f7828813061b56af67b496"
+        },
+        {
+          "path": "dependencies/modernc.org/memory@v1.10.0/LICENSE-GO",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+          "upstream_sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+        },
+        {
+          "path": "dependencies/modernc.org/memory@v1.10.0/LICENSE-LOGO",
+          "sha256": "5ae5bee3072a841376451b48d8cfcec7188e10543926d5870828d36c8a750dc5",
+          "upstream_sha256": "5ae5bee3072a841376451b48d8cfcec7188e10543926d5870828d36c8a750dc5"
+        },
+        {
+          "path": "dependencies/modernc.org/memory@v1.10.0/LICENSE-MMAP-GO",
+          "sha256": "121d4529907b7d822d7665bde14ae142dc8a119356991fbc759ed562444dc02f",
+          "upstream_sha256": "c2eba69f20d05414538c3a5df7694dde392e065ff70882e1625e90f5d6659fff"
+        }
+      ]
+    },
+    {
+      "module": "modernc.org/sqlite",
+      "version": "v1.37.0",
+      "notices": [
+        {
+          "path": "dependencies/modernc.org/sqlite@v1.37.0/LICENSE",
+          "sha256": "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822",
+          "upstream_sha256": "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822"
+        },
+        {
+          "path": "dependencies/modernc.org/sqlite@v1.37.0/SQLITE-LICENSE",
+          "sha256": "8438c9c89b849131ead81d5435cb97fcf052df5b0b286dda8a2d4c29e6cb3fd0",
+          "upstream_sha256": "8438c9c89b849131ead81d5435cb97fcf052df5b0b286dda8a2d4c29e6cb3fd0"
+        }
+      ]
+    }
+  ]
+}
