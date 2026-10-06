@@ -18,7 +18,7 @@ services:
     environment:
       LISTEN_ADDR: ":8080"
       STORAGE_PATH: /app/data/files
-      DB_PATH: /app/data/psst.db
+      DB_PATH: "${DB_PATH:-/app/data/psst.db}"
       MAX_FILE_SIZE: "${MAX_FILE_SIZE:-5368709120}"
       DEFAULT_EXPIRY: "${DEFAULT_EXPIRY:-24h}"
       CLEANUP_INTERVAL: "${CLEANUP_INTERVAL:-5m}"
@@ -83,5 +83,6 @@ networks:
 
 volumes:
   psst-data:
+    name: ${BACKEND_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-psst-zip}_psst-data}
   caddy-data:
   caddy-config:

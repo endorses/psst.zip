@@ -113,7 +113,7 @@ for path in ROOT.rglob("*.swift"):
         re.IGNORECASE,
     ), path
     assert not re.search(
-        r'(?:Text|Label|navigationTitle)\("(?:Psst|Psst|Secure Transfer)',
+        r'(?:Text|Label|navigationTitle)\("(?:Psst|Secure Transfer|Secure File Transfer)',
         text,
     ), path
     # Balanced delimiters ignoring Swift string literals and comments; catches truncation, not types.

@@ -33,6 +33,27 @@ A supported [SQLite online backup](https://www.sqlite.org/backup.html) only snap
 the database; this application also needs a coordinated payload snapshot. The cold
 procedure below avoids that additional coordination requirement.
 
+## Retain storage when changing project defaults
+
+Before updating an existing installation to a renamed database or Compose volume
+default, record the running backend's actual mount and database path using the
+installation's normal Compose arguments:
+
+```bash
+backend_container=$(docker compose -p psst-zip ps -q backend)
+docker inspect "$backend_container" --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{println .Name}}{{end}}{{end}}'
+docker inspect "$backend_container" | python3 -c 'import json, sys; print(next(value for value in json.load(sys.stdin)[0]["Config"]["Env"] if value.startswith("DB_PATH=")))'
+```
+
+For a named-volume installation, set `BACKEND_DATA_VOLUME` to that recorded mount
+name and `DB_PATH` to the recorded container path in the protected local `.env`.
+The Compose service's logical `psst-data` volume then refers to the existing
+physical volume. Use a cold backup before deployment, inspect the resolved
+Compose mount/database settings, and verify existing accounts, resources and
+files afterward. For bind mounts, retain the explicit mount override instead.
+Do not remove the existing volume or rename live SQLite files to match a new
+branding default.
+
 ## Create a cold backup
 
 Use the same Compose project, files and environment arguments as the installation.

@@ -1,13 +1,13 @@
 # Exact historical fixtures only. New findings still require individual review.
 # Malformed cursor token verifies rejection and response redaction.
-805b56f0bab9a9ac600d59c7295374a4967c5752:backend/internal/api/admin_resources_test.go:generic-api-key:103
+0f16cdbb9795262945c6aa0bc2ef70225f390776:backend/internal/api/admin_resources_test.go:generic-api-key:103
 # Standard numeric TOTP reference seed used only in ephemeral fixture databases.
-80d15f0a70db8297de7d296d9b77c6dcad6b76bb:backend/internal/database/admin_security_test.go:generic-api-key:18
+7dc8ee473a79037035aec9a740517657945d6b9c:backend/internal/database/admin_security_test.go:generic-api-key:18
 # Deliberately public X25519 private key and wrapped-key ciphertexts in the shared
 # browser/Android/iOS HPKE interoperability vector, documented in crypto design.
-27a8efce5ad480d6d3526d66508e6c91fce00788:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:10
-27a8efce5ad480d6d3526d66508e6c91fce00788:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:16
-27a8efce5ad480d6d3526d66508e6c91fce00788:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:17
-27a8efce5ad480d6d3526d66508e6c91fce00788:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:19
+7fb32f4a0174d5e1e1b99bd4752be5e545d2491d:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:10
+7fb32f4a0174d5e1e1b99bd4752be5e545d2491d:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:16
+7fb32f4a0174d5e1e1b99bd4752be5e545d2491d:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:17
+7fb32f4a0174d5e1e1b99bd4752be5e545d2491d:docs/security/fixtures/hpke-receive-v2.json:generic-api-key:19
 # Temporary loopback browser-test account verifies mandatory password replacement.
-1f5df1db122e1037803470c5557a9cc50bbbb88e:web/tests/browser/administration.spec.ts:generic-api-key:9
+9a12d303f78548c221ce2e766906c8240c63b90c:web/tests/browser/administration.spec.ts:generic-api-key:9

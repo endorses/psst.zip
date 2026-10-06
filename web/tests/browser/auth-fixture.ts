@@ -6,9 +6,8 @@ import {
   type APIResponse,
 } from "@playwright/test";
 export const adminCredentials = {
-  username: process.env.PSST_TEST_USERNAME ?? process.env.PSST_TEST_USERNAME ?? "admin",
-  password:
-    process.env.PSST_TEST_PASSWORD ?? process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
+  username: process.env.PSST_TEST_USERNAME ?? "admin",
+  password: process.env.PSST_TEST_PASSWORD ?? "Test-admin-password-2026",
 };
 export const credentials = { username: "browser-member", password: "Browser-member-final-2026" };
 type SessionCookies = Awaited<ReturnType<APIRequestContext["storageState"]>>["cookies"];

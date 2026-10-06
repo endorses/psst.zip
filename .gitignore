@@ -49,3 +49,6 @@ shared/.kotlin/
 ios/Psst.xcodeproj/
 web/test-results/
 web/playwright-report/
+
+# Private history-rewrite backups and handoff artifacts
+/.retcon-private/

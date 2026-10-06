@@ -347,10 +347,8 @@ To run the same browser tests against an isolated Docker deployment, set
 `PSST_TEST_BASE_URL` to its origin and run
 `npx playwright test --config playwright.deployment.config.ts` from `web/`.
 Optional `PSST_TEST_USERNAME` and `PSST_TEST_PASSWORD` select the test account;
-`PSST_EXPECT_INSECURE_CONTEXT=1` enables the LAN HTTP assertion. The previous
-`PSST_` names remain accepted as fallbacks; the corresponding `PSST_` value takes
-precedence when set. This suite creates and downloads test transfers; use a
-disposable deployment.
+`PSST_EXPECT_INSECURE_CONTEXT=1` enables the LAN HTTP assertion. This suite creates
+and downloads test transfers; use a disposable deployment.
 
 ## Current limits and protocol
 

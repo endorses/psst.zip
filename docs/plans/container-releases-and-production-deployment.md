@@ -53,6 +53,11 @@ The source-build Compose file mounts the host `Caddyfile` over the image's bundl
 file. The release-based setup must explicitly resolve this mount so an old host
 file cannot silently override a new release's proxy configuration.
 
+The identity retcon changes fresh-install storage defaults. Before the next VPS
+update, configure `BACKEND_DATA_VOLUME` and `DB_PATH` from the running installation
+to retain its physical volume and database. The release setup must carry these
+overrides forward and verify existing data, not create a new empty store.
+
 Existing deployment and recovery requirements are documented in
 [deployment hardening](../security/deployment.md) and the
 [cold backup and restore runbook](../security/backup-restore.md). Reuse these

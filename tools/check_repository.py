@@ -81,7 +81,15 @@ def sensitive_path(path: str) -> bool:
         return True
     if any(
         part
-        in {"uploads", "payloads", "psst-data", "caddy-data", "caddy-config", ".ssh"}
+        in {
+            "uploads",
+            "payloads",
+            "psst-data",
+            "caddy-data",
+            "caddy-config",
+            ".ssh",
+            ".retcon-private",
+        }
         for part in parts
     ):
         return True

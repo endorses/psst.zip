@@ -2,7 +2,7 @@
 
 ## Branding
 
-Use **psst.zip** as the exact user-facing product name across web, Android, iOS, and documentation. The brand is not a hardcoded self-hosted server address; preserve operator-configured URLs and existing application/protocol identities.
+Use **psst.zip** as the exact user-facing product name across web, Android, iOS, and documentation. The brand is not a hardcoded self-hosted server address; preserve operator-configured URLs. Project identifiers use the `zip.psst` namespace and `Psst` native targets. The authorized history retcon supersedes earlier instructions to retain legacy names; subsequent changes must preserve the established psst.zip identities and protocol compatibility.
 
 ## Android and iOS parity
 

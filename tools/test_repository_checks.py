@@ -130,6 +130,28 @@ class RepositoryChecks(unittest.TestCase):
         self.git("add", ".env.example", "tests")
         self.assertEqual(self.check().returncode, 0)
 
+    def test_force_added_retcon_artifacts_remain_blocked_after_deletion(self) -> None:
+        self.write(".gitignore", ".retcon-private/\n")
+        self.git("add", ".gitignore")
+        self.git("commit", "-qm", "Ignore private rewrite artifacts")
+        for path in (
+            ".retcon-private/before-retcon.bundle",
+            "nested/.retcon-private/commit-map.txt",
+        ):
+            with self.subTest(path=path):
+                self.write(path, "disposable private rewrite artifact\n")
+                self.git("add", "-f", path)
+                result = self.check("files")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(repr(path), result.stderr)
+                self.git("commit", "-qm", "Disposable historical rewrite artifact")
+                self.git("rm", path)
+                self.git("commit", "-qm", "Remove disposable rewrite artifact")
+                self.assertEqual(self.check("files").returncode, 0)
+                result = self.check("history")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(repr(path), result.stderr)
+
     def test_size_uses_staged_blob(self) -> None:
         target = self.write("large.txt", b"x" * (5 * 1024 * 1024 + 1))
         self.git("add", "large.txt")

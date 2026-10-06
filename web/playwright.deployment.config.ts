@@ -5,7 +5,6 @@ export default defineConfig({
   testDir: "./tests/browser",
   workers: 1,
   use: {
-    baseURL:
-      process.env.PSST_TEST_BASE_URL ?? process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:18480",
+    baseURL: process.env.PSST_TEST_BASE_URL ?? "http://127.0.0.1:18480",
   },
 });
