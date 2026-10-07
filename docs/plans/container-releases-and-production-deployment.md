@@ -729,6 +729,31 @@ and registry/package visibility integration still require implementation. The
 [publication guide](../security/container-publication.md) records the exact
 boundaries. Adding this core does not complete the publishing tasks above.
 
+### Authenticated report verifier checkpoint
+
+- [x] Implement `tools/github_release_evidence.py` as the publication core's
+      authenticated evidence adapter. Verify a private snapshot of report bytes
+      with GitHub CLI, requiring the exact repository, release workflow and signer
+      commit, tagged source commit/ref, certificate identity, hosted Actions
+      issuer, and hosted runners. Accept only a verified SHA-256 subject and
+      witnessed timestamp; do not accept unsigned caller approval JSON.
+- [x] Verify failed/stale reports, missing attestations, substituted files,
+      process failures, output limits, and timeouts with seven focused regression
+      tests. These use verification fixtures and real bounded subprocess checks;
+      they do not claim a live signed GitHub report passed.
+- [ ] Integrate actual check/report generation and signing into the reviewed
+      release workflow, then exercise the verifier against its authenticated
+      reports. Source/legal review approval policy and live publication remain
+      pending; the candidate workflow still has no signing/publishing permission.
+
+The verifier follows the documented [GitHub CLI attestation policy
+flags](https://cli.github.com/manual/gh_attestation_verify). Its isolated process
+has a 55-second deadline and a combined 4 MiB output bound. Tokens are supplied
+explicitly, never through command arguments; caller CLI configuration and trust
+overrides are not inherited. An attestation authenticates the reviewed workflow's
+report, so that workflow must derive reports from actual completed checks before
+signing them. The adapter alone does not establish distribution readiness.
+
 ### GitHub production deployment
 
 - [x] Add `.github/workflows/deploy.yml` with `workflow_dispatch`, taking a
