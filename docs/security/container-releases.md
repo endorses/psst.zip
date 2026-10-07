@@ -308,11 +308,12 @@ assembly step checks both native platforms, shared immutable bases, matching
 actual Go/Node versions, exact smoke-tested configurations and OCI bytes, and
 source asset hashes. Both architecture-specific dependency collections are
 independently replayed against committed locks and complete source-scanner
-receipts. Assembly copies both runtime and both dependency archives into its
-output, pinning retained bytes to the verified hashes. It creates deterministic
-paired indexes, the deployment bundle, detached manifest and an application
-source archive from the exact tagged Git tree: seven release assets and thirteen
-bound subjects in total. Untracked operator files and research are excluded by
+receipts. Assembly also requires the common upstream source collection, replayed
+against its catalog and lock from the exact Git tree. It copies both runtime,
+both dependency and the common upstream archives into its output, pinning retained
+bytes to the verified hashes. It creates deterministic paired indexes, the
+deployment bundle, detached manifest and an application source archive from the
+exact tagged Git tree: eight release assets and fourteen bound subjects in total. Untracked operator files and research are excluded by
 `git archive`. Package integrity does not establish that every upstream package
 contains complete preferred-form source; that review remains required.
 
@@ -338,6 +339,7 @@ python3 tools/prepare_release_inputs.py \
   --dependencies "linux/arm64=$REVIEW_DIR/arm64/application-dependencies" \
   --source-scan "linux/amd64=$REVIEW_DIR/amd64/source-scans/source-scan-measurement.json" \
   --source-scan "linux/arm64=$REVIEW_DIR/arm64/source-scans/source-scan-measurement.json" \
+  --upstream "$REVIEW_DIR/upstream-sources" \
   --migration-notes "$PSST_MIGRATION_NOTES" --rollback-notes "$PSST_ROLLBACK_NOTES" \
   --output "$REVIEW_DIR/prepared"
 ```

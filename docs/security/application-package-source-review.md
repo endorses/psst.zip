@@ -61,9 +61,10 @@ lists twenty-four without embedded text. Its declared commands compile from
 matching upstream build configuration; absence of a directory named `src` is not
 evidence that original JavaScript source is missing.
 
-No inspected package metadata provided a `gitHead`. Repository metadata and a
-version string therefore cannot independently identify the exact upstream source
-commit. Preserve immutable upstream source references and hashes when adding
+No inspected package archive manifest provided a `gitHead`. Repository metadata
+and a version string therefore cannot independently identify the exact upstream
+source commit. Public registry metadata is a separate input to be compared with
+upstream tags and retained source bytes. Preserve immutable upstream source references and hashes when adding
 missing inputs, and bind the offering to the final native image subjects.
 
 ## Retained immutable upstream inputs
@@ -89,10 +90,35 @@ The full generated npm outputs have not been reproduced.
 
 The Lucide archive retains both identified `.mts` scripts, the Svelte package
 configuration, monorepo package lock and 1,866 original SVG icon files. Its
-`packages/svelte/package.json` declares version `0.1.0`, although the observed tag
-and locked npm package are `1.51.0`. Resolve the release's version-setting and
-generation process before claiming correspondence; the tag name alone cannot
-prove that these inputs reproduce the published package.
+`packages/svelte/package.json` declares template version `0.1.0`. The exact
+retained `.github/workflows/release.yml` (5,690 bytes, SHA256
+`b16738051dcfd29bb63925ebe8c5f3839eaea6c132c98c289db9b45eb46cf3b9`)
+rewrites the selected package version with `pnpm version`, then builds and
+publishes that package. This explains the difference from the tagged and locked
+`1.51.0`; it does not prove complete package reproduction. The measured generated
+icon data matched all 1,866 original SVG child tag/attribute arrays and sizes,
+and the package license matched the original. Full build correspondence remains
+pending.
+
+## Additional source references to resolve
+
+Public registry metadata for
+[tus-js-client 4.3.1](https://registry.npmjs.org/tus-js-client/4.3.1)
+records `gitHead` `d4aa3dee249b8a2e9fb1dcb9c2b829937bc2b108`, while the upstream
+`v4.3.1` tag resolves to `bf3337ce4921ed9103a085d258afc39cff2b4e7a`. Both source
+manifests identify version 4.3.1 and share the observed Babel configuration, but
+that does not prove equality of the 26 original `lib/` files shipped in npm.
+Compare both commits before selecting and retaining corresponding source.
+
+[qr-scanner 1.4.2](https://registry.npmjs.org/qr-scanner/1.4.2) has no registry
+`gitHead`; neither `1.4.2` nor `v1.4.2` exists as an upstream tag. Source history
+identifies a version-bump candidate `abcfe1bce2703721408d8ce7ebde94a359998506`.
+Its Rollup configuration builds the worker before the scanner using TypeScript,
+source maps and Closure Compiler, with a separate legacy inline-worker build.
+This candidate was inspected in memory, rather than retained as an assembled
+source asset. Compare its actual source against the npm outputs and embedded map
+texts, account for decoder source/notices, and retain the build recipe before
+claiming complete correspondence.
 
 ## Remaining review
 

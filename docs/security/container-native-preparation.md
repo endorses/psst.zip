@@ -46,10 +46,13 @@ Each collection has an architecture-specific asset name, for example
 `prepare_release_inputs.py` requires `--dependencies PLATFORM=DIRECTORY` and
 `--source-scan PLATFORM=MEASUREMENT` for each platform. It independently replays
 package inputs against the exact committed locks and raw source-scanner receipts,
-then copies the verified runtime and dependency archives into its output. The
-result retains seven release assets and binds thirteen subjects. These checks
-establish package integrity and retention; upstream preferred-source review,
-measurement authentication and public delivery remain required.
+then copies the verified runtime and dependency archives into its output. It also
+requires `--upstream DIRECTORY`, produced by the upstream source collector below.
+The common upstream archive is replayed against the exact tracked catalog and web
+lock before it is copied and bound. The result retains eight release assets and
+binds fourteen subjects. These checks establish package integrity and retention;
+upstream preferred-source review, measurement authentication and public delivery
+remain required.
 
 The current collector and independent verifier were exercised on actual AMD64
 inputs from `c73a5da`: 35 Go modules, 173 npm packages and nine additional sums.
@@ -148,6 +151,38 @@ candidate tests and replay of the report copier against all thirteen actual
 AMD64 records passed. The copier retained every finding without truncation;
 malformed, oversized, linked and protected-data records were rejected. Actual
 hosted execution of this extended workflow remains pending.
+
+## Upstream application source inputs
+
+Some locked npm archives contain generated JavaScript but omit original source or
+build scripts. `tools/upstream-application-sources.json` pins immutable full-commit
+Lucide, fflate and hpke archives, their original hashes and sizes, and the exact
+locked package versions they are being investigated for. The catalog is source
+policy, not a completeness or build-reproduction approval. Version changes require
+reviewing and updating those source pins.
+
+```sh
+python3 tools/package_upstream_application_sources.py --mode collect \
+  --root . --repository endorses/psst.zip --version v0.1.0 \
+  --commit "$SOURCE_COMMIT" --output "$NEW_UPSTREAM_DIRECTORY"
+python3 tools/package_upstream_application_sources.py --mode verify \
+  --root . --repository endorses/psst.zip --version v0.1.0 \
+  --commit "$SOURCE_COMMIT" --collection "$NEW_UPSTREAM_DIRECTORY" \
+  --output "$NEW_UPSTREAM_REPLAY_JSON"
+```
+
+The collector reads both the catalog and npm lock from the exact Git commit. It
+retains untouched upstream archives, those tracked inputs, and a measured source
+inventory in one deterministic `psst.zip-upstream-inputs-v0.1.0.tar.gz`. It does not
+extract archives or execute upstream package scripts. Replay derives the expected
+contents again from the committed policy and actual archive bytes. Substituted
+archives, unsafe paths, changed locks and false approval flags are rejected.
+
+Post-matrix assembly makes this archive mandatory and uses the replay's measured
+asset digest when copying it, including a check for changes after replay. Signing,
+publication and anonymous retrieval cover this additional asset through the same
+full release binding. Full source completeness and reproduction remain pending;
+see the [package source review](application-package-source-review.md).
 
 ## Official hosted signing bridge
 

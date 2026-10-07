@@ -45,6 +45,7 @@ from release_artifacts import (
     validate_manifest,
 )
 from verify_application_dependency_inputs import verify as verify_dependencies
+from package_upstream_application_sources import verify as verify_upstream
 
 
 def toolchains(candidate: dict, records: dict[str, dict]) -> dict[str, str]:
@@ -93,6 +94,7 @@ def prepare(
     archives: dict[str, Path],
     dependency_collections: dict[str, Path],
     source_scans: dict[str, Path],
+    upstream_collection: Path,
     output: Path,
     migration_notes: str,
     rollback_notes: str,
@@ -204,6 +206,33 @@ def prepare(
         sources[name] = dependency_collections[platform] / name
         source_hashes[name] = replay["archive_sha256"]
         dependency_replays[platform] = replay
+    upstream = verify_upstream(
+        root=root,
+        repository=repository,
+        version=version,
+        commit=commit,
+        collection=upstream_collection,
+    )
+    require(
+        upstream["source"]
+        == {
+            "repository": repository,
+            "version": version,
+            "commit": commit,
+        }
+        and upstream["package_inputs_replayed"] is True
+        and upstream["corresponding_source_completeness_verified"] is False
+        and upstream["publication_authorized"] is False,
+        "Upstream replay did not preserve its unapproved source boundary",
+    )
+    upstream_asset = fields(
+        upstream["asset"], {"name", "digest", "size"}, "upstream source asset"
+    )
+    require(
+        upstream_asset["name"] not in sources, "Upstream source asset name collides"
+    )
+    sources[upstream_asset["name"]] = upstream_collection / upstream_asset["name"]
+    source_hashes[upstream_asset["name"]] = upstream_asset["digest"]
     # All four exports and local measurements were checked before writing outputs.
     oci = assemble(
         archives,
@@ -295,6 +324,7 @@ def prepare(
         "assets": dict(inputs.assets),
         "subjects": dict(inputs.binding.subjects),
         "dependency_replays": dependency_replays,
+        "upstream_replay": upstream,
         "publication_authorized": False,
         "measurement_authentication_required": True,
     }
@@ -304,7 +334,7 @@ def prepare(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("root", "candidate", "output"):
+    for name in ("root", "candidate", "output", "upstream"):
         parser.add_argument("--" + name, required=True, type=Path)
     for name in (
         "repository",
@@ -344,6 +374,7 @@ def main() -> None:
                 k: Path(v) for k, v in assignments(args.dependencies).items()
             },
             source_scans={k: Path(v) for k, v in assignments(args.source_scan).items()},
+            upstream_collection=args.upstream,
             migration_notes=args.migration_notes,
             rollback_notes=args.rollback_notes,
         )

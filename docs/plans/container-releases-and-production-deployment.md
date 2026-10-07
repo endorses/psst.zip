@@ -1049,6 +1049,27 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       archive to authenticated release inputs, and verify public delivery.
       Retaining original package distributions alone does not complete this gate.
 
+### Retained upstream application source inputs
+
+- [x] Add a collector and independent replay for immutable full-commit Lucide,
+      fflate and hpke archives, deriving package versions and archive policy from
+      the exact committed catalog and npm lock. Preserve original archives and
+      measured inventories without extraction or package-script execution. Twelve
+      collector/replay tests passed; all three actual retained archives parsed
+      successfully. No correspondence or source-completeness approval is inferred.
+- [x] Require the replayed common upstream archive during release-input assembly,
+      copy only the verified digest, and include it in every release subject and
+      asset binding. Twelve assembly checks passed, including missing/tampered
+      inputs and changes after replay. The signing fixture verifies all fourteen
+      subjects, including the common source asset.
+- [ ] Exercise the collector and replay with the actual retained upstream bytes
+      against the selected committed application locks. Keep source completeness,
+      build reproduction, authenticated offering and public delivery pending.
+
+The combined release-tooling suite passed all 272 tests in 19.9 seconds after
+this integration. Formatting, CLI help, Python/shell syntax and the bounded source
+retention review passed.
+
 ### Post-assembly recovery and hosted publication commands
 
 - [x] Add an actual native recovery measurement producer requiring both retained

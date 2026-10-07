@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import prepare_release_inputs as preparation
 import package_application_dependencies as dependency
+import package_upstream_application_sources as upstream
+from test_release_upstream_sources import upstream_fixture
 from generate_release_gate_reports import NativeSourceContext
 from prepare_release_candidate import BASES
 from release_artifacts import InvalidRelease, PLATFORMS, json_bytes, read_json
@@ -34,6 +36,10 @@ class InputPreparation(unittest.TestCase):
                     path = repository.root / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(content)
+                self.upstream_fetch = upstream_fixture(repository.root)
+                original_git(
+                    repository, "add", "tools/upstream-application-sources.json"
+                )
                 original_git(
                     repository,
                     "add",
@@ -153,6 +159,15 @@ class InputPreparation(unittest.TestCase):
                 collection,
                 self.folder / ("source-scan-" + architecture),
             )
+        self.upstream_collection = self.folder / "upstream-sources"
+        upstream.collect(
+            root=self.repository.root,
+            repository=binding.repository,
+            version=binding.version,
+            commit=binding.commit,
+            output=self.upstream_collection,
+            fetch=lambda url: self.upstream_fetch[url],
+        )
         self.args = dict(
             root=self.repository.root,
             repository=binding.repository,
@@ -166,6 +181,7 @@ class InputPreparation(unittest.TestCase):
             archives=self.fixture.fixture.archives,
             dependency_collections=self.dependency_collections,
             source_scans=self.source_scans,
+            upstream_collection=self.upstream_collection,
             output=self.folder / "prepared",
             migration_notes="Stopped checkpoint required.",
             rollback_notes="Restore checkpoint into fresh volumes before activation.",
@@ -183,8 +199,8 @@ class InputPreparation(unittest.TestCase):
         result = self.prepare()
         self.assertFalse(result["publication_authorized"])
         self.assertTrue(result["measurement_authentication_required"])
-        self.assertEqual(len(result["subjects"]), 13)
-        self.assertEqual(len(result["assets"]), 7)
+        self.assertEqual(len(result["subjects"]), 14)
+        self.assertEqual(len(result["assets"]), 8)
         output = self.args["output"]
         manifest = read_json((output / "release-manifest.json").read_bytes())
         self.assertEqual(
@@ -197,6 +213,9 @@ class InputPreparation(unittest.TestCase):
         for name, digest in result["assets"].items():
             self.assertEqual(preparation.source_digest(output / name), digest)
         self.assertEqual(set(result["dependency_replays"]), set(PLATFORMS))
+        self.assertTrue(result["upstream_replay"]["package_inputs_replayed"])
+        self.assertFalse(result["upstream_replay"]["publication_authorized"])
+        self.assertIn(result["upstream_replay"]["asset"]["name"], result["assets"])
         with tarfile.open(source, "r:gz") as archive:
             names = archive.getnames()
         self.assertIn("psst.zip-v1.2.3/deploy/update.py", names)
@@ -273,6 +292,40 @@ class InputPreparation(unittest.TestCase):
                 self.prepare()
             self.assertFalse(self.args["output"].exists())
             path.write_bytes(original)
+
+    def test_missing_upstream_collection_is_rejected_before_outputs(self):
+        with self.assertRaises((InvalidRelease, OSError)):
+            self.prepare(upstream_collection=self.folder / "missing-upstream")
+        self.assertFalse(self.args["output"].exists())
+
+    def test_upstream_collection_and_archive_substitution_fail_before_outputs(self):
+        record = self.upstream_collection / "upstream-source-collection.json"
+        archive = (
+            self.upstream_collection / read_json(record.read_bytes())["asset"]["name"]
+        )
+        for path in (record, archive):
+            original = path.read_bytes()
+            path.write_bytes(original + b"substituted")
+            with self.subTest(path=path.name), self.assertRaises(
+                (InvalidRelease, ValueError)
+            ):
+                self.prepare()
+            self.assertFalse(self.args["output"].exists())
+            path.write_bytes(original)
+
+    def test_upstream_asset_changed_after_replay_cannot_be_bound(self):
+        original = preparation.verify_upstream
+
+        def replay_then_substitute(**arguments):
+            result = original(**arguments)
+            path = arguments["collection"] / result["asset"]["name"]
+            path.write_bytes(path.read_bytes() + b"changed after replay")
+            return result
+
+        with patch.object(
+            preparation, "verify_upstream", side_effect=replay_then_substitute
+        ), self.assertRaisesRegex(InvalidRelease, "changed after verification"):
+            self.prepare()
 
     def test_tampered_source_archive_or_dirty_checkout_rejected(self):
         pack = self.fixture.packs["linux/amd64"]

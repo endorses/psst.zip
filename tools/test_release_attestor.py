@@ -92,6 +92,7 @@ class AttestorFixtures(unittest.TestCase):
             "project.tar.gz",
             "dependencies-amd64.tar.gz",
             "dependencies-arm64.tar.gz",
+            "psst.zip-upstream-inputs-v0.1.0.tar.gz",
         ):
             path = self.root / name
             path.write_bytes(("fixture-only:" + name).encode())
@@ -256,7 +257,7 @@ class AttestorFixtures(unittest.TestCase):
             ]
         )
 
-    def test_all_thirteen_subjects_and_gate_are_signed_and_verified(self):
+    def test_all_fourteen_subjects_and_gate_are_signed_and_verified(self):
         signer = self.create()
         with patch.object(signing, "run_action", self.action), patch.object(
             signing, "bounded_verify", self.verification
@@ -264,9 +265,9 @@ class AttestorFixtures(unittest.TestCase):
             report = signer.attest_subjects(self.plan, self.files, self.output)
         record = json.loads(report.read_bytes())
         self.assertEqual(record["details"]["subjects"], dict(self.binding.subjects))
-        self.assertEqual(len(self.action_calls), 14)
-        self.assertEqual(len(self.verify_calls), 28)
-        self.assertEqual(sum("--bundle" in args for args, _ in self.verify_calls), 14)
+        self.assertEqual(len(self.action_calls), 15)
+        self.assertEqual(len(self.verify_calls), 30)
+        self.assertEqual(sum("--bundle" in args for args, _ in self.verify_calls), 15)
         self.assertEqual(
             sum(args[3].startswith("oci://") for args, _ in self.verify_calls), 12
         )

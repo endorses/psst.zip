@@ -1,0 +1,70 @@
+{
+  "kind": "pinned-upstream-application-source-inputs",
+  "schema_version": 1,
+  "upstreams": [
+    {
+      "archive": {
+        "file": "lucide-45b0e148db4ee4d748340d0f99982aa1c2159d52.tar.gz",
+        "sha256": "sha256:8d74567fb686aef7d6a7d2e773fc8dec223b7719360d7043cbd84568eadad691",
+        "size": 5540149
+      },
+      "commit": "45b0e148db4ee4d748340d0f99982aa1c2159d52",
+      "id": "lucide",
+      "inspect_paths": [
+        ".github/workflows/release.yml",
+        "LICENSE",
+        "package.json",
+        "packages/svelte/package.json",
+        "packages/svelte/scripts/appendBlockComments.mts",
+        "packages/svelte/scripts/exportTemplate.mts",
+        "tools/build-helpers/package.json",
+        "tools/build-icons/package.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "@lucide/svelte": "1.51.0"
+      },
+      "repository": "lucide-icons/lucide"
+    },
+    {
+      "archive": {
+        "file": "fflate-dcb3714a6c25db3a2748641019c5277413d09714.tar.gz",
+        "sha256": "sha256:24d3150cf1b94ced292df0888d7a169473ab6aeead44518718dd2bd96893e981",
+        "size": 120872
+      },
+      "commit": "dcb3714a6c25db3a2748641019c5277413d09714",
+      "id": "fflate",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "src/index.ts",
+        "tsconfig.esm.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "fflate": "0.8.3"
+      },
+      "repository": "101arrowz/fflate"
+    },
+    {
+      "archive": {
+        "file": "hpke-24456ca764f094228b5b292508236bc26d76eeed.tar.gz",
+        "sha256": "sha256:d2e5df0f2c01304a575bd5da0c0c734c60bee0dc994886aa964d5387a5e4dcbb",
+        "size": 1995407
+      },
+      "commit": "24456ca764f094228b5b292508236bc26d76eeed",
+      "id": "hpke",
+      "inspect_paths": [
+        "build.cjs",
+        "index.ts",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "@panva/hpke-noble": "1.1.7",
+        "hpke": "1.1.7"
+      },
+      "repository": "panva/hpke"
+    }
+  ]
+}
