@@ -3739,7 +3739,7 @@ WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 
-=== source-map-js@1.2.1: LICENSE ===
+=== source-map-js@1.2.2: LICENSE ===
 
 Copyright (c) 2009-2011, Mozilla Foundation and contributors
 All rights reserved.

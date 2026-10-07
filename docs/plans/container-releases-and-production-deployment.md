@@ -578,7 +578,10 @@ tag `v0.0.0`. Main CI run
 passed all five jobs at `4210414`, including native iOS. The separate tagged
 candidate run
 [`37574199465`](https://github.com/endorses/psst.zip/actions/runs/37574199465)
-is still in progress; native image verification is not yet claimed.
+timed out during XCTest launch after the iOS job's 45-minute limit on its first
+attempt. GitHub's annotation confirms the limit; the same source commit's main
+CI passed. Attempt two retries the failed job and its dependent native image
+checks. Native image verification is not yet claimed.
 
 Native notice snapshots cover 115 Android and 111 iOS artifact variants, with
 twenty pinned upstream notice files. Linux verification includes actual Android
@@ -606,6 +609,23 @@ and production behavior remain pending. Bundles default to `artifact-foundation`
 even with a committed updater; readiness is an explicit gated publisher decision.
 The privileged helper is never silently replaced by code from an application
 update. Store strategy research remains uncommitted as requested.
+
+The implementation checkpoint is committed locally as `c1c1ea9`. Its disposable
+AMD64 image pair passed `tools/verify_release_images.py`, including served backend
+notices matching the actual backend image, exact source metadata and initialized
+account/session persistence after removing bootstrap credentials. This verifies
+that local pair; it does not replace ARM64, public provenance or upgrade checks.
+
+Dependency review found `source-map-js` 1.2.1 affected by
+[GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
+The lockfile now selects the upstream
+[1.2.2 patch](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2), and its
+distributed notices/inventory were regenerated. On 2026-10-07, npm 12.1.0 with
+Node 26.10.0 reported zero vulnerabilities across 173 dependencies; all 114 web
+tests passed in 1.38 seconds, Svelte checking reported no errors or warnings, and
+the production build passed. The transfer fixture requires the already-approved
+localhost access outside the sandbox. Release Node 22 CI, Go analysis and final
+image review remain separate pending checks.
 
 ### VPS update tooling requirements
 

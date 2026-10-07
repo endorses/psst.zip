@@ -1,5 +1,5 @@
 {
-  "package_lock_sha256": "9a33afd68d043c1573f53f9bf0080596369375d2f04ce7eab5c1e96544d69272",
+  "package_lock_sha256": "8cad24299a00d28efea0c8f633ffc4d52050bd715a5e8c95c0f6e266dbd8b6b1",
   "packages": [
     {
       "path": "node_modules/@esbuild/aix-ppc64",
@@ -2177,11 +2177,11 @@
     {
       "path": "node_modules/source-map-js",
       "name": "source-map-js",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "license": "BSD-3-Clause",
       "development": true,
       "optional": false,
-      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
+      "integrity": "sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==",
       "notices": [
         {
           "file": "LICENSE",
