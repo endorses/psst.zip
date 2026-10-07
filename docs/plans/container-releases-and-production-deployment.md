@@ -757,6 +757,21 @@ overrides are not inherited. An attestation authenticates the reviewed workflow'
 report, so that workflow must derive reports from actual completed checks before
 signing them. The adapter alone does not establish distribution readiness.
 
+### Installed updater verification policy
+
+- [x] Require the exact release workflow certificate identity and version-tag
+      ref, matching signer and source commit, GitHub Actions issuer, hosted
+      runner, and SLSA provenance-v1 predicate for every updater subject. Reject
+      weak workflow selectors or malformed bindings before invoking GitHub CLI.
+- [x] Check generated arguments with GitHub CLI 2.101.0 using a deliberately
+      missing test-local trust root, and run all 37 updater tests and the complete
+      141-test release suite. The offline CLI check proves parser compatibility;
+      it does not prove a valid live release attestation.
+- [ ] Review and install the strengthened helper through the separate trusted
+      administrator path, and verify matching live release attestations before
+      adopting a production release. Updating the checkout does not upgrade an
+      already installed privileged helper.
+
 ### Patched runtime inputs
 
 - [x] Require OpenSSL 3.3.7-r2 or newer in the backend Alpine 3.21 runtime

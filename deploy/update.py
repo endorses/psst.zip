@@ -520,22 +520,41 @@ class Host:
         return json.loads(self.run(*args, "config", "--format", "json"))
 
     def verify_identity(self, artifact: str, manifest: dict) -> None:
+        repository = _release.repository_name(self.config["repository"])
+        workflow = self.config["signer_workflow"]
+        require(
+            workflow == repository + "/.github/workflows/release.yml",
+            "unexpected signer workflow",
+        )
+        commit = _release.matches(
+            manifest["source"]["commit"], _release.COMMIT, "invalid attestation commit"
+        )
+        version = _release.matches(
+            manifest["version"], _release.VERSION, "invalid attestation version"
+        )
+        ref = "refs/tags/" + version
         self.run(
             "gh",
             "attestation",
             "verify",
             artifact,
+            "--hostname",
+            "github.com",
             "--repo",
-            self.config["repository"],
-            "--signer-workflow",
-            self.config["signer_workflow"],
+            repository,
+            "--cert-identity",
+            "https://github.com/" + workflow + "@" + ref,
+            "--signer-digest",
+            commit,
             "--source-digest",
-            manifest["source"]["commit"],
+            commit,
             "--source-ref",
-            "refs/tags/" + manifest["version"],
+            ref,
             "--deny-self-hosted-runners",
             "--cert-oidc-issuer",
             "https://token.actions.githubusercontent.com",
+            "--predicate-type",
+            "https://slsa.dev/provenance/v1",
             gh=True,
         )
 
