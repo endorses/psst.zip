@@ -4,3 +4,5 @@
 tools/runtime-legal/licenses/MPL-2.0.txt whitespace=-blank-at-eol
 tools/runtime-legal/licenses/BSD-2-Clause.txt whitespace=-blank-at-eol
 tools/runtime-legal/licenses/BSD-3-Clause.txt whitespace=-blank-at-eol
+# Preserve the checksum-bound original Apache license's terminal blank line.
+web/licenses/jsqr-es6-1.4.0-1/LICENSE whitespace=-blank-at-eof

@@ -65,6 +65,169 @@
         "hpke": "1.1.7"
       },
       "repository": "panva/hpke"
+    },
+    {
+      "archive": {
+        "file": "noble-curves-656c4364dffa44c64aa0c49914b8000b278b67a9.tar.gz",
+        "sha256": "sha256:d362a58c18f2a05544fad5d93b7873ee871d9cd5ad5104c49bee6f0087fd535a",
+        "size": 13833717
+      },
+      "commit": "656c4364dffa44c64aa0c49914b8000b278b67a9",
+      "id": "noble-curves",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/ed25519.ts",
+        "src/abstract/curve.ts",
+        "src/abstract/edwards.ts",
+        "src/abstract/modular.ts",
+        "src/abstract/montgomery.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/curves": "2.4.0"
+      },
+      "repository": "paulmillr/noble-curves"
+    },
+    {
+      "archive": {
+        "file": "noble-hashes-663c2aeeffc308ac0cded59bd32f7c212adacfc2.tar.gz",
+        "sha256": "sha256:ee5786c9daef2c202dc6a90e7a3d65e7dd91f9185b2f710227b9f22da7619878",
+        "size": 15949481
+      },
+      "commit": "663c2aeeffc308ac0cded59bd32f7c212adacfc2",
+      "id": "noble-hashes",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/_md.ts",
+        "src/_u64.ts",
+        "src/hkdf.ts",
+        "src/hmac.ts",
+        "src/sha2.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/hashes": "2.4.0"
+      },
+      "repository": "paulmillr/noble-hashes"
+    },
+    {
+      "archive": {
+        "file": "clsx-925494cf31bcd97d3337aacd34e659e80cae7fe2.tar.gz",
+        "sha256": "sha256:90b01de6b585bd1f2a86edee60a0142e2d4ac3347ae9dc297a76033eb4b77e73",
+        "size": 28084
+      },
+      "commit": "925494cf31bcd97d3337aacd34e659e80cae7fe2",
+      "id": "clsx",
+      "inspect_paths": [
+        "license",
+        "package.json",
+        "bin/index.js",
+        "src/index.js",
+        "src/lite.js"
+      ],
+      "packages": {
+        "clsx": "2.1.1"
+      },
+      "repository": "lukeed/clsx"
+    },
+    {
+      "archive": {
+        "file": "node-qrcode-3848ed2c17de5bcdead487417dbf14c5dd017f8d.tar.gz",
+        "sha256": "sha256:d96b31fba9f50e152c1b183ac60087b33748acb1981cc2cc87141f2467d331e5",
+        "size": 386143
+      },
+      "commit": "3848ed2c17de5bcdead487417dbf14c5dd017f8d",
+      "id": "qrcode",
+      "inspect_paths": [
+        "license",
+        "package.json",
+        "rollup.config.js",
+        "lib/browser.js",
+        "lib/core/qrcode.js",
+        "helper/to-sjis.js"
+      ],
+      "packages": {
+        "qrcode": "1.5.4"
+      },
+      "repository": "soldair/node-qrcode"
+    },
+    {
+      "archive": {
+        "file": "qr-scanner-abcfe1bce2703721408d8ce7ebde94a359998506.tar.gz",
+        "sha256": "sha256:fbf00505c638dd4c75822bd23b9586c83c1b6b8f5e76fa9bb446219bfd0c63f8",
+        "size": 154187
+      },
+      "commit": "abcfe1bce2703721408d8ce7ebde94a359998506",
+      "id": "qr-scanner",
+      "inspect_paths": [
+        "LICENSE",
+        "README.md",
+        "package.json",
+        "qr-scanner-worker.min.js",
+        "qr-scanner-worker.min.js.map",
+        "qr-scanner.legacy.min.js",
+        "qr-scanner.legacy.min.js.map",
+        "qr-scanner.min.js",
+        "qr-scanner.min.js.map",
+        "qr-scanner.umd.min.js",
+        "qr-scanner.umd.min.js.map",
+        "rollup.config.js",
+        "src/qr-scanner.ts",
+        "src/worker.ts",
+        "tsconfig.json",
+        "types/qr-scanner.d.ts",
+        "yarn.lock"
+      ],
+      "packages": {
+        "qr-scanner": "1.4.2"
+      },
+      "repository": "nimiq/qr-scanner"
+    },
+    {
+      "archive": {
+        "file": "jsQR-42dbfd55f35db625119e8f33247b6e9d073902ec.tar.gz",
+        "sha256": "sha256:e7989689d0400ddab9e14ccc11834bd9fcfa9343c6fe53018304f092698486fc",
+        "size": 45404815
+      },
+      "commit": "42dbfd55f35db625119e8f33247b6e9d073902ec",
+      "id": "qr-scanner-decoder",
+      "inspect_paths": [
+        "LICENSE",
+        "README.md",
+        "package.json",
+        "rollup.config.js",
+        "tsconfig.json",
+        "yarn.lock",
+        "src/Point.ts",
+        "src/BitMatrix.ts",
+        "src/index.ts",
+        "src/binarizer/index.ts",
+        "src/decoder/decodeData/BitStream.ts",
+        "src/decoder/decodeData/index.ts",
+        "src/decoder/decoder.ts",
+        "src/decoder/reedsolomon/GenericGF.ts",
+        "src/decoder/reedsolomon/GenericGFPoly.ts",
+        "src/decoder/reedsolomon/index.ts",
+        "src/decoder/version.ts",
+        "src/extractor/index.ts",
+        "src/locator/index.ts"
+      ],
+      "packages": {
+        "qr-scanner": "1.4.2"
+      },
+      "relationship": {
+        "kind": "embedded-component",
+        "name": "jsqr-es6",
+        "package": "qr-scanner",
+        "version": "1.4.0-1"
+      },
+      "repository": "danimoh/jsQR"
     }
   ]
 }

@@ -29,13 +29,20 @@ replays runtime source correspondence. It also scans the exact archived
 application sources and final OCI images, measures compiler/dependency graphs,
 and retains selected Go/npm package inputs against committed locks.
 
-Only bounded unsigned records and complete scanner findings are uploaded as
-short-lived candidate artifacts. Image archives, source archives and raw compiler
-receipts remain private to each runner and are removed after checking; uploaded
-summaries cannot replace the full retained inputs required by release assembly
-and authenticated gates. The complete AMD64 preparation was exercised locally;
-the integrated hosted run and native ARM64 verification remain pending. These
-outputs are neither installable bundles nor publication approval.
+The workflow retains unsigned native image/source archives, raw scanner/compiler
+receipts and explicit file/hash inventories as one-day candidate artifacts. A
+separate job independently checks same-run, same-attempt inputs from both native
+runners and the common upstream source collection before preparing the paired
+indexes, detached manifest, deployment bundle and source offerings. Both native
+recovery jobs then exercise those exact prepared inputs. Downloaded artifacts
+still require independent authentication and release gates; neither summaries
+nor successful structural assembly approve publication. Private operator state,
+credentials, disposable recovery stores, tools and caches are excluded. Runner
+cleanup removes only that job's working inputs after artifact retention.
+
+Complete AMD64 preparation and transfer replay were exercised locally. The new
+cross-job assembly/recovery workflow and native ARM64 verification remain unrun.
+These candidate outputs are not authenticated installable releases.
 
 Docker's local `--load` exporter can report a configuration digest in its
 `containerimage.digest` field. Candidate records retain that raw metadata, but
@@ -48,6 +55,101 @@ Publication will be added after its provenance, version-reservation, dependency
 review and source/license gates are implemented; production deployment will
 remain a separate manual operation. Tag ancestry checks do not configure branch
 or tag protection; those repository settings are a separate maintainer task.
+
+## Maintainer path to a ready release
+
+For the first container release, use `v0.1.0` and preserve the existing `v0.0.0`
+tag. A main push runs source CI, rather than deploying production. The current
+tag workflow remains candidate-only; the publication transport and signing bridge
+are implemented locally but not yet connected to an enabled publishing job.
+
+- [ ] Review and commit the complete release source and workflow. Push the
+      reviewed checkpoint only with authorization, then verify all five source
+      CI jobs on that exact commit.
+- [ ] Exercise the main-only planned-version candidate. For this repository, the
+      dispatch command is:
+
+      ```sh
+      gh workflow run release.yml --repo endorses/psst.zip --ref main \
+        -f planned_version=v0.1.0
+      gh run list --repo endorses/psst.zip --workflow release.yml --branch main
+      ```
+
+      Record the selected run ID, attempt and full source SHA. Confirm both
+      native preparation jobs, upstream retention, assembly and both recovery
+      jobs succeed. Rerun the complete workflow when needed: retrying only failed
+      jobs can leave same-attempt input artifacts unavailable. This dispatch
+      creates no version tag and does not satisfy tagged publication checks.
+
+- [ ] Complete the [source review](application-package-source-review.md),
+      actual native scanner/smoke/recovery gates and their authentication. Review
+      exact image configurations and all corresponding-source offerings; a green
+      candidate summary alone is insufficient.
+- [ ] Configure reviewed branch/tag protection, immutable-release policy, both
+      public repository-linked GHCR packages and narrowly scoped publication
+      credentials. Complete and verify the tagged publishing job described in
+      the [publication guide](container-publication.md) before creating a release
+      tag. The first-package bootstrap and policy settings remain unperformed.
+- [ ] Once publishing is enabled, create an unused version tag at the reviewed
+      source SHA and push that tag. Its workflow must rerun CI for that exact
+      tagged commit, authenticate the complete image/source/bundle subjects and
+      publish only after every gate passes. Never move an existing release tag
+      or replace a partially published version to hide an interruption.
+- [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
+      both multi-platform image indexes, all four native children, source assets
+      and fresh anonymous retrieval. Follow the publication guide's protected
+      journal recovery if publication is interrupted. Publishing makes a release
+      available; it does not update the VPS.
+
+The detailed [native preparation guide](container-native-preparation.md) records
+the measured inputs, replay commands and remaining hosted gates. These steps
+describe the full maintainer path; they do not claim the unfinished publication
+workflow or a first ready release exists.
+
+## Operator path for updates and recovery
+
+After a ready release and the separately reviewed installed updater are available,
+manual SSH and Actions use the same version-only update command. Complete actual
+volume/configuration adoption, an encrypted off-host checkpoint export and an
+independent restore exercise before the first production migration. The
+[update/recovery guide](release-update-recovery.md) specifies the protected host
+configuration, backup hook and authenticated application checks. The
+[backup runbook](backup-restore.md) covers maintenance copies and security
+reconciliation after restore.
+
+From the existing maintenance SSH connection, run the installed root-owned
+helper as the administrator:
+
+```sh
+/usr/bin/python3 -I /usr/local/lib/psst.zip/deploy/update.py status
+/usr/bin/python3 -I /usr/local/lib/psst.zip/deploy/update.py update v0.1.0
+```
+
+Check the protected transaction, active version and application state. Exit zero
+with phase `completed` confirms activation. Exit 20 means the isolated candidate
+is awaiting local authenticated verification; follow the update guide before
+running its `verify` command. Keep client-held encryption keys available for the
+existing download and new upload checks. Preserve the checkpoint, original data
+and matching images until retention policy permits removal.
+
+For subsequent Actions updates, first provision and validate the dedicated
+restricted SSH key and `production` environment using the
+[Actions deployment guide](actions-production-deployment.md), then select a
+published ready version:
+
+```sh
+gh workflow run deploy.yml --repo endorses/psst.zip --ref main -f version=v0.1.0
+```
+
+Use maintenance access to inspect durable host status after any disconnect,
+timeout or failed workflow. Before migration starts, `recover-safe` can restore
+the checked original state. After the migration/startup boundary, use the update
+guide's explicit isolated `restore` procedure with the matching stopped
+checkpoint; complete security/traffic reconciliation before activation. An image
+tag change alone cannot roll back migrated storage. Rotation, maintenance backup
+and retention commands remain operator actions through the protected helper.
+
+The first manual VPS migration and end-to-end Actions update remain unperformed.
 
 ## Compose requirements and image selection
 

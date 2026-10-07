@@ -268,6 +268,179 @@ class UpstreamInputs(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "global source commit comments"):
             self.collect()
 
+    def linked_payload(self, links, directories=()):
+        original = upstream.tar_members(
+            next(iter(self.fetch_map.values())), upstream=True
+        )
+        stream = io.BytesIO()
+        with tarfile.open(
+            fileobj=stream, mode="w:", format=tarfile.USTAR_FORMAT
+        ) as archive:
+            for member, content in original:
+                archive.addfile(member, io.BytesIO(content))
+            for name in directories:
+                member = tarfile.TarInfo(name)
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            for name, target in links:
+                member = tarfile.TarInfo(name)
+                member.type = tarfile.SYMTYPE
+                member.linkname = target
+                archive.addfile(member)
+        return gzip.compress(stream.getvalue(), mtime=0)
+
+    def test_original_internal_links_are_inventoried_without_following_or_extraction(
+        self,
+    ):
+        prefix = "fixture-upstream-" + "a" * 40
+        raw = self.linked_payload(
+            [(prefix + "/test/compiled/test/misc", "../../misc")],
+            [prefix + "/test/misc"],
+        )
+        self.replace_payload(raw)
+        result = self.collect()
+        self.assertEqual(self.verify()["asset"], result["asset"])
+        inventory = upstream.inspect(raw, self.catalog()["upstreams"][0])
+        link = next(item for item in inventory["members"] if item["kind"] == "symlink")
+        self.assertEqual(link["link_target"], "../../misc")
+        self.assertEqual(link["resolved_target"], prefix + "/test/misc")
+        self.assertEqual(link["size"], 0)
+        self.assertFalse((self.root / "test").exists())
+        with tarfile.open(self.output / result["asset"]["name"], "r:gz") as archive:
+            self.assertEqual(
+                archive.extractfile(result["upstreams"][0]["archive"]["file"]).read(),
+                raw,
+            )
+        with self.assertRaises(InvalidRelease):
+            upstream.tar_members(raw, upstream=False)
+
+    def test_links_cannot_escape_chain_recurse_or_supply_inspected_input(self):
+        prefix = "fixture-upstream-" + "a" * 40
+        cases = [
+            ([(prefix + "/link", "../outside")], []),
+            ([(prefix + "/link", "/absolute")], []),
+            ([(prefix + "/link", "missing")], []),
+            ([(prefix + "/link", "link")], []),
+            ([(prefix + "/link", "second"), (prefix + "/second", "src/input.ts")], []),
+            ([(prefix + "/src/recursive", ".")], [prefix + "/src"]),
+            ([(prefix + "/src", "package.json")], []),
+            ([(prefix + "/link", "src//input.ts")], []),
+            ([(prefix + "/link", "src\\input.ts")], []),
+        ]
+        original = next(iter(self.fetch_map.values()))
+        for links, directories in cases:
+            self.fetch_map[next(iter(self.fetch_map))] = original
+            raw = self.linked_payload(links, directories)
+            with self.subTest(links=links), self.assertRaises(InvalidRelease):
+                upstream.inspect(
+                    raw,
+                    {
+                        **self.catalog()["upstreams"][0],
+                        "archive": {"sha256": upstream.sha256(raw), "size": len(raw)},
+                    },
+                )
+        self.fetch_map[next(iter(self.fetch_map))] = original
+        raw = self.linked_payload([(prefix + "/alias.ts", "src/input.ts")])
+        record = copy.deepcopy(self.catalog()["upstreams"][0])
+        record["inspect_paths"] = ["alias.ts"]
+        record["archive"].update(sha256=upstream.sha256(raw), size=len(raw))
+        with self.assertRaisesRegex(InvalidRelease, "inspected inputs are missing"):
+            upstream.inspect(raw, record)
+
+    def embedded_record(self):
+        first = self.catalog()["upstreams"][0]
+        second = copy.deepcopy(first)
+        second.update(
+            id="embedded-source",
+            repository="fixture-owner/embedded-source",
+            commit="b" * 40,
+        )
+        second["relationship"] = {
+            "kind": "embedded-component",
+            "name": "fixture-decoder",
+            "version": "0.1.0",
+            "package": "fixture-package",
+        }
+        prefix = "embedded-source-" + second["commit"]
+        raw = upstream.tar_gzip(
+            {
+                prefix
+                + "/package.json": json_bytes(
+                    {"name": "fixture-decoder", "version": "0.1.0"}
+                ),
+                prefix + "/src/input.ts": b"original embedded fixture source\n",
+            }
+        )
+        second["archive"] = {
+            "file": prefix + ".tar.gz",
+            "sha256": upstream.sha256(raw),
+            "size": len(raw),
+        }
+        self.fetch_map[upstream.url(second)] = raw
+        return first, second
+
+    def test_embedded_originals_have_explicit_relationship_and_one_locked_primary(self):
+        first, second = self.embedded_record()
+        catalog = self.catalog()
+        catalog["upstreams"] = [second, first]
+        self.catalog_commit(catalog)
+        result = self.collect()
+        embedded = next(
+            item for item in result["upstreams"] if item["id"] == second["id"]
+        )
+        self.assertEqual(embedded["relationship"], second["relationship"])
+        self.assertEqual(self.verify()["asset"], result["asset"])
+        self.assertFalse(result["package_source_association_verified"])
+        self.assertNotIn(
+            "node_modules/fixture-decoder",
+            json.loads((self.root / upstream.LOCK).read_bytes())["packages"],
+        )
+
+    def test_case_sensitive_upstream_trees_preserve_case_without_changing_release_policy(
+        self,
+    ):
+        self.assertEqual(
+            upstream.upstream_repository("fixture-owner/jsQR"), "fixture-owner/jsQR"
+        )
+        with self.assertRaises(InvalidRelease):
+            upstream.context("endorses/Psst.zip", "v1.2.3", self.revision)
+        for name in (
+            "owner/../../source",
+            "owner/source?token=private",
+            "owner/source#fragment",
+            "owner/source/extra",
+        ):
+            with self.subTest(name=name), self.assertRaises(InvalidRelease):
+                upstream.upstream_repository(name)
+
+    def test_duplicate_primary_or_orphan_and_invalid_embedded_relationships_are_refused(
+        self,
+    ):
+        first, second = self.embedded_record()
+        variants = [
+            [second],
+            [
+                first,
+                {key: value for key, value in second.items() if key != "relationship"},
+            ],
+        ]
+        for changes in (
+            {"kind": "direct-package"},
+            {"name": "fixture-package"},
+            {"package": "other"},
+            {"package": []},
+            {"version": "latest"},
+        ):
+            invalid = copy.deepcopy(second)
+            invalid["relationship"].update(changes)
+            variants.append([first, invalid])
+        for records in variants:
+            catalog = self.catalog()
+            catalog["upstreams"] = records
+            self.catalog_commit(catalog)
+            with self.subTest(records=records), self.assertRaises(InvalidRelease):
+                self.collect()
+
     def test_global_commit_comment_is_checked_without_inferring_correspondence(self):
         record = self.catalog()["upstreams"][0]
         raw = next(iter(self.fetch_map.values()))

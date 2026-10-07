@@ -1107,6 +1107,32 @@ The combined release-tooling suite passed all 272 tests in 19.9 seconds after
 this integration. Formatting, CLI help, Python/shell syntax and the bounded source
 retention review passed.
 
+### Browser source and embedded-license follow-up
+
+- [x] Match all fourteen observed rendered-package manifests against actual
+      retained npm archive hashes/sizes and locked versions/integrity. Inspect
+      original transitive implementations and their concrete missing build inputs.
+- [x] Pin six additional immutable source originals for noble-curves, noble-hashes,
+      clsx, node-qrcode, qr-scanner and its embedded jsQR decoder. Verify all nine
+      original archives: 83,412,855 bytes and 7,513 members. Preserve three internal
+      noble test links as metadata without extraction/following; reject escapes,
+      chains, recursive/dangling targets, hard links and linked outer offerings.
+      Seventeen small collector fixtures passed.
+- [x] Add the decoder's missing full Apache 2.0 license and factual attribution
+      to web notices. Bind the original license, exact parent lock and four
+      scanner/worker file hashes; retain a separate embedded-component inventory.
+      Three focused fixtures and actual 173-package/one-component notice checks
+      passed. No native mobile implementation bundles this JavaScript component.
+- [ ] Collect and independently replay the expanded common source offering from
+      its exact new committed catalog. Authenticate it and verify final hosted
+      image correspondence and public retrieval before publication.
+- [x] Keep new regressions limited to actual notice/input/archive failures with
+      small local fixtures and no network calls. The complete release-tooling
+      suite passed 307 tests in 23.3 seconds; web passed 127 tests in 1.4 seconds.
+- [ ] Measure the next complete hosted workflow and investigate slow test steps
+      before accepting it. Keep heavyweight native preparation/recovery in the
+      explicit release workflow and do not extend timeouts to conceal slow tests.
+
 ### Post-assembly recovery and hosted publication commands
 
 - [x] Add an actual native recovery measurement producer requiring both retained
@@ -1227,9 +1253,14 @@ reviews remain pending; this source result does not approve publication.
       and removal of both bootstrap credentials from the file and running
       backend after initialization. The guide explicitly requires verified
       published inputs; public installation and production adoption are unrun.
-- [ ] Document the maintainer path from reviewed commit to version tag to ready
+- [x] Document the maintainer path from reviewed commit to version tag to ready
       release, and the operator path for manual SSH updates, Actions deployment,
       maintenance, backup, failure recovery, and rollback.
+      The [operations path](../security/container-releases.md) distinguishes the
+      current read-only candidate workflow from pending tagged publication,
+      same-run/attempt artifact retention, version-only update commands and
+      before/after-migration recovery. Documentation does not establish a ready
+      release or a completed production migration.
 - [x] Choose and publish the GitHub repository `endorses/psst.zip`, following
       reviewed licensing and complete-history secret checks.
 - [ ] Confirm the GHCR package namespace and initial release version, and configure

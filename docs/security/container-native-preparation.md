@@ -213,7 +213,7 @@ or a fixture test does not prove the new ARM64 or hosted path.
 
 Some locked npm archives contain generated JavaScript but omit original source or
 build scripts. `tools/upstream-application-sources.json` pins immutable full-commit
-Lucide, fflate and hpke archives, their original hashes and sizes, and the exact
+source archives for nine upstream inputs, their original hashes and sizes, and the exact
 locked package versions they are being investigated for. The catalog is source
 policy, not a completeness or build-reproduction approval. Version changes require
 reviewing and updating those source pins.
@@ -234,6 +234,21 @@ inventory in one deterministic `psst.zip-upstream-inputs-v0.1.0.tar.gz`. It does
 extract archives or execute upstream package scripts. Replay derives the expected
 contents again from the committed policy and actual archive bytes. Substituted
 archives, unsafe paths, changed locks and false approval flags are rejected.
+
+One primary upstream is required for each selected locked package. The decoder
+has a distinct embedded-component relationship to qr-scanner, so its original
+source can accompany that exact scanner without claiming a separate app-lock
+entry. The collector preserves GitHub source-tree case independently of the
+lowercase trusted release-repository policy.
+
+Original internal symbolic links are inventoried as metadata, never extracted or
+followed. Targets must remain inside the full-commit root and exist as regular
+files or directories; links cannot chain, escape, recurse or supply an inspected
+source file. The three noble test links passed this check. Outer offering links
+and hard links remain rejected. Acquisition is bounded at 64 MiB per original
+archive, 128 MiB per expanded archive and 128 MiB for the offering. These bounds
+retain the decoder's 45,404,815-byte original test/source tree and all nine
+83,412,855 bytes of original inputs without dropping fixtures from their sources.
 
 Post-matrix assembly makes this archive mandatory and uses the replay's measured
 asset digest when copying it, including a check for changes after replay. Signing,

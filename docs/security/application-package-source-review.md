@@ -141,10 +141,53 @@ Compare both commits before selecting and retaining corresponding source.
 identifies a version-bump candidate `abcfe1bce2703721408d8ce7ebde94a359998506`.
 Its Rollup configuration builds the worker before the scanner using TypeScript,
 source maps and Closure Compiler, with a separate legacy inline-worker build.
-This candidate was inspected in memory, rather than retained as an assembled
-source asset. Compare its actual source against the npm outputs and embedded map
-texts, account for decoder source/notices, and retain the build recipe before
-claiming complete correspondence.
+Its full original archive is now retained and pinned. All twelve regular npm
+members, including four scanner/worker JavaScript outputs and their maps, match
+the original archive bytes. The scanner and worker's own embedded TypeScript
+texts match their originals. This verifies those file comparisons; the upstream
+build itself has not been executed.
+
+The worker embeds twelve implementation texts from `jsqr-es6@1.4.0-1`, selected
+by the original scanner yarn lock. Its original npm archive matches that lock's
+SHA1 and SHA512 integrity. All twelve texts match the full original `danimoh/jsQR`
+source at `42dbfd55f35db625119e8f33247b6e9d073902ec`. The original source also
+retains `Point.ts`, absent from the maps, build configuration, yarn lock and tests.
+The decoder's Apache 2.0 LICENSE was absent from the scanner npm package and our
+previous web notices. The web generator now includes its full original license
+and factual upstream attribution, recording upstream/distributed hashes. Exact
+scanner lock, four compiled file hashes and the README attribution input are
+checked before writing. The embedded component is separately inventoried; it is
+not presented as a direct entry in the application's npm lock.
+
+## Additional rendered-package source inputs
+
+All fourteen observed rendered-package manifests match their actual retained
+npm inputs, including lock version/SRI and archive size/hash. Four additional
+version tags resolve to the same full commits as published npm metadata.
+Twenty-three noble-curves TypeScript files, nineteen noble-hashes TypeScript
+files and thirty-seven qrcode implementation JavaScript files match their retained
+npm originals. The clsx source tree recovers its original index/lite modules and
+build script, omitted from npm.
+
+The expanded catalog pins original noble-curves, noble-hashes, clsx, node-qrcode,
+qr-scanner and its embedded jsQR decoder source, alongside the initial three
+upstreams. All nine originals total 83,412,855 bytes and contain 7,513 measured
+members. Three noble test symlinks are inventoried without extraction or following
+filesystem links; each resolves to an existing directory in its own source root.
+Escaping, dangling, chained, recursive and hard links remain rejected. The decoder
+has an explicit embedded relationship to the exact locked scanner, with one
+primary upstream association. Exact commits, archive hashes and sizes are in
+`tools/upstream-application-sources.json`.
+
+Upstream build reproduction remains unrun. Noble declares jsbt 0.7.1 and
+TypeScript 6.0.3 inputs distinct from the application's retained compiler; clsx
+declares terser 4.8.0. qrcode's original Rollup/Babel recipe uses tooling distinct
+from the app build, which consumes its original browser implementation.
+The dijkstrajs package retains original JavaScript, author/disclaimer and an MIT
+reference, but its abbreviated LICENSE omits the full permission text. These are
+specific outstanding review items, rather than source-completeness approvals.
+The esm-env package retains its original small JavaScript modules, export
+configuration and full MIT text, with no declared build step.
 
 ## Browser build module observations
 
@@ -181,7 +224,7 @@ rendered JavaScript:
 source and installed-manifest hashes, lock associations and final static output
 bytes. CI runs it after the production build. The copied `appearance.js` and
 `language.js` scripts are explicitly reported outside the chunk module graph.
-Worker sub-builds, embedded decoder sources, CSS attribution, generated adapter
+Worker sub-builds, CSS attribution, generated adapter
 files and retained npm archive correspondence still require review. These local
 build observations do not independently bind the supplied revision to a clean
 Git checkout, verify an OCI image, reproduce upstream packages or establish
@@ -189,6 +232,12 @@ complete preferred-form source coverage. Git binding, source reproduction,
 complete closure and publication approval flags remain false.
 
 ## Remaining review
+
+- [x] Match all fourteen observed rendered-package manifests to locked retained
+      npm inputs and retain six additional immutable original source trees,
+      including the scanner's separately licensed embedded decoder.
+- [x] Include the decoder's full Apache license and upstream attribution in web
+      notices, rejecting stale compiled, license and parent inputs.
 
 - [x] Inspect this ten-package subset against the actual replayed archive,
       distinguishing original source, generated files and embedded map text.

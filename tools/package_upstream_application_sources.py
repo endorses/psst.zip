@@ -36,8 +36,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CATALOG = "tools/upstream-application-sources.json"
 LOCK = "web/package-lock.json"
 RECORD = "upstream-source-collection.json"
-MAX_ARCHIVE = 32 * 1024**2
-MAX_ASSET = 64 * 1024**2
+# The embedded jsQR source includes original test images (45,404,815 bytes).
+# Retain its complete original archive rather than dropping source-tree inputs.
+MAX_ARCHIVE = 64 * 1024**2
+MAX_ASSET = 128 * 1024**2
 MAX_EXPANDED = 128 * 1024**2
 MAX_METADATA = 4 * 1024**2
 MAX_MEMBERS = 20_000
@@ -62,6 +64,13 @@ def context(repository: str, version: str, commit: str) -> dict:
             commit, COMMIT, "Upstream inputs require a full source commit"
         ),
     }
+
+
+def upstream_repository(value: object) -> str:
+    """Preserve GitHub source-tree case without relaxing release identities."""
+    require(isinstance(value, str), "Invalid upstream repository")
+    repository_name(value.lower())
+    return value
 
 
 def regular(path: Path, maximum: int) -> bytes:
@@ -138,11 +147,21 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         and isinstance(lock.get("packages"), dict),
         "Invalid exact web dependency lock",
     )
-    identifiers, packages, records = set(), set(), []
+    identifiers, associations, records = set(), {}, []
     for record in catalog["upstreams"]:
+        require(isinstance(record, dict), "Invalid pinned upstream record")
+        required = {
+            "id",
+            "repository",
+            "commit",
+            "archive",
+            "packages",
+            "inspect_paths",
+        }
+        optional = {"relationship"} if "relationship" in record else set()
         fields(
             record,
-            {"id", "repository", "commit", "archive", "packages", "inspect_paths"},
+            required | optional,
             "pinned upstream input",
         )
         identifier = matches(
@@ -150,7 +169,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         )
         require(identifier not in identifiers, "Duplicate upstream ID")
         identifiers.add(identifier)
-        repository_name(record["repository"])
+        upstream_repository(record["repository"])
         matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
         archive = fields(
             record["archive"], {"file", "sha256", "size"}, "pinned source archive"
@@ -176,11 +195,10 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
                 and isinstance(version, str)
                 and re.fullmatch(
                     r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?", version
-                )
-                and package not in packages,
-                "Invalid or duplicate locked package association",
+                ),
+                "Invalid locked package association",
             )
-            packages.add(package)
+            associations.setdefault(package, []).append(record)
             item = lock["packages"].get("node_modules/" + package)
             require(
                 isinstance(item, dict)
@@ -198,6 +216,33 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         for name in inspected:
             safe_path(name)
         records.append(record)
+        if "relationship" in record:
+            relationship = fields(
+                record["relationship"],
+                {"kind", "name", "version", "package"},
+                "embedded upstream relationship",
+            )
+            require(
+                relationship["kind"] == "embedded-component"
+                and isinstance(relationship["name"], str)
+                and re.fullmatch(
+                    r"(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+", relationship["name"]
+                )
+                and isinstance(relationship["version"], str)
+                and re.fullmatch(
+                    r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?",
+                    relationship["version"],
+                )
+                and isinstance(relationship["package"], str)
+                and set(record["packages"]) == {relationship["package"]}
+                and relationship["name"] != relationship["package"],
+                "Invalid embedded component association",
+            )
+    for related in associations.values():
+        require(
+            sum("relationship" not in record for record in related) == 1,
+            "Each locked package requires exactly one primary upstream association",
+        )
     return catalog_raw, lock_raw, sorted(records, key=lambda item: item["id"])
 
 
@@ -214,7 +259,7 @@ def official_fetch(url: str) -> bytes:
     """Fixed-host HTTPS; no authentication, redirects, environment proxies or tags."""
     require(
         re.fullmatch(
-            r"https://codeload\.github\.com/[a-z0-9_.-]+/[a-z0-9_.-]+/tar\.gz/[0-9a-f]{40}",
+            r"https://codeload\.github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/tar\.gz/[0-9a-f]{40}",
             url,
         ),
         "Only official full-commit upstream URLs are accepted",
@@ -283,7 +328,13 @@ class SourceTarInfo(tarfile.TarInfo):
             )
         else:
             require(
-                self.type in {tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE},
+                self.type
+                in {
+                    tarfile.REGTYPE,
+                    tarfile.AREGTYPE,
+                    tarfile.DIRTYPE,
+                    tarfile.SYMTYPE,
+                },
                 "Unsupported upstream source archive header or entry type",
             )
         return super()._proc_member(archive)
@@ -300,14 +351,19 @@ def tar_members(raw: bytes, *, upstream: bool) -> list[tuple[tarfile.TarInfo, by
             require(
                 name not in seen
                 and len(seen) < MAX_MEMBERS
-                and (member.isfile() or upstream and member.isdir())
+                and (member.isfile() or upstream and (member.isdir() or member.issym()))
                 and not member.sparse
                 and (
                     not member.pax_headers
                     or upstream
                     and set(member.pax_headers) == {"comment"}
                 )
-                and not member.linkname
+                and (
+                    member.issym()
+                    and upstream
+                    and member.size == 0
+                    or not member.linkname
+                )
                 and not member.mode & 0o7000,
                 "Linked, duplicate or unsupported upstream archive member",
             )
@@ -339,7 +395,12 @@ def inspect(raw: bytes, record: dict) -> dict:
     )
     prefix = record["repository"].split("/")[1] + "-" + record["commit"]
     inventory, observed, found = [], {}, set()
-    for member, content in tar_members(raw, upstream=True):
+    entries = tar_members(raw, upstream=True)
+    members = {
+        safe_path(member.name, directory=member.isdir()): member
+        for member, _ in entries
+    }
+    for member, content in entries:
         require(
             not member.pax_headers
             or member.pax_headers == {"comment": record["commit"]},
@@ -351,13 +412,35 @@ def inspect(raw: bytes, record: dict) -> dict:
             "Upstream archive root differs from full source commit",
         )
         relative = name.removeprefix(prefix + "/") if name != prefix else ""
+        for parent in PurePosixPath(name).parents:
+            ancestor = members.get(str(parent))
+            require(
+                ancestor is None or ancestor.isdir(),
+                "Upstream member has a non-directory ancestor",
+            )
+        link = {}
+        if member.issym():
+            target = source_link_target(name, member.linkname, prefix)
+            require(
+                target in members
+                and (members[target].isfile() or members[target].isdir())
+                and not name.startswith(target + "/")
+                and target != name,
+                "Upstream symbolic link target is missing, linked or recursive",
+            )
+            link = {"link_target": member.linkname, "resolved_target": target}
         inventory.append(
             {
                 "path": name,
-                "kind": "file" if member.isfile() else "directory",
+                "kind": (
+                    "file"
+                    if member.isfile()
+                    else "symlink" if member.issym() else "directory"
+                ),
                 "mode": member.mode,
                 "size": member.size,
                 **({"sha256": sha256(content)} if member.isfile() else {}),
+                **link,
             }
         )
         if member.isfile() and relative in record["inspect_paths"]:
@@ -380,6 +463,34 @@ def inspect(raw: bytes, record: dict) -> dict:
         "observed_inputs": observed,
         **UNAPPROVED,
     }
+
+
+def source_link_target(name: str, link: str, prefix: str) -> str:
+    """Measure an original link without extraction or following it on disk."""
+    require(
+        isinstance(link, str)
+        and 0 < len(link) <= 4096
+        and not link.startswith("/")
+        and "\\" not in link
+        and not any(ord(char) < 32 or ord(char) == 127 for char in link),
+        "Unsafe upstream symbolic link target",
+    )
+    parts = list(PurePosixPath(name).parent.parts)
+    for part in link.split("/"):
+        require(bool(part), "Noncanonical upstream symbolic link target")
+        if part == ".":
+            continue
+        if part == "..":
+            require(len(parts) > 1, "Upstream symbolic link escapes source root")
+            parts.pop()
+        else:
+            parts.append(part)
+    target = safe_path("/".join(parts))
+    require(
+        target == prefix or target.startswith(prefix + "/"),
+        "Upstream symbolic link escapes source root",
+    )
+    return target
 
 
 def tar_gzip(files: dict[str, bytes]) -> bytes:
@@ -416,6 +527,11 @@ def offering(
                 "commit": record["commit"],
                 "url": url(record),
                 "packages": record["packages"],
+                **(
+                    {"relationship": record["relationship"]}
+                    if "relationship" in record
+                    else {}
+                ),
                 "archive": {
                     "file": archive_name,
                     "sha256": sha256(raw),

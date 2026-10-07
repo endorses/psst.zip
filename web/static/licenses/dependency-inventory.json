@@ -2494,5 +2494,57 @@
         }
       ]
     }
+  ],
+  "embedded_components": [
+    {
+      "name": "jsqr-es6",
+      "version": "1.4.0-1",
+      "license": "Apache-2.0",
+      "relationship": "bundled-within",
+      "parent": {
+        "path": "node_modules/qr-scanner",
+        "name": "qr-scanner",
+        "version": "1.4.2",
+        "integrity": "sha512-kV1yQUe2FENvn59tMZW6mOVfpq9mGxGf8l6+EGaXUOd4RBOLg7tRC83OrirM5AtDvZRpdjdlXURsHreAOSPOUw==",
+        "source_repository": "nimiq/qr-scanner",
+        "source_commit": "abcfe1bce2703721408d8ce7ebde94a359998506"
+      },
+      "source_repository": "danimoh/jsQR",
+      "source_commit": "42dbfd55f35db625119e8f33247b6e9d073902ec",
+      "compiled_inputs": {
+        "qr-scanner-worker.min.js": {
+          "sha256": "f4d8445f5a15c4e5f71a8c8c062c6443f09db370b8d3fe1fbdc7fe7889630d14",
+          "size": 43994
+        },
+        "qr-scanner.min.js": {
+          "sha256": "0564e4cf84b94cac80213b4f779bd215bb0876a91c19df28baf97766f4fd5484",
+          "size": 15844
+        },
+        "qr-scanner.legacy.min.js": {
+          "sha256": "2221f18d95b340c6a1dae741b67ac3c6d76bf411621b897979a4fd1f6b01efae",
+          "size": 70155
+        },
+        "qr-scanner.umd.min.js": {
+          "sha256": "40aa3fe4e1083073d7898c0895e98d5aa4d469a5c1aab6f357c0284ef75b413d",
+          "size": 16082
+        }
+      },
+      "license_file": "licenses/jsqr-es6-1.4.0-1/LICENSE",
+      "license_upstream_sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "attribution": "QR Scanner describes its basis as Cosmo Wolfe’s JavaScript port of Google’s ZXing library. jsqr-es6 is the danimoh/jsQR ES6 fork of cozmo/jsQR.",
+      "attribution_source": {
+        "file": "README.md",
+        "sha256": "bead4231e3ced1cb8879569625784098c52873a4bc04417644179246bb022c77"
+      },
+      "source_reproduction_verified": false,
+      "publication_authorized": false,
+      "notices": [
+        {
+          "file": "licenses/jsqr-es6-1.4.0-1/LICENSE",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+          "upstream_sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        }
+      ]
+    }
   ]
 }
