@@ -157,13 +157,24 @@ The producer cannot emit a `final-image-scanners` success report, even when it
 finds no vulnerabilities. Measurements explicitly leave publication unauthorized
 and review pending. The final gate still needs authenticated measurements for
 both architectures, authenticated finding dispositions bound to exact
-image/binary/source/advisory hashes, and trusted database acquisition evidence.
+image/binary/source/advisory hashes.
 Caller-supplied `not-applicable` JSON cannot satisfy those requirements.
+
+By default the authenticated scanner downloads its own database into the private
+cache from the fixed official `ghcr.io/aquasecurity/trivy-db:2` repository. The
+download has a 330-second process-group deadline; the measurement retains its
+tool/repository, start/completion times, database bytes hash and metadata hash.
+The subsequent scan freezes those bytes and disables updates. Supplying
+`--database` instead records a retained unapproved snapshot; supplied metadata
+cannot create acquisition evidence. The final gate accepts the authenticated
+owned-download measurement, and rejects a retained snapshot without trusted
+acquisition. [Official Trivy database flags](https://github.com/aquasecurity/trivy/blob/v0.75.0/pkg/flag/db_flags.go).
 
 The CLI accepts `--repository`, `--version`, `--commit`, `--platform`,
 `--component`, `--archive`, `--tested-config`, `--tool-archive`, `--tool-bundle`,
-`--cosign`, `--database` and `--output`. Database is a retained directory containing
-`trivy.db` and `metadata.json`; output must not already exist. Only after completed
+`--cosign` and `--output`, with optional `--database`. A supplied database is a
+retained directory containing `trivy.db` and `metadata.json`; output must not
+already exist. Only after completed
 measurement does the CLI reserve a private directory and atomically write
 `scan.json`, then `measurement.json`, without overwriting either file. Scanner or
 write failures produce no usable completed output directory.
@@ -172,9 +183,48 @@ On 2026-10-07, the actual private AMD64 pair at source `750f440` completed this
 producer with the pinned official Trivy signature verified again and database
 `sha256:5f4b978a55284b1997dc31e9f2fc3f4f1abae80829f51451ade221d5675a69b9`.
 It retained zero OS findings, 21 backend module findings and one Caddy module
-finding; no finding dispositions or publication approval were inferred. Ten
+finding; no finding dispositions or publication approval were inferred. The owned
+download CLI subsequently repeated both AMD64 scans with the same database bytes
+and retained independent acquisition metadata. Twelve
 focused fixtures passed, including the ARM64 asset/signature path. Native ARM64
 execution and live signed scanner measurements remain pending.
+
+### Deriving the image scanner gate
+
+`tools/aggregate_release_image_scans.py` authenticates both completed native
+smoke/runtime measurements and all four scanner measurements before deriving a
+`final-image-scanners` report. It matches every child/configuration/source subject
+to the final binding and checks the full raw scanner report against its measured
+hash, retaining all findings. It requires the pinned scanner/signature profile and
+owned official database acquisition; missing architecture coverage, modified raw
+reports, snapshot-only acquisition and OS/non-application/non-Go findings fail.
+
+For Go findings, the aggregator authenticates the typed actual native compiler
+measurement and reads its hashed raw dependency graph and official Go advisory
+bytes. Binary/configuration identity, toolchain, module versions/h1 checksums,
+build settings, native platform and runtime source asset must correspond exactly.
+The backend proof requires byte-identical reproduction using the actual release
+builder and Dockerfile layout. The upstream Caddy proof instead requires the
+fresh official source/checksum signatures, signed source/executable archive
+bindings, actual executable member hash and original vendor/module/build settings;
+an identical Caddy rebuild is not required.
+
+The only implemented dismissal is that **every** affected Go import path listed
+by the official advisory is absent from that exact compiler graph. It unions paths
+across all advisory ranges conservatively rather than approximating version or
+symbol reachability. Missing imports, uncertain aliases/withdrawal, changed
+module versions or any present affected package prevent a success report.
+The derived finding retains its original content/hash, source inputs, binary,
+graph and advisory hashes, affected paths and explanation. A caller's disposition
+or review flag cannot authorize a finding. [Public Go vulnerability database and OSV format](https://go.dev/doc/security/vuln/database).
+
+Eight fixture checks passed for this aggregation boundary. On the private AMD64
+`750f440` pair, the actual 236-package backend graph reproduced its executable
+byte-for-byte and supported structural derivation for all 21 module findings;
+the 970-package Caddy graph matched 147 module identities and the signed upstream
+source/executable evidence, supporting the one remaining finding. Those local
+facts produced no signed, complete release gate. Native ARM64 measurements,
+trusted workflow signing and full-binding live aggregation remain pending.
 
 - [ ] Add completed source/image scanner producers with exact targets, tool/database/date and reviewed finding dispositions.
 - [ ] Add full corresponding-source completeness evidence and authenticated distribution review.

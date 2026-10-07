@@ -1,6 +1,7 @@
 """Measure exact native OCI images using authenticated Trivy, without approval.
 
-The caller supplies retained official release assets and a downloaded Trivy DB.
+The caller supplies retained official release assets. By default the verified
+scanner downloads its own official database; a retained DB is measurement-only.
 Every input is copied into private temporary storage; only verified tools run.
 Returned raw reports and measurements still need trusted workflow authentication
 and independent, image/binary/source/advisory-bound finding review. This module
@@ -28,6 +29,7 @@ from publish_container_release import sha256, source_digest
 from release_artifacts import (
     DIGEST,
     InvalidRelease,
+    fields,
     json_bytes,
     matches,
     read_json,
@@ -59,6 +61,7 @@ TARGETS = {"backend": "app/server", "web": "usr/bin/caddy"}
 SEVERITIES = {"UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
 MAX_TOOL = 512 * 1024**2
 MAX_DB = 2 * 1024**3
+DATABASE_REPOSITORY = "ghcr.io/aquasecurity/trivy-db:2"
 
 
 def native_platform() -> str:
@@ -397,7 +400,7 @@ def measure_image_scan(
     tool_archive: Path,
     tool_bundle: Path,
     cosign: Path,
-    database: Path,
+    database: Path | None = None,
     execute=command,
 ) -> tuple[dict, bytes]:
     """Run one complete native measurement and return its record and raw JSON.
@@ -442,11 +445,59 @@ def measure_image_scan(
         cache = root / "cache"
         db = cache / "db"
         db.mkdir(parents=True, mode=0o700)
-        db_hash = snapshot(database / "trivy.db", db / "trivy.db", MAX_DB)
-        metadata_hash = snapshot(
-            database / "metadata.json", db / "metadata.json", 1024**2
-        )
+        if database is None:
+            download_started = datetime.now(timezone.utc).isoformat()
+            execute(
+                [
+                    str(executable),
+                    "image",
+                    "--config",
+                    str(root / "empty.yaml"),
+                    "--cache-dir",
+                    str(cache),
+                    "--db-repository",
+                    DATABASE_REPOSITORY,
+                    "--download-db-only",
+                    "--timeout",
+                    "5m",
+                ],
+                environment=environment(root),
+                timeout=330,
+            )
+            db_hash = source_digest(db / "trivy.db")[7:]
+            require(
+                0 < (db / "trivy.db").stat().st_size <= MAX_DB,
+                "Downloaded database exceeds bounds",
+            )
+            metadata_hash = source_digest(db / "metadata.json")[7:]
+            require(
+                (db / "metadata.json").stat().st_size <= 1024**2,
+                "Downloaded database metadata exceeds bounds",
+            )
+            acquisition = {
+                "kind": "owned-authenticated-trivy-download",
+                "repository": DATABASE_REPOSITORY,
+                "scanner_sha256": tool["sha256"],
+                "started_at": download_started,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "database_sha256": "sha256:" + db_hash,
+                "metadata_sha256": "sha256:" + metadata_hash,
+            }
+        else:
+            db_hash = snapshot(database / "trivy.db", db / "trivy.db", MAX_DB)
+            metadata_hash = snapshot(
+                database / "metadata.json", db / "metadata.json", 1024**2
+            )
+            acquisition = {
+                "kind": "retained-unapproved-snapshot",
+                "authenticated_acquisition_required": True,
+            }
         metadata = read_json((db / "metadata.json").read_bytes())
+        fields(
+            metadata,
+            {"Version", "UpdatedAt", "NextUpdate", "DownloadedAt"},
+            "actual vulnerability database metadata",
+        )
         require(
             isinstance(metadata, dict)
             and type(metadata.get("Version")) is int
@@ -521,6 +572,7 @@ def measure_image_scan(
             "database": {
                 "sha256": "sha256:" + db_hash,
                 "metadata_sha256": "sha256:" + metadata_hash,
+                "acquisition": acquisition,
                 **metadata,
             },
             "started_at": started,
@@ -547,10 +599,14 @@ def main(argv: list[str] | None = None) -> None:
         "tool-archive",
         "tool-bundle",
         "cosign",
-        "database",
         "output",
     ):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument(
+        "--database",
+        type=Path,
+        help="Retained measurement-only snapshot; default downloads the official DB with the authenticated scanner",
+    )
     args = parser.parse_args(argv)
     output = args.output
     require(

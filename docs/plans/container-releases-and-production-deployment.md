@@ -958,6 +958,26 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       passed. Retain the private descriptor and measured artifacts; the planned
       `v0.1.0` version has not been tagged or published.
 
+### Authenticated scanner inputs and typed finding aggregation
+
+- [x] Acquire the final-image scanner's fresh official database using the
+      authenticated native Trivy executable in an empty private configuration
+      and cache. Record acquisition, database and metadata hashes; retained
+      snapshots remain measurement-only. Actual patched AMD64 backend/web CLI
+      runs retained all 21/one Go module findings and found zero OS findings.
+- [x] Implement typed aggregation of authenticated native/image measurements,
+      exact raw findings and compiler evidence. Require byte reproduction for
+      the backend and distinct upstream signed source/binary correspondence for
+      Caddy. Derive package absence from complete authoritative Go advisories
+      and exact module/import graphs; reject caller approval flags, missing
+      proofs, unhandled findings, source/config substitution and unsupported
+      compiler settings. Twelve scanner and eight gate tests passed with
+      explicit authentication fixtures.
+- [ ] Run both native architectures, authenticate actual scanner/compiler
+      measurements, and derive the final full-binding gate in the release
+      workflow. Historical compiler measurements using tagged builder names
+      cannot substitute for corrected canonical-reference measurements.
+
 ### Application dependency input retention
 
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked

@@ -167,6 +167,15 @@ class ImageScannerChecks(unittest.TestCase):
         if "--version" in args:
             self.assertTrue(any("verify-blob" in call for call in self.calls))
             return json_bytes({"Version": scanner.VERSION})
+        if "--download-db-only" in args:
+            self.assertEqual(
+                args[args.index("--db-repository") + 1], scanner.DATABASE_REPOSITORY
+            )
+            self.assertEqual(timeout, 330)
+            db = Path(args[args.index("--cache-dir") + 1]) / "db"
+            (db / "trivy.db").write_bytes((self.database / "trivy.db").read_bytes())
+            (db / "metadata.json").write_bytes(json_bytes(self.metadata))
+            return b"fixture downloaded official database"
         self.assertEqual(args[1], "image")
         self.assertEqual(timeout, 660)
         layout = Path(args[args.index("--input") + 1])
@@ -454,6 +463,50 @@ class ImageScannerChecks(unittest.TestCase):
                 scanner.main(argv)
         self.assertFalse(output2.exists())
         self.assertFalse(list(self.root.glob(".psst-scanner-output-*")))
+
+    def test_owned_database_download_uses_authenticated_tool_and_records_exact_bytes(
+        self,
+    ):
+        record, _ = self.measure(database=None)
+        acquisition = record["database"]["acquisition"]
+        self.assertEqual(acquisition["kind"], "owned-authenticated-trivy-download")
+        self.assertEqual(acquisition["repository"], scanner.DATABASE_REPOSITORY)
+        self.assertEqual(acquisition["scanner_sha256"], record["scanner"]["sha256"])
+        self.assertEqual(acquisition["database_sha256"], record["database"]["sha256"])
+        self.assertEqual(
+            acquisition["metadata_sha256"], record["database"]["metadata_sha256"]
+        )
+        call = next(call for call in self.calls if "--download-db-only" in call)
+        self.assertLess(
+            next(i for i, c in enumerate(self.calls) if "verify-blob" in c),
+            self.calls.index(call),
+        )
+        self.assertFalse(record["publication_authorized"])
+
+        def failed_download(args, **kwargs):
+            if "--download-db-only" in args:
+                raise InvalidRelease("official database download failed")
+            return self.execute(args, **kwargs)
+
+        with self.assertRaisesRegex(InvalidRelease, "download failed"):
+            self.measure(database=None, execute=failed_download)
+
+    def test_retained_database_cannot_mint_an_acquisition_receipt(self):
+        record, _ = self.measure()
+        self.assertEqual(
+            record["database"]["acquisition"],
+            {
+                "kind": "retained-unapproved-snapshot",
+                "authenticated_acquisition_required": True,
+            },
+        )
+        forged = {
+            **self.metadata,
+            "acquisition": {"kind": "owned-authenticated-trivy-download"},
+        }
+        (self.database / "metadata.json").write_bytes(json_bytes(forged))
+        with self.assertRaisesRegex(InvalidRelease, "database metadata"):
+            self.measure()
 
 
 if __name__ == "__main__":
