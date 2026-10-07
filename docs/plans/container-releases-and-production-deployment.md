@@ -1067,6 +1067,34 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
 - [ ] Run the complete schema-2 native preparation, transfer and recovery on both
       hosted architectures for the exact candidate commit. Full browser source
       closure, measurement authentication and publication remain separate gates.
+- [x] Verify the initial schema-2 path on real local AMD64 images at `f90be19`.
+      Complete preparation passed in 368.9 seconds. Independent replay using the
+      exact committed verifier passed in 13.7 seconds with 98 Git inputs, 16 npm
+      archives and 99 final static files. Retain private measurements and remove
+      owned tool caches/image tags. This predates the expanded recipe profile and
+      does not verify hosted transfer/recovery or native ARM64.
+- [x] Bind copied browser scripts and the application template to exact Git
+      originals. Retain a committed recipe catalog plus Vite/Kit generator bytes
+      and manifests, checked against integrity-bound npm archives. Associate all
+      23 current virtual modules and 11 generated files (five rendered, six
+      excluded) through finite reviewed grammars; keep unfamiliar origins explicit.
+      Five focused regressions passed in 4.0 seconds and actual retained npm
+      replay passed in 1.5 seconds. These are source associations, not generated
+      byte reproduction or complete preferred-source approval.
+- [x] Include the original Vite and bundled Rollup generator license terms in
+      browser notices and serve their exact original license bytes. Check lock,
+      generator and notice hashes and reject stale inputs. Existing focused notice
+      checks passed in 0.123 seconds; type checking reported no errors or warnings.
+- [x] Retain and pin full original Vite 6.4.3 and Rollup CommonJS 28.0.3 source
+      archives and build locks. The exact Vite lock selects the CommonJS version;
+      its 1,337-byte helper template literal matches the installed Vite generator.
+      Preserve ten explicitly reviewed package-self test links as inert archive
+      metadata only; default link restrictions remain in force. Eighteen source
+      retention checks passed in 0.7 seconds.
+- [ ] Replay the expanded fourteen-original offering against the new committed
+      catalog and verify its new final native recipe/notice profile on both hosted
+      architectures. Complete source/distribution gates and public delivery remain
+      separate requirements.
 
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked
       archives, including development and optional platforms, without executing
@@ -1364,10 +1392,12 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release-tooling suite passed 334 tests in 25.0 seconds after browser
-input integration (one opt-in Docker case skipped; real builder capture was run
-separately). Do not repeat broad suites without changes, failures or unresolved
-risks that justify them.
+combined local release-tooling suite passed 337 tests in 27.3 seconds after the
+generator/source changes (one opt-in Docker case skipped; real builder capture
+was run separately). The new source-archive regression exercises recursive-link
+rejection and the exact metadata-only exception; browser fixtures check source
+and notice substitutions. Do not add coverage-only cases or repeat broad suites
+without changes, failures or unresolved risks that justify them.
 
 Transfer staging performs browser replay once before copying and once when
 independently verifying the completed destination. Intermediate consistency

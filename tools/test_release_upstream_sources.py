@@ -347,6 +347,36 @@ class UpstreamInputs(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "inspected inputs are missing"):
             upstream.inspect(raw, record)
 
+    def test_exact_package_self_test_links_are_metadata_only_and_not_a_general_bypass(
+        self,
+    ):
+        prefix = "fixture-upstream-" + "a" * 40
+        path = "packages/demo/test/node_modules/current-package"
+        raw = self.linked_payload(
+            [(prefix + "/" + path, "../..")], [prefix + "/packages/demo"]
+        )
+        self.replace_payload(raw)
+        catalog = self.catalog()
+        record = catalog["upstreams"][0]
+        with self.assertRaisesRegex(InvalidRelease, "recursive"):
+            upstream.inspect(raw, record)
+        record["source_fixture_links"] = {path: "../.."}
+        self.catalog_commit(catalog)
+        result = self.collect()
+        self.assertEqual(self.verify()["asset"], result["asset"])
+        inventory = upstream.inspect(raw, record)
+        link = next(item for item in inventory["members"] if item["kind"] == "symlink")
+        self.assertTrue(link["source_fixture_metadata_only"])
+        self.assertFalse((self.root / "packages").exists())
+        for registered in (
+            {path: "../../.."},
+            {"packages/../test/node_modules/current-package": "../.."},
+            {"elsewhere/current-package": "../.."},
+            {"packages/missing/test/node_modules/current-package": "../.."},
+        ):
+            with self.subTest(registered=registered), self.assertRaises(InvalidRelease):
+                upstream.inspect(raw, {**record, "source_fixture_links": registered})
+
     def embedded_record(self):
         first = self.catalog()["upstreams"][0]
         second = copy.deepcopy(first)

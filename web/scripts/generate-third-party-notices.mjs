@@ -43,6 +43,21 @@ import { fileURLToPath } from "node:url";
  * @property {string} explanation
  */
 /**
+ * @typedef {object} GeneratedHelperCatalog
+ * @property {number} schema_version
+ * @property {string} name
+ * @property {string} relationship
+ * @property {{path: string, name: string, version: string, integrity: string}} parent
+ * @property {{file: string, sha256: string, size: number}} generator
+ * @property {{installed_file: string, original_file: string, public_file: string, sha256: string}} notice
+ * @property {string[]} helper_families
+ * @property {string} attribution
+ * @property {boolean} source_reproduction_verified
+ * @property {boolean} browser_module_closure_verified
+ * @property {boolean} publication_authorized
+ * @property {boolean} distribution_authorized
+ */
+/**
  * @typedef {object} PackageNotice
  * @property {string} path
  * @property {string} name
@@ -281,6 +296,99 @@ function dijkstraSupplement(web, lock, packages, notices) {
     );
   }
 }
+// Generated CommonJS/preload helpers can enter the browser even though their
+// producing Vite package is a development dependency. Keep that relationship
+// explicit and retain its original grouped license, without claiming reproduction.
+/**
+ * @param {string} web
+ * @param {PackageLock} lock
+ * @param {string[]} notices
+ * @returns {{component: GeneratedHelperCatalog & {notices: Notice[]}, original: Buffer}|null}
+ */
+function generatedHelperNotices(web, lock, notices) {
+  if (!lock.packages["node_modules/vite"]) return null;
+  /** @type {GeneratedHelperCatalog} */
+  const reviewed = JSON.parse(
+    regularBytes(web, "licenses/vite-6.4.3-generated-helpers.json").toString("utf8"),
+  );
+  if (
+    reviewed.schema_version !== 1 ||
+    reviewed.name !== "vite-generated-browser-helpers" ||
+    reviewed.relationship !== "generated-from" ||
+    reviewed.parent?.path !== "node_modules/vite" ||
+    reviewed.parent.name !== "vite" ||
+    reviewed.parent.version !== "6.4.3" ||
+    !/^sha512-[A-Za-z0-9+/]{86}==$/.test(reviewed.parent.integrity) ||
+    reviewed.generator?.file !== "dist/node/chunks/dep-Dm0c1Wj2.js" ||
+    !/^[a-f0-9]{64}$/.test(reviewed.generator.sha256) ||
+    !Number.isSafeInteger(reviewed.generator.size) ||
+    reviewed.generator.size <= 0 ||
+    reviewed.generator.size > 4 * 1024 * 1024 ||
+    reviewed.notice?.installed_file !== "LICENSE.md" ||
+    reviewed.notice.original_file !== "licenses/vite-6.4.3/LICENSE.md" ||
+    reviewed.notice.public_file !== "vite-generated-browser-helpers-LICENSE.md" ||
+    !/^[a-f0-9]{64}$/.test(reviewed.notice.sha256) ||
+    JSON.stringify(reviewed.helper_families) !==
+      JSON.stringify([
+        "vite-commonjs-exports",
+        "vite-commonjs-module",
+        "vite-commonjs-es-import",
+        "vite-commonjs-helper",
+        "vite-preload-helper",
+      ]) ||
+    typeof reviewed.attribution !== "string" ||
+    !reviewed.attribution ||
+    reviewed.attribution.length > 4096 ||
+    reviewed.source_reproduction_verified !== false ||
+    reviewed.browser_module_closure_verified !== false ||
+    reviewed.publication_authorized !== false ||
+    reviewed.distribution_authorized !== false
+  )
+    throw new Error("Invalid reviewed Vite generated helpers notice");
+  const entry = lock.packages[reviewed.parent.path];
+  /** @type {InstalledPackage} */
+  const installed = JSON.parse(
+    regularBytes(web, `${reviewed.parent.path}/package.json`).toString("utf8"),
+  );
+  if (
+    entry.version !== reviewed.parent.version ||
+    entry.integrity !== reviewed.parent.integrity ||
+    installed.name !== reviewed.parent.name ||
+    installed.version !== reviewed.parent.version
+  )
+    throw new Error("Vite generated helpers parent differs from reviewed lock");
+  const generator = regularBytes(
+    web,
+    `${reviewed.parent.path}/${reviewed.generator.file}`,
+    4 * 1024 * 1024,
+  );
+  if (generator.length !== reviewed.generator.size || hash(generator) !== reviewed.generator.sha256)
+    throw new Error("Vite generated helpers generator changed");
+  const upstream = regularBytes(web, `${reviewed.parent.path}/${reviewed.notice.installed_file}`),
+    original = regularBytes(web, reviewed.notice.original_file);
+  if (hash(upstream) !== reviewed.notice.sha256 || !upstream.equals(original))
+    throw new Error("Vite generated helpers original notice changed");
+  notices.push(
+    "=== Generated browser helpers from vite@6.4.3 ===",
+    reviewed.attribution,
+    `Original grouped license: /licenses/${reviewed.notice.public_file}`,
+    "The Vite package's complete notices are included above; the original bytes are served separately.",
+    "",
+  );
+  return {
+    component: {
+      ...reviewed,
+      notices: [
+        {
+          file: reviewed.notice.public_file,
+          sha256: hash(original),
+          upstream_sha256: hash(upstream),
+        },
+      ],
+    },
+    original,
+  };
+}
 /**
  * @param {string} web Explicit web root for deterministic offline fixtures.
  * @param {{check?: boolean}} [options]
@@ -360,21 +468,25 @@ export function generateNotices(web, { check = false } = {}) {
   }
   dijkstraSupplement(web, lock, packages, notices);
   const embedded_components = embeddedNotices(web, lock, notices);
+  const generated = generatedHelperNotices(web, lock, notices);
+  const derived_components = generated ? [generated.component] : [];
+  /** @type {Map<string, string | Buffer>} */
   const files = new Map([
     [
       "dependency-inventory.json",
       JSON.stringify(
-        { package_lock_sha256: hash(lockBytes), packages, embedded_components },
+        { package_lock_sha256: hash(lockBytes), packages, embedded_components, derived_components },
         null,
         2,
       ) + "\n",
     ],
     ["THIRD_PARTY_NOTICES.txt", normalize(notices.join("\n"))],
   ]);
+  if (generated) files.set(generated.component.notice.public_file, generated.original);
   for (const [name, content] of files) {
     const file = path.join(output, name);
     if (check) {
-      if (readFileSync(file, "utf8") !== content)
+      if (!readFileSync(file).equals(Buffer.isBuffer(content) ? content : Buffer.from(content)))
         throw new Error(
           `Stale notices: ${file}; run node scripts/generate-third-party-notices.mjs`,
         );

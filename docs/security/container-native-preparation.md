@@ -50,6 +50,31 @@ schema-1 fixtures need an explicit library opt-in; the current CLI has no bypass
 These observations still leave complete browser source closure and upstream build
 reproduction pending.
 
+Complete local AMD64 preparation on committed `f90be19b543b31ef7738187a61ceb45aec518680`
+passed in 368.9 seconds, including source/signature checks, final native smoke,
+byte-preserving OCI export and schema-2 browser input replay. The browser evidence
+pack was 18,688,000 bytes, SHA256
+`d3091d7de9fad5d5e8b58d484ced29881d3d235b06e0bb6b847ca2b2024a66a9`.
+Independent browser replay with the exact verifier from that commit passed in
+13.7 seconds: 98 Git inputs, 16 npm archives and 99 final static files. Private
+evidence remains in `/tmp/psst-native-browser-pair-review-f90be19b543b/`; disposable
+tool caches and owned image tags were removed. The source-helper image was rebuilt
+before resuming preparation because its earlier temporary alias had been removed.
+
+That evidence predates the expanded static/generator recipe associations below.
+It does not establish their new committed final-image path, native ARM64,
+authenticated reports or publication approval.
+
+The expanded profile Git-binds the original copied `appearance.js`/`language.js`,
+application template and reviewed `browser-source-recipes.json`. It retains
+integrity-bound Vite/Kit generator recipes and manifests. Finite safe hash/path
+grammars associate the current 23 virtual inputs and 11 generated Kit inputs,
+distinguishing five rendered files from six excluded ones. Unfamiliar origins
+remain explicitly unresolved, and every reproduction/closure/authorization flag
+stays false. The final helper-license copy must equal its original locked npm
+member. Current installed recipe/notice replay against the retained dependency
+archive passed in 1.5 seconds; this does not verify the new committed final image.
+
 The records remain unsigned and do not authorize publication. Both architectures,
 authenticated measurements, vulnerability gates, full corresponding-source and
 distribution review, and post-matrix release assembly are still required.

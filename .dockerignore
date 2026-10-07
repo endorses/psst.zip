@@ -13,6 +13,7 @@ web/*
 !web/scripts/
 web/scripts/*
 !web/scripts/browser-module-inventory.mjs
+!web/scripts/browser-source-recipes.json
 !web/src/
 !web/src/**
 !web/static/

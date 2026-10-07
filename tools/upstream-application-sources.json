@@ -324,6 +324,67 @@
         "svelte": "5.57.1"
       },
       "repository": "sveltejs/svelte"
+    },
+    {
+      "id": "vite",
+      "repository": "vitejs/vite",
+      "commit": "6c2c881f15495738ff03bc1d67cc052c07e0cac4",
+      "archive": {
+        "file": "vite-6c2c881f15495738ff03bc1d67cc052c07e0cac4.tar.gz",
+        "sha256": "sha256:b5d5e3a9c865752266bb84714ce0b08c9c010a8f3287dc9dc8db28bd861bc09c",
+        "size": 11346610
+      },
+      "packages": {
+        "vite": "6.4.3"
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/vite/package.json",
+        "packages/vite/rollup.config.ts",
+        "packages/vite/src/node/plugins/importAnalysisBuild.ts"
+      ]
+    },
+    {
+      "archive": {
+        "file": "rollup-commonjs-8b5fb987f82644ed31660b44f5c4df1cb085bf32.tar.gz",
+        "sha256": "sha256:dbd76e3255715afaa2ed11e001f5a4b400e6beb9d50b70e8c6dfc8ac19832093",
+        "size": 633189
+      },
+      "commit": "8b5fb987f82644ed31660b44f5c4df1cb085bf32",
+      "id": "rollup-commonjs",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "packages/commonjs/package.json",
+        "packages/commonjs/src/helpers.js",
+        "packages/commonjs/src/index.js"
+      ],
+      "packages": {
+        "vite": "6.4.3"
+      },
+      "relationship": {
+        "kind": "embedded-component",
+        "name": "@rollup/plugin-commonjs",
+        "package": "vite",
+        "version": "28.0.3"
+      },
+      "repository": "rollup/plugins",
+      "source_fixture_links": {
+        "packages/alias/test/node_modules/current-package": "../..",
+        "packages/babel/test/node_modules/current-package": "../..",
+        "packages/data-uri/test/node_modules/current-package": "../..",
+        "packages/dynamic-import-vars/test/node_modules/current-package": "../..",
+        "packages/eslint/test/node_modules/current-package": "../..",
+        "packages/graphql/test/node_modules/current-package": "../..",
+        "packages/multi-entry/test/node_modules/current-package": "../..",
+        "packages/node-resolve/test/node_modules/current-package": "../..",
+        "packages/typescript/test/node_modules/current-package": "../..",
+        "packages/wasm/test/node_modules/current-package": "../.."
+      }
     }
   ]
 }

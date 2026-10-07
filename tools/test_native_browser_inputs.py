@@ -5,6 +5,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import gzip
+import json
+from pathlib import Path
 import subprocess
 import tarfile
 import unittest
@@ -40,6 +43,18 @@ class NativeBrowser(unittest.TestCase):
         self.pack, self.archive = self.root / "browser.tar", self.root / "web.oci.tar"
         for name in native.FIXED - {"package-lock.json"}:
             self.local.write(self.web, name, b"fixed Git input\n")
+        self.local.write(
+            self.web,
+            native.RECIPE_CATALOG,
+            (
+                Path(__file__).resolve().parents[1] / "web" / native.RECIPE_CATALOG
+            ).read_bytes(),
+        )
+        self.local.write(
+            self.web,
+            "static/appearance.js",
+            (self.web / "build/appearance.js").read_bytes(),
+        )
         location = self.local.package_path
         npm = tar_bytes(
             {
@@ -49,8 +64,6 @@ class NativeBrowser(unittest.TestCase):
                 "package/index.js": (self.web / location / "index.js").read_bytes(),
             }
         )
-        import gzip
-
         npm = gzip.compress(npm, mtime=0)
         integrity = "sha512-" + base64.b64encode(hashlib.sha512(npm).digest()).decode()
         self.local.package["integrity"] = integrity
@@ -61,8 +74,16 @@ class NativeBrowser(unittest.TestCase):
             "npm/" + hashlib.sha256((location + "@1.2.3").encode()).hexdigest() + ".tgz"
         )
         self.local.write(self.web, npm_name, npm)
+        catalog = json.loads((self.web / native.RECIPE_CATALOG).read_bytes())
+        for recipe in (catalog["vite"], catalog["kit"]):
+            self.add_recipe_package(recipe)
         self.git("init", "--quiet")
-        self.git("add", *["web/" + name for name in native.FIXED], "web/src/main.ts")
+        self.git(
+            "add",
+            *["web/" + name for name in native.FIXED],
+            "web/src/main.ts",
+            "web/static/appearance.js",
+        )
         self.git(
             "-c",
             "user.name=fixture",
@@ -82,12 +103,62 @@ class NativeBrowser(unittest.TestCase):
         )
         self.local.save()
         self.names = (
-            native.selected(self.local.inventory)
+            native.selected(self.local.inventory, self.web)
             | {"build/" + name for name in native.static_facts(self.web / "build")}
             | {npm_name}
         )
         self.save_pack()
         self.runtime = {"overlays": {"web": {}}, "additional_files": {"web": {}}}
+        self.save_oci()
+
+    def add_recipe_package(self, recipe):
+        files = {
+            "package/package.json": browser.canonical(
+                {"name": recipe["name"], "version": recipe["version"]}
+            )
+        }
+        for member in recipe["members"]:
+            files["package/" + member] = (
+                "Retained generator fixture " + member + "\n"
+            ).encode()
+        for name, raw in files.items():
+            self.local.write(
+                self.web, recipe["lock_path"] + "/" + name.removeprefix("package/"), raw
+            )
+        archive = gzip.compress(tar_bytes(files), mtime=0)
+        self.local.lock["packages"][recipe["lock_path"]] = {
+            "version": recipe["version"],
+            "integrity": "sha512-"
+            + base64.b64encode(hashlib.sha512(archive).digest()).decode(),
+            "resolved": "https://registry.npmjs.org/"
+            + recipe["name"]
+            + "/-/"
+            + recipe["name"].split("/")[-1]
+            + "-"
+            + recipe["version"]
+            + ".tgz",
+        }
+        name = (
+            "npm/"
+            + hashlib.sha256(
+                (recipe["lock_path"] + "@" + recipe["version"]).encode()
+            ).hexdigest()
+            + ".tgz"
+        )
+        self.local.write(self.web, name, archive)
+        lock_raw = self.local.write(self.web, "package-lock.json", self.local.lock)
+        self.local.inventory["source"]["package_lock"]["sha256"] = browser.digest(
+            lock_raw
+        )
+
+    def refresh(self):
+        self.local.save()
+        self.names = (
+            native.selected(self.local.inventory, self.web)
+            | {"build/" + name for name in native.static_facts(self.web / "build")}
+            | set(native.npm_members(self.web, self.local.inventory))
+        )
+        self.save_pack()
         self.save_oci()
 
     def git(self, *args):
@@ -179,6 +250,17 @@ class NativeBrowser(unittest.TestCase):
         self.assertTrue(result["git_source_binding_verified"])
         self.assertFalse(result["browser_module_closure_verified"])
         self.assertFalse(result["distribution_authorized"])
+        associations = result["source_associations"]
+        self.assertEqual(
+            associations["copied_javascript"][0]["source_file"], "static/appearance.js"
+        )
+        self.assertEqual(associations["unresolved_javascript"][0]["file"], "worker.js")
+        self.assertEqual(associations["virtual_inputs"][0]["association"], "unresolved")
+        self.assertNotIn("generator", associations["virtual_inputs"][0])
+        self.assertEqual(
+            associations["generated_inputs"][0]["association"], "unresolved"
+        )
+        self.assertFalse(associations["preferred_source_complete"])
         self.save_pack(omit=".svelte-kit/generated/client.js")
         with self.assertRaises((ValueError, InvalidRelease)):
             self.replay()
@@ -204,6 +286,70 @@ class NativeBrowser(unittest.TestCase):
         self.local.save()
         self.save_pack()
         self.save_oci()
+        with self.assertRaisesRegex(InvalidRelease, "integrity-bound archive member"):
+            self.replay()
+
+    def test_copied_script_source_and_unknown_emitted_origin_remain_distinct(self):
+        changed = b"changed copied source and output\n"
+        self.local.write(self.web, "static/appearance.js", changed)
+        self.local.write(self.web, "build/appearance.js", changed)
+        self.save_pack()
+        self.save_oci()
+        with self.assertRaisesRegex(InvalidRelease, "exact Git blob"):
+            self.replay()
+
+    def test_known_virtual_and_generated_recipes_are_retained_but_not_reproduced(self):
+        virtual = self.local.inventory["modules"][2]
+        virtual["id"] = "virtual:" + hashlib.sha256(b"\0commonjsHelpers.js").hexdigest()
+        generated = self.local.inventory["excluded_modules"][0]
+        generated["module_path"] = ".svelte-kit/generated/root.js"
+        generated["id"] = "file:" + generated["module_path"]
+        raw = self.local.write(
+            self.web, generated["module_path"], b"generated fixture root\n"
+        )
+        generated["source_sha256"] = browser.digest(raw)
+        self.local.inventory["excluded_modules"].append(
+            self.local.module(
+                ".svelte-kit/generated/client-optimized/nodes/0.js",
+                "generated-application",
+                rendered=False,
+            )
+        )
+        self.local.inventory["excluded_modules"].append(
+            self.local.module(
+                ".svelte-kit/generated/client-optimized/nodes/00.js",
+                "generated-application",
+                rendered=False,
+            )
+        )
+        self.local.write(
+            self.web,
+            "build/licenses/vite-generated-browser-helpers-LICENSE.md",
+            (self.web / "node_modules/vite/LICENSE.md").read_bytes(),
+        )
+        self.refresh()
+        result = self.replay()["source_associations"]
+        self.assertEqual(result["virtual_inputs"][0]["family"], "vite-commonjs-helper")
+        generated = {row["file"]: row for row in result["generated_inputs"]}
+        self.assertEqual(
+            generated[".svelte-kit/generated/root.js"]["function"], "write_root"
+        )
+        node = generated[".svelte-kit/generated/client-optimized/nodes/0.js"]
+        self.assertEqual(node["function"], "write_client_manifest/generate_node")
+        self.assertFalse(node["rendered_in_client_chunks"])
+        self.assertEqual(node["excluded_reason"], "not-in-client-chunks")
+        self.assertEqual(
+            generated[".svelte-kit/generated/client-optimized/nodes/00.js"][
+                "association"
+            ],
+            "unresolved",
+        )
+        self.assertFalse(result["generated_byte_reproduction_verified"])
+        self.assertFalse(result["preferred_source_complete"])
+        generator = "node_modules/vite/dist/node/chunks/dep-Dm0c1Wj2.js"
+        self.assertIn(generator, result["integrity_bound_recipe_files"])
+        self.local.write(self.web, generator, b"substituted generator fixture\n")
+        self.save_pack()
         with self.assertRaisesRegex(InvalidRelease, "integrity-bound archive member"):
             self.replay()
 

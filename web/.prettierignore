@@ -2,3 +2,5 @@
 build
 node_modules
 package-lock.json
+licenses/vite-6.4.3/LICENSE.md
+static/licenses/vite-generated-browser-helpers-LICENSE.md

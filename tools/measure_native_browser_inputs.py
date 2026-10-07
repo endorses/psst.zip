@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tarfile
 import tempfile
@@ -30,7 +31,10 @@ from release_artifacts import (
 )
 from verify_runtime_source_pack import whiteout_targets
 
+RECIPE_CATALOG = "scripts/browser-source-recipes.json"
 FIXED = {
+    RECIPE_CATALOG,
+    "src/app.html",
     "package.json",
     "package-lock.json",
     "vite.config.ts",
@@ -94,7 +98,223 @@ def file_digest(path: Path) -> str:
         return "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def selected(inventory: dict) -> set[str]:
+def recipe_plan(folder: Path, inventory: dict) -> dict:
+    """Associate only finite reviewed IDs/paths; unknowns remain opaque and unresolved."""
+    catalog = browser.json_record(browser.read_file(folder, RECIPE_CATALOG))
+    require(
+        set(catalog)
+        == {
+            "schema_version",
+            "kind",
+            "vite",
+            "kit",
+            "source_reproduction_verified",
+            "browser_module_closure_verified",
+            "distribution_authorized",
+        }
+        and type(catalog["schema_version"]) is int
+        and catalog["schema_version"] == 1
+        and catalog["kind"] == "reviewed-browser-generator-associations"
+        and all(
+            catalog[key] is False
+            for key in (
+                "source_reproduction_verified",
+                "browser_module_closure_verified",
+                "distribution_authorized",
+            )
+        ),
+        "Browser recipe catalog grants unsupported claims",
+    )
+    vite, kit = catalog["vite"], catalog["kit"]
+    require(
+        set(vite)
+        == {
+            "lock_path",
+            "name",
+            "version",
+            "generator",
+            "members",
+            "commonjs_suffixes",
+            "helper_ids",
+        }
+        and set(kit)
+        == {"lock_path", "name", "version", "members", "generated", "generated_nodes"},
+        "Unexpected browser recipe fields",
+    )
+    for recipe in (vite, kit):
+        location = browser.safe_path(recipe["lock_path"])
+        require(
+            location == "node_modules/" + recipe["name"],
+            "Unexpected generator package location",
+        )
+        require(
+            isinstance(recipe["members"], list)
+            and 0 < len(recipe["members"]) <= 64
+            and len(set(recipe["members"])) == len(recipe["members"]),
+            "Invalid generator members",
+        )
+        for name in recipe["members"]:
+            browser.safe_path(name)
+            require(
+                not any(part.startswith(".") for part in name.split("/")),
+                "Hidden generator input",
+            )
+    require(
+        vite["commonjs_suffixes"]
+        == ["?commonjs-exports", "?commonjs-module", "?commonjs-es-import"]
+        and vite["helper_ids"] == ["commonjsHelpers.js", "vite/preload-helper.js"]
+        and vite["generator"] in vite["members"],
+        "Unreviewed virtual ID grammar",
+    )
+    require(
+        isinstance(kit["generated"], dict) and len(kit["generated"]) <= 16,
+        "Invalid generated recipe count",
+    )
+    for path, recipe in kit["generated"].items():
+        browser.safe_path(path)
+        require(
+            path.startswith(".svelte-kit/generated/")
+            and set(recipe) == {"generator", "function", "invocation"}
+            and recipe["generator"] in kit["members"]
+            and all(
+                isinstance(recipe[key], str)
+                and 0 < len(recipe[key]) <= 512
+                and not any(ord(char) < 32 for char in recipe[key])
+                for key in ("function", "invocation")
+            ),
+            "Unreviewed generated recipe",
+        )
+    nodes = kit["generated_nodes"]
+    require(
+        set(nodes) == {"prefix", "generator", "function", "invocation"}
+        and nodes["prefix"] == ".svelte-kit/generated/client-optimized/nodes/"
+        and nodes["generator"] in kit["members"]
+        and all(
+            isinstance(nodes[key], str)
+            and 0 < len(nodes[key]) <= 512
+            and not any(ord(char) < 32 for char in nodes[key])
+            for key in ("function", "invocation")
+        ),
+        "Unreviewed generated node recipe",
+    )
+    physical = {
+        row["module_path"]
+        for row in inventory["modules"] + inventory["excluded_modules"]
+        if row["module_path"] is not None
+    }
+    candidates = {}
+
+    def candidate(raw, record):
+        identifier = "virtual:" + hashlib.sha256(raw.encode()).hexdigest()
+        require(identifier not in candidates, "Ambiguous reviewed virtual association")
+        candidates[identifier] = record
+
+    for name in sorted(physical):
+        if not name.startswith("node_modules/"):
+            continue
+        browser.safe_path(name)
+        for suffix in vite["commonjs_suffixes"]:
+            candidate(
+                "\0<root>/" + name + suffix,
+                {
+                    "family": "vite-commonjs" + suffix[9:],
+                    "module_path": name,
+                    "generator": vite["lock_path"] + "/" + vite["generator"],
+                },
+            )
+    for helper in vite["helper_ids"]:
+        candidate(
+            "\0" + helper,
+            {
+                "family": (
+                    "vite-commonjs-helper"
+                    if helper == "commonjsHelpers.js"
+                    else "vite-preload-helper"
+                ),
+                "module_path": None,
+                "generator": vite["lock_path"] + "/" + vite["generator"],
+            },
+        )
+    virtual, generated = [], []
+    needed = set()
+    for row in inventory["modules"] + inventory["excluded_modules"]:
+        if row["kind"] == "virtual":
+            match = candidates.get(row["id"])
+            virtual.append(
+                {
+                    "id": row["id"],
+                    "association": "reviewed-generator" if match else "unresolved",
+                    **(match or {}),
+                    "generated_byte_reproduction_verified": False,
+                    "rendered_in_client_chunks": bool(row["rendered_in"]),
+                    "excluded_reason": row.get("reason"),
+                }
+            )
+            if match:
+                needed.add("vite")
+        elif row["kind"] == "generated-application":
+            path = row["module_path"]
+            match = kit["generated"].get(path)
+            if match is None and path.startswith(nodes["prefix"]):
+                index = path[len(nodes["prefix"]) :]
+                if (
+                    re.fullmatch(r"(0|[1-9][0-9]{0,4})\.js", index)
+                    and int(index[:-3]) < browser.MAX_MODULES
+                ):
+                    match = nodes
+            generated.append(
+                {
+                    "file": path,
+                    "association": "reviewed-generator" if match else "unresolved",
+                    **(
+                        {
+                            "generator": kit["lock_path"] + "/" + match["generator"],
+                            "function": match["function"],
+                            "invocation": match["invocation"],
+                        }
+                        if match
+                        else {}
+                    ),
+                    "generated_byte_reproduction_verified": False,
+                    "rendered_in_client_chunks": bool(row["rendered_in"]),
+                    "excluded_reason": row.get("reason"),
+                }
+            )
+            if match:
+                needed.add("kit")
+    recipes = {name: catalog[name] for name in sorted(needed)}
+    inputs = {
+        recipe["lock_path"] + "/" + member
+        for recipe in recipes.values()
+        for member in recipe["members"] + ["package.json"]
+    }
+    return {
+        "recipes": recipes,
+        "inputs": inputs,
+        "virtual_inputs": sorted(virtual, key=lambda row: row["id"]),
+        "generated_inputs": sorted(generated, key=lambda row: row["file"]),
+    }
+
+
+def copied_inputs(folder: Path, inventory: dict) -> set[str]:
+    chunks = {row["file"] for row in inventory["outputs"] if row["type"] == "chunk"}
+    names = set()
+    for name in static_facts(folder / "build"):
+        if not name.endswith(".js"):
+            continue
+        path = "static/" + name
+        if name in {"appearance.js", "language.js"}:
+            browser.read_file(
+                folder, path
+            )  # Known copied inputs must not silently lose their source.
+            names.add(path)
+        elif name not in chunks and (folder / path).exists():
+            browser.read_file(folder, path)
+            names.add(path)
+    return names
+
+
+def selected(inventory: dict, folder: Path | None = None) -> set[str]:
     names = set(FIXED)
     for row in inventory["modules"] + inventory["excluded_modules"]:
         if row["module_path"] is not None:
@@ -125,29 +345,48 @@ def selected(inventory: dict) -> set[str]:
     for row in inventory["build_metadata_outputs"]:
         require(row["file"] in browser.BUILD_METADATA, "Unsupported browser metadata")
         names.add(".svelte-kit/output/client/" + row["file"])
+    if folder is not None:
+        names.update(recipe_plan(folder, inventory)["inputs"])
+        names.update(copied_inputs(folder, inventory))
     return names
 
 
 def git_binding(
     folder: Path, revision: str, paths: set[str], source_root: Path, execute
 ) -> dict:
-    verified = {}
-    for path in sorted(paths):
-        raw = browser.read_file(folder, path)
-        mode = (
-            execute(
-                "git", "-C", str(source_root), "ls-tree", revision, "--", "web/" + path
-            )
-            .decode()
-            .split()
-        )
+    verified, objects = {}, {}
+    listing = execute(
+        "git",
+        "-C",
+        str(source_root),
+        "ls-tree",
+        "-z",
+        revision,
+        "--",
+        *["web/" + name for name in sorted(paths)],
+    )
+    require(
+        len(listing) <= browser.MAX_FILE, "Git browser input listing exceeds bounds"
+    )
+    for line in listing.split(b"\0"):
+        if not line:
+            continue
+        metadata, name = line.decode().split("\t", 1)
+        mode, kind, oid = metadata.split()
         require(
-            len(mode) == 4
-            and mode[0] in {"100644", "100755"}
-            and mode[1] == "blob"
-            and mode[3] == "web/" + path,
+            mode in {"100644", "100755"}
+            and kind == "blob"
+            and name.startswith("web/")
+            and name[4:] in paths
+            and name[4:] not in objects,
             "Observed input absent/nonregular in exact Git commit",
         )
+        objects[name[4:]] = oid
+    require(
+        set(objects) == paths, "Observed input absent/nonregular in exact Git commit"
+    )
+    for path in sorted(paths):
+        raw = browser.read_file(folder, path)
         committed = execute(
             "git", "-C", str(source_root), "cat-file", "blob", revision + ":web/" + path
         )
@@ -155,7 +394,7 @@ def git_binding(
             raw == committed,
             "Builder application/config/lock differs from exact Git blob",
         )
-        verified[path] = {"git_blob": mode[2], **browser.file_fact(folder, path)}
+        verified[path] = {"git_blob": objects[path], **browser.file_fact(folder, path)}
     return verified
 
 
@@ -172,6 +411,42 @@ def npm_members(
     lock = browser.json_record(browser.read_file(folder, "package-lock.json"))[
         "packages"
     ]
+    for recipe in recipe_plan(folder, inventory)["recipes"].values():
+        location = recipe["lock_path"]
+        installed_raw = browser.read_file(folder, location + "/package.json")
+        installed = browser.json_record(installed_raw)
+        locked = lock.get(location, {})
+        require(
+            installed.get("name") == recipe["name"]
+            and installed.get("version") == recipe["version"] == locked.get("version")
+            and not locked.get("link")
+            and locked.get("resolved")
+            == "https://registry.npmjs.org/"
+            + recipe["name"]
+            + "/-/"
+            + recipe["name"].split("/")[-1]
+            + "-"
+            + recipe["version"]
+            + ".tgz",
+            "Generator package differs from reviewed recipe and lock",
+        )
+        pkg = {
+            "name": recipe["name"],
+            "version": recipe["version"],
+            "lock_path": location,
+            "integrity": locked.get("integrity"),
+            "package_json_sha256": browser.digest(installed_raw),
+        }
+        if location in packages:
+            require(
+                packages[location]["package"] == pkg,
+                "Generator package identity differs from inventory",
+            )
+        else:
+            packages[location] = {"package": pkg, "members": set()}
+        packages[location]["members"].update(
+            location + "/" + name for name in recipe["members"]
+        )
     paths = {}
     for location, item in packages.items():
         filename = (
@@ -380,7 +655,7 @@ def replay(
         inventory = browser.json_record(
             browser.read_file(folder / "build", browser.INVENTORY)
         )
-        inputs = selected(inventory)
+        inputs = selected(inventory, folder)
         observation = browser.verify(
             folder, folder / "build", context.version, context.commit
         )
@@ -484,6 +759,46 @@ def replay(
             and file_digest(archive) == image["archive_digest"],
             "Browser inputs or final OCI changed during replay",
         )
+        origins = []
+        copied = copied_inputs(folder, inventory)
+        for path in sorted(copied):
+            name = path.removeprefix("static/")
+            fact = browser.file_fact(folder, path)
+            require(
+                path in git and built[name] == fact,
+                "Copied browser JavaScript differs from Git-bound static original",
+            )
+            origins.append(
+                {
+                    "file": name,
+                    "source_file": path,
+                    "source_sha256": fact["sha256"],
+                    "git_blob": git[path]["git_blob"],
+                    "association": "byte-identical-git-static-original",
+                }
+            )
+        unresolved = [
+            {
+                "file": row["file"],
+                "origin": row["origin"],
+                "sha256": row["sha256"],
+                "association": "unresolved",
+            }
+            for row in observation["unattributed_javascript_outputs"]
+            if "static/" + row["file"] not in copied
+        ]
+        plan = recipe_plan(folder, inventory)
+        recipe_files = {
+            name: browser.file_fact(folder, name) for name in sorted(plan["inputs"])
+        }
+        if "vite" in plan["recipes"]:
+            upstream_notice = "node_modules/vite/LICENSE.md"
+            public_notice = "licenses/vite-generated-browser-helpers-LICENSE.md"
+            require(
+                built.get(public_notice) == recipe_files[upstream_notice]
+                and actual.get(public_notice) == recipe_files[upstream_notice],
+                "Generated browser helpers notice differs from original integrity-bound Vite license",
+            )
         return {
             "schema_version": 1,
             "kind": "native-browser-input-measurement",
@@ -496,6 +811,16 @@ def replay(
             "image": image,
             "git_inputs": git,
             "npm_archives": npm,
+            "source_associations": {
+                "catalog": {"file": RECIPE_CATALOG, **git[RECIPE_CATALOG]},
+                "integrity_bound_recipe_files": recipe_files,
+                "virtual_inputs": plan["virtual_inputs"],
+                "generated_inputs": plan["generated_inputs"],
+                "copied_javascript": origins,
+                "unresolved_javascript": unresolved,
+                "generated_byte_reproduction_verified": False,
+                "preferred_source_complete": False,
+            },
             "builder_static_files": built,
             "final_static_files": actual,
             "browser_inventory_verification": final_observation,
@@ -579,7 +904,7 @@ def collect(
             inventory = browser.json_record(
                 browser.read_file(retained / "build", browser.INVENTORY)
             )
-            inputs = selected(inventory)
+            inputs = selected(inventory, retained)
             require(
                 names
                 == inputs

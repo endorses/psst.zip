@@ -1,10 +1,14 @@
 /** Select regular observed browser inputs from the actual builder; never run package scripts. */
 import { closeSync, lstatSync, openSync, readFileSync, readdirSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
+import { createHash } from "node:crypto";
 
 const root = "/build";
 const maximum = 32 * 1024 * 1024;
+const catalogPath = "scripts/browser-source-recipes.json";
 const fixed = [
+  catalogPath,
+  "src/app.html",
   "package.json",
   "package-lock.json",
   "vite.config.ts",
@@ -32,6 +36,64 @@ function regular(name) {
 }
 const inventory = JSON.parse(regular("build/licenses/browser-module-inventory.json"));
 const selected = new Set(fixed);
+const recipes = JSON.parse(regular(catalogPath));
+check(recipes.schema_version === 1 && recipes.kind === "reviewed-browser-generator-associations");
+check(
+  [
+    "source_reproduction_verified",
+    "browser_module_closure_verified",
+    "distribution_authorized",
+  ].every((key) => recipes[key] === false),
+);
+check(
+  JSON.stringify(recipes.vite.commonjs_suffixes) ===
+    JSON.stringify(["?commonjs-exports", "?commonjs-module", "?commonjs-es-import"]),
+);
+check(
+  JSON.stringify(recipes.vite.helper_ids) ===
+    JSON.stringify(["commonjsHelpers.js", "vite/preload-helper.js"]),
+);
+const virtualCandidates = new Set();
+const identifier = (raw) => "virtual:" + createHash("sha256").update(raw).digest("hex");
+const physical = new Set(
+  [...inventory.modules, ...inventory.excluded_modules]
+    .map((row) => row.module_path)
+    .filter((name) => name !== null),
+);
+for (const name of physical) {
+  if (!name.startsWith("node_modules/")) continue;
+  safe(name);
+  for (const suffix of recipes.vite.commonjs_suffixes)
+    virtualCandidates.add(identifier("\0<root>/" + name + suffix));
+}
+for (const helper of recipes.vite.helper_ids) virtualCandidates.add(identifier("\0" + helper));
+const needed = new Set();
+for (const row of [...inventory.modules, ...inventory.excluded_modules]) {
+  if (row.kind === "virtual" && virtualCandidates.has(row.id)) needed.add("vite");
+  if (row.kind === "generated-application") {
+    const nodes = recipes.kit.generated_nodes;
+    check(nodes.prefix === ".svelte-kit/generated/client-optimized/nodes/");
+    const index = row.module_path.startsWith(nodes.prefix)
+      ? row.module_path.slice(nodes.prefix.length)
+      : "";
+    if (
+      Object.hasOwn(recipes.kit.generated, row.module_path) ||
+      (/^(0|[1-9][0-9]{0,4})\.js$/.test(index) && Number(index.slice(0, -3)) < 25000)
+    )
+      needed.add("kit");
+  }
+}
+for (const key of needed) {
+  const recipe = recipes[key];
+  const location = safe(recipe.lock_path);
+  check(location === "node_modules/" + recipe.name);
+  check(Array.isArray(recipe.members) && recipe.members.length > 0 && recipe.members.length <= 64);
+  for (const member of [...recipe.members, "package.json"]) {
+    safe(member);
+    check(!member.split("/").some((part) => part.startsWith(".")));
+    selected.add(location + "/" + member);
+  }
+}
 check(Array.isArray(inventory.modules) && Array.isArray(inventory.excluded_modules));
 check(inventory.modules.length + inventory.excluded_modules.length <= 25000);
 for (const row of [...inventory.modules, ...inventory.excluded_modules]) {
@@ -76,6 +138,26 @@ function walk(name) {
   }
 }
 walk("build");
+const chunks = new Set(
+  inventory.outputs.filter((row) => row.type === "chunk").map((row) => row.file),
+);
+for (const path of [...selected]) {
+  if (!path.startsWith("build/") || !path.endsWith(".js")) continue;
+  const name = path.slice(6);
+  const knownCopy = ["appearance.js", "language.js"].includes(name);
+  if (chunks.has(name) && !knownCopy) continue;
+  const original = "static/" + safe(name);
+  let exists = false;
+  try {
+    exists = lstatSync(root + "/" + original).isFile();
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (exists || knownCopy) {
+    regular(original);
+    selected.add(original);
+  }
+}
 const descriptor = openSync("/tmp/psst-browser-builder.tar", "wx", 0o600);
 let total = 0;
 try {

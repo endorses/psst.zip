@@ -6790,3 +6790,9 @@ Original license: licenses/jsqr-es6-1.4.0-1/LICENSE
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+
+=== Generated browser helpers from vite@6.4.3 ===
+Vite generates preload helper code and embeds @rollup/plugin-commonjs generation code. Its original npm LICENSE.md includes the Vite core MIT terms and the full grouped Rollup plugin MIT notice, alongside other bundled-dependency notices. The full original is retained conservatively; this association does not reproduce generated browser bytes or establish complete preferred source.
+Original grouped license: /licenses/vite-generated-browser-helpers-LICENSE.md
+The Vite package's complete notices are included above; the original bytes are served separately.

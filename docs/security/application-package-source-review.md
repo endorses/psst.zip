@@ -302,6 +302,46 @@ Git checkout, verify an OCI image, reproduce upstream packages or establish
 complete preferred-form source coverage. Git binding, source reproduction,
 complete closure and publication approval flags remain false.
 
+## Browser generator originals and associations
+
+The native retained-input profile now includes a committed recipe catalog, the
+original copied static scripts and application template, actual installed Vite
+and SvelteKit generator members, and their locked package manifests. The current
+23 virtual hashes identify only reviewed CommonJS wrapper/helper and Vite preload
+families. Safe hashes identify physical origins without publishing raw identifiers
+or environment values. Eleven generated Kit files have recorded generator and
+invocation associations; five are rendered and six excluded. Unknown origins
+remain explicit and no generated-byte reproduction or complete-source flag is set.
+
+Installed generator members and original helper license bytes matched the
+existing integrity-bound dependency archive in 1.5 seconds. The browser notice
+generator now retains and serves Vite's full original `LICENSE.md`, including the
+bundled Rollup plugin MIT terms, and validates the exact Vite lock, compiled
+generator and notice hashes. Source relationships alone do not satisfy the final
+corresponding-source or authorized distribution gates.
+
+Two additional full originals are pinned in the source catalog:
+
+| Original                                                                                           | Locked version | Commit                                     | Archive SHA256                                                     |      Bytes |
+| -------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------ | ------------------------------------------------------------------ | ---------: |
+| [Vite](https://github.com/vitejs/vite/tree/6c2c881f15495738ff03bc1d67cc052c07e0cac4)               | 6.4.3          | `6c2c881f15495738ff03bc1d67cc052c07e0cac4` | `b5d5e3a9c865752266bb84714ce0b08c9c010a8f3287dc9dc8db28bd861bc09c` | 11,346,610 |
+| [Rollup CommonJS](https://github.com/rollup/plugins/tree/8b5fb987f82644ed31660b44f5c4df1cb085bf32) | 28.0.3         | `8b5fb987f82644ed31660b44f5c4df1cb085bf32` | `dbd76e3255715afaa2ed11e001f5a4b400e6beb9d50b70e8c6dfc8ac19832093` |    633,189 |
+
+Official immutable archives contain 3,137 Vite members and 3,043 Rollup members.
+Vite's original `packages/vite` lock importer selects CommonJS
+`28.0.3(rollup@4.34.9)`. Its 1,337-byte original `HELPERS` template literal is
+byte-identical to the installed Vite generator's literal. Both full source trees
+and monorepo build locks are retained; complete compiled-output reproduction is
+unverified. Vite's safe internal test link is measured without following it.
+Ten Rollup `test/node_modules/current-package -> ../..` links deliberately point
+at their own package directory. Their exact catalog paths/targets are retained as
+inert metadata; they cannot supply inspected inputs and are never extracted or
+followed. Other recursive/chained/missing/out-of-root links remain rejected.
+
+The expanded offering still needs replay against its new committed source, then
+authentication and public delivery. Adding these originals does not approve
+preferred-source completeness or distribution.
+
 ## Remaining review
 
 - [x] Match all fourteen observed rendered-package manifests to locked retained

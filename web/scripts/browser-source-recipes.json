@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "kind": "reviewed-browser-generator-associations",
+  "vite": {
+    "lock_path": "node_modules/vite",
+    "name": "vite",
+    "version": "6.4.3",
+    "generator": "dist/node/chunks/dep-Dm0c1Wj2.js",
+    "members": ["dist/node/chunks/dep-Dm0c1Wj2.js", "LICENSE.md"],
+    "commonjs_suffixes": ["?commonjs-exports", "?commonjs-module", "?commonjs-es-import"],
+    "helper_ids": ["commonjsHelpers.js", "vite/preload-helper.js"]
+  },
+  "kit": {
+    "lock_path": "node_modules/@sveltejs/kit",
+    "name": "@sveltejs/kit",
+    "version": "2.70.3",
+    "members": [
+      "src/core/sync/write_client_manifest.js",
+      "src/core/sync/write_root.js",
+      "src/core/sync/write_server.js",
+      "src/core/sync/sync.js",
+      "src/core/sync/utils.js",
+      "src/core/sync/create_manifest_data/index.js",
+      "src/core/sync/create_manifest_data/sort.js",
+      "src/core/sync/create_manifest_data/conflict.js",
+      "src/exports/vite/index.js",
+      "src/exports/vite/static_analysis/index.js",
+      "src/core/config/index.js",
+      "src/core/config/options.js",
+      "src/core/config/default-error.html",
+      "src/utils/filesystem.js",
+      "src/utils/misc.js",
+      "src/utils/import.js"
+    ],
+    "generated": {
+      ".svelte-kit/generated/client-optimized/app.js": {
+        "generator": "src/core/sync/write_client_manifest.js",
+        "function": "write_client_manifest",
+        "invocation": "src/exports/vite/index.js: write_client_manifest(kit, manifest_data, client-optimized output, metadata.nodes)"
+      },
+      ".svelte-kit/generated/client-optimized/matchers.js": {
+        "generator": "src/core/sync/write_client_manifest.js",
+        "function": "write_client_manifest",
+        "invocation": "src/exports/vite/index.js: write_client_manifest(kit, manifest_data, client-optimized output, metadata.nodes)"
+      },
+      ".svelte-kit/generated/root.js": {
+        "generator": "src/core/sync/write_root.js",
+        "function": "write_root",
+        "invocation": "src/core/sync/sync.js: create(config) -> write_root(manifest_data, config, generated output)"
+      },
+      ".svelte-kit/generated/root.svelte": {
+        "generator": "src/core/sync/write_root.js",
+        "function": "write_root",
+        "invocation": "src/core/sync/sync.js: create(config) -> write_root(manifest_data, config, generated output)"
+      },
+      ".svelte-kit/generated/shared/error-template.js": {
+        "generator": "src/core/sync/write_server.js",
+        "function": "write_server",
+        "invocation": "src/core/sync/sync.js: create(config) -> write_server(config, generated output)"
+      }
+    },
+    "generated_nodes": {
+      "prefix": ".svelte-kit/generated/client-optimized/nodes/",
+      "generator": "src/core/sync/write_client_manifest.js",
+      "function": "write_client_manifest/generate_node",
+      "invocation": "src/exports/vite/index.js: write_client_manifest(kit, manifest_data, client-optimized output, metadata.nodes); indexed manifest_data.nodes.map -> generate_node(node)"
+    }
+  },
+  "source_reproduction_verified": false,
+  "browser_module_closure_verified": false,
+  "distribution_authorized": false
+}

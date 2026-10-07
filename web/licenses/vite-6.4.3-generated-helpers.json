@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "vite-generated-browser-helpers",
+  "relationship": "generated-from",
+  "parent": {
+    "path": "node_modules/vite",
+    "name": "vite",
+    "version": "6.4.3",
+    "integrity": "sha512-NTKlcQjlAK7MlQoyb6LgaqHc8sso/pVyUJYWMws3jg21uTJw/LddqIFPcPqP6PzpgbIcZyKI85sFE4HBrQDA8A=="
+  },
+  "generator": {
+    "file": "dist/node/chunks/dep-Dm0c1Wj2.js",
+    "sha256": "88f9adf5652dc907fa20c9bf936a91fbe1c1328ca3624c39c649692eccb301e6",
+    "size": 1504267
+  },
+  "notice": {
+    "installed_file": "LICENSE.md",
+    "original_file": "licenses/vite-6.4.3/LICENSE.md",
+    "public_file": "vite-generated-browser-helpers-LICENSE.md",
+    "sha256": "008938a3441801ca3960f8e3ccb4c0738e7996442a53063141d57d3769a7344d"
+  },
+  "helper_families": [
+    "vite-commonjs-exports",
+    "vite-commonjs-module",
+    "vite-commonjs-es-import",
+    "vite-commonjs-helper",
+    "vite-preload-helper"
+  ],
+  "attribution": "Vite generates preload helper code and embeds @rollup/plugin-commonjs generation code. Its original npm LICENSE.md includes the Vite core MIT terms and the full grouped Rollup plugin MIT notice, alongside other bundled-dependency notices. The full original is retained conservatively; this association does not reproduce generated browser bytes or establish complete preferred source.",
+  "source_reproduction_verified": false,
+  "browser_module_closure_verified": false,
+  "publication_authorized": false,
+  "distribution_authorized": false
+}

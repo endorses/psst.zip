@@ -22,17 +22,30 @@ function fixture() {
   const catalog = JSON.parse(
     readFileSync(path.join(web, "licenses/embedded-components.json"), "utf8"),
   );
+  const derived = JSON.parse(
+    readFileSync(path.join(web, "licenses/vite-6.4.3-generated-helpers.json"), "utf8"),
+  );
   const component = catalog.components[0];
   const parent = component.parent;
   const lock = {
     packages: {
       [parent.path]: { version: parent.version, integrity: parent.integrity, license: "MIT" },
+      [derived.parent.path]: {
+        version: derived.parent.version,
+        integrity: derived.parent.integrity,
+        license: "MIT",
+      },
     },
   };
   write("package-lock.json", lock);
   write("licenses/embedded-components.json", catalog);
   for (const file of [
     component.license_file,
+    "licenses/vite-6.4.3-generated-helpers.json",
+    derived.notice.original_file,
+    `${derived.parent.path}/package.json`,
+    `${derived.parent.path}/${derived.notice.installed_file}`,
+    `${derived.parent.path}/${derived.generator.file}`,
     ...[
       "package.json",
       "LICENSE",
@@ -47,6 +60,7 @@ function fixture() {
     write,
     catalog,
     component,
+    derived,
     lock,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
@@ -55,20 +69,37 @@ function fixture() {
 test("embedded decoder notice preserves original and normalized license hashes separately", () => {
   const f = fixture();
   try {
-    assert.deepEqual(generateNotices(f.root), { packages: 1, embedded_components: 1 });
+    assert.deepEqual(generateNotices(f.root), { packages: 2, embedded_components: 1 });
     assert.deepEqual(generateNotices(f.root, { check: true }), {
-      packages: 1,
+      packages: 2,
       embedded_components: 1,
     });
     const inventory = JSON.parse(
       readFileSync(path.join(f.root, "static/licenses/dependency-inventory.json"), "utf8"),
     );
-    assert.equal(inventory.packages.length, 1);
+    assert.equal(inventory.packages.length, 2);
     const embedded = inventory.embedded_components[0];
     assert.equal(embedded.name, "jsqr-es6");
     assert.equal(embedded.parent.name, "qr-scanner");
     assert.equal(embedded.source_reproduction_verified, false);
     assert.equal(embedded.publication_authorized, false);
+    const derived = inventory.derived_components[0];
+    assert.equal(derived.relationship, "generated-from");
+    assert.equal(derived.parent.name, "vite");
+    assert.equal(derived.source_reproduction_verified, false);
+    assert.equal(derived.browser_module_closure_verified, false);
+    assert.equal(derived.distribution_authorized, false);
+    const originalVite = readFileSync(path.join(f.root, f.derived.notice.original_file));
+    assert.deepEqual(
+      readFileSync(path.join(f.root, "static/licenses", f.derived.notice.public_file)),
+      originalVite,
+    );
+    assert.equal(derived.notices[0].upstream_sha256, hash(originalVite));
+    assert.equal(
+      derived.generator.sha256,
+      hash(readFileSync(path.join(f.root, f.derived.parent.path, f.derived.generator.file))),
+    );
+    assert.ok(originalVite.toString().includes("2019 RollupJS Plugin Contributors"));
     const original = readFileSync(path.join(f.root, f.component.license_file));
     assert.equal(
       hash(original),
@@ -96,7 +127,7 @@ test("embedded decoder notice preserves original and normalized license hashes s
   }
 });
 
-test("reviewed parent lock, installed version, compiled bytes and original license changes fail closed", () => {
+test("reviewed decoder and generated helper inputs reject substitutions before writing notices", () => {
   const mutations = [
     (f: ReturnType<typeof fixture>) => {
       f.lock.packages[f.component.parent.path].version = "1.4.3";
@@ -116,12 +147,29 @@ test("reviewed parent lock, installed version, compiled bytes and original licen
       f.write(f.component.license_file, "replaced original license"),
     (f: ReturnType<typeof fixture>) =>
       f.write(`${f.component.parent.path}/README.md`, "changed attribution"),
+    (f: ReturnType<typeof fixture>) => {
+      f.lock.packages[f.derived.parent.path].version = "6.4.4";
+      f.write("package-lock.json", f.lock);
+      f.write(`${f.derived.parent.path}/package.json`, { name: "vite", version: "6.4.4" });
+    },
+    (f: ReturnType<typeof fixture>) => {
+      f.lock.packages[f.derived.parent.path].integrity =
+        "sha512-" + Buffer.alloc(64, 3).toString("base64");
+      f.write("package-lock.json", f.lock);
+    },
+    (f: ReturnType<typeof fixture>) =>
+      f.write(`${f.derived.parent.path}/${f.derived.generator.file}`, "changed generator"),
+    (f: ReturnType<typeof fixture>) =>
+      f.write(f.derived.notice.original_file, "changed original bundled notice"),
   ];
   for (const mutate of mutations) {
     const f = fixture();
     try {
       mutate(f);
-      assert.throws(() => generateNotices(f.root), /Embedded component|Installed version/);
+      assert.throws(
+        () => generateNotices(f.root),
+        /Embedded component|Installed version|Vite generated helpers/,
+      );
       assert.throws(
         () => readFileSync(path.join(f.root, "static/licenses/dependency-inventory.json")),
         /ENOENT/,

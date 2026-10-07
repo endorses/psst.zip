@@ -158,7 +158,9 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
             "packages",
             "inspect_paths",
         }
-        optional = {"relationship"} if "relationship" in record else set()
+        optional = {
+            name for name in ("relationship", "source_fixture_links") if name in record
+        }
         fields(
             record,
             required | optional,
@@ -215,6 +217,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         )
         for name in inspected:
             safe_path(name)
+        fixture_links(record)
         records.append(record)
         if "relationship" in record:
             relationship = fields(
@@ -387,6 +390,25 @@ def tar_members(raw: bytes, *, upstream: bool) -> list[tuple[tarfile.TarInfo, by
     return entries
 
 
+def fixture_links(record: dict) -> dict[str, str]:
+    """Review only package-self test links as inert, pinned archive metadata."""
+    links = record.get("source_fixture_links", {})
+    require(
+        isinstance(links, dict) and len(links) <= 64, "Invalid source fixture links"
+    )
+    for path, target in links.items():
+        safe_path(path)
+        require(
+            isinstance(path, str)
+            and re.fullmatch(
+                r"packages/[A-Za-z0-9_.-]+/test/node_modules/current-package", path
+            )
+            and target == "../..",
+            "Only exact reviewed package-self test links may be retained",
+        )
+    return links
+
+
 def inspect(raw: bytes, record: dict) -> dict:
     require(
         len(raw) == record["archive"]["size"]
@@ -395,6 +417,7 @@ def inspect(raw: bytes, record: dict) -> dict:
     )
     prefix = record["repository"].split("/")[1] + "-" + record["commit"]
     inventory, observed, found = [], {}, set()
+    reviewed_links, retained_links = fixture_links(record), set()
     entries = tar_members(raw, upstream=True)
     members = {
         safe_path(member.name, directory=member.isdir()): member
@@ -421,14 +444,27 @@ def inspect(raw: bytes, record: dict) -> dict:
         link = {}
         if member.issym():
             target = source_link_target(name, member.linkname, prefix)
+            package_self = relative in reviewed_links
+            if package_self:
+                require(
+                    member.linkname == reviewed_links[relative]
+                    and target == prefix + "/" + relative.split("/test/")[0]
+                    and target in members
+                    and members[target].isdir(),
+                    "Reviewed package-self test link differs from original source",
+                )
+                retained_links.add(relative)
             require(
-                target in members
+                package_self
+                or target in members
                 and (members[target].isfile() or members[target].isdir())
                 and not name.startswith(target + "/")
                 and target != name,
                 "Upstream symbolic link target is missing, linked or recursive",
             )
             link = {"link_target": member.linkname, "resolved_target": target}
+            if package_self:
+                link["source_fixture_metadata_only"] = True
         inventory.append(
             {
                 "path": name,
@@ -455,6 +491,9 @@ def inspect(raw: bytes, record: dict) -> dict:
     require(
         found == set(record["inspect_paths"]),
         "Pinned upstream inspected inputs are missing",
+    )
+    require(
+        retained_links == set(reviewed_links), "Reviewed source fixture link is missing"
     )
     return {
         "schema_version": 1,
