@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import copy
 from dataclasses import replace
+import gzip
+import io
 import json
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import generate_release_gate_reports as producer
+import generate_corresponding_source_review as corresponding
 import generate_distribution_review as distribution
 import github_release_transport as transport
 import publish_container_release as publication
@@ -504,6 +507,75 @@ class GateReports(unittest.TestCase):
         source.write_bytes(b"changed sources")
         with self.assertRaisesRegex(InvalidRelease, "differs"):
             producer.source_asset_measurements(self.binding, {source.name: source})
+
+    def test_application_source_replay_binds_git_commit_and_retained_archive(self):
+        fixture = self.fixture.fixture
+        name = f"psst.zip-source-{self.binding.version}.tar.gz"
+        source = self.root / name
+        tar = fixture.git(
+            "archive",
+            "--format=tar",
+            f"--prefix=psst.zip-{self.binding.version}/",
+            self.binding.commit,
+        )
+        buffer = io.BytesIO()
+        timestamp = int(fixture.git("show", "-s", "--format=%ct", self.binding.commit))
+        with gzip.GzipFile(
+            fileobj=buffer, mode="wb", filename="", mtime=timestamp
+        ) as stream:
+            stream.write(tar)
+        raw = buffer.getvalue()
+        source.write_bytes(raw)
+        subjects = {
+            **dict(self.binding.subjects),
+            "source:" + name: "file:" + name + "@" + publication.sha256(raw),
+        }
+        binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
+        # Working files and untracked secrets cannot influence the selected tree.
+        (fixture.root / "LICENSE").write_bytes(b"uncommitted replacement")
+        (fixture.root / "operator-secret.env").write_bytes(b"untracked operator data")
+        result = corresponding.verify_application_source_archive(
+            binding, root=fixture.root, source=source
+        )
+        self.assertEqual(result["git_archive_sha256"], publication.sha256(tar))
+        self.assertTrue(result["source_commit_archive_verified"])
+        self.assertFalse(result["corresponding_source_completeness_verified"])
+        self.assertFalse(result["publication_authorized"])
+        self.assertNotIn("passed", result)
+        self.assertNotIn("gate", result)
+        source.write_bytes(raw + b"substitution")
+        with self.assertRaisesRegex(InvalidRelease, "publication binding"):
+            corresponding.verify_application_source_archive(
+                binding, root=fixture.root, source=source
+            )
+        # Updating only the caller's digest does not legitimize another archive.
+        changed = replace(
+            binding,
+            subjects=tuple(
+                sorted(
+                    {
+                        **subjects,
+                        "source:"
+                        + name: "file:"
+                        + name
+                        + "@"
+                        + publication.sha256(source.read_bytes()),
+                    }.items()
+                )
+            ),
+        )
+        with self.assertRaisesRegex(InvalidRelease, "selected committed Git"):
+            corresponding.verify_application_source_archive(
+                changed, root=fixture.root, source=source
+            )
+        source.write_bytes(raw)
+        fixture.git("add", "LICENSE")
+        fixture.git("commit", "-qm", "Another source tree")
+        other_commit = fixture.git("rev-parse", "HEAD").decode().strip()
+        with self.assertRaisesRegex(InvalidRelease, "selected committed Git"):
+            corresponding.verify_application_source_archive(
+                replace(binding, commit=other_commit), root=fixture.root, source=source
+            )
 
     def distribution_fixture(self):
         fixture = self.fixture.fixture

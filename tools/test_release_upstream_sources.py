@@ -144,12 +144,154 @@ class UpstreamInputs(unittest.TestCase):
     def test_real_catalog_and_lock_satisfy_collection_policy_without_downloads(self):
         # The synthetic archives exercise the parser; also validate the inputs
         # shipped by this project so a catalog typo cannot block a real release.
-        for name in (upstream.CATALOG, upstream.LOCK):
+        for name in (upstream.CATALOG, upstream.LOCK, *upstream.GO_LOCKS):
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             (self.root / name).write_bytes((upstream.ROOT / name).read_bytes())
         self.commit()
         upstream.policy(
             self.root, upstream.context("endorses/psst.zip", "v1.2.3", self.revision)
         )
+
+    def test_backend_originals_retain_exact_locks_and_refuse_replaced_or_wrong_versions(
+        self,
+    ):
+        catalog = self.catalog()
+        for identifier, repository, module, version, commit in (
+            (
+                "sqlite-source",
+                "sqlite/sqlite",
+                "modernc.org/sqlite",
+                "v1.37.0",
+                "b" * 40,
+            ),
+            ("musl-source", "musl-libc/musl", "modernc.org/libc", "v1.65.0", "c" * 40),
+        ):
+            prefix = repository.split("/")[1] + "-" + commit
+            raw = upstream.tar_gzip(
+                {
+                    prefix + "/VERSION": b"original version\n",
+                    prefix + "/Makefile": b"# retained recipe; never executed\n",
+                }
+            )
+            record = {
+                "id": identifier,
+                "repository": repository,
+                "commit": commit,
+                "go_modules": {module: version},
+                "inspect_paths": ["VERSION", "Makefile"],
+                "archive": {
+                    "file": prefix + ".tar.gz",
+                    "sha256": upstream.sha256(raw),
+                    "size": len(raw),
+                },
+            }
+            if identifier == "musl-source":
+                record["source_host"] = "musl"
+            catalog["upstreams"].append(record)
+            self.fetch_map[upstream.url(record)] = raw
+        module = self.root / upstream.GO_LOCKS[0]
+        module.parent.mkdir()
+        original_mod = b"module example.invalid/app\n\ngo 1.23.0\n\nrequire (\n modernc.org/sqlite v1.37.0\n modernc.org/libc v1.65.0 // indirect\n)\n"
+        module.write_bytes(original_mod)
+        sums = self.root / upstream.GO_LOCKS[1]
+        sums.write_bytes(b"original committed sums\n")
+        self.catalog_commit(catalog)
+        first = self.collect()
+        self.assertEqual(self.verify()["asset"], first["asset"])
+        self.assertEqual(
+            first["backend_lock_sha256"],
+            {
+                name: upstream.sha256((self.root / name).read_bytes())
+                for name in upstream.GO_LOCKS
+            },
+        )
+        with tarfile.open(self.output / first["asset"]["name"], "r:gz") as archive:
+            for name in upstream.GO_LOCKS:
+                self.assertEqual(
+                    archive.extractfile("inputs/" + name).read(),
+                    (self.root / name).read_bytes(),
+                )
+        module.write_bytes(b"uncommitted changes must not alter the selected locks\n")
+        self.assertEqual(self.verify()["asset"], first["asset"])
+        for changed in (
+            original_mod.replace(b"v1.37.0", b"v1.36.0"),
+            original_mod + b"replace modernc.org/sqlite => ../local\n",
+            original_mod
+            + b"replace (\n modernc.org/libc v1.65.0 => example.invalid/libc v1.65.0\n)\n",
+            original_mod
+            + b"replace\tmodernc.org/sqlite\t=>\tmodernc.org/sqlite v1.37.0\n",
+        ):
+            module.write_bytes(changed)
+            self.commit()
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                InvalidRelease, "unreplaced backend lock"
+            ):
+                upstream.policy(
+                    self.root,
+                    upstream.context("endorses/psst.zip", "v1.2.3", self.revision),
+                )
+        module.write_bytes(original_mod)
+        for changes in (
+            {"packages": {"fixture-package": "1.0.0"}},
+            {"go_modules": {"other.invalid/module": "v1.0.0"}},
+        ):
+            invalid = copy.deepcopy(catalog)
+            invalid["upstreams"][1].update(changes)
+            self.catalog_commit(invalid)
+            with self.subTest(changes=changes), self.assertRaises(InvalidRelease):
+                upstream.policy(
+                    self.root,
+                    upstream.context("endorses/psst.zip", "v1.2.3", self.revision),
+                )
+
+    def test_canonical_musl_fetch_routes_only_exact_full_commit_https(self):
+        record = {
+            "repository": "musl-libc/musl",
+            "commit": "a" * 40,
+            "source_host": "musl",
+        }
+        source_url = upstream.url(record)
+        self.assertEqual(
+            source_url,
+            "https://git.musl-libc.org/cgit/musl/snapshot/musl-" + "a" * 40 + ".tar.gz",
+        )
+        response = unittest.mock.Mock()
+        response.status = 200
+        response.getheader.return_value = "8"
+        response.read1.side_effect = [b"original", b""]
+        connection = unittest.mock.Mock()
+        connection.getresponse.return_value = response
+        with patch.object(
+            upstream.http.client, "HTTPSConnection", return_value=connection
+        ) as client:
+            self.assertEqual(upstream.official_fetch(source_url), b"original")
+        client.assert_called_once_with("git.musl-libc.org", timeout=30)
+        self.assertEqual(
+            connection.request.call_args.args[:2],
+            ("GET", "/cgit/musl/snapshot/musl-" + "a" * 40 + ".tar.gz"),
+        )
+        self.assertNotIn("Authorization", str(connection.request.call_args))
+        connection.close.assert_called_once()
+        response.status = 302
+        with patch.object(
+            upstream.http.client, "HTTPSConnection", return_value=connection
+        ), self.assertRaisesRegex(InvalidRelease, "redirects are refused"):
+            upstream.official_fetch(source_url)
+        for candidate in (
+            source_url.replace("https:", "http:"),
+            source_url + "?token=private",
+            source_url.replace("musl-" + "a" * 40, "musl-main"),
+            source_url.replace("git.musl-libc.org", "git.musl-libc.org.evil.invalid"),
+        ):
+            with self.subTest(candidate=candidate), self.assertRaises(InvalidRelease):
+                upstream.official_fetch(candidate)
+        for changes in (
+            {"repository": "AssemblyScript/musl"},
+            {"source_host": "arbitrary"},
+            {"commit": "main"},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(InvalidRelease):
+                upstream.url({**record, **changes})
 
     def test_collect_replays_original_inputs_deterministically_without_approval(self):
         first = self.collect()

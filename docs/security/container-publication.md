@@ -163,6 +163,33 @@ unverified and creates no `corresponding-source` success gate. Hash equality and
 source-pack preparation flags cannot establish complete corresponding sources or
 replace the independent distribution review.
 
+`tools/generate_corresponding_source_review.py` now independently replays the
+application archive against the selected Git commit and the release packaging
+recipe. It verifies the publication-bound digest and canonical archived paths,
+modes and contents without using working-tree edits or extracting files. This
+produces an application-source fact, not a passed corresponding-source gate.
+
+The committed upstream catalog also retains two original backend source trees
+omitted from the Go module ZIPs: SQLite C 3.49.1 for `modernc.org/sqlite v1.37.0`
+and musl for `modernc.org/libc v1.65.0`. SQLite's official mirror commit
+`3cd92ce875fd4e5601e535c35fef33494a6684e3` contains `manifest.uuid`
+`873d4e274b4988d260ba8354a9718324a1c26187a4ab4c1cc0227c03d0f10e70`,
+matching the generated Go source identity. Musl is retained from its canonical
+commit `7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0`, as named by the libc
+generator. Both complete archives, build files and original notices are kept
+unchanged. SQLite endorses its [official Git mirror](https://www2.sqlite.org/download.html);
+musl's [canonical commit page](https://git.musl-libc.org/cgit/musl/commit/?id=7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0)
+links the exact snapshot.
+
+Go associations require exact committed `backend/go.mod` versions, forbid
+associated module replacements, and retain both backend lock files and hashes.
+Musl acquisition accepts only its fixed canonical HTTPS snapshot route; existing
+GitHub inputs retain their full-commit codeload routes. Redirects, alternate hosts,
+changed source bytes, missing inspected inputs and substituted locks fail. This
+retention closes the identified missing-original inputs; exact generated-source
+relationships, remaining generator inputs and full completeness still require
+verification before publication. Collection and replay do not grant approval.
+
 ### Native image scanner measurements
 
 `tools/measure_release_image_scans.py` validates the actual OCI archive graph,

@@ -4,6 +4,54 @@
   "upstreams": [
     {
       "archive": {
+        "file": "sqlite-3cd92ce875fd4e5601e535c35fef33494a6684e3.tar.gz",
+        "sha256": "sha256:bd93114084a6c02b6d7abd56e5cd2c4c047e5238b0d0e26341340be5b78e10ac",
+        "size": 12985080
+      },
+      "commit": "3cd92ce875fd4e5601e535c35fef33494a6684e3",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "id": "backend-sqlite-c",
+      "inspect_paths": [
+        "LICENSE.md",
+        "Makefile.in",
+        "VERSION",
+        "manifest",
+        "manifest.uuid",
+        "main.mk",
+        "src/main.c",
+        "src/sqlite.h.in",
+        "tool/mksqlite3c.tcl"
+      ],
+      "repository": "sqlite/sqlite"
+    },
+    {
+      "archive": {
+        "file": "musl-7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0.tar.gz",
+        "sha256": "sha256:b65b3c7ca604a839ecb5abcdb7454e2e7d11db2b8e08df668c7fee45e8e50fbf",
+        "size": 1081419
+      },
+      "commit": "7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0",
+      "go_modules": {
+        "modernc.org/libc": "v1.65.0"
+      },
+      "id": "backend-libc-musl",
+      "inspect_paths": [
+        "COPYRIGHT",
+        "INSTALL",
+        "Makefile",
+        "VERSION",
+        "configure",
+        "src/locale/iconv.c",
+        "src/string/memcpy.c",
+        "src/stdio/printf.c"
+      ],
+      "repository": "musl-libc/musl",
+      "source_host": "musl"
+    },
+    {
+      "archive": {
         "file": "lucide-45b0e148db4ee4d748340d0f99982aa1c2159d52.tar.gz",
         "sha256": "sha256:8d74567fb686aef7d6a7d2e773fc8dec223b7719360d7043cbd84568eadad691",
         "size": 5540149

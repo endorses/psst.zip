@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Retain pinned upstream inputs without claiming npm-output correspondence.
+"""Retain pinned upstream inputs without claiming generated-output correspondence.
 
 Policy comes exclusively from the selected application's committed catalog and
-web lock. Archives are read in memory, never extracted or executed. The original
-codeload bytes remain untouched inside a deterministic source offering.
+dependency locks. Archives are read in memory, never extracted or executed. The
+original upstream bytes remain untouched inside a deterministic source offering.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from release_artifacts import (
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = "tools/upstream-application-sources.json"
 LOCK = "web/package-lock.json"
+GO_LOCKS = ("backend/go.mod", "backend/go.sum")
 RECORD = "upstream-source-collection.json"
 # The embedded jsQR source includes original test images (45,404,815 bytes).
 # Retain its complete original archive rather than dropping source-tree inputs.
@@ -116,7 +117,63 @@ def committed(root: Path, commit: str, name: str) -> bytes:
     return raw
 
 
-def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
+def go_requirements(raw: bytes) -> dict[str, str]:
+    """Read ordinary committed require/replace directives without executing Go.
+
+    Unsupported quoting, inline blocks and block comments fail closed rather
+    than allowing a replacement to hide from this small policy reader.
+    """
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError:
+        require(False, "Invalid committed backend module encoding")
+    require(
+        "/*" not in text and "*/" not in text, "Unsupported backend module comments"
+    )
+    requirements, replaced, block = {}, set(), None
+    for original in text.splitlines():
+        line = original.split("//", 1)[0].strip()
+        if not line:
+            continue
+        if line == ")":
+            require(block is not None, "Unexpected backend module block terminator")
+            block = None
+            continue
+        tokens = line.split()
+        directive = block or tokens.pop(0)
+        if directive not in {"require", "replace"}:
+            continue
+        if block is None and tokens == ["("]:
+            block = directive
+            continue
+        require(
+            tokens
+            and not any('"' in item or "(" in item or ")" in item for item in tokens),
+            "Unsupported backend module directive",
+        )
+        if directive == "require":
+            require(
+                len(tokens) == 2 and tokens[0] not in requirements,
+                "Invalid or duplicate backend module requirement",
+            )
+            requirements[tokens[0]] = tokens[1]
+        else:
+            require(
+                tokens.count("=>") == 1
+                and tokens.index("=>") in {1, 2}
+                and tokens.index("=>") < len(tokens) - 1,
+                "Invalid backend module replacement",
+            )
+            replaced.add(tokens[0])
+    require(block is None, "Unclosed backend module block")
+    for module in replaced:
+        requirements.pop(module, None)
+    return requirements
+
+
+def _policy_inputs(
+    root: Path, source: dict
+) -> tuple[bytes, bytes, list[dict], dict[str, bytes]]:
     require(
         git(root, "rev-parse", "--verify", source["commit"] + "^{commit}")
         .decode()
@@ -148,6 +205,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         "Invalid exact web dependency lock",
     )
     identifiers, associations, records = set(), {}, []
+    go_inputs, go_versions = {}, None
     for record in catalog["upstreams"]:
         require(isinstance(record, dict), "Invalid pinned upstream record")
         required = {
@@ -155,11 +213,18 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
             "repository",
             "commit",
             "archive",
-            "packages",
             "inspect_paths",
         }
+        require(
+            ("packages" in record) != ("go_modules" in record),
+            "Exactly one package or Go module association is required",
+        )
+        association_key = "packages" if "packages" in record else "go_modules"
+        required.add(association_key)
         optional = {
-            name for name in ("relationship", "source_fixture_links") if name in record
+            name
+            for name in ("relationship", "source_fixture_links", "source_host")
+            if name in record
         }
         fields(
             record,
@@ -173,6 +238,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
         identifiers.add(identifier)
         upstream_repository(record["repository"])
         matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
+        url(record)
         archive = fields(
             record["archive"], {"file", "sha256", "size"}, "pinned source archive"
         )
@@ -187,10 +253,27 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
             "Pinned upstream archive exceeds bounds",
         )
         require(
-            isinstance(record["packages"], dict) and record["packages"],
+            isinstance(record[association_key], dict) and record[association_key],
             "Missing locked package associations",
         )
-        for package, version in record["packages"].items():
+        if association_key == "go_modules" and go_versions is None:
+            go_inputs = {
+                name: committed(root, source["commit"], name) for name in GO_LOCKS
+            }
+            go_versions = go_requirements(go_inputs[GO_LOCKS[0]])
+        for package, version in record[association_key].items():
+            if association_key == "go_modules":
+                require(
+                    package in {"modernc.org/sqlite", "modernc.org/libc"}
+                    and isinstance(version, str)
+                    and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version),
+                    "Invalid locked Go module association",
+                )
+                require(
+                    go_versions.get(package) == version,
+                    "Pinned upstream Go module differs from exact unreplaced backend lock",
+                )
+                continue
             require(
                 isinstance(package, str)
                 and re.fullmatch(r"(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+", package)
@@ -237,6 +320,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
                     relationship["version"],
                 )
                 and isinstance(relationship["package"], str)
+                and association_key == "packages"
                 and set(record["packages"]) == {relationship["package"]}
                 and relationship["name"] != relationship["package"],
                 "Invalid embedded component association",
@@ -246,10 +330,32 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
             sum("relationship" not in record for record in related) == 1,
             "Each locked package requires exactly one primary upstream association",
         )
-    return catalog_raw, lock_raw, sorted(records, key=lambda item: item["id"])
+    return (
+        catalog_raw,
+        lock_raw,
+        sorted(records, key=lambda item: item["id"]),
+        go_inputs,
+    )
+
+
+def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
+    catalog, lock, records, _ = _policy_inputs(root, source)
+    return catalog, lock, records
 
 
 def url(record: dict) -> str:
+    if "source_host" in record:
+        require(
+            record["source_host"] == "musl"
+            and record["repository"] == "musl-libc/musl",
+            "Only the exact canonical musl source host is supported",
+        )
+        matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
+        return (
+            "https://git.musl-libc.org/cgit/musl/snapshot/musl-"
+            + record["commit"]
+            + ".tar.gz"
+        )
     return (
         "https://codeload.github.com/"
         + record["repository"]
@@ -260,19 +366,26 @@ def url(record: dict) -> str:
 
 def official_fetch(url: str) -> bytes:
     """Fixed-host HTTPS; no authentication, redirects, environment proxies or tags."""
-    require(
-        re.fullmatch(
-            r"https://codeload\.github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/tar\.gz/[0-9a-f]{40}",
-            url,
-        ),
-        "Only official full-commit upstream URLs are accepted",
-    )
-    connection = http.client.HTTPSConnection("codeload.github.com", timeout=30)
+    if re.fullmatch(
+        r"https://codeload\.github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/tar\.gz/[0-9a-f]{40}",
+        url,
+    ):
+        host = "codeload.github.com"
+    else:
+        require(
+            re.fullmatch(
+                r"https://git\.musl-libc\.org/cgit/musl/snapshot/musl-[0-9a-f]{40}\.tar\.gz",
+                url,
+            ),
+            "Only official full-commit upstream URLs are accepted",
+        )
+        host = "git.musl-libc.org"
+    connection = http.client.HTTPSConnection(host, timeout=30)
     started, raw = time.monotonic(), bytearray()
     try:
         connection.request(
             "GET",
-            url.removeprefix("https://codeload.github.com"),
+            url.removeprefix("https://" + host),
             headers={"User-Agent": "psst.zip-upstream-source-inputs"},
         )
         response = connection.getresponse()
@@ -547,9 +660,27 @@ def tar_gzip(files: dict[str, bytes]) -> bytes:
 
 
 def offering(
-    source: dict, catalog: bytes, lock: bytes, records: list[dict], fetch
+    source: dict,
+    catalog: bytes,
+    lock: bytes,
+    records: list[dict],
+    fetch,
+    *,
+    go_inputs: dict[str, bytes] | None = None,
 ) -> tuple[dict, bytes]:
+    go_inputs = go_inputs or {}
+    require(
+        set(go_inputs)
+        == (set(GO_LOCKS) if any("go_modules" in item for item in records) else set()),
+        "Backend locks are required exactly for Go-associated source inputs",
+    )
     files = {"inputs/" + CATALOG: catalog, "inputs/" + LOCK: lock}
+    files.update({"inputs/" + name: raw for name, raw in go_inputs.items()})
+    go_hashes = (
+        {"backend_lock_sha256": {name: sha256(raw) for name, raw in go_inputs.items()}}
+        if go_inputs
+        else {}
+    )
     proofs = []
     for record in records:
         raw = fetch(url(record))
@@ -565,7 +696,11 @@ def offering(
                 "repository": record["repository"],
                 "commit": record["commit"],
                 "url": url(record),
-                "packages": record["packages"],
+                **{
+                    key: record[key]
+                    for key in ("packages", "go_modules", "source_host")
+                    if key in record
+                },
                 **(
                     {"relationship": record["relationship"]}
                     if "relationship" in record
@@ -590,6 +725,7 @@ def offering(
         "source": source,
         "catalog_sha256": sha256(catalog),
         "web_lock_sha256": sha256(lock),
+        **go_hashes,
         "upstreams": proofs,
         **UNAPPROVED,
     }
@@ -614,7 +750,7 @@ def collect(
     fetch=official_fetch,
 ) -> dict:
     source = context(repository, version, commit)
-    catalog, lock, records = policy(root, source)
+    catalog, lock, records, go_inputs = _policy_inputs(root, source)
     require(
         not output.exists()
         and not output.is_symlink()
@@ -624,7 +760,9 @@ def collect(
         ),
         "Upstream collection output must be a new real directory",
     )
-    metadata, asset = offering(source, catalog, lock, records, fetch)
+    metadata, asset = offering(
+        source, catalog, lock, records, fetch, go_inputs=go_inputs
+    )
     name = "psst.zip-upstream-inputs-" + version + ".tar.gz"
     collection = {
         "schema_version": 1,
@@ -632,6 +770,11 @@ def collect(
         "source": source,
         "catalog_sha256": sha256(catalog),
         "web_lock_sha256": sha256(lock),
+        **(
+            {"backend_lock_sha256": metadata["backend_lock_sha256"]}
+            if go_inputs
+            else {}
+        ),
         "asset": {"name": name, "digest": sha256(asset), "size": len(asset)},
         "upstreams": metadata["upstreams"],
         **UNAPPROVED,
@@ -646,7 +789,7 @@ def verify(
     root: Path, repository: str, version: str, commit: str, collection: Path
 ) -> dict:
     source = context(repository, version, commit)
-    catalog, lock, records = policy(root, source)
+    catalog, lock, records, go_inputs = _policy_inputs(root, source)
     require(
         collection.is_dir()
         and not any(path.is_symlink() for path in (collection, *collection.parents)),
@@ -664,6 +807,7 @@ def verify(
         member.name: content for member, content in tar_members(asset, upstream=False)
     }
     expected_names = {"inputs/" + CATALOG, "inputs/" + LOCK, "upstream-inputs.json"}
+    expected_names.update("inputs/" + name for name in go_inputs)
     expected_names.update(
         "archives/" + item["id"] + "/" + item["archive"]["file"] for item in records
     )
@@ -676,17 +820,28 @@ def verify(
         outer["inputs/" + CATALOG] == catalog and outer["inputs/" + LOCK] == lock,
         "Offering policy differs from exact committed inputs",
     )
+    require(
+        all(outer["inputs/" + name] == raw for name, raw in go_inputs.items()),
+        "Offering backend locks differ from exact committed inputs",
+    )
     by_url = {
         url(item): outer["archives/" + item["id"] + "/" + item["archive"]["file"]]
         for item in records
     }
-    metadata, rebuilt = offering(source, catalog, lock, records, by_url.__getitem__)
+    metadata, rebuilt = offering(
+        source, catalog, lock, records, by_url.__getitem__, go_inputs=go_inputs
+    )
     expected = {
         "schema_version": 1,
         "kind": "upstream-application-source-collection",
         "source": source,
         "catalog_sha256": sha256(catalog),
         "web_lock_sha256": sha256(lock),
+        **(
+            {"backend_lock_sha256": metadata["backend_lock_sha256"]}
+            if go_inputs
+            else {}
+        ),
         "asset": {"name": name, "digest": sha256(rebuilt), "size": len(rebuilt)},
         "upstreams": metadata["upstreams"],
         **UNAPPROVED,
@@ -702,6 +857,11 @@ def verify(
         "asset": expected["asset"],
         "catalog_sha256": sha256(catalog),
         "web_lock_sha256": sha256(lock),
+        **(
+            {"backend_lock_sha256": metadata["backend_lock_sha256"]}
+            if go_inputs
+            else {}
+        ),
         "collection_sha256": sha256(record_raw),
         "package_inputs_replayed": True,
         **UNAPPROVED,

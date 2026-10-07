@@ -1429,6 +1429,31 @@ production state or permissions were changed. Baseline image/configuration
 checkpoint retention and operator-setting equivalence still require verification,
 so the complete migration inspection/adoption task remains pending.
 
+### Application archive replay and generated backend originals
+
+- [x] Independently replay the publication-bound application source archive from
+      the selected Git commit and release gzip recipe, ignoring working-tree
+      edits. Keep this partial fact separate from full corresponding-source
+      completeness and publication authorization. A focused real Git fixture
+      covers digest substitution, malformed retained bytes and another commit;
+      it passed in 0.115 seconds.
+- [x] Add exact official SQLite C and musl originals to the common upstream
+      offering for the locked `modernc.org/sqlite v1.37.0` and
+      `modernc.org/libc v1.65.0` modules. Verify actual archive roots, all inspected
+      build/source/notice paths and SQLite's generated-source Fossil identity.
+      Reuse the existing bounded archive parser; do not execute upstream builds.
+- [x] Bind backend associations to exact committed Go requirements and retain
+      `go.mod`/`go.sum` bytes and hashes. Refuse module replacements, missing or
+      substituted locks, alternate hosts and redirects. Two focused regression
+      methods extend the existing upstream suite; all 21 checks passed in
+      0.794 seconds with tiny local inputs and no network calls.
+- [ ] Collect and independently replay the expanded sixteen-original offering
+      from the committed source, reusing unchanged hash-bound originals.
+- [ ] Complete final-image compiler binding, all preferred source/generator
+      relationships and both native architecture reviews before producing the
+      passed corresponding-source gate. Original retention and application
+      archive replay alone do not establish those requirements.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
