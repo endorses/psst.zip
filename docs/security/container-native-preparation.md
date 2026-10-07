@@ -39,6 +39,39 @@ The records remain unsigned and do not authorize publication. Both architectures
 authenticated measurements, vulnerability gates, full corresponding-source and
 distribution review, and post-matrix release assembly are still required.
 
+## Application dependency inputs
+
+Retain the original package inputs selected by the committed application locks:
+
+```sh
+python3 tools/package_application_dependencies.py \
+  --root . --repository endorses/psst.zip --version v0.1.0 \
+  --commit "$SOURCE_COMMIT" --platform linux/amd64 \
+  --go-image "$RESOLVED_GO_INDEX" --output "$NEW_DEPENDENCY_DIRECTORY"
+```
+
+The collector reads the three committed lock files through Git, uses the official
+pinned Go builder with the public checksum database, and retains every selected
+Go module ZIP, module file and version record. Original sums remain unchanged;
+additional sums needed for the full graph are retained separately. It verifies
+the original ZIP/module H1 checksums independently. Every npm registry archive is
+checked against lock SHA512 integrity, including development and optional
+platform packages; no package scripts run.
+
+The archive also retains the original locks, expanded authenticated sums, raw Go
+download/module records, tool settings and a checksum inventory. Untracked files
+are excluded. Package distribution inputs can contain generated files, so this
+collector explicitly leaves preferred-form upstream source review and
+publication approval pending.
+
+A real collection from `2cc2f72` retained 35 Go modules and 173 npm packages in a
+249,889,564-byte archive, SHA256
+`c6856650ae00b50297971f53e46122867b4701107d8c95ca47b2742f0997d86e`.
+Nine focused tests passed, including changed/missing original sums, unsupported
+registry inputs, checksum/identity failures, unsafe archives and untracked-file
+exclusion. The temporary download/build cache was removed after collection;
+the private review archive remains retained.
+
 ## Validation checkpoint
 
 The real native adapter check built two disposable scratch images, saved them,

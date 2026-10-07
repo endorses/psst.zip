@@ -946,6 +946,20 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       authenticate the measurements, and complete publication gates. The scratch
       export check does not verify the complete application pipeline.
 
+### Application dependency input retention
+
+- [x] Retain every selected Go module ZIP/module/version input and all npm locked
+      archives, including development and optional platforms, without executing
+      package scripts. Independently verify H1/SHA512 integrity, preserve exact
+      committed locks, and distinguish additional authenticated graph sums.
+      A real collection from `2cc2f72` retained 35 Go modules and 173 npm packages;
+      nine focused boundary tests passed. Document the exact asset checksum in
+      the [native preparation guide](../security/container-native-preparation.md).
+- [ ] Review package inputs for complete preferred-form upstream source, include
+      all required sources in the final corresponding-source offering, bind the
+      archive to authenticated release inputs, and verify public delivery.
+      Retaining original package distributions alone does not complete this gate.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports
