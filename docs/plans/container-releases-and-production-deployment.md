@@ -906,6 +906,24 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       graphs and official advisory evidence. A completed scan remains unapproved
       until that release gate succeeds.
 
+### Native preparation orchestration
+
+- [x] Add an individual native preparation command consuming an authentic
+      candidate build record and its exact original Docker save. Retain source
+      collection, overlays, final native smoke, OCI exports and independent
+      runtime source replay in an unsigned, hash-bound artifact descriptor.
+      Write the completion descriptor only after every check passes.
+- [x] Preserve original Docker configuration and layer bytes during OCI export.
+      A real AMD64 scratch-image build/save/export check passed for both
+      components; twelve focused orchestration tests passed with explicitly
+      substituted collection/smoke fixtures. Add these tests and runtime source
+      replay tests to regular CI. See the
+      [native preparation guide](../security/container-native-preparation.md).
+- [ ] Run complete preparation from authentic application build records on
+      both native runners, wire retained outputs into post-matrix assembly,
+      authenticate the measurements, and complete publication gates. The scratch
+      export check does not verify the complete application pipeline.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports

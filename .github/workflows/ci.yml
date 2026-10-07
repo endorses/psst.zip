@@ -40,7 +40,10 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
 
       - name: Release artifact and Compose regression tests
-        run: python3 -m unittest discover -s tools -p 'test_release_*.py' -v
+        run: |
+          python3 -m unittest discover -s tools -p 'test_release_*.py' -v
+          python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
+          python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
 
       - name: Check distributed project licenses
         run: |
