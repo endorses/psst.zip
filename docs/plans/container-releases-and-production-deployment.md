@@ -643,7 +643,7 @@ image review remain separate pending checks.
 
 ### VPS update tooling requirements
 
-- [ ] Add an update command shared by manual SSH operation and Actions. Accept a
+- [x] Add an update command shared by manual SSH operation and Actions. Accept a
       validated release identifier from the configured trusted repository;
       constrain registry/image names and reject arbitrary shell arguments,
       filesystem paths, and unverified bundles.
@@ -687,6 +687,36 @@ image review remain separate pending checks.
       volumes. Account for lost post-checkpoint changes, potentially restored
       sessions/links and budgets before reopening traffic. Do not overwrite the
       only surviving copy of production data or run two writers on one store.
+
+The new disposable root/Docker integration gate exercises real protected paths,
+Compose, initialized accounts and sessions, TOTP login, encrypted TUS payloads,
+storage reconciliation, complete stopped checkpoints and new-volume restore.
+The normal candidate/restore gate passed in 52.6 seconds and the post-startup
+failure gate in 50.1 seconds. Local acquisition substitutes immutable fixture
+image IDs for public release verification; the application images use the same
+committed `c1c1ea9` source on both sides. This establishes actual Docker behavior
+and the mutation/failure boundary, not a historical schema migration or public
+provenance.
+
+These checks found and repaired legitimate Caddy directory permissions rejected
+by backup validation and uppercase timestamps invalid in Docker repository names.
+A further regression preserves already-declared protected operator binds in
+later managed updates. The complete release fixture suite now has 87 passing
+tests, including 33 updater tests. Actual public activation, complete browser
+flows, security reconciliation approval, independent off-host provider recovery
+and VPS adoption remain pending. The integration fixture correctly stops at
+pending local verification and does not manufacture an activation report.
+
+Publication preparation now has a separate core and sixteen boundary tests. It
+binds reviewed source, exact registry indexes/children and corresponding-source
+assets; requires all eight evidence gates; enumerates the updater's eight
+mandatory provenance subjects plus source assets; and defines exclusive draft
+reservation, complete readback readiness and manual partial-publication recovery.
+Its CLI explicitly reports `publication_authorized: false`. Trusted evidence
+verification, live GitHub/GHCR transport, durable mutation receipts, signatures
+and registry/package visibility integration still require implementation. The
+[publication guide](../security/container-publication.md) records the exact
+boundaries. Adding this core does not complete the publishing tasks above.
 
 ### GitHub production deployment
 

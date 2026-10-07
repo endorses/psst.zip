@@ -363,7 +363,7 @@ Run the fast disposable transaction/input suite from the repository:
 PYTHONPATH=tools python3 -m unittest tools.test_release_updater -v
 ```
 
-The 31 tests passed locally in 0.047 seconds. The suite covers authenticated
+The fast updater suite includes 33 disposable tests. The suite covers authenticated
 input rejection, actual mapping/port/account/config
 and capacity drift, stopped-backup corruption, root/path and restricted-SSH
 boundaries, lock contention, durable interruption, before/after-startup faults,
@@ -372,10 +372,53 @@ protected-hook activation, private authentication/reconciliation gates, isolated
 restore and required security reconciliation. SQLite tests use only their own
 disposable databases and verify read-only integrity checking.
 
-Full actual Docker upgrade/rollback flows, both architectures, matched encrypted
-payload fixtures, certificate-state persistence, published provenance verification,
-anonymous pulls, configured off-host encryption/restore, installed restricted SSH
-and the current VPS migration must still be exercised and recorded. Passing mocked
-fault tests does not close those gates. Use the existing disposable
-`tools/test_external_proxy.py` and `--certificate-state` exercise for gateway and
-stopped-copy controls, alongside the full deployment-plan acceptance checks.
+The disposable root/Docker integration gate uses a nested Docker daemon without
+a host Docker socket, host root bind, or outer published port. It builds committed
+application source and loads immutable local image IDs; only the remote release
+acquisition boundary is replaced. Production permission, adoption, ownership,
+Compose, TLS, stopped-backup, SQLite, candidate and isolated-restore checks remain
+active. The fixture uses an explicit private CA without altering global trust.
+
+```sh
+python3 tools/test_release_updater_integration.py --source c1c1ea9
+python3 tools/test_release_updater_integration.py --source c1c1ea9 --failure-after-start
+```
+
+The candidate/restore variant passed locally in 52.6 seconds and the post-startup
+fault variant in 50.1 seconds, including real authenticated storage/counter/orphan
+reconciliation probes. They
+exercise actual initialized admin/member accounts and
+sessions, TOTP enrollment and required-factor login, persisted file limits, a
+member-owned TUS encrypted transfer and manifest, independent AES-GCM client
+framing, complete stopped state/configuration/image archives, encrypted export
+and authenticated decrypt of a fixture checkpoint, corrupt-checkpoint refusal,
+private candidate startup, and restore onto new volumes. Restore preserves
+original data and checkpoint hashes, matching account sessions/factor/settings,
+ciphertext, incident pause, and Caddy's certificate authority. Fault injection
+occurs only after the real candidate startup checks pass and verifies that all
+services stop, the durable mutation marker remains, and the old binary is never
+automatically restarted on the original data.
+
+These live exercises found two defects that the earlier mocked adapter did not:
+Caddy's legitimate sticky state-directory modes were rejected, and UTC timestamp
+uppercase letters made retained-image repository names invalid. The updater now
+preserves sticky/setgid directory modes while rejecting privileged file/setuid
+bits; checkpoint image repository names are lowercase while transaction IDs stay
+unchanged. A focused archive regression covers the permission distinction. A further saved
+configuration regression ensures later updates continue to accept declared,
+protected installation Caddy overrides while rejecting undeclared binds.
+
+The fixture intentionally ends at `awaiting-verification` or
+`restored-awaiting-verification`. It supplies no invented flow report or activation
+approval. Its separate encrypted export directory simulates an off-host provider;
+it does not establish a real independent off-host recovery service. Public
+attestations/registry indexes, both architectures, anonymous pulls, public ACME,
+full authenticated upload/receive/expiry/budget/revocation/cleanup browser flows,
+security reconciliation approval and public activation, operator-configured
+external backup restore, installed restricted SSH, and the current VPS migration
+remain separate acceptance gates. Both sides use the same committed application
+source, so the fixture exercises the startup mutation boundary without proving a
+historical schema-changing migration. Passing the fixture does not close those
+gates. Use
+`tools/test_external_proxy.py --certificate-state` for additional gateway controls
+alongside the full deployment-plan acceptance checks.

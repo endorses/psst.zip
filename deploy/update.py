@@ -335,7 +335,13 @@ def verify_archive(path: Path, *, image: bool = False) -> None:
                 member.isdir() or member.isfile(),
                 "unsupported checkpoint entry; preserve it for operator review",
             )
-            require(not member.mode & 0o7000, "unsafe checkpoint entry permissions")
+            # Caddy state roots can be sticky; setgid directories preserve group
+            # inheritance. Neither grants execution privilege like setuid or a
+            # privileged file bit. Preserve these legitimate directory modes.
+            require(
+                not member.mode & (0o4000 if member.isdir() else 0o7000),
+                "unsafe checkpoint entry permissions",
+            )
             if member.isfile():
                 stream = archive.extractfile(member)
                 read = 0
@@ -435,17 +441,20 @@ class Host:
         if active.exists():
             protected(active)
             value = load_json(active)["compose"]
+            approved = set(self.protected_inputs())
             for service in value["services"].values():
                 for mount in service.get("volumes", []):
                     if mount["type"] == "bind":
                         path = Path(mount["source"])
                         require(
-                            path.is_relative_to(STATE_PATH / "transactions")
+                            path in approved
+                            or path.is_relative_to(STATE_PATH / "transactions")
                             or path.is_relative_to(BACKUP_PATH),
                             "managed configuration bind escaped protected state",
                         )
                         protected(path, private=False)
-                        self.bound_inputs.append(path)
+                        if path not in approved:
+                            self.bound_inputs.append(path)
             return value
         args = [
             "docker",
@@ -1303,7 +1312,7 @@ class Host:
                 "image",
                 "tag",
                 image,
-                "psst-checkpoint-" + transaction["id"] + f":{number}",
+                "psst-checkpoint-" + transaction["id"].lower() + f":{number}",
             )
         configs = checkpoint / "configuration"
         configs.mkdir(mode=0o700)

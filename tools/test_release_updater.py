@@ -640,6 +640,60 @@ class Boundaries(unittest.TestCase):
             with self.assertRaises((tarfile.ReadError, update.UpdateError)):
                 update.verify_archive(path)
 
+    def test_checkpoint_preserves_caddy_sticky_and_group_directories_but_rejects_privileged_files(
+        self,
+    ):
+        with tempfile.TemporaryDirectory(prefix="psst-update-unit-") as directory:
+            path = Path(directory) / "checkpoint.tar"
+            for kind, mode, allowed in (
+                (tarfile.DIRTYPE, 0o1777, True),
+                (tarfile.DIRTYPE, 0o2770, True),
+                (tarfile.DIRTYPE, 0o4770, False),
+                (tarfile.REGTYPE, 0o4600, False),
+                (tarfile.REGTYPE, 0o2600, False),
+                (tarfile.REGTYPE, 0o1600, False),
+            ):
+                with self.subTest(kind=kind, mode=oct(mode)):
+                    with tarfile.open(path, "w") as archive:
+                        member = tarfile.TarInfo("state")
+                        member.type, member.mode = kind, mode
+                        archive.addfile(member)
+                    if allowed:
+                        update.verify_archive(path)
+                    else:
+                        with self.assertRaises(update.UpdateError):
+                            update.verify_archive(path)
+
+    def test_active_installation_reuses_declared_protected_operator_bind_only(self):
+        with tempfile.TemporaryDirectory(prefix="psst-update-unit-") as directory:
+            root = Path(directory)
+            state = root / "state"
+            state.mkdir()
+            host = update.Host(config(root / "installation"))
+            approved = host.root / "Caddyfile"
+            saved = compose()
+            mount = {
+                "type": "bind",
+                "source": str(approved),
+                "target": "/etc/caddy/Caddyfile",
+                "read_only": True,
+            }
+            saved["services"]["caddy"]["volumes"].append(mount)
+            active = state / "active.json"
+            active.write_text(json.dumps({"compose": saved}))
+            with patch.object(update, "STATE_PATH", state), patch.object(
+                update, "protected"
+            ) as protect, patch.object(
+                host, "protected_inputs", return_value=[approved]
+            ):
+                self.assertEqual(host.current(), saved)
+                protect.assert_any_call(approved, private=False)
+                self.assertEqual(host.bound_inputs, [])
+                mount["source"] = str(host.root / "undeclared.caddy")
+                active.write_text(json.dumps({"compose": saved}))
+                with self.assertRaisesRegex(update.UpdateError, "escaped"):
+                    host.current()
+
     def test_attestation_policy_binds_repository_workflow_source_tag_and_runner(self):
         host = update.Host(config(Path("/opt/psst.zip")))
         calls = []
