@@ -1,0 +1,3 @@
+# Install root-owned mode 0440 at /etc/sudoers.d/psst-deploy after visudo validation.
+Defaults:psst-deploy env_keep += "SSH_ORIGINAL_COMMAND"
+psst-deploy ALL=(root) NOPASSWD: /usr/bin/python3 -I /usr/local/lib/psst.zip/deploy/update.py ssh

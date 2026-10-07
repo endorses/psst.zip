@@ -488,7 +488,7 @@ commit; the new CI steps are not claimed to have run on GitHub yet.
       Resolve immutable application and BuildKit bases once, verify both platform
       descriptors, and define native AMD64/ARM64 paired image builds and smoke
       checks. Upload metadata only while distribution gates remain unfinished.
-- [ ] Run the new reusable CI and complete candidate workflow on GitHub, including
+- [x] Run the new reusable CI and complete candidate workflow on GitHub, including
       the native ARM64 image pair. Local structural checks do not establish that
       this new workflow passed on hosted runners.
 - [ ] Add `.github/workflows/release.yml` for reviewed `vMAJOR.MINOR.PATCH` tags
@@ -580,8 +580,12 @@ candidate run
 [`37574199465`](https://github.com/endorses/psst.zip/actions/runs/37574199465)
 timed out during XCTest launch after the iOS job's 45-minute limit on its first
 attempt. GitHub's annotation confirms the limit; the same source commit's main
-CI passed. Attempt two retries the failed job and its dependent native image
-checks. Native image verification is not yet claimed.
+CI passed. Attempt two completed successfully, including iOS and both native
+AMD64/ARM64 image pair builds and disposable smoke verification.
+The first attempt's diagnostic session connected to testmanagerd and installed
+the app, then stalled at the debugger-assisted application launch before any
+XCTest output. This success verifies the exact `4210414` candidate; it does not
+verify subsequent local commits or establish publication readiness.
 
 Native notice snapshots cover 115 Android and 111 iOS artifact variants, with
 twenty pinned upstream notice files. Linux verification includes actual Android
@@ -676,7 +680,7 @@ image review remain separate pending checks.
 
 ### GitHub production deployment
 
-- [ ] Add `.github/workflows/deploy.yml` with `workflow_dispatch`, taking a
+- [x] Add `.github/workflows/deploy.yml` with `workflow_dispatch`, taking a
       published release version. Execute the trusted workflow from the protected
       branch and resolve the selected version to its verified manifest/digests;
       deploying arbitrary branch builds is outside this workflow.
@@ -699,6 +703,27 @@ image review remain separate pending checks.
 - [ ] Ensure fork/PR workflows cannot obtain environment secrets or invoke the
       deployment helper. Document key rotation/revocation and recovery access.
       Follow [GitHub's secure Actions guidance](https://docs.github.com/en/actions/reference/security/secure-use).
+
+The manual workflow and bounded SSH client are implemented, with fixed
+`psst-deploy` identity, exact host-key pinning, no forwarding/agent/user-config
+inheritance and private temporary credential files. Only a strict version is sent;
+the installed host helper authenticates the ready release. Success requires its
+response confirming that exact version active and completed. Pending local
+verification and connection loss do not produce a success result. Five focused
+boundary tests passed in 0.087 seconds, including real key parsing, credential
+file cleanup, output/timeout bounds and rejection of a mismatched active version.
+The workflow passes actionlint v1.7.12. SSH/sudo templates and setup/rotation
+instructions are in
+[the production Actions guide](../security/actions-production-deployment.md).
+Template syntax/effective configuration, host installation, production
+environment protections and the actual SSH/deployment flow remain pending.
+
+Source dependency review is recorded in
+[the dependency review](../security/container-dependency-review.md). Pinned
+govulncheck 1.8.0 using the actual release Go 1.26.8 found zero reachable symbols
+and zero imported-package findings. All 21 module-level advisories are documented
+with applicability to the actual command import graph. Final image and native
+reviews remain pending; this source result does not approve publication.
 
 ### Documentation and current VPS migration
 
