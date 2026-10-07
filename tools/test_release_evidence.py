@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -83,6 +85,7 @@ class EvidenceChecks(unittest.TestCase):
             ):
                 self.assertEqual(args[args.index(flag) + 1], value)
             self.assertIn("--deny-self-hosted-runners", args)
+            self.assertNotIn("--signer-workflow", args)
             self.assertEqual(environment["GH_TOKEN"], "test-token")
             self.assertEqual(
                 set(environment),
@@ -198,6 +201,35 @@ class EvidenceChecks(unittest.TestCase):
                 evidence.bounded_verify(
                     [sys.executable, "-c", "import time;time.sleep(10)"], environment
                 )
+
+    @unittest.skipUnless(
+        shutil.which("gh"), "Install GitHub CLI for argument compatibility"
+    )
+    def test_real_cli_accepts_identity_policy_before_local_trust_failure(self):
+        # Missing local trust material fails before network verification. Exercise
+        # the real parser; this test-only override never enters production policy.
+        args = evidence.verification_arguments(
+            Path(shutil.which("gh")), self.path, self.binding
+        )
+        args += ["--bundle", str(self.root / "missing-attestation.json")]
+        args += ["--custom-trusted-root", str(self.root / "missing-trusted-root.jsonl")]
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            timeout=5,
+            env={
+                "PATH": os.defpath,
+                "HOME": str(self.root),
+                "GH_CONFIG_DIR": str(self.root / "gh-config"),
+                "GH_PROMPT_DISABLED": "1",
+                "GH_TOKEN": "fixture-token",
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        diagnostic = result.stderr.decode()
+        self.assertIn("missing-trusted-root.jsonl", diagnostic)
+        self.assertNotIn("cannot be used together", diagnostic)
+        self.assertNotIn("mutually exclusive", diagnostic)
 
 
 if __name__ == "__main__":

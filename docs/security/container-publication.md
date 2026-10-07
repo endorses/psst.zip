@@ -1,10 +1,11 @@
-# Container publication preparation
+# Container publication preparation and transport
 
 `tools/publish_container_release.py` implements publication preparation and
-reservation/readiness boundaries. It has no GitHub/GHCR transport, credential
-handling, attestation signer or production deployment command. The existing
-release workflow still verifies candidates only. This preparation does not
-approve a release, make packages public or establish live publication success.
+reservation/readiness boundaries. `tools/github_release_transport.py` provides
+the GitHub/GHCR transport, and `tools/github_release_evidence.py` authenticates gate
+reports. The release workflow still verifies candidates only; these libraries
+have not published a release. They do not change package visibility, sign
+attestations or deploy production.
 
 ## Reviewed identity and exact artifacts
 
@@ -37,8 +38,15 @@ Every receipt binds the repository, version ref, source commit, release workflow
 and exact image/file subjects. Changing a source archive invalidates earlier
 receipts. The injected `EvidenceVerifier` must authenticate the report and its
 issuer or authorized reviewer before returning `VerifiedEvidence`; a caller's
-JSON `passed: true` is not an authentication method. No production verifier is
-implemented. The verifier used by fixture tests is deliberately a test adapter.
+JSON `passed: true` is not an authentication method. `GhEvidenceVerifier` checks
+private report snapshots with `gh attestation verify`, requiring the exact
+repository, workflow, signer/source commit, version ref, certificate identity,
+GitHub OIDC issuer, hosted runner and SLSA v1 predicate. It checks the verified
+subject against the snapshot checksum. Verification has a 55-second process-group
+deadline and 4 MiB combined output bound; credentials/configuration are explicit,
+and inherited authentication/trust configuration is excluded. Live signed reports
+and the authorized source/legal review policy remain unverified. Fixture tests
+use a separate test adapter.
 
 | Required gate        | Required evidence                                                   |
 | -------------------- | ------------------------------------------------------------------- |
@@ -67,7 +75,7 @@ the trusted verifier implementation.
 
 ## Reservation and publication order
 
-`reserve_draft` is a context manager around the future adapter's repository-wide
+`reserve_draft` is a context manager around the transport's repository-wide
 serialization lease. The lease remains held until the caller exits the context;
 every publishing mutation must occur inside it. The adapter must reject failed,
 unauthorized or incompletely paginated lookups rather than represent them as
@@ -90,19 +98,72 @@ verify both tags and remote source; publish the complete immutable draft with
 GitHub recommends attaching every asset to a draft before publishing an immutable
 release. [Immutable release preparation](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
 
-GHCR version tags are mutable registry references. The future publisher must
-enforce absence immediately before each write under the held lease and must never
-replace an existing version tag. This is a publishing policy, not a claim that
+GHCR version tags are mutable registry references. The transport enforces absence
+immediately before each write under the held lease and never replaces an existing
+version tag. This is a publishing policy, not a claim that
 GHCR prevents an administrator from retagging. Deployment always selects the
 authenticated image digests rather than trusting a convenience tag.
 
 `ready_release_request` requires the reserved draft ID, complete uploaded assets
 with exact checksums, the complete version tag pair and independently verified
 registry, anonymous-pull, asset-readback and provenance reports. Provenance must
-cover every updater and source subject. A future verifier must enforce repository,
+cover every updater and source subject. The evidence adapter enforces repository,
 signer workflow, exact source digest/ref, GitHub OIDC issuer and hosted-runner
 policy consistently with `deploy/update.py`.
 [GitHub CLI attestation verification](https://cli.github.com/manual/gh_attestation_verify).
+
+## Transport contract
+
+The caller prepares an authenticated `PublicationPlan` with `GhEvidenceVerifier`
+and creates `GitHubReleaseTransport` with explicit workflow/inspection credentials
+and `WorkflowContext.from_environment(plan)`. Publishing requires job `publish`
+in the selected active, hosted, version-tag push run of
+`.github/workflows/release.yml`. The transport reads that run and exact committed
+workflow source, requiring the literal workflow-level concurrency group
+`container-release-publication` and `cancel-in-progress: false`. Its local lock
+remains held throughout `reserve_draft`; a local lock alone cannot serialize
+other hosted runners or external writers.
+
+The inspection credential only reads immutable-release policy. That endpoint
+requires Administration read permission; unavailable/disabled policy fails
+closed. No permissions or repository settings are changed.
+[Immutable release policy API](https://docs.github.com/en/rest/repos/repos#check-if-immutable-releases-are-enabled-for-a-repository).
+
+Inside the reservation, `push_images(archives, indexes, tested_configs=...)`
+requires all four OCI exports and their exact native smoke-tested configuration
+digests. `assemble_release_oci.inspect_archive` validates every blob, descriptor,
+configuration, release/source label and decompressed layer identity before any
+registry write. The caller must take configuration digests from the authenticated
+native smoke evidence. Skopeo's raw manifest inspection must agree with both that
+graph and the prepared child digest. Fixed `skopeo copy --preserve-digests`
+commands push children by digest using a temporary private authentication file;
+the two deterministic index documents are uploaded unchanged. Returned bytes and
+registry digest headers must match. No image rebuild or Docker archive conversion
+occurs in the transport.
+[Skopeo copy contract](https://github.com/podman-container-tools/skopeo/blob/main/docs/skopeo-copy.1.md).
+
+`inspect_pair` records registry manifests; `anonymous_pull` additionally copies
+all four children to disposable OCI layouts with `--src-no-creds` and an empty
+auth file, checking preserved manifest digests. `upload_assets` requires the
+complete image pair and uploads corresponding sources first, bundle next and
+detached manifest last. It refuses any existing asset name. `inspect_assets`
+downloads all assets and checks bytes, sizes and checksums. Authentication is
+removed before following an allowlisted asset-storage redirect.
+
+`create_version_tags` requires both linked container packages to be public and
+the exact digest pair to be anonymously readable. `publish` calls
+`ready_release_request` itself with freshly inspected remote state and the
+authenticated registry, anonymous-pull, asset-readback and provenance reports;
+caller-supplied publication JSON cannot bypass those gates. `verify_public`
+checks the immutable public release, both version tags, downloaded assets and
+complete anonymous child pulls. Convenience-tag advancement is not implemented.
+
+HTTP requests use fixed HTTPS hosts, bounded JSON/assets and deadlines without
+ambient proxy configuration. GitHub lookups are completely paginated within a
+fixed bound. Registry absence is recognized only from a structured 404
+`MANIFEST_UNKNOWN`/`NAME_UNKNOWN`; authentication, throttling, server errors or
+incomplete lookups fail. Commands have bounded output/time and private process
+groups. Tokens are not placed in command arguments or durable receipts.
 
 ## Interrupted publication
 
@@ -111,7 +172,13 @@ Children/indexes or one version tag may exist after a failure, but the draft sta
 unpublished and convenience tags stay unchanged. A failed asset upload can leave
 a `starter` entry; readiness rejects it. [GitHub asset API](https://docs.github.com/en/rest/releases/assets).
 
-`recovery_report` records observed partial state and explicitly disallows automatic
+`GitHubReleaseTransport.reconcile` reads bounded, private, source-bound local
+receipts and reports unresolved mutation intents alongside authenticated remote
+release/assets, both index/child maps and version tags. A missing local journal is
+reported explicitly; a substituted or incomplete journal fails. Intent and
+completion/uncertainty records are flushed and fsynced before and after every
+mutation. An existing journal is never reopened for mutation. The core's
+`recovery_report` also records partial state; both paths disallow automatic
 resume, cleanup and ready advertisement. Preserve the draft, original run receipts,
 assets and registry digests. An operator must authenticate every existing artifact
 against its original binding before choosing recovery; a new reviewed version is
@@ -120,8 +187,9 @@ There is no unattended delete-and-reupload or overwrite path.
 
 ## Remaining integration
 
-- [ ] Implement and review the authenticated evidence verifier and source/legal review approval policy.
-- [ ] Implement bounded GitHub/GHCR transport, durable mutation receipts and interruption reconciliation.
+- [x] Implement bounded authenticated gate verification and test its exact identity/snapshot policies.
+- [x] Implement GitHub/GHCR transport, durable mutation receipts and read-only interruption reconciliation with fixtures.
+- [ ] Validate signed live workflow reports and authorized source/legal review approval policy.
 - [ ] Enforce one repository-wide publishing concurrency group across every writer; local locking does not serialize hosted runners.
 - [ ] Wire permissions and pinned attestation actions into the trusted release workflow after all distribution gates pass.
 - [ ] Verify immutable-release settings, branch/tag protection and supported registry behavior on disposable live publication.
@@ -134,12 +202,14 @@ or a recovery right from workflow ordering. [GitHub concurrency](https://docs.gi
 New container packages default to private; repository visibility alone does not
 establish anonymous availability. [GHCR access and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
-The preparation's fixture checks do not validate package visibility, registry
+The preparation and transport fixture checks do not validate live package visibility, registry
 writes, live attestations or an actual public release. No runtime/legal completion
 is claimed by adding this core.
 
-Validation: 16 publication fixture tests passed together with artifact/candidate
-regressions (42 tests, 5.42 seconds). Ruff checks and formatting passed for the
-two new Python files, and Prettier checks passed for this document. Fixtures cover
-the absent gates, altered source/artifacts, scanner errors, partial pushes/uploads,
-exclusive draft reservation and API failure/lease release paths.
+Validation: publication, transport, evidence and OCI fixture checks exercise
+absent gates, altered source/configuration/artifacts, scanner errors, partial
+pushes/uploads, exclusive draft reservation, authenticated API failures, anonymous
+pull/download boundaries and durable interruption receipts. The transport's
+17 tests passed locally. The combined `test_release_*.py` suite passed 119 checks
+in 6.80 seconds; Ruff and Prettier checks passed. Live publication and recovery
+remain pending.

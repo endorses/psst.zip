@@ -10,7 +10,7 @@ import io
 import ipaddress
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import secrets
 import subprocess
@@ -53,6 +53,51 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def check_runtime_offer(get, pack):
+    """Check anonymous served bytes against the actual reviewed overlay pack."""
+    overlays = pack.get("overlays", {}).get("web")
+    require(
+        isinstance(overlays, dict) and overlays, "Runtime overlay inventory missing"
+    )
+    required = {"THIRD_PARTY_NOTICES.txt", "runtime-inventory.json", "SOURCE.txt"}
+    require(required <= set(overlays), "Runtime notice/source files missing")
+    offered = {}
+    for relative, checksum in overlays.items():
+        path = PurePosixPath(relative)
+        require(
+            isinstance(relative, str)
+            and str(path) == relative
+            and not path.is_absolute()
+            and ".." not in path.parts
+            and "\\" not in relative
+            and relative
+            and isinstance(checksum, str)
+            and re.fullmatch(r"[0-9a-f]{64}", checksum),
+            "Unsafe runtime overlay path or checksum",
+        )
+        body = get("/licenses/runtime/" + relative)
+        require(
+            hashlib.sha256(body).hexdigest() == checksum,
+            "Served runtime license bytes differ",
+        )
+        offered[relative] = body
+    asset = pack.get("source_asset")
+    require(
+        isinstance(asset, dict)
+        and isinstance(asset.get("url"), str)
+        and asset["url"].startswith("https://")
+        and isinstance(asset.get("sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", asset["sha256"]),
+        "Runtime source asset identity missing",
+    )
+    for value in (asset["url"], asset["sha256"]):
+        require(
+            value.encode() in offered["SOURCE.txt"],
+            "Runtime source offer omits exact archive identity",
+        )
+    require(offered["THIRD_PARTY_NOTICES.txt"].strip(), "Runtime notices are empty")
+
+
 def subnet():
     networks = run("docker", "network", "ls", "-q").decode().split()
     occupied = []
@@ -82,6 +127,11 @@ def main():
         "--platform", choices=("linux/amd64", "linux/arm64"), required=True
     )
     parser.add_argument("--source-url", default="https://github.com/endorses/psst.zip")
+    parser.add_argument(
+        "--runtime-pack",
+        type=Path,
+        help="Require exact runtime overlay/source bytes and discoverable metadata",
+    )
     args = parser.parse_args()
     architecture = args.platform.split("/")[1]
     source_archive = f"{args.source_url}/archive/{args.revision}.tar.gz"
@@ -90,6 +140,22 @@ def main():
     owned = False
     compose = []
     try:
+        runtime_pack = None
+        if args.runtime_pack:
+            from package_runtime_sources import verify_overlays
+            from release_artifacts import read_bounded_file, read_json
+
+            runtime_pack = read_json(
+                read_bounded_file(args.runtime_pack / "runtime-pack.json")
+            )
+            require(
+                isinstance(runtime_pack, dict)
+                and runtime_pack.get("version") == args.version
+                and runtime_pack.get("revision") == args.revision
+                and runtime_pack.get("architecture") == architecture,
+                "Runtime pack belongs to another tested release/platform",
+            )
+            verify_overlays(args.runtime_pack, args.backend_image, args.web_image)
         for image, title in ((args.backend_image, "backend"), (args.web_image, "web")):
             # Load/pull the selected platform beforehand. Plain inspect supports
             # Docker 27; the newer --platform inspection flag is not required.
@@ -231,7 +297,12 @@ def main():
                                 response.headers.get_content_type() in content_types,
                                 "Compiled asset content type differs",
                             )
-                        return response.read()
+                        body = response.read(16 * 1024 * 1024 + 1)
+                        require(
+                            len(body) <= 16 * 1024 * 1024,
+                            "Smoke HTTP response exceeds size bound",
+                        )
+                        return body
 
                 def ready():
                     for _ in range(60):
@@ -342,10 +413,17 @@ def main():
                         "license": "AGPL-3.0-only",
                         "source": args.source_url,
                         "source_archive": source_archive,
-                        "notice_files": ["/licenses/backend/THIRD_PARTY_NOTICES.txt"],
+                        "notice_files": ["/licenses/backend/THIRD_PARTY_NOTICES.txt"]
+                        + (
+                            ["/licenses/runtime/THIRD_PARTY_NOTICES.txt"]
+                            if runtime_pack
+                            else []
+                        ),
                     },
                     "Served source metadata differs",
                 )
+                if runtime_pack:
+                    check_runtime_offer(get, runtime_pack)
                 stage = "initial administrator authentication"
                 credentials = {
                     "username": username,

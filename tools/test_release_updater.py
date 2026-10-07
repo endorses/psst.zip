@@ -252,6 +252,9 @@ class FakeHost:
             raise update.UpdateError("corrupt checkpoint")
         return {}
 
+    def https(self, compose, path, **kwargs):
+        return {"max_file_size": 100, "public_transfers_paused": self.pause}
+
     def restore(self, checkpoint, target, transaction):
         self.verify_backup(checkpoint)
         self.step("restore")
@@ -693,6 +696,67 @@ class Boundaries(unittest.TestCase):
                 active.write_text(json.dumps({"compose": saved}))
                 with self.assertRaisesRegex(update.UpdateError, "escaped"):
                     host.current()
+
+    def test_protocol_capability_is_not_operator_policy_and_cannot_hide_policy_drift(
+        self,
+    ):
+        original = {"max_file_size": 100}
+        announced = original | {"history_sync_version": 1}
+        self.assertEqual(
+            update.persisted_public_settings(original),
+            update.persisted_public_settings(announced),
+        )
+        self.assertNotEqual(
+            update.persisted_public_settings(original),
+            update.persisted_public_settings(announced | {"max_file_size": 101}),
+        )
+        for invalid in (True, None, "1", -1):
+            with self.subTest(invalid=invalid), self.assertRaises(update.UpdateError):
+                update.persisted_public_settings(
+                    original | {"history_sync_version": invalid}
+                )
+
+    def test_restore_gate_allows_only_positive_budget_reductions_and_no_unrelated_changes(
+        self,
+    ):
+        baseline = {
+            "max_file_size": 100,
+            "traffic_policy": {
+                "server_budget_bytes": 1000,
+                "default_account_budget_bytes": 500,
+                "enforcement_enabled": True,
+            },
+        }
+        observed = copy.deepcopy(baseline) | {"public_transfers_paused": True}
+        observed["traffic_policy"]["server_budget_bytes"] = 900
+        observed["traffic_policy"]["default_account_budget_bytes"] = 450
+        self.assertEqual(
+            update.reconciled_restore_settings(baseline, observed),
+            {
+                key: value
+                for key, value in observed.items()
+                if key != "public_transfers_paused"
+            },
+        )
+        for field, value in (
+            ("server_budget_bytes", 1001),
+            ("server_budget_bytes", 400),
+            ("default_account_budget_bytes", 0),
+            ("default_account_budget_bytes", True),
+            ("enforcement_enabled", False),
+        ):
+            changed = copy.deepcopy(observed)
+            changed["traffic_policy"][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(
+                update.UpdateError
+            ):
+                update.reconciled_restore_settings(baseline, changed)
+        for field, value in (
+            ("max_file_size", 101),
+            ("public_transfers_paused", False),
+        ):
+            with self.subTest(field=field), self.assertRaises(update.UpdateError):
+                update.reconciled_restore_settings(baseline, observed | {field: value})
 
     def test_attestation_policy_binds_repository_workflow_source_tag_and_runner(self):
         host = update.Host(config(Path("/opt/psst.zip")))

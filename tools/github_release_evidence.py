@@ -106,8 +106,6 @@ def verification_arguments(gh: Path, report: Path, binding: Binding) -> list[str
         "github.com",
         "--repo",
         repository,
-        "--signer-workflow",
-        repository + "/" + WORKFLOW,
         "--signer-digest",
         binding.commit,
         "--source-digest",

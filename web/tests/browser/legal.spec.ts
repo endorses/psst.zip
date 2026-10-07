@@ -13,6 +13,10 @@ test("source and licenses are discoverable without signing in and identify the d
         revision,
         source: "https://operator.example/source",
         source_archive: `https://operator.example/source/archive/${revision}.tar.gz`,
+        notice_files: [
+          "/licenses/backend/THIRD_PARTY_NOTICES.txt",
+          "/licenses/runtime/THIRD_PARTY_NOTICES.txt",
+        ],
       },
     }),
   );
@@ -27,6 +31,7 @@ test("source and licenses are discoverable without signing in and identify the d
     "href",
     "/licenses/AGPL-3.0-only.txt",
   );
+  await expect(page.locator('a[href="/licenses/runtime/THIRD_PARTY_NOTICES.txt"]')).toBeVisible();
 });
 
 test("missing metadata leaves license access usable without claiming an exact source", async ({

@@ -37,11 +37,23 @@ def run(*args: str, data: bytes | None = None, timeout: int = 900) -> bytes:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", default="HEAD", help="Committed source to build")
+    parser.add_argument(
+        "--source", default="HEAD", help="Committed candidate source to build"
+    )
+    parser.add_argument(
+        "--previous-source",
+        default="4210414",
+        help="Committed prior application source",
+    )
     parser.add_argument(
         "--failure-after-start",
         action="store_true",
         help="Inject a fault only after all real candidate startup checks pass",
+    )
+    parser.add_argument(
+        "--require-schema-change",
+        action="store_true",
+        help="Require actual historical migration-count advancement",
     )
     parser.add_argument("--backend-image")
     parser.add_argument("--web-image")
@@ -60,31 +72,62 @@ def main() -> None:
         source.mkdir()
         archive = run("git", "-C", str(ROOT), "archive", revision)
         run("tar", "-xf", "-", "-C", str(source), data=archive)
-        backend, web = options.backend_image, options.web_image
-        if not backend:
-            backend, web = identity + "-backend", identity + "-web"
-            owned_images += [backend, web]
-            print(
-                "Building fixture application images from committed source", flush=True
+        versions = {}
+        print(
+            "Building prior/candidate/next release image pairs from committed source",
+            flush=True,
+        )
+        for version, selected_revision in (
+            (
+                "v1.2.2",
+                run("git", "-C", str(ROOT), "rev-parse", options.previous_source)
+                .decode()
+                .strip(),
+            ),
+            ("v1.2.3", revision),
+            ("v1.2.4", revision),
+        ):
+            context_root = temp / version
+            context_root.mkdir()
+            run(
+                "tar",
+                "-xf",
+                "-",
+                "-C",
+                str(context_root),
+                data=run("git", "-C", str(ROOT), "archive", selected_revision),
             )
-            for component, context, dockerfile in (
-                (backend, source / "backend", source / "backend/Dockerfile"),
-                (web, source, source / "web/Dockerfile"),
-            ):
-                run(
-                    "docker",
-                    "build",
-                    "-t",
-                    component,
-                    "-f",
-                    str(dockerfile),
-                    "--build-arg",
-                    "VERSION=v1.2.3",
-                    "--build-arg",
-                    f"REVISION={revision}",
-                    str(context),
-                    timeout=1800,
-                )
+            pair = {"commit": selected_revision}
+            for component in ("backend", "web"):
+                image = identity + "-" + component + ":" + version
+                if version == "v1.2.3" and options.backend_image:
+                    image = (
+                        options.backend_image
+                        if component == "backend"
+                        else options.web_image
+                    )
+                else:
+                    owned_images.append(image)
+                    run(
+                        "docker",
+                        "build",
+                        "-t",
+                        image,
+                        "-f",
+                        str(context_root / component / "Dockerfile"),
+                        "--build-arg",
+                        "VERSION=" + version,
+                        "--build-arg",
+                        "REVISION=" + selected_revision,
+                        str(
+                            context_root / "backend"
+                            if component == "backend"
+                            else context_root
+                        ),
+                        timeout=1800,
+                    )
+                pair[component] = image
+            versions[version] = pair
         print(
             "Starting isolated nested daemon (no host socket or external ports)",
             flush=True,
@@ -119,7 +162,16 @@ def main() -> None:
                 time.sleep(1)
         else:
             raise RuntimeError("isolated Docker daemon did not start")
-        images = run("docker", "image", "save", backend, web)
+        images = run(
+            "docker",
+            "image",
+            "save",
+            *[
+                pair[component]
+                for pair in versions.values()
+                for component in ("backend", "web")
+            ],
+        )
         run("docker", "exec", "-i", identity, "docker", "image", "load", data=images)
         del images
         run(
@@ -148,6 +200,13 @@ def main() -> None:
             ),
         ):
             run("docker", "cp", str(local), identity + ":" + remote)
+        for name in ("flows.py", "verify.py"):
+            run(
+                "docker",
+                "cp",
+                str(ROOT / "tools/fixtures/release-updater" / name),
+                identity + ":/opt/fixture/" + name,
+            )
         run(
             "docker",
             "cp",
@@ -175,6 +234,7 @@ def main() -> None:
             "/opt",
             "/opt/fixture",
             "/opt/fixture/checkpoint.py",
+            "/opt/fixture/verify.py",
         )
         run(
             "docker",
@@ -186,10 +246,10 @@ def main() -> None:
             "/usr/local/lib/psst.zip/tools/release_artifacts.py",
         )
         spec = {
-            "backend": backend,
-            "web": web,
-            "commit": revision,
+            "versions": versions,
+            **versions["v1.2.2"],
             "failure_after_start": options.failure_after_start,
+            "require_schema_change": options.require_schema_change,
         }
         output = run(
             "docker",

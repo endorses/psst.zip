@@ -377,6 +377,57 @@ def require_flow_report(report: dict, restore: bool) -> None:
     )
 
 
+def persisted_public_settings(value: dict) -> dict:
+    """Separate the documented protocol capability from persisted operator policy."""
+    result = json.loads(json.dumps(value))
+    if "history_sync_version" in result:
+        capability = result.pop("history_sync_version")
+        require(
+            type(capability) is int and capability >= 0,
+            "invalid history synchronization capability",
+        )
+    return result
+
+
+def reconciled_restore_settings(baseline: dict, observed: dict) -> dict:
+    """Allow only conservative budget reductions at the authenticated restore gate."""
+    actual = json.loads(json.dumps(observed))
+    require(
+        actual.pop("public_transfers_paused", None) is True,
+        "restored verification must remain paused",
+    )
+    actual, baseline = persisted_public_settings(actual), persisted_public_settings(
+        baseline
+    )
+    if actual == baseline:
+        return actual
+    original, changed = dict(baseline), dict(actual)
+    old_policy, new_policy = original.pop("traffic_policy", None), changed.pop(
+        "traffic_policy", None
+    )
+    require(
+        original == changed
+        and isinstance(old_policy, dict)
+        and isinstance(new_policy, dict),
+        "restore reconciliation changed unrelated operator settings",
+    )
+    before, after = dict(old_policy), dict(new_policy)
+    for field in ("server_budget_bytes", "default_account_budget_bytes"):
+        old, new = before.pop(field, None), after.pop(field, None)
+        require(
+            type(old) is int and type(new) is int and 0 < new <= old,
+            "restore reconciliation may only decrease positive traffic budgets",
+        )
+    require(
+        before == after, "restore reconciliation changed traffic enforcement policy"
+    )
+    require(
+        new_policy["default_account_budget_bytes"] <= new_policy["server_budget_bytes"],
+        "restored account budget exceeds server budget",
+    )
+    return actual
+
+
 class Host:
     """Concrete Docker/GitHub operations. Tests replace this boundary, never live checks."""
 
@@ -1007,7 +1058,7 @@ class Host:
             "containers": {name: item["Id"] for name, item in services.items()},
             "images": {name: item["Image"] for name, item in services.items()},
             "platform": "linux/" + architecture,
-            "baseline_config": baseline,
+            "baseline_config": persisted_public_settings(baseline),
             "database": str(db),
         }
 
@@ -1045,7 +1096,8 @@ class Host:
                 settings = self.https(compose, "/api/v1/config")
                 settings.pop("public_transfers_paused", None)
                 require(
-                    settings == adopted["baseline_config"],
+                    persisted_public_settings(settings)
+                    == persisted_public_settings(adopted["baseline_config"]),
                     "previous operator settings changed during recovery",
                 )
                 return
@@ -1609,7 +1661,8 @@ class Host:
             "candidate is not transfer-paused",
         )
         require(
-            settings == transaction["adopted"]["baseline_config"],
+            persisted_public_settings(settings)
+            == persisted_public_settings(transaction["adopted"]["baseline_config"]),
             "candidate changed persisted public operator settings",
         )
         html = self.https(private, "/", raw=True).decode()
@@ -1976,6 +2029,18 @@ class Updater:
             and report["source_commit"] == expected["source_commit"],
             "verification report describes another candidate",
         )
+        if transaction.get("restoring"):
+            target = self.state / "transactions" / transaction["id"]
+            observed = self.host.https(
+                load_json(target / "private.compose.json"), "/api/v1/config"
+            )
+            reconciled = reconciled_restore_settings(
+                transaction["adopted"]["baseline_config"], observed
+            )
+            transaction.setdefault(
+                "checkpoint_baseline_config", transaction["adopted"]["baseline_config"]
+            )
+            transaction["adopted"]["baseline_config"] = reconciled
         transaction["verification"] = report
         self.write(transaction, "verified")
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "reviewed_at": "2026-10-07",
-  "purpose": "Pinned runtime legal evidence; not distribution approval",
+  "purpose": "Pinned runtime legal evidence and supported notice treatment; not distribution approval",
   "review_required": true,
   "scope": "Four origins from final AMD64 filesystems of two pinned base images only; retained lower-layer and final release graphs require separate matching review.",
   "base_images": [
@@ -276,6 +276,86 @@
       "role": "packaging-recipe",
       "url": "https://raw.githubusercontent.com/alpinelinux/aports/c733d58a9d16316e7fb6a49e65f28ecda365c56b/main/ca-certificates/APKBUILD",
       "git_blob_sha1": "1dc886bc363ca5418211781ef0c946ea805ccfe0"
+    },
+    {
+      "path": "licenses/Apache-2.0.txt",
+      "size": 10280,
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+      "role": "standard-license",
+      "license_id": "Apache-2.0",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/Apache-2.0.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "137069b823873b8bcf42979bcf8e9371052d26a2"
+    },
+    {
+      "path": "licenses/BSD-2-Clause.txt",
+      "size": 1267,
+      "sha256": "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df",
+      "role": "standard-license-template",
+      "license_id": "BSD-2-Clause",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/BSD-2-Clause.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "5f662b354cd40cd5339d5aa05d74b15405138230"
+    },
+    {
+      "path": "licenses/BSD-3-Clause.txt",
+      "size": 1460,
+      "sha256": "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d",
+      "role": "standard-license-template",
+      "license_id": "BSD-3-Clause",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/BSD-3-Clause.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "ea890afbc70c94011b765722a95e2c8c7d4f1233"
+    },
+    {
+      "path": "licenses/GPL-2.0-or-later.txt",
+      "size": 17337,
+      "sha256": "aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3",
+      "role": "standard-license",
+      "license_id": "GPL-2.0-or-later",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/GPL-2.0-or-later.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "17cb286430a4d8094e473d06bd7f50f40438ddba"
+    },
+    {
+      "path": "licenses/GPL-3.0-or-later.txt",
+      "size": 34674,
+      "sha256": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
+      "role": "standard-license",
+      "license_id": "GPL-3.0-or-later",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/GPL-3.0-or-later.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "f6cdd22a6c1fbc887e08a215cb4beb3c47048041"
+    },
+    {
+      "path": "licenses/LGPL-3.0-or-later.txt",
+      "size": 42098,
+      "sha256": "996af0513df21f7496288951c41428a03c174e9e4a9d63665c57d670f845ccb1",
+      "role": "standard-license",
+      "license_id": "LGPL-3.0-or-later",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/LGPL-3.0-or-later.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "513d1c01fe5b5b9724e999d8eb041ff17d444eaa"
+    },
+    {
+      "path": "licenses/Zlib.txt",
+      "size": 838,
+      "sha256": "bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d",
+      "role": "standard-license-template",
+      "license_id": "Zlib",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/Zlib.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "e0e3605ba4269a62d38ef0a510d5e96c0ae009cc"
+    },
+    {
+      "path": "licenses/curl.txt",
+      "size": 1043,
+      "sha256": "272d1239bdcef73bb98bac206168ca1040bd4a31296755fadfb7515bcea18df3",
+      "role": "standard-license-template",
+      "license_id": "curl",
+      "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/curl.txt",
+      "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
+      "git_blob_sha1": "dd333ab2e4918a2d0f5a520253c1a4d84877d4fb"
     }
   ],
   "origins": [
@@ -298,9 +378,9 @@
       "notice_paths": ["licenses/MIT.txt"],
       "external_inputs": [],
       "remaining_review": [
-        "The pinned recipe declares MIT but supplies no copyright-bearing license grant. Standard MIT template alone does not resolve this origin.",
-        "Confirm upstream licensing attribution or document the reviewed treatment of generated factual metadata/public signing-key data; do not invent copyright owners."
-      ]
+        "This scoped notice treatment does not approve an uncollected package version, missing sources, or unpublished source delivery; collect and bind the complete distributed graph."
+      ],
+      "supported_treatment": "Preserve every upstream-supplied notice, recipe and exact generated metadata/public signing-key source input, together with the declared MIT identifier and full MIT terms; no copyright owner is supplied or invented."
     },
     {
       "origin": "alpine-base",
@@ -321,9 +401,9 @@
       "notice_paths": ["licenses/MIT.txt"],
       "external_inputs": [],
       "remaining_review": [
-        "The pinned recipe declares MIT but supplies no copyright-bearing license grant. Standard MIT template alone does not resolve this origin.",
-        "Confirm upstream licensing attribution or document the reviewed treatment of generated factual metadata/public signing-key data; do not invent copyright owners."
-      ]
+        "This scoped notice treatment does not approve an uncollected package version, missing sources, or unpublished source delivery; collect and bind the complete distributed graph."
+      ],
+      "supported_treatment": "Preserve every upstream-supplied notice, recipe and exact generated metadata/public signing-key source input, together with the declared MIT identifier and full MIT terms; no copyright owner is supplied or invented."
     },
     {
       "origin": "alpine-baselayout",
@@ -467,9 +547,10 @@
         }
       ],
       "remaining_review": [
-        "Confirm Alpine-authored configuration/helper files retain every upstream notice; none had a copyright header in these pinned recipes.",
-        "Retain exact complete source inputs and recipe; provide corresponding-source download instructions bound to the distributed image."
-      ]
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the recipe-declared GPL-2.0-only terms, every supplied source/helper notice, exact Debian netbase copyright and all recipe/source inputs; do not assign missing Alpine configuration-file ownership."
     },
     {
       "origin": "alpine-baselayout",
@@ -620,9 +701,10 @@
         }
       ],
       "remaining_review": [
-        "Confirm Alpine-authored configuration/helper files retain every upstream notice; none had a copyright header in these pinned recipes.",
-        "Retain exact complete source inputs and recipe; provide corresponding-source download instructions bound to the distributed image."
-      ]
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the recipe-declared GPL-2.0-only terms, every supplied source/helper notice, exact Debian netbase copyright and all recipe/source inputs; do not assign missing Alpine configuration-file ownership."
     },
     {
       "origin": "alpine-keys",
@@ -769,9 +851,9 @@
       "notice_paths": ["licenses/MIT.txt"],
       "external_inputs": [],
       "remaining_review": [
-        "The pinned recipe declares MIT but supplies no copyright-bearing license grant. Standard MIT template alone does not resolve this origin.",
-        "Confirm upstream licensing attribution or document the reviewed treatment of generated factual metadata/public signing-key data; do not invent copyright owners."
-      ]
+        "This scoped notice treatment does not approve an uncollected package version, missing sources, or unpublished source delivery; collect and bind the complete distributed graph."
+      ],
+      "supported_treatment": "Preserve every upstream-supplied notice, recipe and exact generated metadata/public signing-key source input, together with the declared MIT identifier and full MIT terms; no copyright owner is supplied or invented."
     },
     {
       "origin": "alpine-keys",
@@ -918,9 +1000,9 @@
       "notice_paths": ["licenses/MIT.txt"],
       "external_inputs": [],
       "remaining_review": [
-        "The pinned recipe declares MIT but supplies no copyright-bearing license grant. Standard MIT template alone does not resolve this origin.",
-        "Confirm upstream licensing attribution or document the reviewed treatment of generated factual metadata/public signing-key data; do not invent copyright owners."
-      ]
+        "This scoped notice treatment does not approve an uncollected package version, missing sources, or unpublished source delivery; collect and bind the complete distributed graph."
+      ],
+      "supported_treatment": "Preserve every upstream-supplied notice, recipe and exact generated metadata/public signing-key source input, together with the declared MIT identifier and full MIT terms; no copyright owner is supplied or invented."
     },
     {
       "origin": "ca-certificates",
@@ -997,11 +1079,10 @@
         }
       ],
       "remaining_review": [
-        "Verify source and notice treatment of update-ca.c, split-ca-bundle.sh and any redistributed source manpage, which have no full grant in this archive.",
-        "The APKBUILD GPL-script comment does not match mk-ca-bundle.pl actual SPDX curl header; preserve actual source notices rather than infer GPL from that comment.",
-        "MPL covered certdata remains in the original exact source archive, which must accompany a timely source offer.",
-        "MIT standard template is reference text; c_rehash copyright is preserved separately without inventing owners."
-      ]
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the package SPDX declaration and full MPL-2.0/MIT terms, every actual source notice including complete c_rehash attribution, certdata license header and exact curl COPYING/THANKS for mk-ca-bundle.pl. Headerless package files remain covered by the upstream package declaration without fabricated authorship."
     },
     {
       "origin": "ca-certificates",
@@ -1078,17 +1159,16 @@
         }
       ],
       "remaining_review": [
-        "Verify source and notice treatment of update-ca.c, split-ca-bundle.sh and any redistributed source manpage, which have no full grant in this archive.",
-        "The APKBUILD GPL-script comment does not match mk-ca-bundle.pl actual SPDX curl header; preserve actual source notices rather than infer GPL from that comment.",
-        "MPL covered certdata remains in the original exact source archive, which must accompany a timely source offer.",
-        "MIT standard template is reference text; c_rehash copyright is preserved separately without inventing owners."
-      ]
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the package SPDX declaration and full MPL-2.0/MIT terms, every actual source notice including complete c_rehash attribution, certdata license header and exact curl COPYING/THANKS for mk-ca-bundle.pl. Headerless package files remain covered by the upstream package declaration without fabricated authorship."
     }
   ],
   "remaining_distribution_gates": [
     "Exact final image and retained lower-layer package/source graph including ARM64 must be collected and matched.",
-    "Complete unresolved origin and embedded notice review; license identifiers and templates alone do not approve licensing.",
-    "Authenticate upstream source signatures and retain provenance evidence.",
+    "Match supported scoped notice treatments and all supplied full notices/license terms against each exact retained origin; unknown revisions require review.",
+    "Verify retained/available upstream signatures; otherwise preserve exact recipe/original-checksum provenance with explicit unverified-signature limits, without treating Caddy proof as APK authentication.",
     "Bundle complete applicable notices and publish exact corresponding sources/source offers with image and release bindings.",
     "Reverify final image bytes/package graphs and public hosted discovery before publication."
   ]

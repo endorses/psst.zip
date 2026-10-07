@@ -4,8 +4,9 @@ Reviewed on 2026-10-07. The backend source scan found no known vulnerable symbol
 reachable from the analyzed code and no vulnerabilities in imported packages.
 It reported 21 advisories at module level; their applicability is documented
 below. The web dependency audit passed after the source-map-js security patch.
-Final container image scans, release-toolchain web validation, and native
-dependency scans remain pending. This record does not approve a container release.
+Final AMD64 image scans found unresolved fixable runtime findings below.
+ARM64 scans, release-toolchain web validation and native dependency scans remain
+pending. This record does not approve a container release.
 
 ## Backend source analysis
 
@@ -153,3 +154,50 @@ sha256sum go.mod go.sum
       performed in this review.
 - [ ] Retain the final release's raw scanner outputs and resolve scanner failures
       or applicable findings before declaring that release deployment-ready.
+
+## Private final AMD64 image scan
+
+On 2026-10-07, Trivy 0.75.0 scanned the final runtime-source overlays built from
+`dffeac44c0913c6dbf0dee4e4156e918f2f4d9c5` with candidate version `v0.0.0`.
+These are private local verification images, not published release assets.
+The binary archive and checksum list were independently verified using exact
+upstream Sigstore workflow identity, tag and commit, mandatory SCT/Rekor checks,
+and cosign 2.6.5. Trivy source commit:
+`591e9799316a602e703f0b484f6c6d7b234ec8f3`; binary archive SHA256:
+`c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f`.
+See [upstream signature verification](https://github.com/aquasecurity/trivy/blob/v0.75.0/docs/getting-started/signature-verification.md).
+
+The schema-2 database was updated at `2026-10-07T07:38:55.515026687Z`, with
+SHA256 `5f4b978a55284b1997dc31e9f2fc3f4f1abae80829f51451ade221d5675a69b9`.
+Scanning used vulnerability-only JSON with all packages, offline analysis and
+no ignore-unfixed, severity filter or suppression. Trivy requires an unpacked
+OCI layout: the already validated archive's regular layout/blob files were
+copied unchanged into a private directory. Both scans completed successfully;
+exit status alone was not treated as vulnerability approval.
+
+| Subject       | Exact tested configuration                                                | Findings                         |
+| ------------- | ------------------------------------------------------------------------- | -------------------------------- |
+| Backend AMD64 | `sha256:c99c04aaabbde0110b8af423f58ab3e79a52fc73459266821ce7049d1026c1a8` | 21 Alpine, 21 Go module findings |
+| Web AMD64     | `sha256:711a7af6698f3a81d09e20f717fe737ee79c2c0b66dfcc383ed1ad737fe12aac` | 1 Alpine, 1 Go module finding    |
+
+Backend `libcrypto3` and `libssl3` 3.3.7-r1 each have ten findings, fixed in
+3.3.7-r2: HIGH `CVE-2026-75804`, `CVE-2026-84782`; MEDIUM
+`CVE-2026-54872`, `CVE-2026-54875`, `CVE-2026-72897`, `CVE-2026-75805`,
+`CVE-2026-75806`, `CVE-2026-77696`, `CVE-2026-84784`; LOW
+`CVE-2026-35189`. Both images retain zlib 1.3.2-r0 with MEDIUM
+`CVE-2026-85091`, fixed in 1.3.2-r1. These findings require patched runtime
+inputs, fresh builds, source correspondence and rescanning before distribution.
+They have not been dismissed as unreachable.
+
+The backend binary repeats the 21 module-level advisories addressed by the
+bounded source import-graph review above. Caddy reports `GO-2026-5932` for
+x/crypto v0.57.0 with unknown severity and no fixed version; its actual affected
+OpenPGP package usage needs separate review. Neither module findings nor the
+successful scan exit status authorize publication.
+
+Backend report SHA256:
+`c1439946820f6990df3c390f1ed824f0f4afde8864531c4dba7817d29e824b80`;
+web report SHA256:
+`fbfb59b727499d6c40d53ed03ff1391fa30dce0087d21f0e4df819681f71d4cc`.
+The full reports and disposable images remain private. ARM64 and patched final
+pair scans are still pending.

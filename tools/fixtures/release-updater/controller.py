@@ -2,8 +2,9 @@
 """Root-only nested-daemon controller; acquisition is explicitly fixture-local.
 
 All permission, Compose, image ownership, TLS, backup, SQLite, candidate, and
-restore operations run the production adapter. No fake flow-verification report
-is supplied: these exercises must remain awaiting authenticated operator gates.
+restore operations run the production adapter. A protected independent client
+hook records real authenticated assertions, then exercises public activation.
+Only release acquisition and the external backup-provider boundary are simulated.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import os
 import secrets
 import shutil
 import time
+import sqlite3
 from pathlib import Path
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -110,7 +112,7 @@ config = {
     },
     "disk_reserve_bytes": 1 << 30,
     "image_reserve_bytes": 1 << 30,
-    "verification_hook": None,
+    "verification_hook": "/opt/fixture/verify.py",
     "checkpoint_hook": "/opt/fixture/checkpoint.py",
     "github_token_file": None,
     "retention_count": 2,
@@ -126,6 +128,13 @@ class LocalAcquisition(u.Host):
         try:
             return super().run(*args, **kwargs)
         except u.UpdateError:
+            error_log = Path("/opt/fixture/flow-error.log")
+            if args[0] == "/opt/fixture/verify.py" and error_log.exists():
+                print(
+                    "fixture flow diagnostic: "
+                    + "\n".join(error_log.read_text().splitlines()[-10:]),
+                    flush=True,
+                )
             if args[:2] == ("docker", "image"):
                 # Image-only fixture diagnostics never contain accounts/config.
                 import subprocess
@@ -147,11 +156,16 @@ class LocalAcquisition(u.Host):
         shutil.copytree("/opt/fixture/bundle-deploy", target / "bundle/deploy")
         return {
             "version": version,
-            "source": {"commit": images["commit"]},
+            "source": {"commit": images["versions"][version]["commit"]},
             "images": {
                 name: {
                     "index": json.loads(
-                        self.run("docker", "image", "inspect", images[name])
+                        self.run(
+                            "docker",
+                            "image",
+                            "inspect",
+                            images["versions"][version][name],
+                        )
                     )[0]["Id"]
                 }
                 for name in ("backend", "web")
@@ -169,8 +183,11 @@ class LocalAcquisition(u.Host):
             labels = metadata["Config"]["Labels"]
             assert metadata["Architecture"] == platform.split("/")[1]
             assert metadata["Config"]["User"] not in ("", "0", "root")
-            assert labels["org.opencontainers.image.revision"] == images["commit"]
-            assert labels["org.opencontainers.image.version"] == "v1.2.3"
+            assert (
+                labels["org.opencontainers.image.revision"]
+                == manifest["source"]["commit"]
+            )
+            assert labels["org.opencontainers.image.version"] == manifest["version"]
             assert labels["org.opencontainers.image.licenses"] == "AGPL-3.0-only"
 
     def automatic_checks(self, private, transaction):
@@ -222,8 +239,8 @@ def request(method, path, body=None, cookie="", headers=None, expected=200):
     data = response.read()
     fields = dict(response.getheaders())
     connection.close()
-    assert (
-        response.status == expected
+    assert response.status in (
+        expected if isinstance(expected, tuple) else (expected,)
     ), f"fixture {method} {path} expected {expected}, got {response.status}"
     return fields, data
 
@@ -400,8 +417,67 @@ for _ in range(40):
         break
     except (AssertionError, OSError):
         time.sleep(1)
+# Root-private hook inputs contain fixture credentials and client keys only.
+regular_identity = json.loads(request("GET", "/auth/me", cookie=member)[1])
+member_id = regular_identity.get("id", regular_identity.get("user", {}).get("id"))
+assert member_id
+request(
+    "PATCH",
+    "/admin/traffic-policy",
+    {
+        "enforcement_enabled": True,
+        "server_budget_bytes": 8 << 20,
+        "default_account_budget_bytes": 4 << 20,
+    },
+    admin,
+)
+initial = host.current()
+u.atomic_json(
+    u.STATE_PATH / "active.json",
+    {"version": "v1.2.2", "compose": initial, "transaction": "fixture-initial"},
+)
+u.atomic_json(
+    Path("/opt/fixture/flow-state.json"),
+    {
+        "config": config,
+        "ca": str(root / "fixture-ca.crt"),
+        "admin": admin,
+        "member": member,
+        "member_id": member_id,
+        "password": password,
+        "factor_secret": factor["secret"],
+        "existing": {
+            "id": transfer,
+            "blob": blob_id,
+            "key": key.hex(),
+            "context": encryption_id.hex(),
+            "plain_sha256": hashlib.sha256(plain).hexdigest(),
+            "cipher_sha256": hashlib.sha256(sealed).hexdigest(),
+            "manifest_sha256": hashlib.sha256(encrypted_manifest).hexdigest(),
+            "slot": None,
+        },
+    },
+)
+time.sleep(1)
+pre_checkpoint_traffic = {
+    "server": json.loads(request("GET", "/admin/traffic-policy", cookie=admin)[1]),
+    "account": json.loads(request("GET", "/auth/traffic-usage", cookie=member)[1]),
+}
+
+
+def schema_count(path):
+    with sqlite3.connect("file:" + str(path) + "?mode=ro", uri=True) as connection:
+        return connection.execute("SELECT count(*) FROM schema_migrations").fetchone()[
+            0
+        ]
+
+
+schema_before = schema_count(data_root / "psst.db")
+flow_spec = importlib.util.spec_from_file_location("flows", "/opt/fixture/flows.py")
+flow_module = importlib.util.module_from_spec(flow_spec)
+flow_spec.loader.exec_module(flow_module)
+pre_checkpoint_credentials = flow_module.Probe(initial, {}).credentials()
 updater = u.Updater(config, host)
-# First run intentionally remains at the truthful operator verification gate.
 if images.get("failure_after_start"):
     host.fail_after_start = True
     try:
@@ -411,45 +487,69 @@ if images.get("failure_after_start"):
     else:
         raise AssertionError("candidate fault failed to close deployment")
     transaction = updater.read()
+    if images.get("require_schema_change"):
+        assert schema_count(data_root / "psst.db") > schema_before
     assert transaction["phase"] == "failed-closed" and transaction["mutation_started"]
     assert not host.run(
         "docker", "ps", "-q", "--filter", "label=com.docker.compose.project=fixture"
     ).strip()
+    # This fault occurs before any post-checkpoint flow/security mutations.
+    # A separate fixture ledger records the independently observed baseline.
+    u.atomic_json(
+        Path("/opt/fixture/flow-ledger.json"),
+        {
+            "transaction": transaction["id"],
+            "created_ids": [],
+            "traffic": pre_checkpoint_traffic,
+            "factor_change_after_checkpoint": False,
+            "account_session_change_after_checkpoint": False,
+            "credential_snapshot": pre_checkpoint_credentials,
+            "existing_id": transfer,
+        },
+    )
     print(
-        "PASS real post-startup failure stops all ingress; durable mutation boundary forbids old-binary restart",
+        "PASS actual post-startup failure closes all services before explicit checkpoint restore",
         flush=True,
     )
 else:
     transaction = updater.update("v1.2.3")
     assert (
-        transaction["phase"] == "awaiting-verification"
-        and transaction["mutation_started"]
+        transaction["phase"] == "completed"
+        and transaction["active_version"] == "v1.2.3"
     )
-assert transaction["prior_pause"] is False
-private = u.load_json(
-    u.STATE_PATH / "transactions" / transaction["id"] / "private.compose.json"
-)
-if not images.get("failure_after_start"):
-    for attempt in range(30):
+    assert transaction["previous_version"] == "v1.2.2"
+    if images.get("require_schema_change"):
+        assert schema_count(data_root / "psst.db") > schema_before
         try:
-            host.authenticated_checks(private, admin)
-            break
+            host.incident(initial, "incident-status")
         except u.UpdateError:
-            if attempt == 29:
-                raise
-            time.sleep(1)
+            pass
+        else:
+            raise AssertionError("old exact-schema CLI accepted migrated original DB")
+        print(
+            "PASS historical schema version advances through normal candidate startup; old CLI refuses migrated original",
+            flush=True,
+        )
+    assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
     request("GET", "/auth/me", cookie=admin)
-    request("GET", "/auth/me", cookie=member)
-    assert json.loads(request("GET", "/config")[1])["max_file_size"] == 3 << 20
-assert payload.read_bytes() == sealed
-assert AESGCM(key).decrypt(sealed[:12], sealed[12:], None) == frame
-print(
-    "PASS real adoption, bootstrap removal, TLS, stopped complete checkpoint, image retention, accounts/TOTP/settings and loopback candidate",
-    flush=True,
-)
+    assert request("GET", f"/transfers/{transfer}/files/{blob_id}")[1] == sealed
+    print(
+        "PASS prior public-source pair -> candidate activation with real authenticated flow hook",
+        flush=True,
+    )
+    transaction = updater.update("v1.2.4")
+    assert (
+        transaction["phase"] == "completed"
+        and transaction["active_version"] == "v1.2.4"
+    )
+    assert transaction["previous_version"] == "v1.2.3"
+    assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
+    print(
+        "PASS repeat release update reuses protected operator binds and preserves initialized state",
+        flush=True,
+    )
 checkpoint = Path(transaction["checkpoint"])
 u.Host.verify_backup(checkpoint)
-# Permission/truncation rejection exercises actual protected checkpoint reads.
 volume_archive = next(checkpoint.glob("volume-*.tar"))
 original = volume_archive.read_bytes()
 volume_archive.write_bytes(original[:-31])
@@ -461,53 +561,24 @@ else:
     raise AssertionError("corrupt checkpoint accepted")
 volume_archive.write_bytes(original)
 u.Host.verify_backup(checkpoint)
-print(
-    "PASS authenticated encrypted fixture export/decrypt and corrupt-checkpoint refusal",
-    flush=True,
-)
-# A post-startup fault must close all ingress and preserve original volumes.
-host.compose(
-    u.STATE_PATH / "transactions" / transaction["id"] / "private.compose.json",
-    "stop",
-    "--timeout",
-    "60",
-)
-updater.write(transaction, "failed-closed")
 original_hash = u.fingerprint(payload)
 checkpoint_hash = u.fingerprint(checkpoint / "checkpoint.json")
 restored = updater.restore()
-assert restored["phase"] == "restored-awaiting-verification"
+assert restored["phase"] == "completed" and restored["restoring"]
+assert restored["active_version"] == (
+    "v1.2.2" if images.get("failure_after_start") else "v1.2.3"
+)
 assert set(restored["restored_volumes"]) == set(config["volume_names"].values())
 assert not set(restored["restored_volumes"].values()) & set(
     config["volume_names"].values()
 )
 assert u.fingerprint(payload) == original_hash
 assert u.fingerprint(checkpoint / "checkpoint.json") == checkpoint_hash
-restore_name = restored["restored_volumes"]["fixture-data"]
-restore_root = Path(
-    json.loads(host.run("docker", "volume", "inspect", restore_name))[0]["Mountpoint"]
-)
-restored_ciphertext = (restore_root / "files" / transfer / blob_id).read_bytes()
-assert (
-    AESGCM(key).decrypt(restored_ciphertext[:12], restored_ciphertext[12:], None)
-    == frame
-)
-restore_private = u.load_json(
-    u.STATE_PATH / "transactions" / transaction["id"] / "private.compose.json"
-)
-for attempt in range(30):
-    try:
-        host.authenticated_checks(restore_private, admin)
-        break
-    except u.UpdateError:
-        if attempt == 29:
-            raise
-        time.sleep(1)
 request("GET", "/auth/me", cookie=admin)
 request("GET", "/auth/me", cookie=member)
 assert json.loads(request("GET", "/admin/security", cookie=admin)[1])["enabled"] is True
-request("POST", "/transfers", {}, member, expected=503)
-assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is True
+assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
+request("GET", f"/transfers/{transfer}/manifest", expected=(404, 410))
 restored_ca = (
     Path(
         json.loads(
@@ -522,11 +593,29 @@ restored_ca = (
     / "caddy/pki/authorities/local/root.crt"
 )
 assert restored_ca.read_bytes() == ca.read_bytes()
+if images.get("require_schema_change") and images.get("failure_after_start"):
+    restored_root = Path(
+        json.loads(
+            host.run(
+                "docker",
+                "volume",
+                "inspect",
+                restored["restored_volumes"]["fixture-data"],
+            )
+        )[0]["Mountpoint"]
+    )
+    assert schema_count(restored_root / "psst.db") == schema_before
+    assert schema_count(data_root / "psst.db") > schema_before
+    print(
+        "PASS historical schema rollback exists only in new restored volumes; migrated original and checkpoint remain preserved",
+        flush=True,
+    )
 print(
-    "PASS isolated restore preserves checkpoint/originals, account sessions/TOTP, ciphertext, settings, pause and Caddy CA; actual authenticated storage/counter/orphan checks pass; security approval remains pending",
+    "PASS isolated checkpoint restore, independent allowance/security reconciliation, hook-gated public activation and prior pause restoration",
     flush=True,
 )
 print(
-    "LIMITATIONS: fixture-local image acquisition, no public provenance/multiarch/ACME or full browser/security activation proof; separate export store simulates off-host",
+    "LIMITATIONS: fixture-local acquisition and encrypted export simulation; independent Python client, no browser/mobile execution; observed original schema migration delta="
+    + str(schema_count(data_root / "psst.db") - schema_before),
     flush=True,
 )

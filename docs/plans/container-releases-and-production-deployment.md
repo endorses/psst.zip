@@ -511,10 +511,16 @@ commit; the new CI steps are not claimed to have run on GitHub yet.
       do not execute fork code with publishing or production credentials.
 - [ ] Make both GHCR packages public, link them to the repository, and test a
       fresh anonymous pull of the complete image pair.
-- [ ] Document optional Docker Hub mirroring with a dedicated publishing token.
+- [x] Document optional Docker Hub mirroring with a dedicated publishing token.
       Copy the already built release rather than independently rebuilding it;
       record and verify destination digests. A mirror failure must not invalidate
       an otherwise complete GHCR release or silently select a different build.
+
+The [optional mirror guide](../security/docker-hub-mirroring.md) defines a
+serialized paired copy with preserved index/child digests, independent credentials,
+anonymous complete readback, and explicit partial-copy recovery. It records that
+Docker Hub setup and live verification have not happened; the documentation
+checkbox does not assert a working mirror or a published primary release.
 
 ### Read-only release candidate checkpoint
 
@@ -593,39 +599,30 @@ packaging and the portable Swift helper, not iOS UI execution. The web advertise
 backend/runtime notice links only when the deployment metadata declares those
 files; the web image copies the backend notices it declares.
 
-The runtime collector verified fifteen installed/retained packages from ten
-Alpine origins, and thirty-two retained package versions across twenty origins
-and two layers in the pinned Caddy image. Four origins still lack discovered notice documents and require
-review: `alpine-base`, `alpine-baselayout`, `alpine-keys` and `ca-certificates`.
-Two deeper invalid archive fixtures are retained and flagged. The Caddy collector
-matched the pinned runtime executable to its recipe-checksummed upstream archive,
-matched binary dependency versions/sums and wrapper revision to its full official
-buildable source, and retained exact Docker/dist sources and 210 notice documents,
-including the embedded Go 1.26.8 runtime's full license and patent notice at its
-exact upstream source revision.
-Upstream signatures are retained but not yet verified. Temporary downloads and
-isolated source helpers do not access production state.
+The final private AMD64 runtime collection covers seventeen retained package
+versions from eleven backend origins and thirty-two from twenty web origins,
+including lower layers. A checksum-bound evidence pack retains twenty-five
+upstream legal documents and exact recipe revisions for the previously missing
+notice origins. Two malformed upstream BusyBox test fixtures remain byte-exact
+and explicitly scoped. No blanket archive or APK signature waiver was added.
+The original MPL/BSD license whitespace is preserved through narrow
+`.gitattributes` exceptions; CI verifies hashes and secret detectors remain enabled.
 
-A pinned runtime legal evidence pack now retains seventeen full documents for
-eight exact revisions of the four missing-notice origins. It binds recipe/source
-hashes, Debian netbase attribution and the embedded certificate helper notices;
-six boundary tests and an exact-input replay passed. Its verifier remains
-read-only and rejects unknown source revisions. It does not waive unresolved
-Alpine attribution/helper findings, lower-layer/final/ARM64 coverage, signatures
-or source delivery. The MPL text retains its checksum-bound upstream bytes;
-only that file's trailing-space check is exempted through `.gitattributes`.
-CI verifies the evidence hashes and all secret detectors remain enabled.
+Actual Caddy source signatures, workflow/ref/commit identity, checksum bindings,
+and executable/source correspondence passed with pinned cosign 2.6.5. The
+complete runtime source pack binds installed/retained APK versions, exact source
+recipes, Caddy source and all served notices. Both final AMD64 overlays passed
+native HTTP smoke checks and exact OCI config/blob/decompressed layer checks.
+The `/legal` page exposes runtime notices through preserved release metadata;
+two browser tests passed. Forty focused legal/collector/signature/packaging tests
+passed. Source packs remain private, with publication and distribution review
+explicitly pending. ARM64 and actual verified public source delivery are unrun.
 
-A separate Caddy signature verifier now checks the official source and checksum
-assets with exact upstream cosign 2.6.5 executable hashes, GitHub Actions issuer,
-release workflow/ref/commit identity and mandatory SCT/Rekor verification. Real
-AMD64 verification passed the v2.11.7 signatures and signed source/executable
-SHA512 bindings. Wrong workflow subject, issuer, commit and modified checksum
-bytes failed. Seven boundary tests passed. This used a collector-format replay
-of official assets; final-image correspondence remains pending. The sidecar keeps
-`review_required: true`, does not mutate collector output and explicitly does
-not verify APK or other source archives' signatures. Overall distribution review
-and source publication remain unfinished.
+The authenticated final AMD64 image scan found fixable OpenSSL/zlib runtime
+findings. See the [dependency review](../security/container-dependency-review.md)
+for exact subjects, scanner/database identities and package findings. These
+candidates are not approved for distribution; refresh the runtime dependencies,
+rebuild and repeat source correspondence and final scans before publishing.
 
 All 31 updater boundary/fault tests passed, including real filesystem/SQLite
 checks and simulated Docker/GitHub failures. The complete 64-test release suite
@@ -699,24 +696,27 @@ image review remain separate pending checks.
       sessions/links and budgets before reopening traffic. Do not overwrite the
       only surviving copy of production data or run two writers on one store.
 
-The new disposable root/Docker integration gate exercises real protected paths,
-Compose, initialized accounts and sessions, TOTP login, encrypted TUS payloads,
-storage reconciliation, complete stopped checkpoints and new-volume restore.
-The normal candidate/restore gate passed in 52.6 seconds and the post-startup
-failure gate in 50.1 seconds. Local acquisition substitutes immutable fixture
-image IDs for public release verification; the application images use the same
-committed `c1c1ea9` source on both sides. This establishes actual Docker behavior
-and the mutation/failure boundary, not a historical schema migration or public
-provenance.
+The disposable root/Docker integration gate now completes public activation,
+repeat updates, isolated restoration and independently checked encrypted transfer
+flows. It verifies authentication/TOTP, TUS, RFC 9180 HPKE receive decryption,
+quota/expiry/revocation, cleanup, budget denial, persisted settings and restart.
+The normal activation/update/restore gate passed in 137.7 seconds. A genuine
+historical source baseline (`2ed02af`, before the history-sync migration) passed
+migration, activation, repeat update and restoration in 153.1 seconds; the actual
+SQLite migration count increased by one and the old CLI rejected the migrated
+original. The corresponding injected post-startup failure/recovery gate passed
+in 79.6 seconds, preserving the failed original and checkpoint and activating
+only fresh restored volumes after verification.
 
-These checks found and repaired legitimate Caddy directory permissions rejected
-by backup validation and uppercase timestamps invalid in Docker repository names.
-A further regression preserves already-declared protected operator binds in
-later managed updates. The complete release fixture suite now has 87 passing
-tests, including 33 updater tests. Actual public activation, complete browser
-flows, security reconciliation approval, independent off-host provider recovery
-and VPS adoption remain pending. The integration fixture correctly stops at
-pending local verification and does not manufacture an activation report.
+Two production corrections preserve operator settings while excluding the
+validated history-sync protocol capability, and allow only authenticated,
+restore-gated paused budget decreases needed for security reconciliation. The
+fixture compares independently recorded HTTP statuses and ciphertext hashes.
+The complete release suite has 123 passing tests, including 35 updater tests.
+Local acquisition substitutes immutable fixture image IDs for public release
+verification. These results establish isolated Docker behavior; public release
+provenance, independent off-host provider recovery, full browser/mobile flows,
+installed restricted SSH and VPS adoption remain pending.
 
 Publication preparation now has a separate core and sixteen boundary tests. It
 binds reviewed source, exact registry indexes/children and corresponding-source
@@ -738,9 +738,12 @@ boundaries. Adding this core does not complete the publishing tasks above.
       issuer, and hosted runners. Accept only a verified SHA-256 subject and
       witnessed timestamp; do not accept unsigned caller approval JSON.
 - [x] Verify failed/stale reports, missing attestations, substituted files,
-      process failures, output limits, and timeouts with seven focused regression
+      process failures, output limits, and timeouts with eight focused regression
       tests. These use verification fixtures and real bounded subprocess checks;
       they do not claim a live signed GitHub report passed.
+      A real offline CLI check also catches unsupported flag combinations: use
+      exact `--cert-identity` rather than combining it with the mutually exclusive
+      `--signer-workflow`, while retaining the signer/source commit and ref policy.
 - [ ] Integrate actual check/report generation and signing into the reviewed
       release workflow, then exercise the verifier against its authenticated
       reports. Source/legal review approval policy and live publication remain
@@ -753,6 +756,37 @@ explicitly, never through command arguments; caller CLI configuration and trust
 overrides are not inherited. An attestation authenticates the reviewed workflow's
 report, so that workflow must derive reports from actual completed checks before
 signing them. The adapter alone does not establish distribution readiness.
+
+### OCI archive and publishing transport checkpoint
+
+- [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports
+      against the exact configurations of the tested native image pair. Verify
+      archive entries, all blob hashes and descriptor sizes, platform/source
+      labels, and each decompressed layer's `diff_id`; checking only compressed
+      blobs would allow a substituted layer beside an unchanged tested config.
+      Construct deterministic index bytes with the exact two runnable children.
+- [x] Run six focused OCI corruption, substitution, archive-boundary and index
+      regressions. These fixtures cover gzip and raw layers; actual final native
+      exports and ARM64 execution remain distinct verification requirements.
+- [x] Implement `tools/github_release_transport.py` and seventeen transport
+      fixtures for fixed-host bounded GitHub/GHCR API calls, exact OCI pushes,
+      complete anonymous child pulls, assets and readbacks, draft reservation,
+      immutable release publication and interruption reconciliation. Require
+      authenticated reports and fresh remote state before publishing, and record
+      durable mutation intent/results without automatically resuming partial work.
+- [ ] Wire the transport and check/report generators into the exact reviewed tag
+      workflow, preserve receipts beyond a hosted runner's lifetime, configure
+      public packages and policy inspection, then verify actual publication and
+      recovery. Fixtures do not establish these live behaviors.
+
+The transport requires the literal repository-wide workflow concurrency group
+`container-release-publication`, `cancel-in-progress: false`, and publishing job
+`publish`, plus a local held lock. The current candidate-only workflow has not
+been changed to publish. Immutable policy inspection may require a separate
+Administration-read credential; the package/content publishing token must not
+silently gain repository administration permission. Errors are not absence.
+The [publication guide](../security/container-publication.md) describes the
+implemented adapters and the still-pending source/legal review and live gates.
 
 ### GitHub production deployment
 

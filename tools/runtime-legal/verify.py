@@ -139,7 +139,7 @@ def verify_collection(root: Path, collection: Path, review: dict) -> int:
             sha256(data) == source["source_sha256"], "Collected source checksum differs"
         )
         recipe = read_local(
-            collection, str(relative.parent.parent / "recipe" / "APKBUILD")
+            collection, str(relative.parents[2] / "recipe" / "APKBUILD")
         )
         require(
             sha256(recipe) == documents[reviewed["recipe_path"]]["sha256"],
@@ -148,7 +148,7 @@ def verify_collection(root: Path, collection: Path, review: dict) -> int:
         for expected in reviewed["recipe_files"]:
             content = read_local(
                 collection,
-                str(relative.parent.parent / "recipe" / expected["name"]),
+                str(relative.parents[2] / "recipe" / expected["name"]),
             )
             require(
                 len(content) == expected["size"]
