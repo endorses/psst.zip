@@ -906,6 +906,28 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       graphs and official advisory evidence. A completed scan remains unapproved
       until that release gate succeeds.
 
+### Source scanner and compiler graph measurements
+
+- [x] Implement source scanner measurements from exact archived Git source with
+      pinned native Go/Node builders, checksum-authenticated govulncheck 1.8.0,
+      full Go dependency graphs and lock-only npm audit. Preserve all findings,
+      raw report hashes and actual tool/database identities; measurement
+      completion does not authorize a scanner gate or publication.
+- [x] Add compiler graph measurements for the exact final OCI executables.
+      Require a byte-identical backend rebuild with matching embedded modules;
+      bind Caddy's graph to freshly verified upstream signed source/checksums
+      and the exact signed executable. Verify seventeen focused producer/CLI
+      tests, including native-daemon and unsupported build-setting rejection.
+      The private `750f440` AMD64 measurements retained 21 Go findings and no npm
+      findings; backend bytes matched and Caddy's 147 embedded module pairs
+      matched its 970-package graph. See the
+      [dependency review](../security/container-dependency-review.md).
+- [ ] Run the final producers against the selected release source on both native
+      runners, authenticate every measurement, and derive scanner gates from
+      exact findings and authoritative advisory evidence. The new daemon guard
+      was exercised in the final Caddy measurement; source/backend runs preceded
+      that final guard and need repetition in the integrated workflow.
+
 ### Native preparation orchestration
 
 - [x] Add an individual native preparation command consuming an authentic
