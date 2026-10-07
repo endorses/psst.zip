@@ -1034,6 +1034,11 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       and source-scanner inputs, and describe the implemented read-only main
       dispatch. Keep uploaded candidate summaries distinct from the complete
       retained inputs needed for authenticated assembly.
+- [x] Inspect the actual retained web package inputs for original source and
+      build materials. Record the generated Lucide and fflate input gaps,
+      hpke build-script gap, and embedded QR/tus source-map contents in the
+      [application package inspection](../security/application-package-source-review.md).
+      This ten-package subset does not establish complete source coverage.
 - [ ] Review package inputs for complete preferred-form upstream source, include
       all required sources in the final corresponding-source offering, bind the
       archive to authenticated release inputs, and verify public delivery.
