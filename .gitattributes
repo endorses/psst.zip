@@ -1,1 +1,4 @@
 *.bat text eol=crlf
+# Preserve the exact checksum-bound upstream license, including its line-38 space.
+# Application whitespace checks and all secret detectors remain unchanged.
+tools/runtime-legal/licenses/MPL-2.0.txt whitespace=-blank-at-eol

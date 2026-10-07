@@ -606,6 +606,16 @@ exact upstream source revision.
 Upstream signatures are retained but not yet verified. Temporary downloads and
 isolated source helpers do not access production state.
 
+A pinned runtime legal evidence pack now retains seventeen full documents for
+eight exact revisions of the four missing-notice origins. It binds recipe/source
+hashes, Debian netbase attribution and the embedded certificate helper notices;
+six boundary tests and an exact-input replay passed. Its verifier remains
+read-only and rejects unknown source revisions. It does not waive unresolved
+Alpine attribution/helper findings, lower-layer/final/ARM64 coverage, signatures
+or source delivery. The MPL text retains its checksum-bound upstream bytes;
+only that file's trailing-space check is exempted through `.gitattributes`.
+CI verifies the evidence hashes and all secret detectors remain enabled.
+
 All 31 updater boundary/fault tests passed, including real filesystem/SQLite
 checks and simulated Docker/GitHub failures. The complete 64-test release suite
 passed in 3.642 seconds. These establish implementation boundaries; actual Docker
@@ -749,6 +759,24 @@ reviews remain pending; this source result does not approve publication.
 - [ ] Configure the environment and restricted deployment key, then exercise the
       Actions deployment path with a subsequent tested release. Never upload the
       VPS `.env`, data volumes, or personal maintenance key to GitHub.
+
+Read-only live inspection on 2026-10-07 confirmed `/opt/psst.zip`, project
+`psst-zip`, two source-built services, a private backend and the existing named
+backend/Caddy volumes. The backend still uses its original physical volume and
+database identifiers; adoption must set protected explicit overrides rather than
+select fresh defaults. No legacy identifier is being republished as a new
+project identity. Backend ownership is UID/GID 1000; Caddy is 10001. Both services
+retain resource policies, with no explicit Compose user override. The active host
+Caddyfile mount needs an explicit preserve-or-replace decision.
+
+The host is AMD64, Docker 29.8.2 and Compose 5.6.0, with approximately 34.6 GB free.
+HTTPS authentication status returned 200 and `setup_required: false`; no nonempty
+administrator bootstrap variables remain. The private environment file is
+root-owned mode 0600. The Compose and Caddy files are root-owned mode 0664 and
+must lose group write access before the protected helper can adopt them. No
+production state or permissions were changed. Baseline image/configuration
+checkpoint retention and operator-setting equivalence still require verification,
+so the complete migration inspection/adoption task remains pending.
 
 ## Verification and completion criteria
 

@@ -1,0 +1,9 @@
+/* c_rehash.c - Create hash symlinks for certificates
+ * C implementation based on the original Perl and shell versions
+ *
+ * Copyright (c) 2013-2014 Timo Teräs <timo.teras@iki.fi>
+ * All rights reserved.
+ *
+ * This software is licensed under the MIT License.
+ * Full license available at: http://opensource.org/licenses/MIT
+ */

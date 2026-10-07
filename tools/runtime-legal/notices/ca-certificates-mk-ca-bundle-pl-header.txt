@@ -1,0 +1,34 @@
+#!/usr/bin/env perl
+# ***************************************************************************
+# *                                  _   _ ____  _
+# *  Project                     ___| | | |  _ \| |
+# *                             / __| | | | |_) | |
+# *                            | (__| |_| |  _ <| |___
+# *                             \___|\___/|_| \_\_____|
+# *
+# * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
+# *
+# * This software is licensed as described in the file COPYING, which
+# * you should have received as part of this distribution. The terms
+# * are also available at https://curl.se/docs/copyright.html.
+# *
+# * You may opt to use, copy, modify, merge, publish, distribute and/or sell
+# * copies of the Software, and permit persons to whom the Software is
+# * furnished to do so, under the terms of the COPYING file.
+# *
+# * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
+# * KIND, either express or implied.
+# *
+# * SPDX-License-Identifier: curl
+# *
+# ***************************************************************************
+# This Perl script creates a fresh ca-bundle.crt file for use with libcurl.
+# It downloads certdata.txt from Mozilla's source tree (see URL below),
+# then parses certdata.txt and extracts CA Root Certificates into PEM format.
+# These are then processed with the OpenSSL commandline tool to produce the
+# final ca-bundle.crt file.
+# The script is based on the parse-certs script written by Roland Krikava.
+# This Perl script works on almost any platform since its only external
+# dependency is the OpenSSL commandline tool for optional text listing.
+# Hacked by Guenter Knauf.
+#
