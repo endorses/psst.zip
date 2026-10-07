@@ -33,7 +33,10 @@ LABEL org.opencontainers.image.title="psst.zip web" \
 
 # The upstream binary carries NET_BIND_SERVICE. Remove it so cap_drop: ALL
 # works; Compose maps public ports to unprivileged internal listeners.
-RUN setcap -r /usr/bin/caddy && \
+# Require patched zlib even while the upstream pinned base retains its old copy.
+# The release source inventory includes both retained and installed versions.
+RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1' && \
+    setcap -r /usr/bin/caddy && \
     addgroup -g 10001 psst && adduser -D -H -u 10001 -G psst psst && \
     chown -R psst:psst /data /config
 

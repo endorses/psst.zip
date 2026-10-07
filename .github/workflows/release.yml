@@ -141,7 +141,8 @@ jobs:
             --backend-image "psst-candidate-backend:$ARCH" \
             --web-image "psst-candidate-web:$ARCH" \
             --platform "$PLATFORM" --version "$CANDIDATE_VERSION" \
-            --revision "$SOURCE_COMMIT"
+            --revision "$SOURCE_COMMIT" \
+            --report "$RUNNER_TEMP/candidate-records/image-smoke.json"
       - name: Record actual toolchains and tested image pair
         env:
           PLATFORM: ${{ matrix.platform }}

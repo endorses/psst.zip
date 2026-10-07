@@ -5,6 +5,7 @@ No image pulls, production access, TLS/ACME claims or global Docker cleanup.
 """
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import io
 import ipaddress
@@ -98,6 +99,48 @@ def check_runtime_offer(get, pack):
     require(offered["THIRD_PARTY_NOTICES.txt"].strip(), "Runtime notices are empty")
 
 
+def write_smoke_report(path, args, tested_configs, execution, runtime_pack_hash):
+    """Persist measurements only after real checks and complete fixture cleanup."""
+    from release_artifacts import COMMIT, DIGEST, VERSION, matches
+
+    matches(args.version, VERSION, "Invalid smoke release version")
+    matches(args.revision, COMMIT, "Invalid smoke source revision")
+    require(set(tested_configs) == {"backend", "web"}, "Incomplete tested pair")
+    for digest in tested_configs.values():
+        matches(digest, DIGEST, "Invalid tested image configuration")
+    require(execution in {"native", "emulated"}, "Unknown smoke execution mode")
+    if runtime_pack_hash is not None:
+        matches(runtime_pack_hash, DIGEST, "Invalid tested runtime pack digest")
+    report = {
+        "schema_version": 1,
+        "kind": "release-image-smoke",
+        "version": args.version,
+        "revision": args.revision,
+        "platform": args.platform,
+        "execution": execution,
+        "tested_configs": tested_configs,
+        "runtime_pack_sha256": runtime_pack_hash,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "checks": [
+            "image-metadata",
+            "fixture-isolation",
+            "container-hardening",
+            "health-public-config",
+            "compiled-web-assets",
+            "application-notices",
+            "administrator-authentication",
+            "credential-free-restart",
+            "cleanup",
+        ]
+        + (["runtime-offer"] if runtime_pack_hash else []),
+        "publication_authorized": False,
+    }
+    with path.open("xb") as output:
+        output.write(
+            (json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        )
+
+
 def subnet():
     networks = run("docker", "network", "ls", "-q").decode().split()
     occupied = []
@@ -132,6 +175,11 @@ def main():
         type=Path,
         help="Require exact runtime overlay/source bytes and discoverable metadata",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="Write secret-free measurements after successful smoke checks and cleanup",
+    )
     args = parser.parse_args()
     architecture = args.platform.split("/")[1]
     source_archive = f"{args.source_url}/archive/{args.revision}.tar.gz"
@@ -140,7 +188,17 @@ def main():
     owned = False
     compose = []
     try:
+        if args.report:
+            require(
+                not args.report.exists()
+                and not args.report.is_symlink()
+                and args.report.parent.is_dir(),
+                "Smoke report output must be new with an existing parent",
+            )
         runtime_pack = None
+        runtime_pack_hash = None
+        overlay_proof = None
+        tested_configs = {}
         if args.runtime_pack:
             from package_runtime_sources import verify_overlays
             from release_artifacts import read_bounded_file, read_json
@@ -155,11 +213,25 @@ def main():
                 and runtime_pack.get("architecture") == architecture,
                 "Runtime pack belongs to another tested release/platform",
             )
-            verify_overlays(args.runtime_pack, args.backend_image, args.web_image)
+            overlay_proof = verify_overlays(
+                args.runtime_pack, args.backend_image, args.web_image
+            )
+            runtime_pack_hash = (
+                "sha256:"
+                + hashlib.sha256(
+                    read_bounded_file(args.runtime_pack / "runtime-pack.json")
+                ).hexdigest()
+            )
         for image, title in ((args.backend_image, "backend"), (args.web_image, "web")):
             # Load/pull the selected platform beforehand. Plain inspect supports
             # Docker 27; the newer --platform inspection flag is not required.
             metadata = json.loads(run("docker", "image", "inspect", image))[0]
+            tested_configs[title] = metadata["Id"]
+            if overlay_proof:
+                require(
+                    overlay_proof["images"][title]["image_id"] == metadata["Id"],
+                    "Runtime overlay image identity changed",
+                )
             require(
                 metadata["Architecture"] == architecture and metadata["Os"] == "linux",
                 "Image architecture differs",
@@ -206,8 +278,8 @@ def main():
             username, password = "smoke-admin", secrets.token_urlsafe(32)
             values = {
                 "COMPOSE_PROJECT_NAME": project,
-                "BACKEND_IMAGE": args.backend_image,
-                "WEB_IMAGE": args.web_image,
+                "BACKEND_IMAGE": tested_configs["backend"],
+                "WEB_IMAGE": tested_configs["web"],
                 "PSST_DOMAIN": "http://:8080",
                 "PUBLIC_URL": "",
                 "AUTH_ALLOW_INSECURE_HTTP": "true",
@@ -271,6 +343,11 @@ def main():
                 require(
                     not containers["backend"]["HostConfig"]["PortBindings"],
                     "Backend publishes ports",
+                )
+                require(
+                    containers["backend"]["Image"] == tested_configs["backend"]
+                    and containers["caddy"]["Image"] == tested_configs["web"],
+                    "Fixture did not start the checked image pair",
                 )
                 binding = containers["caddy"]["NetworkSettings"]["Ports"]["8080/tcp"]
                 require(
@@ -488,6 +565,14 @@ def main():
                             f"Owned fixture {kind} remain after cleanup",
                         )
         require(not Path(temp).exists(), "Temporary fixture files remain")
+        if args.report:
+            write_smoke_report(
+                args.report,
+                args,
+                tested_configs,
+                "native" if native == architecture else "emulated",
+                runtime_pack_hash,
+            )
         print(
             f"Release image smoke passed: {args.platform} ({'native' if native == architecture else 'emulated'}); disposable HTTP fixture only; owned resources and temporary files removed."
         )

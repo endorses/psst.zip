@@ -25,7 +25,11 @@ LABEL org.opencontainers.image.title="psst.zip backend" \
     org.opencontainers.image.url="${SOURCE_URL}/tree/${REVISION}" \
     zip.psst.source.archive="${SOURCE_URL}/archive/${REVISION}.tar.gz"
 
-RUN apk add --no-cache ca-certificates tzdata && \
+# Pinned base layers retain older packages. Require patched runtime versions;
+# release inventories record the actual packages selected from this branch.
+RUN apk add --no-cache --upgrade \
+    'libcrypto3>=3.3.7-r2' 'libssl3>=3.3.7-r2' 'zlib>=1.3.2-r1' \
+    ca-certificates tzdata && \
     adduser -D -h /app appuser
 
 WORKDIR /app

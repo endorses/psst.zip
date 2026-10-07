@@ -59,6 +59,20 @@ class EvidenceChecks(unittest.TestCase):
             }
         ]
 
+    def test_measurement_authentication_is_bounded_and_has_no_gate_receipt(self):
+        content = self.path.read_bytes()
+        with patch.object(
+            evidence, "bounded_verify", return_value=json_bytes(self.output())
+        ) as runner:
+            self.assertIsNone(self.verifier.authenticate(content, self.binding))
+            runner.assert_called_once()
+        for value in (b"", "not-bytes", b"x" * (evidence.MAX_BUNDLE_BYTES + 1)):
+            with self.subTest(value_type=type(value)):
+                with patch.object(evidence, "bounded_verify") as runner:
+                    with self.assertRaises(InvalidRelease):
+                        self.verifier.authenticate(value, self.binding)
+                    runner.assert_not_called()
+
     def test_exact_policy_flags_and_snapshot_environment(self):
         snapshots = []
 

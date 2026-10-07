@@ -757,6 +757,42 @@ overrides are not inherited. An attestation authenticates the reviewed workflow'
 report, so that workflow must derive reports from actual completed checks before
 signing them. The adapter alone does not establish distribution readiness.
 
+### Patched runtime inputs
+
+- [x] Require OpenSSL 3.3.7-r2 or newer in the backend Alpine 3.21 runtime
+      and zlib 1.3.2-r1 or newer in both final runtimes. Keep pinned official
+      multi-platform base indexes; their current tags still resolve to the
+      vulnerable original layers. Record and collect sources for retained and
+      actually installed package versions instead of flattening the image.
+- [ ] Rebuild and smoke both patched native image pairs, repeat source collection
+      and overlays, and scan their actual final configurations before publishing.
+      The previous vulnerable image scan remains historical evidence.
+
+Package minimums select compatible newer revisions from the configured Alpine
+branch. A base digest plus live APK repositories does not promise byte-for-byte
+rebuild reproducibility. Release images remain immutable, and actual APK package
+versions, checksums, recipe commits and retained sources must be captured for each
+native build. Repeatable package bytes additionally require retained APK inputs.
+
+### Native smoke measurement checkpoint
+
+- [x] Emit a bounded, secret-free `image-smoke.json` only after actual checks
+      and owned-resource cleanup succeed. Record exact image configuration IDs,
+      source version/revision/platform, native/emulated execution, check coverage,
+      and runtime pack hash when present. Lock Compose to checked immutable
+      configuration IDs and compare the started containers against them.
+- [x] Verify real AMD64 report generation against the private source-overlay
+      image pair; the disposable HTTP stack passed and all owned resources were
+      removed. The report covers the recorded `dffeac44` application source and
+      is not distribution approval for that vulnerable candidate.
+- [x] Reuse the bounded GitHub attestation verifier for native measurement bytes
+      without returning a gate approval receipt. Nine authenticity regressions
+      and five served-offer/measurement regressions passed.
+- [ ] Authenticate both native matrix measurement records and aggregate the full
+      release smoke/notices evidence against the exact OCI child descriptors.
+      The candidate workflow records measurements without signing or publishing;
+      a missing runtime pack cannot satisfy the final publication gate.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports

@@ -2,8 +2,12 @@
 
 import hashlib
 import unittest
+import json
+from pathlib import Path
+import tempfile
+from types import SimpleNamespace
 
-from verify_release_images import check_runtime_offer
+from verify_release_images import check_runtime_offer, write_smoke_report
 
 
 class RuntimeOfferChecks(unittest.TestCase):
@@ -48,6 +52,60 @@ class RuntimeOfferChecks(unittest.TestCase):
         self.pack["overlays"]["web"]["../private"] = "b" * 64
         with self.assertRaisesRegex(RuntimeError, "Unsafe"):
             check_runtime_offer(self.get, self.pack)
+
+
+class SmokeReportChecks(unittest.TestCase):
+    def test_measurements_bind_exact_configs_and_pack_without_approval(self):
+        args = SimpleNamespace(
+            version="v1.2.3", revision="a" * 40, platform="linux/amd64"
+        )
+        configs = {"backend": "sha256:" + "b" * 64, "web": "sha256:" + "c" * 64}
+        with tempfile.TemporaryDirectory(prefix="psst-smoke-report-") as directory:
+            path = Path(directory) / "smoke.json"
+            write_smoke_report(path, args, configs, "native", "sha256:" + "d" * 64)
+            result = json.loads(path.read_bytes())
+            self.assertEqual(result["tested_configs"], configs)
+            self.assertIn("runtime-offer", result["checks"])
+            self.assertFalse(result["publication_authorized"])
+            self.assertNotIn("passed", result)
+            with self.assertRaises(FileExistsError):
+                write_smoke_report(path, args, configs, "native", None)
+            path.unlink()
+            write_smoke_report(path, args, configs, "emulated", None)
+            result = json.loads(path.read_bytes())
+            self.assertIsNone(result["runtime_pack_sha256"])
+            self.assertNotIn("runtime-offer", result["checks"])
+
+    def test_invalid_or_incomplete_measurements_cannot_create_report(self):
+        from release_artifacts import InvalidRelease
+
+        args = SimpleNamespace(
+            version="v1.2.3", revision="a" * 40, platform="linux/amd64"
+        )
+        with tempfile.TemporaryDirectory(prefix="psst-smoke-report-") as directory:
+            path = Path(directory) / "smoke.json"
+            for configs, mode, pack in [
+                ({"backend": "sha256:" + "b" * 64}, "native", None),
+                (
+                    {"backend": "sha256:" + "b" * 64, "web": "mutable-tag"},
+                    "native",
+                    None,
+                ),
+                (
+                    {"backend": "sha256:" + "b" * 64, "web": "sha256:" + "c" * 64},
+                    "unknown",
+                    None,
+                ),
+                (
+                    {"backend": "sha256:" + "b" * 64, "web": "sha256:" + "c" * 64},
+                    "native",
+                    "not-a-digest",
+                ),
+            ]:
+                with self.subTest(configs=configs, mode=mode, pack=pack):
+                    with self.assertRaises((RuntimeError, InvalidRelease)):
+                        write_smoke_report(path, args, configs, mode, pack)
+                    self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ from release_artifacts import (
     COMMIT,
     VERSION,
     InvalidRelease,
+    MAX_BUNDLE_BYTES,
     fields,
     matches,
     read_bounded_file,
@@ -212,6 +213,21 @@ class GhEvidenceVerifier:
             and isinstance(record["details"], dict),
             "Release report is failed or bound to another gate/release",
         )
+        self.authenticate(content, binding)
+        return VerifiedEvidence(
+            gate, binding.digest, sha256(content), True, record["details"]
+        )
+
+    def authenticate(self, content: bytes, binding: Binding) -> None:
+        """Authenticate bounded measurement bytes; caller validates their schema.
+
+        Native matrix artifacts use the same exact release signer/source policy.
+        This method verifies origin only and never issues a gate approval receipt.
+        """
+        require(
+            isinstance(content, bytes) and 0 < len(content) <= MAX_BUNDLE_BYTES,
+            "Attested measurement bytes exceed bounds or are empty",
+        )
         # Verify the same bytes that were parsed. A substituted caller file or
         # changes made during the CLI call cannot become an authenticated report.
         with tempfile.TemporaryDirectory(prefix="psst-evidence-") as temporary:
@@ -236,6 +252,3 @@ class GhEvidenceVerifier:
                 "Verification snapshot was changed",
             )
             verified_subject(output, sha256(content))
-        return VerifiedEvidence(
-            gate, binding.digest, sha256(content), True, record["details"]
-        )
