@@ -21,6 +21,7 @@ import tarfile
 import uuid
 
 import collect_caddy_sources
+import measure_native_browser_inputs
 import collect_runtime_notices
 from assemble_release_oci import inspect_archive
 from generate_release_gate_reports import (
@@ -523,6 +524,29 @@ class Operations:
             context, pack=pack, archives=archives, tested_configs=configs
         )
 
+    def browser(
+        self,
+        context,
+        builder_config,
+        source_root,
+        dependency_collection,
+        archive,
+        tested_config,
+        runtime_pack,
+        output,
+    ):
+        return measure_native_browser_inputs.collect(
+            self,
+            context,
+            builder_config,
+            source_root,
+            dependency_collection,
+            archive,
+            tested_config,
+            runtime_pack,
+            output,
+        )
+
     def replay(
         self,
         context: NativeSourceContext,
@@ -559,10 +583,16 @@ def prepare(
     original_archive: Path,
     helper_config: str,
     cosign: Path,
+    web_builder_config: str,
+    source_root: Path,
+    dependency_collection: Path,
     output: Path,
     operations: Operations | None = None,
 ) -> dict:
     context.checked()
+    matches(
+        web_builder_config, DIGEST, "Browser builder must be an immutable configuration"
+    )
     matches(helper_config, DIGEST, "Source helper must be an immutable configuration")
     require(
         cosign.is_file() and not cosign.is_symlink(),
@@ -719,7 +749,33 @@ def prepare(
                 == file_record(archive)["sha256"],
                 "Native OCI bytes differ from measured configurations",
             )
+        browser_result = operations.browser(
+            context,
+            web_builder_config,
+            source_root,
+            dependency_collection,
+            archives["web"],
+            configs["web"],
+            manifest,
+            output / "browser",
+        )
+        require(
+            browser_result.get("tested_web_config") == configs["web"]
+            and browser_result.get("source") == context.checked()
+            and browser_result.get("builder_config") == web_builder_config
+            and browser_result.get("oci_image_verified") is True
+            and browser_result.get("git_source_binding_verified") is True
+            and browser_result.get("image") == measurement["images"]["web"]
+            and browser_result.get("npm_member_integrity_verified") is True
+            and browser_result.get("browser_module_closure_verified") is False
+            and browser_result.get("source_reproduction_verified") is False
+            and browser_result.get("publication_authorized") is False
+            and browser_result.get("distribution_authorized") is False,
+            "Native browser evidence identity/approval boundary differs",
+        )
         artifact_paths = {
+            "browser_inputs": output / "browser/browser-inputs.tar",
+            "browser_verification": output / "browser/browser-verification.json",
             "build_record": output / "build-record.json",
             "original_archive": copied_original,
             "final_archive": final_save,
@@ -730,8 +786,15 @@ def prepare(
             "runtime_source": pack / runtime["source_asset"]["name"],
             **{component + "_archive": path for component, path in archives.items()},
         }
+        require(
+            file_record(original_archive) == original_snapshot
+            and read_bounded_file(build_record) == raw
+            and file_record(copied_original) == original_snapshot
+            and file_record(final_save) == final_snapshot,
+            "Native evidence inputs changed during browser verification",
+        )
         result = {
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "native-release-artifacts",
             "source": context.checked(),
             "original_tested_configs": originals,
@@ -757,7 +820,15 @@ def main() -> None:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--platform", choices=PLATFORMS, required=True)
     parser.add_argument("--helper-config", required=True)
-    for name in ["build-record", "original-archive", "cosign", "output"]:
+    parser.add_argument("--web-builder-config", required=True)
+    for name in [
+        "build-record",
+        "original-archive",
+        "cosign",
+        "source-root",
+        "dependency-collection",
+        "output",
+    ]:
         parser.add_argument("--" + name, type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -769,6 +840,9 @@ def main() -> None:
             original_archive=args.original_archive,
             helper_config=args.helper_config,
             cosign=args.cosign,
+            web_builder_config=args.web_builder_config,
+            source_root=args.source_root,
+            dependency_collection=args.dependency_collection,
             output=args.output,
         )
         print(json_bytes(result).decode(), end="")

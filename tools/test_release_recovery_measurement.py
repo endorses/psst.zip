@@ -11,7 +11,6 @@ import copy
 from datetime import datetime, timezone
 import gzip
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -113,6 +112,7 @@ class RecoveryMeasurements(unittest.TestCase):
             previous_source=self.previous,
             output=self.output,
             root=self.root,
+            allow_legacy_browser=True,
         )
         self.policy = recovery.flow_policy(self.root / "deploy/update.py")
 
@@ -348,6 +348,7 @@ class RecoveryMeasurements(unittest.TestCase):
             manifest_path=self.manifest_path,
             bundle=self.bundle,
             root=self.root,
+            allow_legacy_browser=overrides.pop("allow_legacy_browser", True),
             **overrides,
         )
 

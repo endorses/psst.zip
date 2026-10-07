@@ -23,6 +23,7 @@ import tarfile
 import tempfile
 
 from assemble_release_oci import StrictTarInfo, inspect_archive
+import measure_native_browser_inputs
 from generate_release_gate_reports import (
     NativeSourceContext,
     runtime_inputs,
@@ -210,6 +211,7 @@ def validate_inputs(
     manifest_path: Path,
     bundle: Path,
     root: Path = ROOT,
+    allow_legacy_browser: bool = False,
 ) -> Inputs:
     """Replay real four-image inputs; missing ARM evidence is never manufactured."""
     context.checked()
@@ -239,7 +241,11 @@ def validate_inputs(
         )
         require(
             type(descriptor["schema_version"]) is int
-            and descriptor["schema_version"] == 1
+            and (
+                descriptor["schema_version"] == 2
+                or allow_legacy_browser
+                and descriptor["schema_version"] == 1
+            )
             and descriptor["kind"] == "native-release-artifacts"
             and descriptor["source"] == local_context.checked()
             and descriptor["oci_exporter"] == "docker-save-byte-preserving-oci-v1"
@@ -257,7 +263,16 @@ def validate_inputs(
         matches(
             descriptor["source_helper_config"], DIGEST, "Invalid source helper identity"
         )
-        fields(descriptor["artifacts"], ARTIFACTS, "retained native artifacts")
+        fields(
+            descriptor["artifacts"],
+            ARTIFACTS
+            | (
+                {"browser_inputs", "browser_verification"}
+                if descriptor["schema_version"] == 2
+                else set()
+            ),
+            "retained native artifacts",
+        )
         paths[platform] = {
             name: artifact_path(path.parent, value)
             for name, value in descriptor["artifacts"].items()
@@ -275,7 +290,9 @@ def validate_inputs(
             and candidate_build["base_images"] == manifest["build"]["base_images"],
             "Retained original native build/bases differ from assembly",
         )
-        _, runtime = runtime_inputs(local_context, local["runtime_pack"].parent)
+        raw_runtime_pack, runtime = runtime_inputs(
+            local_context, local["runtime_pack"].parent
+        )
         require(
             local["runtime_source"]
             == local["runtime_pack"].parent / runtime["source_asset"]["name"]
@@ -345,6 +362,26 @@ def validate_inputs(
                 "Recovery OCI bytes differ from actual native measurement/manifest",
             )
             images[component + "-" + platform.split("/")[1]] = actual
+        if descriptor["schema_version"] == 2:
+            browser = read_json(read_bounded_file(local["browser_verification"]))
+            matches(
+                browser.get("builder_config"),
+                DIGEST,
+                "Missing original browser builder configuration",
+            )
+            expected_browser = measure_native_browser_inputs.replay(
+                local_context,
+                local["browser_inputs"],
+                local["web_archive"],
+                descriptor["tested_configs"]["web"],
+                raw_runtime_pack,
+                source_root=root,
+            )
+            require(
+                browser
+                == {**expected_browser, "builder_config": browser["builder_config"]},
+                "Recovery browser evidence differs from exact Git/npm/final OCI replay",
+            )
         saved_layers(local["final_archive"], descriptor["tested_configs"])
         descriptors[platform] = descriptor
     for component in ("backend", "web"):
@@ -808,6 +845,7 @@ def measure_recovery(
     output: Path,
     root: Path = ROOT,
     execute=command,
+    allow_legacy_browser: bool = False,
 ) -> dict:
     context.checked()
     matches(
@@ -826,7 +864,12 @@ def measure_recovery(
         "Recovery requires actual native execution",
     )
     inputs = validate_inputs(
-        context, natives=natives, manifest_path=manifest, bundle=bundle, root=root
+        context,
+        natives=natives,
+        manifest_path=manifest,
+        bundle=bundle,
+        root=root,
+        allow_legacy_browser=allow_legacy_browser,
     )
     previous = (
         git(root, "rev-parse", "--verify", previous_source + "^{commit}")

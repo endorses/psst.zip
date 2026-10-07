@@ -187,6 +187,36 @@ class FixtureOperations(native.Operations):
             self.changed_replay(value, archives)
         return value
 
+    def browser(
+        self,
+        context,
+        builder_config,
+        source_root,
+        dependency_collection,
+        archive,
+        tested_config,
+        runtime_pack,
+        output,
+    ):
+        self.event("browser-replay")
+        output.mkdir()
+        (output / "browser-inputs.tar").write_bytes(b"selective browser fixture")
+        value = {
+            "source": context.checked(),
+            "tested_web_config": tested_config,
+            "builder_config": builder_config,
+            "oci_image_verified": True,
+            "git_source_binding_verified": True,
+            "image": self.measurement["images"]["web"],
+            "npm_member_integrity_verified": True,
+            "browser_module_closure_verified": False,
+            "source_reproduction_verified": False,
+            "publication_authorized": False,
+            "distribution_authorized": False,
+        }
+        (output / "browser-verification.json").write_bytes(json_bytes(value))
+        return value
+
     def cleanup(self, aliases):
         self.cleaned = aliases
         self.events.append("cleanup")
@@ -310,6 +340,9 @@ class NativePreparation(unittest.TestCase):
                     "original_archive": self.archive,
                     "helper_config": self.helper,
                     "cosign": self.cosign,
+                    "web_builder_config": "sha256:" + "8" * 64,
+                    "source_root": self.folder,
+                    "dependency_collection": self.folder / "dependencies",
                     "output": self.output,
                     "operations": self.ops,
                 }
@@ -421,6 +454,7 @@ class NativePreparation(unittest.TestCase):
             "export",
             "native-smoke",
             "source-replay",
+            "browser-replay",
         ]:
             with self.subTest(stage=stage):
                 self.output = self.folder / stage

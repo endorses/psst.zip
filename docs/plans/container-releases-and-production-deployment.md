@@ -1055,10 +1055,18 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       seconds and retained the generated browser inventory and both new legal
       notices. Remove its owned image/container. This diagnostic working-tree
       build used `dev`/`main`; it does not establish release source binding.
-- [ ] Retain the real web builder's observed source/generated/package inputs and
+- [x] Implement retention of the real web builder's observed source/generated/package inputs and
       Vite metadata, replay them against each final tested web configuration and
       exact committed inputs, and preserve this evidence through native transfer.
-      The existing local static verifier is not yet invoked by native preparation.
+      Native preparation, transfer and recovery now require schema-2 evidence.
+      Small real Git/npm/OCI fixtures reject missing inputs and substituted source
+      or final image bytes. A real native builder diagnostic retained 4,401 members
+      and checked 98 Git inputs: build 21.4 seconds, capture/static/Git replay 1.7
+      seconds. Its owned image/container were removed. This diagnostic does not
+      establish the complete final OCI/dependency/transfer path for a release.
+- [ ] Run the complete schema-2 native preparation, transfer and recovery on both
+      hosted architectures for the exact candidate commit. Full browser source
+      closure, measurement authentication and publication remain separate gates.
 
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked
       archives, including development and optional platforms, without executing
@@ -1352,6 +1360,28 @@ Implementation and live rollout are separate gates. Mark tasks complete only
 when their work and applicable checks have actually finished. GitHub account
 setup, registry publication, production secrets, and live migration remain
 pending until performed in those environments.
+
+Keep routine checks focused on observable failures rather than coverage totals.
+Use small local fixtures for release parsing, tamper rejection and preservation
+rules; keep full image/source/recovery experiments in release verification. The
+combined local release-tooling suite passed 334 tests in 25.0 seconds after browser
+input integration (one opt-in Docker case skipped; real builder capture was run
+separately). Do not repeat broad suites without changes, failures or unresolved
+risks that justify them.
+
+Transfer staging performs browser replay once before copying and once when
+independently verifying the completed destination. Intermediate consistency
+checks compare retained file hashes rather than repeating OCI/Git/npm parsing.
+After this optimization, the ten transfer regressions passed in 1.6 seconds.
+
+The last passing hosted CI run `37669775085` took approximately 1 minute for
+repository security, 4.2 minutes for backend, 8 minutes for web and 14 minutes for
+native iOS. Routine job limits are now 10, 15, 15 and 25 minutes respectively;
+the Go test package limit is 10 minutes with race checking preserved. These catch
+hangs rather than establish faster execution. Confirm the new limits on the next
+hosted run. Full release verification includes additional collection and recovery
+work and has separate budgets; these measurements do not promise a sub-30-minute
+release pipeline.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.

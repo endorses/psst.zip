@@ -12,6 +12,8 @@ import hashlib
 from pathlib import Path, PurePosixPath
 import re
 
+import measure_native_browser_inputs
+
 from generate_release_gate_reports import (
     NativeSourceContext,
     runtime_inputs,
@@ -223,7 +225,9 @@ def checked_measurement(
     )
 
 
-def collect_inventory(context: NativeSourceContext, root: Path) -> dict[str, dict]:
+def collect_inventory(
+    context: NativeSourceContext, root: Path, *, allow_legacy_browser=False
+) -> dict[str, dict]:
     """Validate producer identities and referenced bytes; never approve findings."""
     context.checked()
     inventory, arch = Inventory(root), context.platform.split("/")[1]
@@ -232,7 +236,12 @@ def collect_inventory(context: NativeSourceContext, root: Path) -> dict[str, dic
         DESCRIPTOR_FIELDS,
         "native descriptor",
     )
-    checked_measurement(descriptor, context, "native-release-artifacts")
+    schema = descriptor.get("schema_version")
+    require(
+        schema == 2 or allow_legacy_browser and schema == 1,
+        "Current native candidates require retained browser evidence; legacy schema1 requires explicit historical opt-in",
+    )
+    checked_measurement(descriptor, context, "native-release-artifacts", schema=schema)
     require(
         descriptor["measurement_authentication_required"] is True
         and descriptor["oci_exporter"] == "docker-save-byte-preserving-oci-v1",
@@ -248,8 +257,15 @@ def collect_inventory(context: NativeSourceContext, root: Path) -> dict[str, dic
         DIGEST,
         "Missing native helper configuration",
     )
-    artifacts = fields(descriptor["artifacts"], ARTIFACTS, "all native artifacts")
+    artifacts = fields(
+        descriptor["artifacts"],
+        ARTIFACTS
+        | ({"browser_inputs", "browser_verification"} if schema == 2 else set()),
+        "all native artifacts",
+    )
     expected_paths = {
+        "browser_inputs": "browser/browser-inputs.tar",
+        "browser_verification": "browser/browser-verification.json",
         "build_record": "build-record.json",
         "final_archive": "final-images.docker.tar",
         "native_measurement": "native-measurement.json",
@@ -288,6 +304,24 @@ def collect_inventory(context: NativeSourceContext, root: Path) -> dict[str, dic
         )
         inventory.add("native/" + name, record["sha256"], record["size"])
     pack, runtime = runtime_inputs(context, root / "native/pack")
+    if schema == 2:
+        browser = inventory.json("native/browser/browser-verification.json")
+        matches(
+            browser.get("builder_config"),
+            DIGEST,
+            "Missing original browser builder config",
+        )
+        replayed = measure_native_browser_inputs.replay(
+            context,
+            root / "native/browser/browser-inputs.tar",
+            root / ("native/" + expected_paths["web_archive"]),
+            descriptor["tested_configs"]["web"],
+            pack,
+        )
+        require(
+            browser == {**replayed, "builder_config": browser["builder_config"]},
+            "Retained native browser observation differs from independent replay",
+        )
     require(
         artifacts["runtime_source"]["file"]
         == "pack/" + runtime["source_asset"]["name"],
@@ -526,7 +560,11 @@ def collect_inventory(context: NativeSourceContext, root: Path) -> dict[str, dic
 
 
 def verify_native(
-    context: NativeSourceContext, transfer: Path, source_kind: str
+    context: NativeSourceContext,
+    transfer: Path,
+    source_kind: str,
+    *,
+    allow_legacy_browser=False,
 ) -> dict:
     require(source_kind in SOURCE_KINDS, "Unknown candidate source kind")
     fingerprint(transfer, METADATA, MAX_JSON)
@@ -550,7 +588,9 @@ def verify_native(
         and metadata["measurement_authentication_required"] is True,
         "Candidate transfer source kind/authentication differs",
     )
-    files = collect_inventory(context, transfer)
+    files = collect_inventory(
+        context, transfer, allow_legacy_browser=allow_legacy_browser
+    )
     require(
         metadata["files"] == files
         and all(
@@ -592,7 +632,12 @@ def copy_file(source: Path, target: Path):
 
 
 def stage_native(
-    context: NativeSourceContext, private: Path, output: Path, source_kind: str
+    context: NativeSourceContext,
+    private: Path,
+    output: Path,
+    source_kind: str,
+    *,
+    allow_legacy_browser=False,
 ) -> dict:
     require(source_kind in SOURCE_KINDS, "Unknown candidate source kind")
     require(
@@ -602,7 +647,9 @@ def stage_native(
         and not any(p.is_symlink() for p in (output.parent, *output.parent.parents)),
         "Candidate transfer output must be a new real directory",
     )
-    files = collect_inventory(context, private)
+    files = collect_inventory(
+        context, private, allow_legacy_browser=allow_legacy_browser
+    )
     output.mkdir(mode=0o700)
     for name, record in files.items():
         require(
@@ -614,9 +661,13 @@ def stage_native(
             fingerprint(output, name) == record == fingerprint(private, name),
             "Candidate input changed during transfer",
         )
+    # Copy checks bind the validated source bytes. Recheck every retained byte,
+    # then independently replay the completed output once in verify_native.
     require(
-        collect_inventory(context, private) == files
-        and collect_inventory(context, output) == files,
+        all(
+            fingerprint(private, name) == record == fingerprint(output, name)
+            for name, record in files.items()
+        ),
         "Candidate evidence changed during transfer",
     )
     result = {
@@ -629,7 +680,9 @@ def stage_native(
         "measurement_authentication_required": True,
     }
     create_output(output / METADATA, json_bytes(result))
-    return verify_native(context, output, source_kind)
+    return verify_native(
+        context, output, source_kind, allow_legacy_browser=allow_legacy_browser
+    )
 
 
 def main():

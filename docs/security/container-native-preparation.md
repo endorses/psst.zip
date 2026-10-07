@@ -14,6 +14,8 @@ python3 tools/prepare_native_release.py \
   --platform linux/amd64 \
   --build-record "$BUILD_RECORD" --original-archive "$ORIGINAL_SAVE" \
   --helper-config "$SOURCE_HELPER_CONFIG" --cosign "$PINNED_COSIGN" \
+  --web-builder-config "$WEB_BUILDER_CONFIG" --source-root "$SOURCE_CHECKOUT" \
+  --dependency-collection "$DEPENDENCY_COLLECTION" \
   --output "$NEW_OUTPUT_DIRECTORY"
 ```
 
@@ -25,7 +27,8 @@ architecture must match. ARM64 requires a native ARM64 runner.
 
 The output retains the original build record and save, complete runtime source
 pack, final Docker save, two OCI archives, smoke report, native measurement, source
-replay, and a file/hash/size descriptor. The descriptor is written only after all
+replay, observed browser builder inputs and their verification, and a schema-2
+file/hash/size descriptor. The descriptor is written only after all
 checks pass. Failure may leave diagnostic inputs in the new output directory;
 reconcile these before starting a fresh attempt. Temporary image aliases are
 removed without pruning shared Docker caches.
@@ -34,6 +37,18 @@ OCI export preserves the original configuration and uncompressed layer bytes.
 A general Docker-to-OCI converter can reserialize otherwise equivalent JSON and
 change the configuration digest. The exporter verifies the resulting OCI graph
 against the exact configuration IDs used by the smoke checks.
+
+Load the `web-build` stage from the same cached Docker build and pass its actual
+configuration digest as `WEB_BUILDER_CONFIG`. Collect application dependencies
+before preparation and keep the exact Git checkout available. Browser capture
+runs a fixed selection script as an unprivileged user with no network, retaining
+observed application/package/generated inputs, Vite metadata and static outputs.
+Replay checks application bytes against committed Git blobs, package bytes against
+integrity-bound npm archives and static bytes against the final tested OCI image.
+Transfer and recovery require this evidence and independently replay it. Historical
+schema-1 fixtures need an explicit library opt-in; the current CLI has no bypass.
+These observations still leave complete browser source closure and upstream build
+reproduction pending.
 
 The records remain unsigned and do not authorize publication. Both architectures,
 authenticated measurements, vulnerability gates, full corresponding-source and
@@ -156,7 +171,7 @@ hosted execution of this extended workflow remains pending.
 ## Retained inputs across hosted jobs
 
 `tools/prepare_candidate_transfer.py` stages only a fixed, validated inventory:
-all ten native descriptor artifacts, manifest-owned legal overlays, exact source
+all twelve native descriptor artifacts, manifest-owned legal overlays, exact source
 scanner raw receipts, both compiler/advisory/signature proofs, both final-image
 scanner reports, and the architecture-specific dependency archive. It preserves
 relative names so the descriptor remains valid after download. Tools, caches,

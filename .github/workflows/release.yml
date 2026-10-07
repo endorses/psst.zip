@@ -194,6 +194,16 @@ jobs:
             --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
             --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
             --file web/Dockerfile .
+          # Retain the same cached web-build stage for its observed inputs. The
+          # native verifier independently compares its outputs with final OCI
+          # bytes; a matching revision label alone never establishes this link.
+          docker buildx build --platform "$PLATFORM" --load --target web-build \
+            --provenance=false --sbom=false \
+            --metadata-file "$private/web-builder-build.json" \
+            --tag "psst-candidate-web-builder:$ARCH" \
+            --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file web/Dockerfile .
       - name: Prepare native source helper and verified official Cosign
         run: |
           private="$RUNNER_TEMP/psst-native-private-$ARCH"
@@ -252,6 +262,17 @@ jobs:
             --web-metadata "$private/web-build.json" \
             --archive "$private/candidate-pair.tar" \
             --output "$private/candidate-result.json"
+      - name: Collect exact application dependency inputs privately
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          # Collection needs only the exact Git locks and immutable Go builder;
+          # its full scanner replay remains a later assembly prerequisite.
+          psst_checked dependency-inputs python3 tools/package_application_dependencies.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --platform "$PLATFORM" --go-image "$GO_IMAGE" \
+            --output "$private/application-dependencies"
       - name: Prepare final native overlays, OCI exports and source/image measurements
         env:
           GH_TOKEN: ${{ github.token }}
@@ -264,6 +285,9 @@ jobs:
             --build-record "$private/candidate-result.json" \
             --original-archive "$private/candidate-pair.tar" \
             --helper-config "$(cat "$private/helper.id")" \
+            --web-builder-config "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.config.digest"])' "$private/web-builder-build.json")" \
+            --source-root "$GITHUB_WORKSPACE" \
+            --dependency-collection "$private/application-dependencies" \
             --cosign "$private/tools/cosign" --output "$private/native"
       - name: Measure exact committed Go and browser source vulnerabilities
         run: |
@@ -360,15 +384,8 @@ jobs:
               --image-archive "$private/native/export/$component-$ARCH.oci.tar" \
               --tested-config "$config" --output "$private/compiler-$component" "${extras[@]}"
           done
-      - name: Collect exact application dependency inputs privately
+      - name: Record completed unsigned native preparation status
         run: |
-          private="$RUNNER_TEMP/psst-native-private-$ARCH"
-          source "$private/run-checked.sh"
-          psst_checked dependency-inputs python3 tools/package_application_dependencies.py \
-            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
-            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
-            --platform "$PLATFORM" --go-image "$GO_IMAGE" \
-            --output "$private/application-dependencies"
           printf '%s\n' \
             'Native candidate measurements completed; no registry or release was published.' \
             'Reports are unsigned candidate evidence, not authenticated provenance or deployment approval.' \
@@ -481,7 +498,7 @@ jobs:
         if: always()
         run: |
           rm -rf -- "$RUNNER_TEMP/psst-native-private-$ARCH" "$RUNNER_TEMP/candidate-inputs" "$RUNNER_TEMP/candidate-transfer/$ARCH"
-          for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH" "psst-candidate-source-helper:$ARCH"; do
+          for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH" "psst-candidate-web-builder:$ARCH" "psst-candidate-source-helper:$ARCH"; do
             if docker image inspect "$image" >/dev/null 2>&1; then
               docker image rm "$image"
             fi

@@ -18,6 +18,14 @@ from publish_container_release import sha256
 from release_artifacts import InvalidRelease, json_bytes, read_json
 
 
+def historical_stage(*args, **kwargs):
+    return transfer.stage_native(*args, **kwargs, allow_legacy_browser=True)
+
+
+def historical_verify(*args, **kwargs):
+    return transfer.verify_native(*args, **kwargs, allow_legacy_browser=True)
+
+
 class CandidateTransfer(unittest.TestCase):
     def setUp(self):
         self.fixture = recovery_fixtures.RecoveryMeasurements()
@@ -226,7 +234,7 @@ class CandidateTransfer(unittest.TestCase):
         self.write("native/native-artifacts.json", self.descriptor)
 
     def stage(self, **changes):
-        return transfer.stage_native(
+        return historical_stage(
             self.context,
             self.private,
             changes.get("output", self.output),
@@ -246,7 +254,7 @@ class CandidateTransfer(unittest.TestCase):
         self.output.rename(relocated)
         self.assertEqual(
             result,
-            transfer.verify_native(self.context, relocated, "planned-main-dispatch"),
+            historical_verify(self.context, relocated, "planned-main-dispatch"),
         )
         with tarfile.open(relocated / "native/final-images.docker.tar") as archive:
             self.assertIn("manifest.json", archive.getnames())
@@ -279,7 +287,7 @@ class CandidateTransfer(unittest.TestCase):
             )
         )
         self.assertEqual(
-            result, transfer.verify_native(self.context, self.output, "version-tag")
+            result, historical_verify(self.context, self.output, "version-tag")
         )
 
     def test_missing_raw_overlay_or_dependency_archive_fails_before_writing(self):
@@ -398,26 +406,26 @@ class CandidateTransfer(unittest.TestCase):
         extra = self.output / "cookie"
         extra.write_text("Extra")
         with self.assertRaisesRegex(InvalidRelease, "Extra or missing"):
-            transfer.verify_native(self.context, self.output, "planned-main-dispatch")
+            historical_verify(self.context, self.output, "planned-main-dispatch")
         extra.unlink()
         extra.mkdir()
         with self.assertRaisesRegex(InvalidRelease, "Extra or missing"):
-            transfer.verify_native(self.context, self.output, "planned-main-dispatch")
+            historical_verify(self.context, self.output, "planned-main-dispatch")
         extra.rmdir()
         extra.symlink_to(self.private / "native/native-artifacts.json")
         with self.assertRaisesRegex(InvalidRelease, "Linked"):
-            transfer.verify_native(self.context, self.output, "planned-main-dispatch")
+            historical_verify(self.context, self.output, "planned-main-dispatch")
         extra.unlink()
         (self.output / "compiler-web/compiler-graph.json").unlink()
         with self.assertRaises(InvalidRelease):
-            transfer.verify_native(self.context, self.output, "planned-main-dispatch")
+            historical_verify(self.context, self.output, "planned-main-dispatch")
 
     def test_stale_context_source_kind_boolean_size_and_terminal_flags_refuse(self):
         self.stage()
         with self.assertRaises(InvalidRelease):
-            transfer.verify_native(self.context, self.output, "version-tag")
+            historical_verify(self.context, self.output, "version-tag")
         with self.assertRaises(InvalidRelease):
-            transfer.verify_native(self.context, self.output, "other")
+            historical_verify(self.context, self.output, "other")
         path = self.output / transfer.METADATA
         original = read_json(path.read_bytes())
         for change in (
@@ -429,12 +437,10 @@ class CandidateTransfer(unittest.TestCase):
             change(value)
             path.write_bytes(json_bytes(value))
             with self.assertRaises(InvalidRelease):
-                transfer.verify_native(
-                    self.context, self.output, "planned-main-dispatch"
-                )
+                historical_verify(self.context, self.output, "planned-main-dispatch")
         path.write_bytes(json_bytes(original))
 
-    def test_cli_stage_and_verify_write_distinct_unsigned_outputs(self):
+    def test_cli_refuses_historical_native_schema_without_browser_inputs(self):
         context_args = [
             "--repository",
             self.context.repository,
@@ -459,8 +465,10 @@ class CandidateTransfer(unittest.TestCase):
                 "--output",
                 str(self.output),
             ],
-        ):
+        ), self.assertRaisesRegex(InvalidRelease, "retained browser evidence"):
             transfer.main()
+        self.assertFalse(self.output.exists())
+        self.stage()
         receipt = self.fixture.folder / "verified-transfer.json"
         with patch.object(
             sys,
@@ -474,13 +482,9 @@ class CandidateTransfer(unittest.TestCase):
                 "--output",
                 str(receipt),
             ],
-        ):
+        ), self.assertRaisesRegex(InvalidRelease, "retained browser evidence"):
             transfer.main()
-        self.assertEqual(
-            read_json(receipt.read_bytes()),
-            read_json((self.output / transfer.METADATA).read_bytes()),
-        )
-        self.assertIs(read_json(receipt.read_bytes())["publication_authorized"], False)
+        self.assertFalse(receipt.exists())
 
     def test_metadata_limits_and_reusing_output_fail_closed(self):
         self.stage()
@@ -488,9 +492,7 @@ class CandidateTransfer(unittest.TestCase):
             self.stage()
         with patch.object(transfer, "MAX_JSON", 32):
             with self.assertRaises(InvalidRelease):
-                transfer.verify_native(
-                    self.context, self.output, "planned-main-dispatch"
-                )
+                historical_verify(self.context, self.output, "planned-main-dispatch")
 
 
 if __name__ == "__main__":

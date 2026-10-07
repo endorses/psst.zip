@@ -14,6 +14,7 @@ jobs:
   repository-security:
     name: Repository security
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -43,6 +44,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tools -p 'test_release_*.py' -v
           python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
+          python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
 
       - name: Check distributed project licenses
@@ -63,6 +65,7 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -88,10 +91,9 @@ jobs:
           python3 scripts/generate-third-party-notices.py --check
 
       - name: Test
-        # Real SQLite migrations and retention-boundary workloads are expensive
-        # under race instrumentation. Keep all checks and give each package a
-        # bounded budget with less contention between database-heavy packages.
-        run: go test -v -count=1 -race -p 2 -timeout 30m ./...
+        # Bound hangs while preserving race checks. Limit package concurrency
+        # to avoid contention between SQLite-heavy packages.
+        run: go test -v -count=1 -race -p 2 -timeout 10m ./...
 
       - name: Build
         run: go build -o server ./cmd/server
@@ -99,6 +101,7 @@ jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -181,7 +184,7 @@ jobs:
   ios:
     name: Native iOS app, extension and XCTest
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
