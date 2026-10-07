@@ -64,9 +64,11 @@ class FixtureVerifier:
             details["scans"] = [
                 {
                     "target": target,
-                    "subject": "git:" + binding.repository + "@" + binding.commit
-                    if gate == "source-scanners"
-                    else subjects[target],
+                    "subject": (
+                        "git:" + binding.repository + "@" + binding.commit
+                        if gate == "source-scanners"
+                        else subjects[target]
+                    ),
                     "scanner": "fixture-scanner",
                     "version": "1.0.0",
                     "database": "sha256:fixture-database",
@@ -367,6 +369,10 @@ class PublicationChecks(unittest.TestCase):
     def test_smoke_requires_both_architectures_and_ci_requires_ios(self):
         for gate, details in (
             ("final-image-smoke", {"execution": {"linux/amd64": "native"}}),
+            (
+                "final-image-smoke",
+                {"execution": {"linux/amd64": "native", "linux/arm64": "emulated"}},
+            ),
             (
                 "final-image-smoke",
                 {"execution": {platform: "not-run" for platform in release.PLATFORMS}},

@@ -295,11 +295,8 @@ def verify_gates(
                 receipt.details.get("execution"), set(PLATFORMS), "smoke execution"
             )
             require(
-                all(
-                    isinstance(mode, str) and mode in {"native", "emulated"}
-                    for mode in modes.values()
-                ),
-                "Smoke evidence must record native or emulated execution",
+                all(mode == "native" for mode in modes.values()),
+                "Publication requires native smoke on both architectures",
             )
         elif gate == "source-ci":
             require(

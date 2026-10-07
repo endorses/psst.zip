@@ -848,6 +848,9 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       measurements; authenticated aggregation binds their image configurations,
       OCI children and source hashes after both jobs finish. Emulated smoke cannot
       satisfy native release evidence. Fourteen producer regressions passed.
+- [x] Enforce native execution in the final publication verifier as well as the
+      producer, and reject an authenticated record substituting an emulated ARM64
+      check. The publication boundary regression suite passed.
 
 - [x] Add a concrete preparation command consuming both native build records,
       measurements, source packs and all four OCI exports. Verify shared resolved

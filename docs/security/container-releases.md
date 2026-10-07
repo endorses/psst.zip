@@ -339,13 +339,16 @@ python3 tools/verify_release_images.py \
 
 Repeat for `linux/arm64` with that platform's images loaded and either a native
 runner or explicitly configured emulation. The tool reports native versus emulated
-execution. It uses a randomly named disposable project, an unused private subnet,
+execution. Publication requires native execution on both architectures; an
+emulated local operator check cannot satisfy that gate.
+
+The tool uses a randomly named disposable project, an unused private subnet,
 a generated administrator password, loopback-only HTTP and dedicated volumes.
 It checks metadata, hardening, built HTML/JavaScript, licenses/source metadata,
 API/config, authentication, and account/session persistence after removing
 bootstrap credentials and recreating the backend. Captured command output is
 withheld to protect generated credentials. Cleanup removes only that tool-owned
-project's resources and temporary files.
+project’s resources and temporary files.
 
 The tool uses locally available images and does not pull them itself. It verifies
 an HTTP fixture, not public ACME or a production TLS/account/storage flow. Passing
