@@ -1049,6 +1049,41 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       archive to authenticated release inputs, and verify public delivery.
       Retaining original package distributions alone does not complete this gate.
 
+### Post-assembly recovery and hosted publication commands
+
+- [x] Add an actual native recovery measurement producer requiring both retained
+      native descriptors and the assembled manifest/bundle. Validate four OCI
+      graphs, saved layers, source/runtime/replay inputs and every source-owned
+      bundle file against the exact candidate Git tree before execution.
+- [x] Measure ordinary and initially paused upgrade/reapply/restore sequences
+      and injected startup failure using structured transaction, API, schema,
+      checkpoint and isolated-storage facts. Require successful bounded cleanup;
+      caller PASS flags do not create evidence. Eleven producer/cleanup boundary
+      tests and thirty-seven updater tests passed. The historical paused AMD64
+      compatibility run passed in 130.8 seconds; full prepared-candidate execution
+      remains pending. See the [recovery guide](../security/release-update-recovery.md).
+- [x] Add the hosted-only signing bridge using exact pinned official GitHub action
+      bytes and the runner's Node24. Sign actual file/image subjects and completed
+      bound reports, verify the freshly generated bundles cryptographically, and
+      independently verify GitHub API retrieval under the exact workflow/tag,
+      signer/source commit and hosted policy. Sixteen offline signing fixtures
+      passed; actual hosted Node24/OIDC execution remains unverified.
+- [x] Add the real publication command around authenticated gates and four exact
+      OCI exports. Require public repository-linked packages before reservation,
+      preserve the lease through digest pushes/signatures/assets/tags/readbacks,
+      and sync all snapshot files/directories before remote mutation. Ten command
+      fixtures passed, including interrupted writes/signing and retained inputs.
+      No local test published a release or changed package visibility.
+- [ ] Execute the recovery producer against both actual native artifact sets,
+      authenticate its measurements, complete source/distribution gates and wire
+      the real signing/publication commands into the reviewed version-tag workflow.
+      Package bootstrap/visibility, immutable policy and hosted OIDC/live API
+      verification remain separate prerequisites; candidate dispatch stays read-only.
+
+The combined release-tooling suite passed all 257 tests in 19.5 seconds after
+these changes. Python formatting, syntax, documented shell commands and Markdown
+formatting passed. This local result does not replace the pending hosted checks.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports

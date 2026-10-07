@@ -372,3 +372,47 @@ pull/download boundaries and durable interruption receipts. The transport's
 17 tests passed locally. At the report-producer checkpoint, 13 producer fixtures
 and the combined `test_release_*.py` suite passed 139 checks in 7.79 seconds; Ruff
 and Prettier checks passed. Live publication and recovery remain pending.
+
+### Publication command
+
+`tools/publish_verified_release.py` drives the real transport and official signing
+bridge. It accepts an absolute-path JSON input map with exactly `manifest`,
+`bundle`, `indexes` (`backend`/`web`), `archives` (all four component/architecture
+targets), `source_assets` (asset name to path), and `reports` (all eight
+pre-publication gates). The command also requires `--root`, `--reviewed-commit`
+and an absolute private `--state` directory. Repository, tag, source SHA, active
+hosted workflow/job identity and run attempt come from the workflow environment.
+No configuration identity, signer command or approval boolean can be supplied.
+
+The command snapshots inputs privately and verifies the full release binding and
+authenticated gates. It derives the four tested configurations from the signed
+native smoke report and validates all four actual OCI exports before publication
+transport operations. The production adapters check the exact current workflow and
+existing public, repository-linked GHCR packages before draft reservation. An
+absent/private package requires separate approved setup; this command cannot
+bootstrap a package or change its visibility, and stops before a release version
+is reserved.
+
+Under the held repository lease, it pushes the reviewed children and indexes,
+checks registry contents and actual anonymous pulls, signs and independently
+verifies all updater/source subjects, uploads sources/bundle/manifest, measures
+downloaded assets, signs and verifies the actual readback reports, then creates
+the version tag pair and publishes the immutable draft. A receipt is written
+only after anonymous release/image/asset checks complete. Convenience tags are
+not advanced by this command.
+
+Subject signing and every readback signature have durable intent, completion or
+uncertainty records alongside transport mutations. After the publication lease
+is entered, any failure preserves exact private input snapshots and their
+binding record. Snapshot files and all containing directories are synced before
+the first remote mutation. An existing version journal blocks a subsequent invocation;
+there is no automatic retry, resume, draft replacement or remote cleanup. The
+CLI retains only explicit credentials and checked workflow/OIDC inputs for the
+official signing adapter, and prints no tokens, API payloads or tool diagnostics.
+
+Ten fixture checks exercise the actual transport lifecycle, snapshot durability, ordering, absent
+gates, substituted native configurations/archives/reports, first-package policy,
+interrupted pushes/signing, retained inputs and the no-retry boundary. They use
+explicit fixture signers/verifiers and confer no publication authority. Official
+hosted signing, live package policy/readbacks and workflow integration remain
+unverified; the candidate workflow continues to create no releases.

@@ -469,3 +469,59 @@ ACME, operator-configured external backup restore, installed restricted SSH and
 the current VPS migration remain separate acceptance gates. Passing this fixture
 does not establish them. Use `tools/test_external_proxy.py --certificate-state`
 for additional gateway controls alongside deployment-plan acceptance checks.
+
+## Post-assembly native recovery measurements
+
+`tools/measure_release_recovery.py` measures the actual prepared candidate after
+both native architectures and release-input assembly are available. Supply both
+retained native descriptors, the assembled manifest and deployment bundle, and
+the genuine historical source commit. Only the selected native platform runs the
+isolated Docker experiment; the other platform's input bytes are validated without
+manufacturing an execution result.
+
+```sh
+python3 tools/measure_release_recovery.py \
+  --root . --repository endorses/psst.zip \
+  --version "$PSST_RELEASE_VERSION" --commit "$PSST_SOURCE_COMMIT" \
+  --platform linux/amd64 \
+  --native "linux/amd64=$AMD64_OUTPUT/native-artifacts.json" \
+  --native "linux/arm64=$ARM64_OUTPUT/native-artifacts.json" \
+  --manifest "$PREPARED_OUTPUT/release-manifest.json" \
+  --bundle "$PREPARED_BUNDLE" \
+  --previous-source 2ed02af8a062bb3cc21a80a1503d31775dd6e5d8 \
+  --output "$NEW_RECOVERY_MEASUREMENT"
+```
+
+The producer validates four actual OCI graphs, tested configurations, exact index
+children, build records, saved-layer hashes, source-pack/replay bindings and the
+entire source-owned bundle against the candidate Git tree before privileged
+execution. It also pins every fixture helper to that exact commit. A rehashed
+substituted updater, parser, deployment configuration or notice is rejected.
+
+The experiments cover ordinary upgrade/reapply/isolated restore, the same sequence
+with the original incident pause enabled, and an injected post-migration startup
+failure followed by isolated restore. Reapplication uses the exact same version,
+manifest and candidate bytes, rather than pretending to build a second release.
+Structured durable transaction, authenticated flow, schema, checkpoint, storage
+and certificate observations drive the measurement; printed PASS messages are not
+evidence. Scoped Docker removal and absence checks must complete successfully
+before a result can return. Cleanup failure prevents a terminal measurement.
+
+The historical AMD64 compatibility check of the shared harness ran on candidate
+`c161836caf66631faa1eecdc901029464aa25e93` and the baseline above in 130.8 seconds.
+It preserved the original pause at all three public activations, observed schema
+47 advancing to 48, rejected the historical CLI against the migrated original,
+and completed an isolated restore with schema 48. Authenticated receipts contained
+8/8/11 checks, and the stopped checkpoint retained two images, three volumes and
+five protected configuration records. This legacy harness check uses subsequent
+local fixture versions and does not replace the new producer's same-version,
+final-overlaid, two-architecture exercise.
+
+The producer retains explicit `public_provenance_verified: false`,
+`off_host_provider_verified: false`, `browser_mobile_flows_verified: false` and
+`upgrade_recovery_gate_pending: true`. Local registry acquisition and encrypted
+external-store simulation do not establish public attestations or independent
+remote recovery. Eleven producer/cleanup boundary tests and thirty-seven updater
+tests passed after the source-pinning and cleanup fixes. Genuine prepared inputs
+for both architectures, complete execution, authentication and workflow gate
+aggregation remain pending.

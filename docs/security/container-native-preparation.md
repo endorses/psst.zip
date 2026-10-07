@@ -148,3 +148,79 @@ candidate tests and replay of the report copier against all thirteen actual
 AMD64 records passed. The copier retained every finding without truncation;
 malformed, oversized, linked and protected-data records were rejected. Actual
 hosted execution of this extended workflow remains pending.
+
+## Official hosted signing bridge
+
+`tools/github_release_attestor.py` supplies the publication driver's concrete
+`WorkflowAttestor`. It executes the bundled Node action from
+[actions/attest at immutable commit 1e69f48acb82d1966a394da916b4c1698aa569d6](https://github.com/actions/attest/tree/1e69f48acb82d1966a394da916b4c1698aa569d6).
+All executable inputs are checked before and after each invocation against these
+SHA256 pins:
+
+| Official file   |     Bytes | SHA256                                                             |
+| --------------- | --------: | ------------------------------------------------------------------ |
+| `action.yml`    |     4,048 | `9e4a1b808433f9ec87120b534e11fc35469a039bdbdc62b019441444c9ad0449` |
+| `package.json`  |     2,757 | `221767f43cc74afbd71dc9531af4e8e7494d94f3530acfbd749e09105c7d2c8d` |
+| `dist/index.js` | 4,868,977 | `3ca89e06ffcb09ff97e9b1633575865cad0b23310ac82176d72990d7554836b5` |
+
+The action declares Node24. The bridge discovers that runtime only under the
+official hosted runner installation roots, verifies its native Linux architecture
+and Node24 version, and measures its executable SHA256. It checks the executable
+again around signing; it does not accept a caller-selected signing command or an
+ambient `PATH` runtime. The action's embedded package version is `4.1.0`; the
+immutable commit and file hashes identify the code, rather than that version
+string or the wrapper's release comment.
+
+Construction requires the exact public repository tag-push event, source and
+workflow commit, `publish` job, hosted runner and positive run/attempt IDs. It
+also requires the real GitHub OIDC request URL/token and official GitHub API
+endpoints. It only downloads pinned public source and prepares private files;
+signing starts inside the driver's journaled publication lease. The publication
+job needs `id-token: write` and `attestations: write`, in addition to its separately
+reviewed release/registry permissions. No local fixture obtains an OIDC identity.
+
+Each action invocation receives only checked context, a private event snapshot,
+private output/home/temp paths, explicit GitHub token and exact subject inputs.
+Proxy settings, runtime token overrides, arbitrary `INPUT_*`, `NODE_OPTIONS`,
+Sigstore identity overrides and ambient registry credentials are excluded.
+Action stdout/stderr and Actions commands are drained within size/time bounds and
+withheld from logs. A zero exit code or bundle path is insufficient: the bundle
+must contain the expected subject and default SLSAv1 source/workflow/run facts,
+and the independent GitHub CLI must verify certificate identity, issuer, exact
+source/ref and hosted-runner policy against the freshly generated bundle via
+`--bundle`. A separate default API lookup verifies that the same exact subject
+can be retrieved from GitHub. Predicate contents do not replace that certificate
+verification.
+
+The bridge signs each exact readonly file snapshot, both image indexes, all four
+native child manifests and every corresponding-source asset. Image repository
+names come from the checked manifest, including the distinction between the
+`psst.zip` GitHub repository and `psst-zip-*` GHCR packages. It creates
+`provenance.json` only after all subjects verify, signs those exact full-binding
+report bytes, then independently verifies the report again. Readback reports
+follow the same snapshot/sign/verify boundary. File changes, source/hash mismatch,
+missing subjects, malformed output and action/verifier failure stop publication;
+the driver journals uncertain remote writes without automatic retry.
+
+The action uses GitHub's attestation API with registry attachment and optional
+storage-record creation disabled. The
+[GitHub CLI documentation](https://cli.github.com/manual/gh_attestation_verify#loading-artifacts-and-attestations)
+confirms that default OCI verification fetches attestations from GitHub's API;
+registry referrer lookup requires the separate `--bundle-from-oci` flag. OCI
+manifest metadata still comes from the registry. A fresh verification home
+contains no Docker/Podman credential configuration, so public package metadata
+must be available anonymously; otherwise verification fails. This does not
+establish live anonymous availability before the driver's actual readback.
+
+Sixteen focused offline tests passed, covering complete subject coverage,
+namespace differences, source/runtime substitutions, exact context/event checks,
+environment isolation, output escape/link rejection and process failure/timeouts.
+The actual downloaded immutable action passed all three hash checks and a syntax
+check under the local Node26 runtime; that syntax check did not execute the action
+or validate hosted Node24 behavior.
+
+- [ ] Run the bridge in the exact hosted tag publication job with actual OIDC.
+- [ ] Verify the resulting file/image/report attestations with the independent
+      exact-source policy and retain journaled outcomes.
+- [ ] Complete all other authenticated publication gates and anonymous readbacks
+      before claiming a published deployment-ready release.
