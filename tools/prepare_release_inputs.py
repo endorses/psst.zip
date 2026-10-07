@@ -13,6 +13,7 @@ import gzip
 import io
 from pathlib import Path
 import re
+import shutil
 
 from assemble_release_oci import assemble, inspect_archive
 from generate_release_gate_reports import (
@@ -25,6 +26,7 @@ from publish_container_release import (
     bind_reviewed_source,
     prepare_inputs,
     source_digest,
+    sha256,
 )
 from release_artifacts import (
     PLATFORMS,
@@ -42,6 +44,7 @@ from release_artifacts import (
     validate_bundle,
     validate_manifest,
 )
+from verify_application_dependency_inputs import verify as verify_dependencies
 
 
 def toolchains(candidate: dict, records: dict[str, dict]) -> dict[str, str]:
@@ -88,6 +91,8 @@ def prepare(
     measurements: dict[str, Path],
     packs: dict[str, Path],
     archives: dict[str, Path],
+    dependency_collections: dict[str, Path],
+    source_scans: dict[str, Path],
     output: Path,
     migration_notes: str,
     rollback_notes: str,
@@ -104,7 +109,7 @@ def prepare(
         resolved["version"] == version and resolved["source_commit"] == commit,
         "Resolved bases belong to another source",
     )
-    for pair in (builds, measurements, packs):
+    for pair in (builds, measurements, packs, dependency_collections, source_scans):
         fields(pair, set(PLATFORMS), "both native artifact inputs")
     fields(
         archives,
@@ -122,7 +127,7 @@ def prepare(
             for platform, path in builds.items()
         },
     )
-    tested, sources = {}, {}
+    tested, sources, source_hashes, dependency_replays = {}, {}, {}, {}
     for platform in PLATFORMS:
         context = NativeSourceContext(repository, version, commit, platform)
         _, runtime = runtime_inputs(context, packs[platform])
@@ -170,6 +175,35 @@ def prepare(
         asset = runtime["source_asset"]
         require(asset["name"] not in sources, "Native source asset names collide")
         sources[asset["name"]] = packs[platform] / asset["name"]
+        source_hashes[asset["name"]] = asset["digest"]
+        replay = verify_dependencies(
+            context,
+            root,
+            dependency_collections[platform],
+            source_scans[platform],
+        )
+        require(
+            replay["source"] == context.checked()
+            and replay["package_inputs_replayed"] is True
+            and replay["preferred_source_review_required"] is True
+            and replay["corresponding_source_completeness_verified"] is False
+            and replay["publication_authorized"] is False,
+            "Dependency replay did not preserve its unapproved source boundary",
+        )
+        collection_path = (
+            dependency_collections[platform] / "dependency-collection.json"
+        )
+        collection_raw = read_bounded_file(collection_path)
+        require(
+            sha256(collection_raw) == replay["collection_sha256"],
+            "Dependency collection changed after replay",
+        )
+        collection = read_json(collection_raw)
+        name = collection["asset"]["name"]
+        require(name not in sources, "Dependency source asset names collide")
+        sources[name] = dependency_collections[platform] / name
+        source_hashes[name] = replay["archive_sha256"]
+        dependency_replays[platform] = replay
     # All four exports and local measurements were checked before writing outputs.
     oci = assemble(
         archives,
@@ -222,6 +256,24 @@ def prepare(
         )
     create_output(output / name, buffer.getvalue())
     sources[name] = output / name
+    # Prepared inputs must retain their actual payloads, not only references to
+    # matrix-local paths that disappear when a runner exits.
+    for name, path in list(sources.items()):
+        if path == output / name:
+            continue
+        before = source_digest(path)
+        require(
+            before == source_hashes[name], "Source payload changed after verification"
+        )
+        destination = output / name
+        require(not destination.exists(), "Source payload destination already exists")
+        with path.open("rb") as source, destination.open("xb") as retained:
+            shutil.copyfileobj(source, retained, length=1024**2)
+        require(
+            source_digest(destination) == before == source_digest(path),
+            "Source payload changed while retaining release inputs",
+        )
+        sources[name] = destination
     inputs = prepare_inputs(
         root=root,
         repository=repository,
@@ -242,6 +294,7 @@ def prepare(
         "binding_sha256": inputs.binding.digest,
         "assets": dict(inputs.assets),
         "subjects": dict(inputs.binding.subjects),
+        "dependency_replays": dependency_replays,
         "publication_authorized": False,
         "measurement_authentication_required": True,
     }
@@ -262,7 +315,14 @@ def main() -> None:
         "rollback-notes",
     ):
         parser.add_argument("--" + name, required=True)
-    for name in ("build", "measurement", "pack", "archive"):
+    for name in (
+        "build",
+        "measurement",
+        "pack",
+        "archive",
+        "dependencies",
+        "source-scan",
+    ):
         parser.add_argument(
             "--" + name, action="append", default=[], metavar="KEY=PATH"
         )
@@ -280,6 +340,10 @@ def main() -> None:
             measurements={k: Path(v) for k, v in assignments(args.measurement).items()},
             packs={k: Path(v) for k, v in assignments(args.pack).items()},
             archives={k: Path(v) for k, v in assignments(args.archive).items()},
+            dependency_collections={
+                k: Path(v) for k, v in assignments(args.dependencies).items()
+            },
+            source_scans={k: Path(v) for k, v in assignments(args.source_scan).items()},
             migration_notes=args.migration_notes,
             rollback_notes=args.rollback_notes,
         )

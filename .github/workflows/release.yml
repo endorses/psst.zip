@@ -53,7 +53,7 @@ jobs:
           fi
 
   ci:
-    name: Exact candidate commit CI
+    name: Exact tagged commit CI
     needs: validate-tag
     # The reusable workflow comes from the exact caller commit. A main dispatch
     # can exercise native preparation but cannot satisfy tagged source-CI gates.

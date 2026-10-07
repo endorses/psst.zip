@@ -3,17 +3,51 @@
 import copy
 import tarfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import prepare_release_inputs as preparation
+import package_application_dependencies as dependency
+from generate_release_gate_reports import NativeSourceContext
 from prepare_release_candidate import BASES
 from release_artifacts import InvalidRelease, PLATFORMS, json_bytes, read_json
 import test_release_gate_reports as report_fixtures
+import test_release_publication as publication_fixtures
+import test_release_dependency_inputs as dependency_fixtures
+from test_release_dependency_replay import source_measurement_fixture
 
 
 class InputPreparation(unittest.TestCase):
     def setUp(self):
+        self.dependencies = dependency_fixtures.DependencyInputs()
+        self.dependencies.setUp()
+        self.addCleanup(self.dependencies.doCleanups)
+        original_git = publication_fixtures.PublicationChecks.git
+
+        def source_repository(repository, *arguments):
+            if arguments[:1] == ("commit",):
+                for name, content in {
+                    "backend/go.mod": b"module example.org/application\n\ngo 1.23\n",
+                    "backend/go.sum": self.dependencies.sum,
+                    "web/package-lock.json": json_bytes(self.dependencies.lock),
+                }.items():
+                    path = repository.root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(content)
+                original_git(
+                    repository,
+                    "add",
+                    "backend/go.mod",
+                    "backend/go.sum",
+                    "web/package-lock.json",
+                )
+            return original_git(repository, *arguments)
+
         self.fixture = report_fixtures.GateReports()
-        self.fixture.setUp()
+        with patch.object(
+            publication_fixtures.PublicationChecks, "git", source_repository
+        ):
+            self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         binding = self.fixture.binding
         self.repository = self.fixture.fixture.fixture
@@ -70,6 +104,55 @@ class InputPreparation(unittest.TestCase):
                 preparation.source_digest(pack / "runtime-pack.json")
             )
         self.measurements = self.fixture.collect_both()
+        self.dependency_collections, self.source_scans = {}, {}
+        for platform in PLATFORMS:
+            architecture = platform.split("/")[1]
+
+            def execution(args, *, environment, timeout):
+                if args[1:3] == ["image", "inspect"]:
+                    return json_bytes(
+                        [
+                            {
+                                "Id": "sha256:" + "c" * 64,
+                                "Os": "linux",
+                                "Architecture": architecture,
+                            }
+                        ]
+                    )
+                result = self.dependencies.execute(
+                    args, environment=environment, timeout=timeout
+                )
+                reports = Path(
+                    next(value for value in args if value.endswith("dst=/reports"))
+                    .split("src=", 1)[1]
+                    .split(",dst=", 1)[0]
+                )
+                (reports / "go-version.txt").write_text(
+                    "go version go1.26.8 " + platform + "\n"
+                )
+                return result
+
+            collection = self.folder / ("dependencies-" + architecture)
+            dependency.collect(
+                root=self.repository.root,
+                repository=binding.repository,
+                version=binding.version,
+                commit=binding.commit,
+                platform=platform,
+                go_image=self.candidate["base_images"]["golang"],
+                output=collection,
+                execute=execution,
+                fetch=lambda _: self.dependencies.npm,
+            )
+            self.dependency_collections[platform] = collection
+            self.source_scans[platform] = source_measurement_fixture(
+                NativeSourceContext(
+                    binding.repository, binding.version, binding.commit, platform
+                ),
+                self.repository.root,
+                collection,
+                self.folder / ("source-scan-" + architecture),
+            )
         self.args = dict(
             root=self.repository.root,
             repository=binding.repository,
@@ -81,6 +164,8 @@ class InputPreparation(unittest.TestCase):
             measurements=self.measurements,
             packs=self.fixture.packs,
             archives=self.fixture.fixture.archives,
+            dependency_collections=self.dependency_collections,
+            source_scans=self.source_scans,
             output=self.folder / "prepared",
             migration_notes="Stopped checkpoint required.",
             rollback_notes="Restore checkpoint into fresh volumes before activation.",
@@ -98,8 +183,8 @@ class InputPreparation(unittest.TestCase):
         result = self.prepare()
         self.assertFalse(result["publication_authorized"])
         self.assertTrue(result["measurement_authentication_required"])
-        self.assertEqual(len(result["subjects"]), 11)
-        self.assertEqual(len(result["assets"]), 5)
+        self.assertEqual(len(result["subjects"]), 13)
+        self.assertEqual(len(result["assets"]), 7)
         output = self.args["output"]
         manifest = read_json((output / "release-manifest.json").read_bytes())
         self.assertEqual(
@@ -109,6 +194,9 @@ class InputPreparation(unittest.TestCase):
             manifest["build"]["base_images"], self.candidate["base_images"]
         )
         source = output / "psst.zip-source-v1.2.3.tar.gz"
+        for name, digest in result["assets"].items():
+            self.assertEqual(preparation.source_digest(output / name), digest)
+        self.assertEqual(set(result["dependency_replays"]), set(PLATFORMS))
         with tarfile.open(source, "r:gz") as archive:
             names = archive.getnames()
         self.assertIn("psst.zip-v1.2.3/deploy/update.py", names)
@@ -117,7 +205,14 @@ class InputPreparation(unittest.TestCase):
             self.prepare()
 
     def test_missing_platform_or_export_rejected_before_outputs(self):
-        for key in ("builds", "measurements", "packs", "archives"):
+        for key in (
+            "builds",
+            "measurements",
+            "packs",
+            "archives",
+            "dependency_collections",
+            "source_scans",
+        ):
             pair = dict(self.args[key])
             pair.pop(next(iter(pair)))
             with self.subTest(key=key), self.assertRaises(InvalidRelease):
@@ -164,6 +259,21 @@ class InputPreparation(unittest.TestCase):
                 self.prepare()
             self.assertFalse(self.args["output"].exists())
 
+    def test_dependency_collection_archive_and_source_receipt_substitution_fail(self):
+        platform = "linux/arm64"
+        directory = self.dependency_collections[platform]
+        record = directory / "dependency-collection.json"
+        archive = directory / read_json(record.read_bytes())["asset"]["name"]
+        for path in (record, archive, self.source_scans[platform]):
+            original = path.read_bytes()
+            path.write_bytes(original + b"substituted")
+            with self.subTest(path=path.name), self.assertRaises(
+                (InvalidRelease, ValueError)
+            ):
+                self.prepare()
+            self.assertFalse(self.args["output"].exists())
+            path.write_bytes(original)
+
     def test_tampered_source_archive_or_dirty_checkout_rejected(self):
         pack = self.fixture.packs["linux/amd64"]
         asset = next(pack.glob("*.tar.gz"))
@@ -176,6 +286,61 @@ class InputPreparation(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "Tracked checkout differs"):
             self.prepare()
         self.assertFalse(self.args["output"].exists())
+
+    def test_dependency_asset_changed_after_replay_cannot_be_bound(self):
+        original = preparation.verify_dependencies
+
+        def replay_then_substitute(context, root, collection, source_scan):
+            result = original(context, root, collection, source_scan)
+            if context.platform == "linux/amd64":
+                metadata = read_json(
+                    (collection / "dependency-collection.json").read_bytes()
+                )
+                path = collection / metadata["asset"]["name"]
+                path.write_bytes(path.read_bytes() + b"changed after replay")
+            return result
+
+        with patch.object(
+            preparation, "verify_dependencies", side_effect=replay_then_substitute
+        ), self.assertRaisesRegex(InvalidRelease, "changed after verification"):
+            self.prepare()
+
+    def test_collection_changed_after_replay_cannot_select_another_asset(self):
+        original = preparation.verify_dependencies
+
+        def replay_then_replace_collection(context, root, collection, source_scan):
+            result = original(context, root, collection, source_scan)
+            if context.platform == "linux/amd64":
+                path = collection / "dependency-collection.json"
+                metadata = read_json(path.read_bytes())
+                metadata["asset"]["name"] = "unreplayed-inputs.tar.gz"
+                path.write_bytes(json_bytes(metadata))
+            return result
+
+        with patch.object(
+            preparation,
+            "verify_dependencies",
+            side_effect=replay_then_replace_collection,
+        ), self.assertRaisesRegex(InvalidRelease, "collection changed after replay"):
+            self.prepare()
+        self.assertFalse(self.args["output"].exists())
+
+    def test_runtime_source_changed_after_native_verification_cannot_be_bound(self):
+        original = preparation.runtime_inputs
+
+        def runtime_then_substitute(context, pack):
+            record, runtime = original(context, pack)
+            if context.platform == "linux/amd64":
+                path = pack / runtime["source_asset"]["name"]
+                path.write_bytes(
+                    path.read_bytes() + b"changed after native verification"
+                )
+            return record, runtime
+
+        with patch.object(
+            preparation, "runtime_inputs", side_effect=runtime_then_substitute
+        ), self.assertRaisesRegex(InvalidRelease, "changed after verification"):
+            self.prepare()
 
 
 if __name__ == "__main__":

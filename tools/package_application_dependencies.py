@@ -193,7 +193,7 @@ def module_inputs(
             and mod_sum
             == record.get("GoModSum")
             == expected.get((module, version + "/go.mod")),
-            "Module inputs differ from original go.sum",
+            "Module inputs differ from authenticated go.sum",
         )
         info = read_json(retained["info"])
         require(
@@ -596,7 +596,8 @@ def collect(
             len(buffer.getvalue()) <= MAX_TOTAL, "Dependency archive exceeds bounds"
         )
         output.mkdir(mode=0o700, parents=False)
-        asset = output / f"psst.zip-dependency-inputs-{version}.tar.gz"
+        architecture = platform.split("/")[1]
+        asset = output / f"psst.zip-dependency-inputs-{version}-{architecture}.tar.gz"
         create_output(asset, buffer.getvalue())
         result = {
             "schema_version": 1,
@@ -604,6 +605,7 @@ def collect(
             "repository": repository,
             "version": version,
             "source_commit": commit,
+            "platform": platform,
             "asset": {
                 "name": asset.name,
                 "sha256": sha256(buffer.getvalue()),

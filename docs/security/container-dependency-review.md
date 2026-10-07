@@ -495,3 +495,43 @@ graph cannot justify a Caddy finding. These proofs do not collect complete
 application dependency corresponding sources: preserving Go/npm dependencies
 for redistribution is a separate source-pack gate. They also do not approve
 OS findings, unknown imports, other native platforms or arbitrary custom modules.
+
+## Deriving the authenticated source scanner gate
+
+`tools/aggregate_release_source_scans.py` exposes
+`aggregate_source_scans(binding, native_measurements=..., repository_root=...,
+resolved_bases=..., authenticator=...)`. Both native platform measurements and
+the actual `resolve_bases` record must be authenticated against the complete
+release `Binding`. A candidate record establishes measured immutable build
+inputs; authenticating it does not approve publication. The aggregator verifies
+its version/source/platform map and requires native Go/Node builder references
+to match that record. Actual configuration/layer identities are retained from
+the authenticated native measurements, and daemon emulation is rejected.
+
+The aggregator independently extracts the exact Git commit, compares the source
+archive hash and every backend/web source input (including original Go sums and
+the npm lock), and verifies every safe, bounded raw receipt against authenticated
+checksums. It replays the complete scanner parsers and checks tool identities,
+database/response hashes, native coverage, timestamps, process status and every
+finding against the raw reports. Supplying a `passed` wrapper, dropping a
+finding, altering an existing disposition or omitting raw execution receipts
+cannot substitute for this evidence.
+
+For each platform independently, it derives module-only Go package absence
+from the full official OSV records retained in the pinned scanner's raw database
+response. Selected module versions and imported module `h1` sums must agree with
+the committed source and both compiler graphs. All matching official affected
+import paths across every advisory range must be valid and absent from both the
+all-root and server graph. Withdrawn advisories, incomplete paths, changed module
+versions, package/symbol findings and affected imports fail. npm must retain a
+complete, error-free zero-finding audit for both native executions.
+
+The resulting unsigned report contains exactly `backend-source` and `web-source`
+rows, every Go finding with its independently derived facts and platform,
+both native measurements, original input hashes, resolver hash, all release
+subjects and the full binding digest. The trusted workflow must authenticate and
+sign this gate before publication. Test fixture authentication is not a live
+Sigstore verification; the local real AMD64 replay independently checked all 21
+existing Go module findings, but supplies neither authenticated ARM64 facts nor
+an actual signed passing release gate. Partial candidate report uploads cannot
+replay this gate after their full private raw receipts have been deleted.

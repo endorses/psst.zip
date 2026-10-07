@@ -41,6 +41,24 @@ distribution review, and post-matrix release assembly are still required.
 
 ## Application dependency inputs
 
+Each collection has an architecture-specific asset name, for example
+`psst.zip-dependency-inputs-v0.1.0-amd64.tar.gz`. After both native jobs,
+`prepare_release_inputs.py` requires `--dependencies PLATFORM=DIRECTORY` and
+`--source-scan PLATFORM=MEASUREMENT` for each platform. It independently replays
+package inputs against the exact committed locks and raw source-scanner receipts,
+then copies the verified runtime and dependency archives into its output. The
+result retains seven release assets and binds thirteen subjects. These checks
+establish package integrity and retention; upstream preferred-source review,
+measurement authentication and public delivery remain required.
+
+The current collector and independent verifier were exercised on actual AMD64
+inputs from `c73a5da`: 35 Go modules, 173 npm packages and nine additional sums.
+The 249,889,401-byte archive has SHA256
+`64185cd10474cf2ed71cf9f437d1474b0429d97c1f2b261d4d4e18280cd7b583`.
+Its independent replay record has SHA256
+`8764f15de8f60bc0c2ec72b0512ab47c241feb94a868c5e54ceda3b5cd0d482a`.
+This local record is unsigned and supplies no ARM64 or distribution approval.
+
 Retain the original package inputs selected by the committed application locks:
 
 ```sh

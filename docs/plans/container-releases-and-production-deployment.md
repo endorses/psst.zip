@@ -973,6 +973,12 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       proofs, unhandled findings, source/config substitution and unsupported
       compiler settings. Twelve scanner and eight gate tests passed with
       explicit authentication fixtures.
+- [x] Derive the source-scanner gate from both authenticated native reports,
+      exact Git and lock bytes, every hashed raw receipt, canonical resolved
+      builders, complete Go import graphs and official advisory ranges. Retain
+      every finding and reject unsupported dispositions; twelve focused gate
+      tests passed. Actual AMD64 replay retained all 21 module findings; hosted
+      ARM64 and live authentication remain pending.
 - [ ] Run both native architectures, authenticate actual scanner/compiler
       measurements, and derive the final full-binding gate in the release
       workflow. Historical compiler measurements using tagged builder names
@@ -1014,6 +1020,16 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       A real collection from `2cc2f72` retained 35 Go modules and 173 npm packages;
       nine focused boundary tests passed. Document the exact asset checksum in
       the [native preparation guide](../security/container-native-preparation.md).
+- [x] Independently replay retained dependency archives against committed locks
+      and actual source-scanner receipts. Recheck archive boundaries, selected
+      Go module H1 checksums, npm SHA512 integrity and complete payload coverage.
+      The actual `c73a5da` AMD64 archive replay verified 35 Go modules, 173 npm
+      packages and nine additional sums; preferred-source review remains pending.
+- [x] Require both architecture-specific dependency collections in release-input
+      assembly and retain both archives alongside runtime and application source
+      payloads. Bind thirteen subjects and seven assets, pin copied bytes to the
+      verified digests, and reject collection substitution before output. Actual
+      publication and public retrieval remain pending.
 - [ ] Review package inputs for complete preferred-form upstream source, include
       all required sources in the final corresponding-source offering, bind the
       archive to authenticated release inputs, and verify public delivery.

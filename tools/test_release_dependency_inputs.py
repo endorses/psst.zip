@@ -311,6 +311,10 @@ class DependencyInputs(unittest.TestCase):
         self.assertEqual(result["npm_packages"], 1)
         self.assertFalse(result["publication_authorized"])
         self.assertTrue(result["preferred_source_review_required"])
+        self.assertEqual(result["platform"], "linux/amd64")
+        self.assertEqual(
+            result["asset"]["name"], "psst.zip-dependency-inputs-v1.2.3-amd64.tar.gz"
+        )
         with tarfile.open(args["output"] / result["asset"]["name"], "r:gz") as archive:
             names = archive.getnames()
             record = read_json(archive.extractfile("dependency-inputs.json").read())
