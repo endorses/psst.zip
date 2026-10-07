@@ -146,12 +146,57 @@ source asset. Compare its actual source against the npm outputs and embedded map
 texts, account for decoder source/notices, and retain the build recipe before
 claiming complete correspondence.
 
+## Browser build module observations
+
+The client build now emits `licenses/browser-module-inventory.json` using
+Rollup's rendered module records. It hashes original files, transformation
+inputs, parsed module inputs, installed package manifests, the npm lock and
+generated output bytes. SSR modules are excluded from this client inventory;
+tree-shaken and zero-rendered modules remain separately recorded. Exact Vite
+manifest files are build metadata, since the static adapter omits them from the
+served website.
+
+A local working-tree production build using `v0.1.0` metadata observed 287
+rendered modules, 4,093 excluded modules, and these fourteen packages contributing
+rendered JavaScript:
+
+| Package           | Version |
+| ----------------- | ------- |
+| @lucide/svelte    | 1.51.0  |
+| @noble/ciphers    | 2.4.0   |
+| @noble/curves     | 2.4.0   |
+| @noble/hashes     | 2.4.0   |
+| @panva/hpke-noble | 1.1.7   |
+| @sveltejs/kit     | 2.70.3  |
+| clsx              | 2.1.1   |
+| dijkstrajs        | 1.0.3   |
+| esm-env           | 1.2.2   |
+| fflate            | 0.8.3   |
+| hpke              | 1.1.7   |
+| qr-scanner        | 1.4.2   |
+| qrcode            | 1.5.4   |
+| svelte            | 5.57.1  |
+
+`tools/measure_browser_source_inventory.py` independently checks these recorded
+source and installed-manifest hashes, lock associations and final static output
+bytes. CI runs it after the production build. The copied `appearance.js` and
+`language.js` scripts are explicitly reported outside the chunk module graph.
+Worker sub-builds, embedded decoder sources, CSS attribution, generated adapter
+files and retained npm archive correspondence still require review. These local
+build observations do not independently bind the supplied revision to a clean
+Git checkout, verify an OCI image, reproduce upstream packages or establish
+complete preferred-form source coverage. Git binding, source reproduction,
+complete closure and publication approval flags remain false.
+
 ## Remaining review
 
 - [x] Inspect this ten-package subset against the actual replayed archive,
       distinguishing original source, generated files and embedded map text.
 - [x] Retain the three immutable upstream source archives identified above and
       check the hpke original source against its locked npm input.
+- [x] Record the actual rendered client module graph and independently compare
+      recorded source and final static output bytes, with separate build metadata
+      and explicit copied-script/worker coverage limits.
 - [ ] Determine the complete final browser import closure, including transitive
       runtime packages and build inputs needed to reproduce the distributed code.
 - [ ] Retain and verify missing exact upstream source/build inputs, including the

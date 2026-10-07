@@ -1037,6 +1037,16 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
 
 ### Application dependency input retention
 
+- [x] Emit a production client module inventory tied to the npm lock and build
+      identity. Verify original input, installed manifest and final static output
+      hashes after the adapter runs, retaining tree-shaken modules separately.
+      Record copied scripts and worker coverage limits without approving complete
+      source coverage or publication; see the
+      [source review](../security/application-package-source-review.md).
+      Ten hook tests and twelve verifier fixtures passed. The local `v0.1.0`
+      working-tree build verified 34 served outputs and 4,380 module records in
+      under one second. Hosted CI and final OCI correspondence remain unrun.
+
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked
       archives, including development and optional platforms, without executing
       package scripts. Independently verify H1/SHA512 integrity, preserve exact

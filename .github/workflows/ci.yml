@@ -146,7 +146,17 @@ jobs:
         run: npm run test:browser -- tests/browser/admin-security-runtime.spec.ts
 
       - name: Build
+        env:
+          REVISION: ${{ github.sha }}
         run: npm run build
+
+      - name: Verify browser build inventory
+        run: |
+          proof_dir=$(mktemp -d "$RUNNER_TEMP/psst-browser-source.XXXXXX")
+          trap 'rm -rf -- "$proof_dir"' EXIT
+          python3 ../tools/measure_browser_source_inventory.py \
+            --root . --output-directory build --version dev \
+            --revision "$GITHUB_SHA" --output "$proof_dir/measurement.json"
 
   android:
     name: Android and shared module
