@@ -1447,12 +1447,30 @@ so the complete migration inspection/adoption task remains pending.
       substituted locks, alternate hosts and redirects. Two focused regression
       methods extend the existing upstream suite; all 21 checks passed in
       0.794 seconds with tiny local inputs and no network calls.
-- [ ] Collect and independently replay the expanded sixteen-original offering
+- [x] Collect and independently replay the expanded sixteen-original offering
       from the committed source, reusing unchanged hash-bound originals.
 - [ ] Complete final-image compiler binding, all preferred source/generator
       relationships and both native architecture reviews before producing the
       passed corresponding-source gate. Original retention and application
       archive replay alone do not establish those requirements.
+
+Actual collection from source `036d9470f22d0938c3fab8c4e4589ad1037c6b0d` for
+planned `v0.1.0` retained 16 originals and 36,237 archive members. Collection took
+4.7 seconds and independent replay took 5.2 seconds. The 117,942,945-byte offering
+has SHA256 `f4f28bd13622f486fdc9e53a9ba2d49e338e1769f2ad022b7e26b0e55737249f`.
+Both committed backend lock hashes were independently checked. Fourteen unchanged
+originals were reused with their pinned hashes; only the two newly identified
+official source inputs were downloaded, outside routine tests.
+
+The actual application archive from that same source was created and independently
+replayed in a combined 1.1 seconds: 2,650,450 bytes, SHA256
+`c0d13831d63c13af0173ea79fddbba642c1fbf88a3144d0e59a0465edaa69b0c`.
+Private archive/collection/replay receipts are retained. An additional bounded
+comparison against the retained dependency asset confirmed SQLite's source ID in
+both generated Linux architecture files and musl's snapshot commit in both libc
+generator inputs. This establishes those source identities, not full generation
+or final-image completeness. All 53 affected gate, upstream and assembly
+regression checks passed in 5.8 seconds; formatting and staged checks passed.
 
 ## Verification and completion criteria
 
