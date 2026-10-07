@@ -338,9 +338,15 @@ at their own package directory. Their exact catalog paths/targets are retained a
 inert metadata; they cannot supply inspected inputs and are never extracted or
 followed. Other recursive/chained/missing/out-of-root links remain rejected.
 
-The expanded offering still needs replay against its new committed source, then
-authentication and public delivery. Adding these originals does not approve
-preferred-source completeness or distribution.
+The fourteen-original offering was packaged and independently replayed against
+committed catalog `3bd44a3`: 4.1 seconds for collection and 4.3 seconds for replay.
+This reused twelve unchanged hash-bound official originals plus the two newly
+retained originals; it did not repeat their downloads. The retained offering
+contains 31,033 original members and is 103,751,003 bytes, with SHA256
+`56f2addf264c5bc2c918ba17c5027bf911e2e434db1c17f32299508d10c2b88a`.
+Authentication and public delivery still need verification. Adding these
+originals does not approve preferred-source completeness or distribution; all
+such flags remain false.
 
 ## Remaining review
 

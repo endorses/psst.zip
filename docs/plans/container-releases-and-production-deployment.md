@@ -1096,8 +1096,14 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       replay caught an incorrect Rollup archive filename; the corrected name
       follows its `rollup/plugins` repository. All nineteen affected checks passed
       in 0.85 seconds, including the actual-catalog check.
-- [ ] Replay the expanded fourteen-original offering against the new committed
-      catalog and verify its new final native recipe/notice profile on both hosted
+- [x] Package and independently replay the fourteen-original offering against
+      committed catalog `3bd44a3`. Reuse the twelve unchanged hash-bound official
+      archives and two newly retained official originals without downloading them
+      again. Collection passed in 4.1 seconds and replay in 4.3 seconds, covering
+      31,033 members and 102,971,136 original bytes. The 103,751,003-byte offering
+      has SHA256 `56f2addf264c5bc2c918ba17c5027bf911e2e434db1c17f32299508d10c2b88a`.
+      Retain the private receipt; completeness and publication flags remain false.
+- [ ] Verify the new final native recipe/notice profile on both hosted
       architectures. Complete source/distribution gates and public delivery remain
       separate requirements.
 
