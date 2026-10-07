@@ -191,9 +191,10 @@ They have not been dismissed as unreachable.
 
 The backend binary repeats the 21 module-level advisories addressed by the
 bounded source import-graph review above. Caddy reports `GO-2026-5932` for
-x/crypto v0.57.0 with unknown severity and no fixed version; its actual affected
-OpenPGP package usage needs separate review. Neither module findings nor the
-successful scan exit status authorize publication.
+x/crypto v0.57.0 with unknown severity and no fixed version. The exact AMD64
+Caddy source/binary assessment below finds its affected OpenPGP packages absent;
+the raw module finding remains retained. Neither module findings nor the successful
+scan exit status authorize publication.
 
 Backend report SHA256:
 `c1439946820f6990df3c390f1ed824f0f4afde8864531c4dba7817d29e824b80`;
@@ -201,3 +202,88 @@ web report SHA256:
 `fbfb59b727499d6c40d53ed03ff1391fa30dce0087d21f0e4df819681f71d4cc`.
 The full reports and disposable images remain private. ARM64 and patched final
 pair scans are still pending.
+
+## Exact Caddy AMD64 package applicability
+
+On 2026-10-07, the independent review analyzed the complete official Caddy
+`v2.11.7` buildable artifact, including its original `caddy` main-module wrapper
+and vendored dependency source. It analyzed the wrapper executable target `.`;
+it did not substitute the library module's `cmd/caddy` target or infer package
+usage from `golang.org/x/crypto`'s module version.
+
+[GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) applies to all versions and
+all symbols in `golang.org/x/crypto/openpgp` and its `armor`, `clearsign`,
+`elgamal`, `errors`, `packet` and `s2k` subpackages. There is no known fixed
+version. The bounded disposition is **not applicable to the exact reviewed
+Linux/AMD64 Caddy executable because all seven affected packages are absent
+from its complete matching source import graph**. This is not a dependency fix,
+an advisory suppression, or an approval of the runtime image's other findings.
+
+| Evidence                                   | Observed value                                                                                                                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Official source/binary revision            | `72dd0fb067f6d7826c7f79907670ba4a713bfe37`, unmodified Caddy `v2.11.7`                                                                                                                                                                      |
+| Final scanned web configuration            | `sha256:711a7af6698f3a81d09e20f717fe737ee79c2c0b66dfcc383ed1ad737fe12aac`                                                                                                                                                                   |
+| Final web OCI archive SHA256               | `af2367e523cf399c68447b8b9a6146da49dffa6f90ac163ad9cbd7afd93ea1b6`                                                                                                                                                                          |
+| Actual final-image Caddy executable SHA256 | `678ade3bfc088749c81a681adc603333ee0bb023b6a6cfe3c0f58bef8ff854e9`                                                                                                                                                                          |
+| Signed buildable archive SHA256            | `b430516910839fbaf35c0a9e9df80d1e2e30aa792530293c39f4a97a1b2c9060`                                                                                                                                                                          |
+| Retained binary build-info SHA256          | `dd3f5dd44ea4939e3c12c1f2168798bbcd936761704f2d7e7c78fb4d6483a812`                                                                                                                                                                          |
+| Wrapper `main.go` SHA256                   | `ac320c3ac47ad8abed7a0d2595639d78f9ff55cf1dba8494a66cd8851c5d076e`                                                                                                                                                                          |
+| Wrapper `go.mod` SHA256                    | `18b279010277f797f78d6bd14036989a185ad7d44396a5ccce9207c13a864293`                                                                                                                                                                          |
+| Wrapper `go.sum` SHA256                    | `7e80d3ed4bfe892d1e2ffbd83e99f4ba862a4090a94be941aaf63193aa5d2a60`                                                                                                                                                                          |
+| Wrapper `vendor/modules.txt` SHA256        | `145310451e5679ed7309cad898dbc066a2c9f46655a9367a0ba672a924911bc2`                                                                                                                                                                          |
+| Toolchain and executable build settings    | Go `1.26.8`, `linux/amd64`, `GOAMD64=v1`, `CGO_ENABLED=0`, tags `nobadger,nomysql,nopgx`                                                                                                                                                    |
+| Imported packages                          | 970, with no incomplete-package or dependency errors; tests excluded                                                                                                                                                                        |
+| Embedded dependency correspondence         | All 147 source-graph dependency module/version pairs exactly equal the binary's 147 embedded pairs; every embedded module checksum matches the wrapper `go.sum` and its module/version is declared in `vendor/modules.txt`; no replacements |
+| Affected imported packages                 | 0 of 7; the full retained vendor archive also contains no OpenPGP source files                                                                                                                                                              |
+| Sorted import-path list SHA256             | `6120a24d276bdc383cc7d60f87ab785812b313bb38244bf20b915f0702b4a195`                                                                                                                                                                          |
+| Full package-graph JSON SHA256             | `beae636272502cf07210d69eba633ea0a22956f6d683cecb2ad6de274af2332a`                                                                                                                                                                          |
+| Official advisory JSON SHA256              | `f277b0400996200a7d5034c676661cd8cf18adeab1fdc5d0dc369e456ddf1fad`                                                                                                                                                                          |
+
+The review independently read the final OCI archive's manifest, configuration and
+every layer, verified their recorded sizes/digests, and resolved the final
+`/usr/bin/caddy` file without executing it. Its bytes match the official release
+executable from the retained checksum-bound archive. Independently reading that
+executable with the matching Go toolchain reproduced the retained `GoVersion`,
+main-module identity, all 147 dependencies and build settings.
+
+The retained Caddy Sigstore receipt records successful buildable-artifact and
+checksum-list verification for the exact release workflow, tag and source revision,
+with transparency verification required. This review matched the signed artifact's
+bytes and receipt bindings; it did not repeat that network signature ceremony.
+The wrapper `main.go` was independently compared byte for byte with the
+[original entry point at the recorded revision](https://github.com/caddyserver/caddy/blob/72dd0fb067f6d7826c7f79907670ba4a713bfe37/cmd/caddy/main.go).
+The dependency/checksum checks used the repository's existing
+`tools/collect_caddy_sources.py::verify_modules` contract, followed by an independent
+exact comparison of all graph-selected dependency pairs with the binary metadata.
+The signed vendored archive authenticates its source bytes; matching embedded
+`h1` values to `go.sum` is a metadata correspondence check, not a claim to have
+recomputed full original-module zip checksums from reduced vendored directories.
+
+The actual package graph was produced inside the extracted original wrapper with
+isolated caches and these settings:
+
+```sh
+export GOTOOLCHAIN=go1.26.8
+export GOOS=linux GOARCH=amd64 GOAMD64=v1 CGO_ENABLED=0
+export GOWORK=off GOFLAGS=-mod=vendor
+go version
+go list -deps -json -buildvcs=false -tags=nobadger,nomysql,nopgx .
+```
+
+VCS stamping was disabled only because an extracted signed source archive has no
+original Git metadata; the exact original wrapper revision was checked separately.
+The Go toolchain download retained its normal checksum-service verification.
+The complete graph includes 23 `golang.org/x/crypto` package paths, including SSH,
+SSH agent, Argon2, bcrypt, OCSP and the cryptographic primitives used by Caddy.
+None is an advisory-listed OpenPGP path. This assessment does not borrow the
+backend's different import graph or presume that all packages in `x/crypto` are
+absent.
+
+This static source-package proof covers the exact recorded executable and build
+configuration. It does not establish absence of unknown vulnerabilities,
+call-level safety of other packages, arbitrary custom modules, dynamically loaded
+code, different tags/toolchains, or ARM64 applicability. A changed executable or
+source graph requires a new review; retain the module finding in raw reports and
+carry this disposition only with its matching binary/source evidence. No scanner
+ignore entry was added. Patched final-image rescans and ARM64 evidence remain
+pending.

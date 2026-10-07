@@ -793,6 +793,32 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       The candidate workflow records measurements without signing or publishing;
       a missing runtime pack cannot satisfy the final publication gate.
 
+### Completed-check report producers
+
+- [x] Separate validated immutable publication inputs from authenticated gate
+      verification using one shared `prepare_inputs` contract. Preparing a
+      binding does not authorize publication or create approval receipts.
+- [x] Generate source-CI evidence from the selected version-tag release run
+      attempt's fully paginated API response, requiring every exact reusable CI
+      job to be completed and successful at the selected source SHA. Reject old
+      main runs, skipped/missing/unfinished jobs, altered attempts and pagination.
+- [x] Run the real final smoke harness with runtime overlays and validate native
+      OCI child/configuration correspondence before and after execution. Recheck
+      exact runtime pack/source bytes and complete check coverage.
+- [x] Authenticate both native measurement records before generating full smoke
+      and runtime-notice gate reports. Unauthenticated single-platform records,
+      stale source/configuration/pack identities and generic completion JSON do
+      not satisfy publication. These producers cannot sign or publish.
+- [x] Verify the report producers and shared input boundary with thirteen focused
+      regressions; the complete release suite passed 139 checks in 8.120 seconds.
+- [ ] Wire the producers and signed native records into the reviewed workflow
+      and validate actual two-platform aggregation. The current candidate-only
+      workflow emits unsigned smoke measurements.
+- [ ] Implement actual source/final scanner, corresponding-source completeness,
+      authorized distribution review, upgrade/recovery and readback/provenance
+      producers. Source-asset hash measurements explicitly leave completeness
+      and review pending; they cannot mint a corresponding-source approval.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports

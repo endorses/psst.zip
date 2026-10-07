@@ -203,9 +203,10 @@ def main():
             from package_runtime_sources import verify_overlays
             from release_artifacts import read_bounded_file, read_json
 
-            runtime_pack = read_json(
-                read_bounded_file(args.runtime_pack / "runtime-pack.json")
+            runtime_pack_bytes = read_bounded_file(
+                args.runtime_pack / "runtime-pack.json"
             )
+            runtime_pack = read_json(runtime_pack_bytes)
             require(
                 isinstance(runtime_pack, dict)
                 and runtime_pack.get("version") == args.version
@@ -217,10 +218,14 @@ def main():
                 args.runtime_pack, args.backend_image, args.web_image
             )
             runtime_pack_hash = (
-                "sha256:"
-                + hashlib.sha256(
-                    read_bounded_file(args.runtime_pack / "runtime-pack.json")
-                ).hexdigest()
+                "sha256:" + hashlib.sha256(runtime_pack_bytes).hexdigest()
+            )
+            require(
+                overlay_proof["runtime_pack_sha256"]
+                == runtime_pack_hash.removeprefix("sha256:")
+                and read_bounded_file(args.runtime_pack / "runtime-pack.json")
+                == runtime_pack_bytes,
+                "Runtime pack changed during overlay verification",
             )
         for image, title in ((args.backend_image, "backend"), (args.web_image, "web")):
             # Load/pull the selected platform beforehand. Plain inspect supports

@@ -364,7 +364,18 @@ def validate_plan(plan: PublicationPlan) -> None:
     )
 
 
-def prepare_publication(
+@dataclass(frozen=True)
+class PublicationInputs:
+    """Exact validated artifacts, before gate verification; never authorization."""
+
+    binding: Binding
+    manifest: dict
+    manifest_record_digest: str
+    updater_subjects: tuple[tuple[str, str], ...]
+    assets: tuple[tuple[str, str], ...]
+
+
+def prepare_inputs(
     *,
     root: Path,
     repository: str,
@@ -375,9 +386,7 @@ def prepare_publication(
     bundle: Path,
     indexes: dict[str, Path],
     source_assets: dict[str, Path],
-    reports: dict[str, Path],
-    verifier: EvidenceVerifier,
-) -> PublicationPlan:
+) -> PublicationInputs:
     version, commit = bind_reviewed_source(
         root, repository, ref, event_sha, reviewed_commit
     )
@@ -420,13 +429,47 @@ def prepare_publication(
         assets[name] = digest
         subjects["source:" + name] = "file:" + name + "@" + digest
     binding = Binding(repository, version, commit, tuple(sorted(subjects.items())))
-    evidence = verify_gates(reports, GATES, binding, verifier)
-    return PublicationPlan(
+    return PublicationInputs(
         binding,
         manifest,
         sha256(json_bytes(manifest)),
         updater_subjects,
         tuple(sorted(assets.items())),
+    )
+
+
+def prepare_publication(
+    *,
+    root: Path,
+    repository: str,
+    ref: str,
+    event_sha: str,
+    reviewed_commit: str,
+    manifest_path: Path,
+    bundle: Path,
+    indexes: dict[str, Path],
+    source_assets: dict[str, Path],
+    reports: dict[str, Path],
+    verifier: EvidenceVerifier,
+) -> PublicationPlan:
+    inputs = prepare_inputs(
+        root=root,
+        repository=repository,
+        ref=ref,
+        event_sha=event_sha,
+        reviewed_commit=reviewed_commit,
+        manifest_path=manifest_path,
+        bundle=bundle,
+        indexes=indexes,
+        source_assets=source_assets,
+    )
+    evidence = verify_gates(reports, GATES, inputs.binding, verifier)
+    return PublicationPlan(
+        inputs.binding,
+        inputs.manifest,
+        inputs.manifest_record_digest,
+        inputs.updater_subjects,
+        inputs.assets,
         tuple(sorted(evidence.items())),
     )
 

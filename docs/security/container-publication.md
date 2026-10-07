@@ -73,6 +73,54 @@ inspection record with `publication_authorized: false`. It cannot read success
 JSON and unlock publication. Full preparation is a library boundary requiring
 the trusted verifier implementation.
 
+## Reports from completed checks
+
+`prepare_inputs` shares the publication core's exact source/tag, bundle, manifest,
+index and source-asset validation. It returns `PublicationInputs.binding` before
+gate verification so producers and the eventual `PublicationPlan` use identical
+subjects. This resolves report/preparation ordering without weakening any input
+check; `PublicationInputs` has no verified gates or publishing authorization.
+
+`tools/generate_release_gate_reports.py` is a library of bounded producers, with
+no generic success-report constructor. `source_ci_report` queries the selected
+version-tag release-run attempt using an explicit Actions read credential. It
+requires the exact source SHA, repository, workflow, version tag and all five
+completed successful reusable CI jobs, retaining job IDs/completion times. It
+checks every job page and rechecks the run identity; API failures, changed counts,
+unexpected CI jobs and unfinished/skipped/failed jobs produce no success report.
+A prior successful main CI run cannot satisfy this producer.
+[GitHub workflow-job attempt API](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
+
+`collect_native_measurement` runs the actual final-image smoke harness with the
+runtime pack and image configuration IDs. It requires all application, runtime
+offer, authentication/restart and cleanup checks. Before and after the harness,
+it validates the OCI exports against the selected child/configuration identities
+and verifies immutable pack/source-asset bytes. The typed result is a measurement
+with `publication_authorized: false`; candidate smoke without a runtime pack
+cannot produce it.
+
+`aggregate_native_reports` first authenticates both architecture measurements
+with `GhEvidenceVerifier.authenticate`, preserving the same signer/source/ref,
+snapshot and process policies as gate-report verification. Only then does it
+generate complete `final-image-smoke` and `runtime-notices` gate objects bound to
+all release subjects. The smoke report records native/emulated execution and all
+four tested configuration digests for transport. Runtime evidence retains notice
+hashes, source-asset identity and the requirement for distribution review. The
+trusted workflow must sign the exact emitted report bytes before preparation;
+these producers neither sign reports nor grant publishing authorization.
+
+`source_asset_measurements` checks every corresponding-source asset against its
+bound digest and records sizes. It explicitly leaves source completeness
+unverified and creates no `corresponding-source` success gate. Hash equality and
+source-pack preparation flags cannot establish complete corresponding sources or
+replace the independent distribution review.
+
+- [ ] Add completed source/image scanner producers with exact targets, tool/database/date and reviewed finding dispositions.
+- [ ] Add full corresponding-source completeness evidence and authenticated distribution review.
+- [ ] Add relevant completed upgrade/recovery evidence.
+- [ ] Produce and sign actual registry/anonymous-pull/asset-readback/provenance observations during held publication.
+- [ ] Wire producers and signed native measurements into the trusted workflow and exercise them live.
+
 ## Reservation and publication order
 
 `reserve_draft` is a context manager around the transport's repository-wide
@@ -210,6 +258,6 @@ Validation: publication, transport, evidence and OCI fixture checks exercise
 absent gates, altered source/configuration/artifacts, scanner errors, partial
 pushes/uploads, exclusive draft reservation, authenticated API failures, anonymous
 pull/download boundaries and durable interruption receipts. The transport's
-17 tests passed locally. The combined `test_release_*.py` suite passed 119 checks
-in 6.80 seconds; Ruff and Prettier checks passed. Live publication and recovery
-remain pending.
+17 tests passed locally. At the report-producer checkpoint, 13 producer fixtures
+and the combined `test_release_*.py` suite passed 139 checks in 7.79 seconds; Ruff
+and Prettier checks passed. Live publication and recovery remain pending.
