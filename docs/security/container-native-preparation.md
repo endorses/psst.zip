@@ -138,12 +138,13 @@ an unused strict version. It creates no tag. The existing tag-push path still
 validates the exact tag and event commit. A main dispatch cannot establish the
 tagged source-CI gate needed for publication.
 
-Both native runners execute exact source CI, source preparation, final smoke,
-fresh source/image scans, compiler correspondence and application dependency
-retention. Only bounded candidate JSON records and full scanner JSON are uploaded;
-image/source payloads and private diagnostics are removed after measurement.
-Compiler summaries have a distinct partial-evidence kind and cannot substitute
-for the full authenticated inputs needed by final gate aggregation.
+The workflow first runs exact source CI, then both native runners execute source
+preparation, final smoke, fresh source/image scans, compiler correspondence and
+application dependency retention. Successful native jobs now upload separately
+checked retained inputs for post-matrix assembly and recovery; bounded diagnostic
+summaries are still uploaded separately on failure. Compiler summaries keep a
+distinct partial-evidence kind and cannot substitute for full authenticated inputs
+in final gate aggregation.
 
 The workflow retains read-only repository permissions and disabled checkout
 credentials. Local actionlint, shell/Python syntax checks, thirteen real-Git
@@ -151,6 +152,62 @@ candidate tests and replay of the report copier against all thirteen actual
 AMD64 records passed. The copier retained every finding without truncation;
 malformed, oversized, linked and protected-data records were rejected. Actual
 hosted execution of this extended workflow remains pending.
+
+## Retained inputs across hosted jobs
+
+`tools/prepare_candidate_transfer.py` stages only a fixed, validated inventory:
+all ten native descriptor artifacts, manifest-owned legal overlays, exact source
+scanner raw receipts, both compiler/advisory/signature proofs, both final-image
+scanner reports, and the architecture-specific dependency archive. It preserves
+relative names so the descriptor remains valid after download. Tools, caches,
+private execution diagnostics and privileged recovery state are excluded. Declared
+scanner stderr receipts remain included because they are hashed replay inputs.
+
+The metadata binds every retained file's actual size and SHA256 to repository,
+version, commit, platform and source kind. Download validation checks the entire
+inventory, record references and unexpected files. These are structural facts;
+`publication_authorized` remains false and authentication remains required.
+
+Each successful native matrix job uploads a separately named artifact containing
+its staged tree. The common pinned upstream inputs are collected once. Artifact
+names include the exact run ID and attempt; consumers download explicit names into
+separate architecture directories. They do not merge wildcard results or retrieve
+inputs from earlier runs. Retention is one day for these candidate exercises.
+
+The assembly job validates both transfers before running release-input assembly.
+For a planned main dispatch, assembly requires the real main ref/event/source,
+trusted origin, clean tracked checkout, main ancestry and absence of the planned
+version tag. It creates no Git reference and emits `planned-candidate-inputs` with
+unverified source-CI/signer flags. Tagged preparation still requires the reviewed
+actual tag; the publisher retains its mandatory tag and authenticated-gate checks.
+The internal bundle profile describes its updater contents, not approval to deploy.
+
+After assembly, native AMD64 and ARM64 recovery jobs each validate both retained
+trees and execute the prepared candidate on their own native runner. They measure
+ordinary and originally paused upgrade/reapply/isolated restore and injected
+startup failure, using the exact same candidate version for reapplication. Only
+terminal sanitized measurement JSON is uploaded, after bounded fixture cleanup.
+These exercises cannot establish public provenance, an independent off-host
+provider restore or browser/mobile behavior.
+
+Ten transfer fixtures passed, covering relocation, incomplete raw/overlay/source
+inputs, links, hidden files, unsafe paths and copy-time substitutions. Actual
+AMD64 staging and relocation replay also passed on source
+`c73a5da9bbbec4fb5de63586eb498879ec73a28c`: 112 retained files totaling 939,932,806
+bytes. The 19,431-byte transfer metadata SHA256 was
+`b84657993ac965f666096433c56233c49726f69253845f4aee220273cb8d0a0f`.
+Only disposable transport copies were removed; the original measured inputs
+were preserved. Fifteen assembly tests passed, including planned ref/event/version
+and checkout guards; twenty-one publication tests preserve the tag-only boundary.
+
+When retrying a hosted candidate, rerun the complete workflow so every prerequisite
+produces artifacts for the same attempt. Rerunning only failed jobs can leave
+prerequisite artifacts at an earlier attempt; explicit download names reject that
+mixture rather than silently reuse earlier results.
+
+The complete hosted transfer/assembly/recovery pipeline remains unrun until the
+reviewed checkpoint is pushed and dispatched. A prior AMD64 source preparation
+or a fixture test does not prove the new ARM64 or hosted path.
 
 ## Upstream application source inputs
 

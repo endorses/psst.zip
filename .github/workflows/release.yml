@@ -97,6 +97,41 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  upstream-inputs:
+    name: Retain common upstream source inputs
+    needs: [validate-tag, ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          persist-credentials: false
+      - name: Collect immutable originals against the exact catalog and web lock
+        env:
+          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+        run: |
+          python3 tools/package_upstream_application_sources.py --mode collect \
+            --root . --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --output "$RUNNER_TEMP/candidate-upstream"
+          python3 tools/package_upstream_application_sources.py --mode verify \
+            --root . --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --collection "$RUNNER_TEMP/candidate-upstream" \
+            --output "$RUNNER_TEMP/candidate-upstream-replay.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-upstream-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-upstream/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Remove only owned upstream collection and replay files
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-upstream"
+          rm -f -- "$RUNNER_TEMP/candidate-upstream-replay.json"
+
   build-and-smoke:
     name: Native candidate pair (${{ matrix.arch }})
     needs: [validate-tag, ci, resolve-bases]
@@ -339,6 +374,21 @@ jobs:
             'Reports are unsigned candidate evidence, not authenticated provenance or deployment approval.' \
             'Image and source scans retain every finding; finding disposition, distribution review, public source retrieval, authenticated release gates and production rollout remain pending.' \
             >> "$GITHUB_STEP_SUMMARY"
+      - name: Stage verified native payloads and complete raw measurement inputs
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/candidate-transfer"
+          python3 tools/prepare_candidate_transfer.py stage \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --platform "$PLATFORM" --source-kind "$SOURCE_KIND" \
+            --private "$RUNNER_TEMP/psst-native-private-$ARCH" \
+            --output "$RUNNER_TEMP/candidate-transfer/$ARCH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-native-inputs-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 1
       - name: Preserve bounded public records, excluding source/image payloads and diagnostics
         if: always()
         env:
@@ -430,7 +480,7 @@ jobs:
       - name: Remove only owned candidate payloads, helper and image aliases
         if: always()
         run: |
-          rm -rf -- "$RUNNER_TEMP/psst-native-private-$ARCH" "$RUNNER_TEMP/candidate-inputs"
+          rm -rf -- "$RUNNER_TEMP/psst-native-private-$ARCH" "$RUNNER_TEMP/candidate-inputs" "$RUNNER_TEMP/candidate-transfer/$ARCH"
           for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH" "psst-candidate-source-helper:$ARCH"; do
             if docker image inspect "$image" >/dev/null 2>&1; then
               docker image rm "$image"
@@ -443,3 +493,163 @@ jobs:
           path: ${{ runner.temp }}/candidate-records/*.json
           if-no-files-found: error
           retention-days: 1
+
+  assemble-candidate:
+    name: Assemble both native candidate results
+    needs: [validate-tag, ci, resolve-bases, upstream-inputs, build-and-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      SOURCE_KIND: ${{ needs.validate-tag.outputs.source_kind }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/bases
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-upstream-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/upstream
+      - name: Verify exact retained trees and assemble unsigned candidate inputs
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from generate_release_gate_reports import NativeSourceContext
+          from prepare_candidate_transfer import verify_native
+          from prepare_release_inputs import prepare
+          from release_artifacts import PLATFORMS, require
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          inputs = Path(os.environ['RUNNER_TEMP']) / 'candidate-assembly'
+          version, commit, kind = [os.environ[key] for key in ['CANDIDATE_VERSION', 'SOURCE_COMMIT', 'SOURCE_KIND']]
+          trees = {platform: inputs / platform.split('/')[1] for platform in PLATFORMS}
+          for platform, tree in trees.items():
+              verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), tree, kind)
+          result = prepare(
+              root=root, repository=os.environ['GITHUB_REPOSITORY'],
+              ref=os.environ['GITHUB_REF'], event_sha=os.environ['GITHUB_SHA'], reviewed_commit=commit,
+              candidate=inputs / 'bases/candidate-bases.json',
+              builds={p: t / 'native/build-record.json' for p, t in trees.items()},
+              measurements={p: t / 'native/native-measurement.json' for p, t in trees.items()},
+              packs={p: t / 'native/pack' for p, t in trees.items()},
+              archives={c + '-' + p.split('/')[1]: t / ('native/export/' + c + '-' + p.split('/')[1] + '.oci.tar') for p, t in trees.items() for c in ['backend', 'web']},
+              dependency_collections={p: t / 'application-dependencies' for p, t in trees.items()},
+              source_scans={p: t / 'source-scans/source-scan-measurement.json' for p, t in trees.items()},
+              upstream_collection=inputs / 'upstream', output=inputs / 'prepared',
+              migration_notes='Stopped checkpoint required; preserve existing administrator and storage.',
+              rollback_notes='Restore the matching checkpoint into isolated storage before activation.',
+              planned_version=version if kind == 'planned-main-dispatch' else None,
+              event_name=os.environ['GITHUB_EVENT_NAME'],
+          )
+          require(result['publication_authorized'] is False, 'Candidate cannot authorize publication')
+          expected = set(result['assets']) | {'release-inputs.json', 'oci-correspondence.json', 'backend-index.json', 'web-index.json'}
+          require({p.name for p in (inputs / 'prepared').iterdir()} == expected, 'Unexpected prepared candidate files')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Both native inputs and all retained source assets assembled without creating a tag.\n')
+              summary.write('Inputs remain unsigned; source completeness, distribution review, authenticated gates and publication remain pending.\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/prepared/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Remove only owned assembly input and output trees
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-assembly"
+
+  recovery-candidate:
+    name: Native candidate recovery (${{ matrix.arch }})
+    needs: [validate-tag, assemble-candidate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      SOURCE_KIND: ${{ needs.validate-tag.outputs.source_kind }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/prepared
+      - name: Verify downloaded trees and measure real native update and recovery
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from generate_release_gate_reports import NativeSourceContext
+          from measure_release_recovery import measure_recovery
+          from prepare_candidate_transfer import verify_native
+          from release_artifacts import PLATFORMS, read_bounded_file, read_json, require
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          inputs = Path(os.environ['RUNNER_TEMP']) / 'candidate-recovery'
+          version, commit, kind = [os.environ[key] for key in ['CANDIDATE_VERSION', 'SOURCE_COMMIT', 'SOURCE_KIND']]
+          for platform in PLATFORMS:
+              verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), inputs / platform.split('/')[1], kind)
+          prepared = inputs / 'prepared'
+          manifest = read_json(read_bounded_file(prepared / 'release-manifest.json'))
+          result = measure_recovery(
+              context=NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, os.environ['PLATFORM']),
+              natives={p: inputs / p.split('/')[1] / 'native/native-artifacts.json' for p in PLATFORMS},
+              manifest=prepared / 'release-manifest.json', bundle=prepared / manifest['bundle']['name'],
+              previous_source='2ed02af8a062bb3cc21a80a1503d31775dd6e5d8',
+              output=inputs / 'recovery-measurement.json', root=root,
+          )
+          require(result['publication_authorized'] is False and result['upgrade_recovery_gate_pending'] is True, 'Recovery measurement cannot authorize release')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Native upgrade, same-version reapply, pause preservation and isolated recovery completed.\n')
+              summary.write('Public provenance, independent off-host provider recovery, browser/mobile flows and authenticated release gates remain pending.\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-recovery-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/recovery-measurement.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove only owned recovery input and terminal measurement files
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-recovery"

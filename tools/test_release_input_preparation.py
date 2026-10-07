@@ -223,6 +223,53 @@ class InputPreparation(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "must be new"):
             self.prepare()
 
+    def planned_arguments(self):
+        binding = self.fixture.binding
+        self.repository.git("tag", "-d", binding.version)
+        return {
+            "ref": "refs/heads/main",
+            "planned_version": binding.version,
+            "event_name": "workflow_dispatch",
+        }
+
+    def test_unused_main_candidate_assembles_without_tag_or_publication(self):
+        planned = self.planned_arguments()
+        result = self.prepare(**planned)
+        self.assertEqual(result["kind"], "planned-candidate-inputs")
+        self.assertEqual(result["source_kind"], "planned-main-dispatch")
+        self.assertFalse(result["publication_authorized"])
+        self.assertFalse(result["tagged_source_ci_gate_verified"])
+        self.assertFalse(result["signer_identity_verified"])
+        self.assertEqual(len(result["assets"]), 8)
+        self.assertEqual(len(result["subjects"]), 14)
+        self.assertEqual(self.repository.git("tag", "--list").strip(), b"")
+
+    def test_planned_source_event_branch_reviewed_commit_and_checkout_guards(self):
+        planned = self.planned_arguments()
+        for change in (
+            {"event_name": "push"},
+            {"event_name": "pull_request"},
+            {"ref": "refs/heads/other"},
+            {"reviewed_commit": "a" * 40},
+            {"event_sha": "a" * 40},
+        ):
+            with self.subTest(change=change), self.assertRaises(InvalidRelease):
+                self.prepare(**(planned | change))
+            self.assertFalse(self.args["output"].exists())
+        (self.repository.root / "deploy/update.py").write_text("unreviewed helper")
+        with self.assertRaisesRegex(InvalidRelease, "Tracked checkout differs"):
+            self.prepare(**planned)
+        self.assertFalse(self.args["output"].exists())
+
+    def test_planned_version_cannot_borrow_existing_tag(self):
+        with self.assertRaisesRegex(InvalidRelease, "already has a tag"):
+            self.prepare(
+                ref="refs/heads/main",
+                planned_version=self.fixture.binding.version,
+                event_name="workflow_dispatch",
+            )
+        self.assertFalse(self.args["output"].exists())
+
     def test_missing_platform_or_export_rejected_before_outputs(self):
         for key in (
             "builds",

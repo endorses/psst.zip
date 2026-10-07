@@ -21,6 +21,7 @@ from release_artifacts import (
     COMMIT,
     DIGEST,
     PLATFORMS,
+    VERSION,
     InvalidRelease,
     create_output,
     fields,
@@ -149,11 +150,10 @@ def validate_registry_index(raw: bytes, record: dict) -> None:
     )
 
 
-def bind_reviewed_source(
-    root: Path, repository: str, ref: str, event_sha: str, reviewed_commit: str
-) -> tuple[str, str]:
+def checked_checkout(root: Path, repository: str, commit: str) -> None:
+    """Check checkout bytes/identity; this does not require or authorize a tag."""
     repository = repository_name(repository)
-    matches(reviewed_commit, COMMIT, "Invalid reviewed commit")
+    matches(commit, COMMIT, "Invalid reviewed commit")
     origin = git(root, "remote", "get-url", "origin").decode().strip()
     require(
         origin
@@ -165,16 +165,24 @@ def bind_reviewed_source(
         },
         "Checkout origin differs from the trusted repository",
     )
-    version, commit = validated_tag(root, ref, event_sha)
-    require(commit == reviewed_commit, "Tag is not the reviewed source commit")
     require(
         git(root, "rev-parse", "HEAD").decode().strip() == commit,
-        "Checkout is not the reviewed tagged commit",
+        "Checkout is not the reviewed commit",
     )
     require(
         git(root, "diff", "--name-only", commit, "--") == b"",
         "Tracked checkout differs from the reviewed commit",
     )
+
+
+def bind_reviewed_source(
+    root: Path, repository: str, ref: str, event_sha: str, reviewed_commit: str
+) -> tuple[str, str]:
+    repository = repository_name(repository)
+    matches(reviewed_commit, COMMIT, "Invalid reviewed commit")
+    version, commit = validated_tag(root, ref, event_sha)
+    require(commit == reviewed_commit, "Tag is not the reviewed source commit")
+    checked_checkout(root, repository, commit)
     return version, commit
 
 
@@ -387,6 +395,35 @@ def prepare_inputs(
     version, commit = bind_reviewed_source(
         root, repository, ref, event_sha, reviewed_commit
     )
+    return measure_prepared_inputs(
+        repository=repository,
+        version=version,
+        commit=commit,
+        manifest_path=manifest_path,
+        bundle=bundle,
+        indexes=indexes,
+        source_assets=source_assets,
+    )
+
+
+def measure_prepared_inputs(
+    *,
+    repository: str,
+    version: str,
+    commit: str,
+    manifest_path: Path,
+    bundle: Path,
+    indexes: dict[str, Path],
+    source_assets: dict[str, Path],
+) -> PublicationInputs:
+    """Measure exact prepared bytes only; no tag, source CI or publication trust.
+
+    Planned-version assembly may use this structural helper, but publication must
+    enter through prepare_inputs and its mandatory reviewed-tag binding.
+    """
+    repository = repository_name(repository)
+    matches(version, VERSION, "Invalid prepared version")
+    matches(commit, COMMIT, "Invalid prepared source commit")
     raw = read_bounded_file(manifest_path)
     manifest = validate_manifest(read_json(raw), repository)
     require(

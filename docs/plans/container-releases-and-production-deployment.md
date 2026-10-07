@@ -1011,6 +1011,30 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       and production migration separately. See the
       [native preparation guide](../security/container-native-preparation.md).
 
+### Cross-job candidate assembly and native recovery
+
+- [x] Retain complete native inputs with an explicit file/hash inventory, preserving
+      descriptor paths and full scanner/compiler receipts. Exclude private
+      diagnostics, tool/cache files and privileged recovery state; revalidate every
+      retained byte and reference after same-run/attempt artifact download. Ten
+      transfer fixtures passed; actual AMD64 stage/relocation replay verified 112
+      files and 939,932,806 bytes without changing original measured inputs.
+- [x] Add a distinct unsigned planned-main assembly path with exact source, origin,
+      tracked-checkout, ancestry, event and unused-version guards. Keep the
+      publisher's reviewed tag boundary mandatory; never create a pretend tag.
+      Fifteen assembly and twenty-one publication boundary tests passed.
+- [x] Wire common upstream collection, both native transfers, post-matrix assembly
+      and two actual native recovery jobs into the read-only candidate workflow.
+      Preserve all five source-CI jobs and upload only terminal recovery facts.
+      Actionlint 1.7.12, Bash syntax, all five embedded Python blocks and the bounded
+      workflow review passed; source permissions remain read-only.
+- [ ] Run the integrated workflow on the exact pushed checkpoint and fix hosted
+      transfer, assembly or native recovery failures. Complete source/distribution
+      review, authenticated gates, publication and production adoption separately.
+
+The combined release-tooling suite passed all 290 tests in 22.9 seconds after
+this integration. The actual hosted two-architecture pipeline remains unrun.
+
 ### Application dependency input retention
 
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked

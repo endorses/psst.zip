@@ -21,9 +21,11 @@ from generate_release_gate_reports import (
     runtime_inputs,
     validate_smoke,
 )
-from prepare_release_candidate import validate_candidate
+from prepare_release_candidate import validate_candidate, validated_source
 from publish_container_release import (
     bind_reviewed_source,
+    checked_checkout,
+    measure_prepared_inputs,
     prepare_inputs,
     source_digest,
     sha256,
@@ -98,10 +100,22 @@ def prepare(
     output: Path,
     migration_notes: str,
     rollback_notes: str,
+    planned_version: str | None = None,
+    event_name: str | None = None,
 ) -> dict:
-    version, commit = bind_reviewed_source(
-        root, repository, ref, event_sha, reviewed_commit
-    )
+    if planned_version is None:
+        version, commit = bind_reviewed_source(
+            root, repository, ref, event_sha, reviewed_commit
+        )
+        source_kind = "version-tag"
+    else:
+        require(
+            event_name == "workflow_dispatch", "Planned assembly requires main dispatch"
+        )
+        version, commit = validated_source(root, ref, event_sha, planned_version)
+        require(commit == reviewed_commit, "Planned source is not the reviewed commit")
+        checked_checkout(root, repository, commit)
+        source_kind = "planned-main-dispatch"
     require(
         not output.exists() and not output.is_symlink(),
         "Release output must be new; partial preparations require manual inspection",
@@ -303,20 +317,37 @@ def prepare(
             "Source payload changed while retaining release inputs",
         )
         sources[name] = destination
-    inputs = prepare_inputs(
-        root=root,
-        repository=repository,
-        ref=ref,
-        event_sha=event_sha,
-        reviewed_commit=reviewed_commit,
-        manifest_path=manifest,
-        bundle=bundle,
-        indexes={c: output / f"{c}-index.json" for c in ("backend", "web")},
-        source_assets=sources,
-    )
+    measured_paths = {
+        "manifest_path": manifest,
+        "bundle": bundle,
+        "indexes": {c: output / f"{c}-index.json" for c in ("backend", "web")},
+        "source_assets": sources,
+    }
+    if planned_version is None:
+        inputs = prepare_inputs(
+            root=root,
+            repository=repository,
+            ref=ref,
+            event_sha=event_sha,
+            reviewed_commit=reviewed_commit,
+            **measured_paths,
+        )
+    else:
+        # Measure future release subjects without creating a tag or entering the
+        # publisher's mandatory tagged-source and authenticated-gate boundary.
+        inputs = measure_prepared_inputs(
+            repository=repository, version=version, commit=commit, **measured_paths
+        )
     result = {
         "schema_version": 1,
-        "kind": "prepared-release-inputs",
+        "kind": (
+            "prepared-release-inputs"
+            if planned_version is None
+            else "planned-candidate-inputs"
+        ),
+        "source_kind": source_kind,
+        "tagged_source_ci_gate_verified": False,
+        "signer_identity_verified": False,
         "repository": repository,
         "version": version,
         "source_commit": commit,
@@ -356,6 +387,8 @@ def main() -> None:
         parser.add_argument(
             "--" + name, action="append", default=[], metavar="KEY=PATH"
         )
+    parser.add_argument("--planned-version")
+    parser.add_argument("--event-name")
     args = parser.parse_args()
     try:
         prepare(
@@ -377,6 +410,8 @@ def main() -> None:
             upstream_collection=args.upstream,
             migration_notes=args.migration_notes,
             rollback_notes=args.rollback_notes,
+            planned_version=args.planned_version,
+            event_name=args.event_name,
         )
     except (InvalidRelease, OSError, ValueError) as error:
         parser.exit(1, f"Release input preparation rejected: {error}\n")

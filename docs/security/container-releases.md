@@ -344,6 +344,14 @@ python3 tools/prepare_release_inputs.py \
   --output "$REVIEW_DIR/prepared"
 ```
 
+For a read-only planned main candidate, use the actual main ref/event SHA and add
+`--planned-version "$PSST_RELEASE_VERSION" --event-name workflow_dispatch`.
+The planned version must be unused. This mode creates no tag and writes
+`planned-candidate-inputs`; it cannot satisfy tagged source CI or signer identity.
+The actual publishing entry point still requires a reviewed tag. The hosted
+candidate workflow now assembles both native results and runs native recovery;
+see [retained inputs across jobs](container-native-preparation.md).
+
 `release-inputs.json` records every image/file/source subject for subsequent
 authenticated aggregation. Its `publication_authorized` remains false and
 `measurement_authentication_required` remains true. The `deployment-ready`

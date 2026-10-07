@@ -244,6 +244,122 @@ class PublicationChecks(unittest.TestCase):
             self.verifier,
         )
 
+    def measure(self, **overrides):
+        args = {
+            "repository": "endorses/psst.zip",
+            "version": "v1.2.3",
+            "commit": self.commit,
+            "manifest_path": self.manifest_path,
+            "bundle": self.bundle,
+            "indexes": self.indexes,
+            "source_assets": {self.source.name: self.source},
+        }
+        args.update(overrides)
+        return publication.measure_prepared_inputs(**args)
+
+    def test_structural_measurement_without_a_tag_cannot_enter_publication(self):
+        self.git("tag", "-d", "v1.2.3")
+        publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        inputs = self.measure()
+        self.assertIsInstance(inputs, publication.PublicationInputs)
+        self.assertNotIsInstance(inputs, publication.PublicationPlan)
+        self.assertFalse(hasattr(inputs, "evidence"))
+        self.assertEqual(len(inputs.updater_subjects), 8)
+        self.assertEqual(
+            dict(inputs.assets)[self.source.name],
+            publication.source_digest(self.source),
+        )
+        with patch.object(
+            self.verifier,
+            "verify",
+            side_effect=AssertionError(
+                "Branch publication must stop before any CI/evidence verifier"
+            ),
+        ) as verifier:
+            with self.assertRaises(release.InvalidRelease):
+                self.prepare(ref="refs/heads/main")
+            with self.assertRaises(release.InvalidRelease):
+                self.prepare()
+            verifier.assert_not_called()
+
+    def test_structural_measurement_matches_tag_bound_preparation_bytes(self):
+        measured = self.measure()
+        prepared = publication.prepare_inputs(
+            root=self.root,
+            repository="endorses/psst.zip",
+            ref="refs/tags/v1.2.3",
+            event_sha=self.commit,
+            reviewed_commit=self.commit,
+            manifest_path=self.manifest_path,
+            bundle=self.bundle,
+            indexes=self.indexes,
+            source_assets={self.source.name: self.source},
+        )
+        self.assertEqual(measured, prepared)
+        self.assertFalse(self.verifier.calls)
+        for overrides in (
+            {"version": "v1.2.4"},
+            {"commit": "b" * 40},
+            {"repository": "attacker/psst.zip"},
+            {"source_assets": {}},
+            {"indexes": {"backend": self.indexes["backend"]}},
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(
+                release.InvalidRelease
+            ):
+                self.measure(**overrides)
+
+    def test_shared_checkout_rejects_origin_and_stale_head(self):
+        self.git(
+            "remote", "set-url", "origin", "https://github.com/attacker/psst.zip.git"
+        )
+        with self.assertRaisesRegex(release.InvalidRelease, "origin differs"):
+            publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        self.git(
+            "remote", "set-url", "origin", "https://github.com/endorses/psst.zip.git"
+        )
+        (self.root / "LICENSE").write_text("new fixture commit\n")
+        self.git("add", "LICENSE")
+        self.git("commit", "-qm", "Later fixture commit")
+        with self.assertRaisesRegex(release.InvalidRelease, "Checkout is not"):
+            publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        with self.assertRaisesRegex(release.InvalidRelease, "Checkout is not"):
+            self.prepare()
+
+    def test_shared_checkout_rejects_staged_and_unstaged_tracked_changes(self):
+        for staged in (False, True):
+            (self.root / "LICENSE").write_text("changed tracked fixture\n")
+            if staged:
+                self.git("add", "LICENSE")
+            with self.subTest(staged=staged), self.assertRaisesRegex(
+                release.InvalidRelease, "Tracked checkout differs"
+            ):
+                publication.checked_checkout(
+                    self.root, "endorses/psst.zip", self.commit
+                )
+            self.git("reset", "--hard", self.commit)
+
+    def test_tag_on_unreviewed_branch_still_requires_main_ancestry(self):
+        self.git("checkout", "-qb", "unreviewed-fixture")
+        (self.root / "LICENSE").write_text("unreviewed branch fixture\n")
+        self.git("add", "LICENSE")
+        self.git("commit", "-qm", "Unreviewed branch fixture")
+        other = self.git("rev-parse", "HEAD").decode().strip()
+        self.git("tag", "v1.2.4")
+        publication.checked_checkout(self.root, "endorses/psst.zip", other)
+        with patch.object(
+            self.verifier,
+            "verify",
+            side_effect=AssertionError(
+                "Main ancestry must be checked before CI/evidence verification"
+            ),
+        ) as verifier:
+            with self.assertRaisesRegex(release.InvalidRelease, "origin/main"):
+                self.prepare(
+                    ref="refs/tags/v1.2.4", event_sha=other, reviewed_commit=other
+                )
+            verifier.assert_not_called()
+
     def test_preparation_enumerates_exact_eight_updater_subjects_and_bound_source(self):
         plan = self.prepare()
         self.assertEqual(len(plan.updater_subjects), 8)
