@@ -1135,6 +1135,10 @@ reviews remain pending; this source result does not approve publication.
 - [x] Select `v0.1.0` as the first container release, as confirmed by the operator.
       Preserve the existing `v0.0.0` tag; create the new tag only after the reviewed
       workflow and release inputs are ready.
+- [x] Compare the active VPS Caddyfile with the committed bundled configuration.
+      Confirm byte equality and absence of imported custom policy; select the
+      bundled file for eventual adoption while retaining the old protected file
+      for recovery. Live adoption remains pending.
 - [ ] Inspect the live installation's actual volume mappings and settings before
       migration. Preserve `/opt/psst.zip`, project name `psst-zip`, and the original
       local images/configuration as the first migration recovery baseline.
@@ -1153,8 +1157,18 @@ backend/Caddy volumes. The backend still uses its original physical volume and
 database identifiers; adoption must set protected explicit overrides rather than
 select fresh defaults. No legacy identifier is being republished as a new
 project identity. Backend ownership is UID/GID 1000; Caddy is 10001. Both services
-retain resource policies, with no explicit Compose user override. The active host
-Caddyfile mount needs an explicit preserve-or-replace decision.
+retain resource policies, with no explicit Compose user override.
+
+A further read-only comparison found that the active read-only Caddyfile bind is
+byte-identical to the committed file copied into the web image: SHA256
+`86fc3a748f5d9994ffca700953ca357e2c8637d1ca97f94cc978099de57a266d`.
+There are no imported custom proxy policies or operator authentication, manual
+TLS or logging directives. For this installation, adoption should deliberately
+select the bundled Caddyfile with an empty `release_overrides` list and retain the
+old host file in the stopped checkpoint. This preserves the observed proxy,
+headers, static routing and operator-configured domain policy. Actual activation,
+port/storage equivalence and TLS persistence still need verification; no mount
+or host configuration was changed.
 
 The host is AMD64, Docker 29.8.2 and Compose 5.6.0, with approximately 34.6 GB free.
 HTTPS authentication status returned 200 and `setup_required: false`; no nonempty
