@@ -249,6 +249,17 @@ fixtures verify preservation, changed inputs before output writes, and unsafe
 paths. This fixes the missing permission text without claiming it originally
 appeared in the npm notice or authorizing the complete distribution.
 
+Fresh official collection of all twelve originals against source
+`f62d35364fdc2cbb3540176d39899448d5ec4835` and planned `v0.1.0` passed in
+37.2 seconds; independent replay passed in 3.7 seconds. The 91,545,944-byte
+offering has SHA256
+`c5ac96bdb47785183e4c10e8ea6c133a25c4c52ea20c2420c97283af0a6531cf`.
+The private collection/replay receipt is retained under
+`/tmp/psst-upstream-source-offering-review-f62d35364fdc/`; replay SHA256 is
+`b6af18d3509ea34f93ecea0930fa9ae743de238d0b321ca83d4ff1d3e7d1843e`.
+This verifies retention and integrity for this committed policy. Complete final
+source/distribution review, hosted image binding and public delivery remain pending.
+
 ## Browser build module observations
 
 The client build now emits `licenses/browser-module-inventory.json` using

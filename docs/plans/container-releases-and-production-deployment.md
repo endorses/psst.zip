@@ -534,9 +534,12 @@ Strict tag/event/ancestry checks precede reusable CI. The two native build jobs
 are gated on all CI jobs and share resolved index digests for Go, Alpine, Node,
 Caddy and BuildKit. Build records include actual toolchain output and local image
 metadata, explicitly separated from future registry manifest/index digests.
-Candidate metadata has one-day artifact retention; image archives remain local
-and are removed together with candidate tags. No candidate is advertised as
-deployment-ready. Branch/tag protection remains an unperformed repository setup.
+At this initial checkpoint, candidate metadata had one-day artifact retention
+and image archives stayed on the runner. The subsequent local cross-job assembly
+implementation retains explicitly inventoried native image/source inputs for one
+day, bound to the same run and attempt; its complete hosted execution is still
+pending. No candidate is advertised as deployment-ready. Branch/tag protection
+remains an unperformed repository setup.
 
 Verification: eight candidate boundary regressions passed. Real resolution of all
 five official multi-platform indexes passed, including immutable reinspection and
@@ -1139,8 +1142,11 @@ retention review passed.
       fixtures and notice freshness/type checks passed. The complete web suite
       passed 130 tests in 1.4 seconds, the production build passed in 7.2 seconds,
       and final served terms/static inventory verification passed.
-- [ ] Collect and independently replay the twelve-original offering from its
-      exact committed catalog before hosted assembly.
+- [x] Collect and independently replay the twelve-original offering from exact
+      source `f62d35364fdc2cbb3540176d39899448d5ec4835` for planned `v0.1.0`.
+      Fresh official acquisition/packaging took 37.2 seconds and independent
+      replay took 3.7 seconds. Retain the 91,545,944-byte offering and private
+      replay receipt; final hosted assembly and publication remain pending.
 - [ ] Authenticate the expanded offering and verify final hosted image
       correspondence and public retrieval before publication.
 - [x] Keep new regressions limited to actual notice/input/archive failures with
