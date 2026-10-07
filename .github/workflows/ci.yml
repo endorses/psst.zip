@@ -47,6 +47,12 @@ jobs:
           cmp LICENSE backend/licenses/AGPL-3.0-only.txt
           cmp LICENSE web/static/licenses/AGPL-3.0-only.txt
 
+      - name: Check native notice inputs and archive boundaries
+        run: |
+          python3 tools/generate_native_notices.py --check-inputs-only
+          python3 -m unittest discover -s tools -p 'test_native_notices.py' -v
+          python3 -m unittest discover -s tools -p 'test_runtime_notices.py' -v
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
@@ -152,6 +158,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Assemble and test
         run: ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
+      - name: Verify actual resolved native dependency notices
+        run: python3 tools/generate_native_notices.py --check
 
   ios:
     name: Native iOS app, extension and XCTest

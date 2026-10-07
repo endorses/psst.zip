@@ -117,6 +117,8 @@ fun SettingsScreen(
                     Text(result.message.text(), color = MaterialTheme.colorScheme.error)
                 null -> Unit
             }
+            HorizontalDivider()
+            zip.psst.android.ui.components.SourceLicenses(prefs.getServerUrl())
             if (access.accountId != null) {
                 HorizontalDivider()
                 TextButton(

@@ -1137,5 +1137,20 @@
   "adminAbuseReports": "Missbrauchsmeldungen",
   "adminLimits": "Traffic-Limits",
   "adminMonitoring": "Verbrauchsmessung",
-  "adminServerSettingsDescription": "Upload-Limits, Speicher und öffentlicher Zugriff."
+  "adminServerSettingsDescription": "Upload-Limits, Speicher und öffentlicher Zugriff.",
+  "legalTitle": "Quellcode & Lizenzen",
+  "legalProjectLicense": "psst.zip steht unter der AGPL v3. Abhängigkeiten behalten ihre eigenen Lizenzen.",
+  "legalLicense": "Projektlizenz (AGPL v3)",
+  "legalNotices": "Hinweise zu Drittanbietern",
+  "legalInventory": "Abhängigkeitsverzeichnis",
+  "legalHostedVersion": "Gehosteter Server & Webclient",
+  "legalLoading": "Versionsinformationen werden geladen…",
+  "legalVersion": "Version",
+  "legalRevision": "Quellcode-Revision",
+  "legalExactSource": "Quellcode für diese Version herunterladen",
+  "legalProjectSource": "Quellcode-Repository des Projekts",
+  "legalUnavailable": "Exakte Quellcode-Metadaten sind nicht verfügbar. Bitte den Serverbetreiber um den Quellcode dieser bereitgestellten Version.",
+  "legalBack": "Zurück zu psst.zip",
+  "legalBackendNotices": "Hinweise zu Backend-Abhängigkeiten",
+  "legalRuntimeNotices": "Hinweise zu Laufzeitkomponenten"
 }

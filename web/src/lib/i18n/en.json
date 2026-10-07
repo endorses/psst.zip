@@ -1137,5 +1137,20 @@
   "adminAbuseReports": "Abuse reports",
   "adminLimits": "Limits",
   "adminMonitoring": "Monitoring",
-  "adminServerSettingsDescription": "Upload limits, storage and public access."
+  "adminServerSettingsDescription": "Upload limits, storage and public access.",
+  "legalTitle": "Source & licenses",
+  "legalProjectLicense": "psst.zip is licensed under AGPL v3. Dependencies retain their own licenses.",
+  "legalLicense": "Project license (AGPL v3)",
+  "legalNotices": "Third-party notices",
+  "legalInventory": "Dependency inventory",
+  "legalHostedVersion": "Hosted server & web client",
+  "legalLoading": "Loading version information…",
+  "legalVersion": "Version",
+  "legalRevision": "Source revision",
+  "legalExactSource": "Download source for this version",
+  "legalProjectSource": "Project source repository",
+  "legalUnavailable": "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.",
+  "legalBack": "Back to psst.zip",
+  "legalBackendNotices": "Backend dependency notices",
+  "legalRuntimeNotices": "Runtime component notices"
 }

@@ -319,6 +319,13 @@ def main():
                     get("/licenses/AGPL-3.0-only.txt") == license_text,
                     "Served AGPL license differs",
                 )
+                require(
+                    get("/licenses/backend/THIRD_PARTY_NOTICES.txt")
+                    == files["THIRD_PARTY_NOTICES.txt"]
+                    and get("/licenses/backend/dependency-inventory.json")
+                    == files["dependency-inventory.json"],
+                    "Hosted backend notices differ from the paired backend image",
+                )
                 notice_text = get("/licenses/THIRD_PARTY_NOTICES.txt")
                 for name in ("svelte", "@sveltejs/kit", "devalue", "esm-env"):
                     require(
@@ -335,6 +342,7 @@ def main():
                         "license": "AGPL-3.0-only",
                         "source": args.source_url,
                         "source_archive": source_archive,
+                        "notice_files": ["/licenses/backend/THIRD_PARTY_NOTICES.txt"],
                     },
                     "Served source metadata differs",
                 )

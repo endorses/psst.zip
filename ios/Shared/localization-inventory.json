@@ -660,10 +660,22 @@
     "comment": "Shared app and extension UI."
   },
   {
+    "key": "Download source for this version",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
+  },
+  {
     "key": "Download started",
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Download this client’s source",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "Downloaded",
@@ -742,6 +754,12 @@
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "Expired",
@@ -898,6 +916,12 @@
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Hosted server & web client",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "How traffic is counted",
@@ -1074,6 +1098,12 @@
     "comment": "Shared app and extension UI."
   },
   {
+    "key": "Native client",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
+  },
+  {
     "key": "New password",
     "arguments": [],
     "plural": null,
@@ -1162,6 +1192,12 @@
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Notices are unavailable in this build.",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "Observed downloads",
@@ -1288,6 +1324,18 @@
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Project license (AGPL v3)",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
+  },
+  {
+    "key": "Project source repository",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "QR camera preview",
@@ -1764,6 +1812,12 @@
     "comment": "Shared app and extension UI."
   },
   {
+    "key": "Server source & licenses",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
+  },
+  {
     "key": "Server traffic accounting is unavailable. Your saved files are safe. Retry once the server administrator has resolved it.",
     "arguments": [],
     "plural": null,
@@ -1926,6 +1980,12 @@
     "comment": "Shared app and extension UI."
   },
   {
+    "key": "Source & licenses",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
+  },
+  {
     "key": "Stop",
     "arguments": [],
     "plural": null,
@@ -2044,6 +2104,12 @@
     "arguments": [],
     "plural": null,
     "comment": "Shared app and extension UI."
+  },
+  {
+    "key": "Third-party notices",
+    "arguments": [],
+    "plural": null,
+    "comment": "Source/license discovery in app and share extension."
   },
   {
     "key": "This device does not have the encryption key. You can manage this item, but open its full link on the device that created it.",

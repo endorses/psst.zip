@@ -126,8 +126,13 @@ def create_output(path: Path, content: bytes) -> None:
         stream.write(content)
 
 
-def build_bundle(root: Path, output: Path, version: str) -> Path:
+def build_bundle(
+    root: Path, output: Path, version: str, profile: str = "artifact-foundation"
+) -> Path:
     matches(version, VERSION, "version must be vMAJOR.MINOR.PATCH")
+    require(
+        profile in {"artifact-foundation", "deployment-ready"}, "invalid bundle profile"
+    )
     root = root.resolve()
     commit = git(root, "rev-parse", "HEAD").decode().strip()
     matches(commit, COMMIT, "source commit must be a full SHA-1")
@@ -188,8 +193,11 @@ def build_bundle(root: Path, output: Path, version: str) -> Path:
         any(name.startswith("backend/licenses/") for name in blobs),
         "dependency licenses missing",
     )
-    profile = (
-        "deployment-ready" if "deploy/update.py" in blobs else "artifact-foundation"
+    # Committing an updater does not establish completed publication, provenance,
+    # recovery and licensing gates. Only the gated publisher selects readiness.
+    require(
+        profile != "deployment-ready" or "deploy/update.py" in blobs,
+        "deployment-ready bundle lacks updater",
     )
     blobs[METADATA] = json_bytes(
         {
@@ -434,8 +442,8 @@ def validate_bundle(manifest: dict, bundle_path: Path) -> None:
         "bundle payload profile mismatch",
     )
     require(
-        ("deploy/update.py" in files)
-        == (manifest["payload_profile"] == "deployment-ready"),
+        manifest["payload_profile"] != "deployment-ready"
+        or "deploy/update.py" in files,
         "updater/profile mismatch",
     )
     require(
@@ -464,6 +472,11 @@ def main() -> None:
     bundle_parser.add_argument("--root", type=Path, required=True)
     bundle_parser.add_argument("--output", type=Path, required=True)
     bundle_parser.add_argument("--version", required=True)
+    bundle_parser.add_argument(
+        "--payload-profile",
+        choices=("artifact-foundation", "deployment-ready"),
+        default="artifact-foundation",
+    )
     manifest_parser = subparsers.add_parser("create-manifest")
     manifest_parser.add_argument("--version", required=True)
     manifest_parser.add_argument("--source-commit", required=True)
@@ -490,7 +503,9 @@ def main() -> None:
     args = parser.parse_args()
     try:
         if args.command == "build-bundle":
-            print(build_bundle(args.root, args.output, args.version))
+            print(
+                build_bundle(args.root, args.output, args.version, args.payload_profile)
+            )
         elif args.command == "create-manifest":
             value = {
                 "schema_version": 1,

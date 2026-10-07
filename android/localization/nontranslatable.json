@@ -643,6 +643,11 @@
       "file": "android/app/src/main/java/zip/psst/android/viewmodel/HistoryViewModel.kt",
       "literal": "History coverage was evicted",
       "reason": "Internal history cache validation/recovery diagnostic. HistoryViewModel catches it and presents a localized safe error; this raw text is not displayed."
+    },
+    {
+      "file": "android/app/src/main/java/zip/psst/android/data/ReleaseSource.kt",
+      "literal": "psst.zip",
+      "reason": "Exact public release metadata protocol product identity."
     }
   ]
 }

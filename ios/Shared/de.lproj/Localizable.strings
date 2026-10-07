@@ -378,3 +378,15 @@
 "psst.zip" = "psst.zip";
 "psst.zip abuse report" = "psst.zip Missbrauchsmeldung";
 "File" = "Datei";
+
+"Native client" = "Nativer Client";
+"Project source repository" = "Quellcode-Repository des Projekts";
+"Download this client’s source" = "Quellcode dieses Clients herunterladen";
+"Project license (AGPL v3)" = "Projektlizenz (AGPL v3)";
+"Third-party notices" = "Hinweise zu Drittanbietern";
+"Hosted server & web client" = "Gehosteter Server & Webclient";
+"Download source for this version" = "Quellcode für diese Version herunterladen";
+"Exact source metadata is unavailable. Ask the server operator for the source of this deployed version." = "Exakte Quellcode-Metadaten sind nicht verfügbar. Bitte den Serverbetreiber um den Quellcode dieser bereitgestellten Version.";
+"Server source & licenses" = "Serverquellcode & Lizenzen";
+"Source & licenses" = "Quellcode & Lizenzen";
+"Notices are unavailable in this build." = "Hinweise sind in diesem Build nicht verfügbar.";

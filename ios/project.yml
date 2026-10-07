@@ -21,6 +21,17 @@ targetTemplates:
           set -eu
           cd "$SRCROOT/.."
           ./android/gradlew -p shared embedAndSignAppleFrameworkForXcode
+    postBuildScripts:
+      - name: Record client source revision
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          revision=""
+          if git -C "$SRCROOT/.." diff --quiet HEAD -- ios shared LICENSE; then
+            revision=$(git -C "$SRCROOT/.." rev-parse HEAD)
+          fi
+          mkdir -p "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          printf '{"revision":"%s"}\n' "$revision" > "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/ClientSource.json"
     sources:
       - path: Shared
 targets:

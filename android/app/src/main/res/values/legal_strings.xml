@@ -1,0 +1,13 @@
+<resources>
+    <string name="legal_title">Source &amp; licenses</string>
+    <string name="legal_client_version">Client version: %1$s</string>
+    <string name="legal_project_source">Project source repository</string>
+    <string name="legal_client_source">Download this client’s source</string>
+    <string name="legal_license">Project license (AGPL v3)</string>
+    <string name="legal_notices">Third-party notices</string>
+    <string name="legal_notices_unavailable">Notices are unavailable in this build.</string>
+    <string name="legal_hosted_version">Hosted server &amp; web client</string>
+    <string name="legal_unavailable">Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.</string>
+    <string name="legal_exact_source">Download source for this version</string>
+    <string name="legal_server_licenses">Server source &amp; licenses</string>
+</resources>

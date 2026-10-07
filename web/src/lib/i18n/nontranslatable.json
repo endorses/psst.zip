@@ -8,7 +8,8 @@
     "details",
     "server",
     "system",
-    "sizeMiB"
+    "sizeMiB",
+    "legalVersion"
   ],
   "source": [
     {
@@ -240,6 +241,16 @@
       "file": "lib/history-notifications.ts",
       "value": "psst.history-cache.v1",
       "reason": "Persistent internal database/channel identifier; never rendered."
+    },
+    {
+      "file": "lib/release-source.ts",
+      "value": "psst.zip",
+      "reason": "Public metadata protocol product identity/path, not displayed prose."
+    },
+    {
+      "file": "lib/release-source.ts",
+      "value": "/licenses/release.json",
+      "reason": "Public metadata protocol product identity/path, not displayed prose."
     }
   ],
   "notes": [

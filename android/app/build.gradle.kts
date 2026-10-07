@@ -6,6 +6,32 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val sourceTreeClean =
+    providers
+        .exec {
+            workingDir(rootProject.projectDir.parentFile)
+            commandLine("git", "diff", "--quiet", "HEAD", "--", "android", "shared", "LICENSE")
+            isIgnoreExitValue = true
+        }
+        .result
+        .get()
+        .exitValue == 0
+val sourceRevision =
+    if (sourceTreeClean)
+        providers
+            .exec {
+                workingDir(rootProject.projectDir.parentFile)
+                commandLine("git", "rev-parse", "HEAD")
+                isIgnoreExitValue = true
+            }
+            .standardOutput
+            .asText
+            .get()
+            .trim()
+            .takeIf { it.matches(Regex("[a-f0-9]{40}")) }
+            .orEmpty()
+    else ""
+
 android {
     namespace = "zip.psst.android"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -16,6 +42,7 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0"
+        buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevision\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -34,7 +61,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

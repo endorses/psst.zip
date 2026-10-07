@@ -205,14 +205,18 @@ files are never overwritten. Validation rejects unexpected repositories/images,
 missing platforms, inconsistent source/version metadata, unsafe archive paths or
 entry types, duplicate JSON keys and oversized compressed or expanded input.
 
-Current bundles have `payload_profile: artifact-foundation`: the production
-updater is not implemented. A future deployment-ready bundle must contain its
-tracked updater, and the manifest profile must match the archive. Do not execute
+Bundles default to `payload_profile: artifact-foundation`, including when a
+tracked updater is present. The updater is implemented but its Docker integration,
+publication and production adoption remain unverified. Only the gated publisher
+may explicitly select `--payload-profile deployment-ready` after the distribution
+and recovery requirements pass. That profile requires the tracked updater, and
+the manifest profile must match the archive. Do not execute
 bundle tooling as root merely because checksum validation succeeded. Publication
 must authenticate the detached manifest, archive and image digests with provenance
 from the expected repository, release workflow and source commit. See
 [GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations).
-The privileged updater and its verification policy remain pending.
+The [updater and recovery guide](release-update-recovery.md) documents the
+implemented privileged verification policy and its remaining live checks.
 
 ## Image metadata and dependency notices
 
@@ -232,8 +236,9 @@ checks run in CI against exact committed locks, including browser runtime code
 that the build project classifies as development dependencies.
 
 Source archive locators and application inventories do not by themselves establish
-complete distribution compliance. Corresponding-source publication, discoverable
-hosted source/legal links, Android/iOS notices, and the selected Caddy/Alpine
+complete distribution compliance. Hosted source/legal discovery and native
+notices are implemented; actual new iOS packaging awaits macOS CI. Corresponding-source
+publication and the selected Caddy/Alpine
 runtime distribution's obligations remain release gates. Native store terms are
 tracked separately and are outside server deployment automation.
 

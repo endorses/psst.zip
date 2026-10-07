@@ -14,7 +14,7 @@ RUN npm ci
 
 COPY web/ ./
 RUN SOURCE_URL="$SOURCE_URL" VERSION="$VERSION" REVISION="$REVISION" \
-    node --input-type=module -e 'import { writeFileSync } from "node:fs"; const { SOURCE_URL: source, VERSION: version, REVISION: revision } = process.env; writeFileSync("static/licenses/release.json", JSON.stringify({ name: "psst.zip", version, revision, license: "AGPL-3.0-only", source, source_archive: `${source}/archive/${revision}.tar.gz` }, null, 2) + "\n");' && \
+    node --input-type=module -e 'import { writeFileSync } from "node:fs"; const { SOURCE_URL: source, VERSION: version, REVISION: revision } = process.env; writeFileSync("static/licenses/release.json", JSON.stringify({ name: "psst.zip", version, revision, license: "AGPL-3.0-only", source, source_archive: `${source}/archive/${revision}.tar.gz`, notice_files: ["/licenses/backend/THIRD_PARTY_NOTICES.txt"] }, null, 2) + "\n");' && \
     npm run build
 
 FROM ${CADDY_IMAGE}
@@ -39,5 +39,6 @@ RUN setcap -r /usr/bin/caddy && \
 
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=web-build /build/build /srv/web
+COPY backend/licenses /srv/web/licenses/backend
 
 USER 10001:10001

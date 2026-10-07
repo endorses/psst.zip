@@ -1,0 +1,13 @@
+<resources>
+    <string name="legal_title">Quellcode &amp; Lizenzen</string>
+    <string name="legal_client_version">Clientversion: %1$s</string>
+    <string name="legal_project_source">Quellcode-Repository des Projekts</string>
+    <string name="legal_client_source">Quellcode dieses Clients herunterladen</string>
+    <string name="legal_license">Projektlizenz (AGPL v3)</string>
+    <string name="legal_notices">Hinweise zu Drittanbietern</string>
+    <string name="legal_notices_unavailable">Hinweise sind in diesem Build nicht verfügbar.</string>
+    <string name="legal_hosted_version">Gehosteter Server &amp; Webclient</string>
+    <string name="legal_unavailable">Exakte Quellcode-Metadaten sind nicht verfügbar. Bitte den Serverbetreiber um den Quellcode dieser bereitgestellten Version.</string>
+    <string name="legal_exact_source">Quellcode für diese Version herunterladen</string>
+    <string name="legal_server_licenses">Serverquellcode &amp; Lizenzen</string>
+</resources>

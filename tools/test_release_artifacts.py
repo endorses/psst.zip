@@ -217,8 +217,12 @@ class BundleChecks(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
 
-    def build(self, destination: str = "dist") -> tuple[Path, dict]:
-        path = release.build_bundle(self.root, self.directory / destination, "v1.2.3")
+    def build(
+        self, destination: str = "dist", profile: str = "artifact-foundation"
+    ) -> tuple[Path, dict]:
+        path = release.build_bundle(
+            self.root, self.directory / destination, "v1.2.3", profile
+        )
         value = manifest(self.commit)
         value["bundle"]["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
         return path, value
@@ -286,13 +290,17 @@ class BundleChecks(unittest.TestCase):
     def test_deployment_ready_profile_requires_tracked_updater(self) -> None:
         foundation, value = self.build()
         release.validate_bundle(value, foundation)
+        with self.assertRaises(release.InvalidRelease):
+            self.build("missing-ready-updater", "deployment-ready")
         self.write("deploy/update.py", "print('fixture updater')\n")
         with self.assertRaises(release.InvalidRelease):
             self.build("untracked-updater")
         self.git("add", "deploy/update.py")
         self.git("commit", "-qm", "Add updater")
         self.commit = self.git("rev-parse", "HEAD").decode().strip()
-        ready, value = self.build("ready")
+        default, value = self.build("still-foundation")
+        release.validate_bundle(value, default)
+        ready, value = self.build("ready", "deployment-ready")
         with self.assertRaises(release.InvalidRelease):
             release.validate_bundle(value, ready)
         value["payload_profile"] = "deployment-ready"

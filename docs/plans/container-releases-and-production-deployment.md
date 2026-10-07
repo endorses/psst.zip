@@ -540,7 +540,74 @@ parsed-YAML preservation checks; both workflows passed actionlint v1.7.12 and
 formatting. All 33 release/candidate/Compose tests passed in 3.09s. Complete hosted CI,
 the native candidate matrix, publication and production deployment remain pending.
 
-### VPS update tooling
+### Source discovery, runtime collection and updater implementation checkpoint
+
+- [x] Implement hosted source discovery and bundled license access on the web,
+      Android settings, iOS settings and iOS share extension, preserving operator
+      URLs and identifying exact clean build revisions.
+- [x] Generate native inventories from actual Android release-runtime and all
+      three iOS klib artifact graphs, preserving full available notices and pinned
+      Kotlin/Native and SKIE runtime notice sources. Add freshness checks to CI.
+- [x] Verify web source metadata boundaries and browser discovery, Android build,
+      focused JVM tests and packaged APK assets, portable Swift metadata tests,
+      localization/source checks and resolved native notice freshness locally.
+- [ ] Verify the new iOS UI and actual app/share-extension legal resource packaging
+      assertions in the next macOS CI run. Earlier green runs predate these changes.
+- [x] Implement isolated APK source collection bound to exact installed origin,
+      version and aports commit, including lower-layer package versions, original
+      source checksum verification and local helper copyright notices.
+- [x] Verify all-package collection on the pinned Alpine image and exact official
+      Caddy source/binary/module binding. Outputs remain review inputs; do not
+      publish them or declare distribution compliance from collection alone.
+- [ ] Complete final backend/web runtime notice review, upstream source/signature
+      review, corresponding-source publication and served runtime source offers.
+- [x] Implement the root-owned version-only updater, durable transaction/lock,
+      fixed provenance policy, stopped checkpoints, isolated candidates and
+      controlled restore, with a protected automatic verification hook or an
+      explicit pending local verification gate.
+- [x] Resolve the four bounded independent updater review findings and pass their
+      focused regressions: recovery health failure, active-version identity,
+      verified-candidate failure handling and effective service user overrides.
+- [ ] Exercise actual disposable Docker upgrade/restore flows, public attestations,
+      encrypted off-host checkpoint hooks, restricted SSH installation and live
+      adoption before closing the updater or production deployment requirements.
+
+The authorized push published `6c384e4` and `4210414` plus the verification-only
+tag `v0.0.0`. Main CI run
+[`37574199055`](https://github.com/endorses/psst.zip/actions/runs/37574199055)
+passed all five jobs at `4210414`, including native iOS. The separate tagged
+candidate run
+[`37574199465`](https://github.com/endorses/psst.zip/actions/runs/37574199465)
+is still in progress; native image verification is not yet claimed.
+
+Native notice snapshots cover 115 Android and 111 iOS artifact variants, with
+twenty pinned upstream notice files. Linux verification includes actual Android
+packaging and the portable Swift helper, not iOS UI execution. The web advertises
+backend/runtime notice links only when the deployment metadata declares those
+files; the web image copies the backend notices it declares.
+
+The runtime collector verified fifteen installed/retained packages from ten
+Alpine origins, and thirty-two retained package versions across twenty origins
+and two layers in the pinned Caddy image. Four origins still lack discovered notice documents and require
+review: `alpine-base`, `alpine-baselayout`, `alpine-keys` and `ca-certificates`.
+Two deeper invalid archive fixtures are retained and flagged. The Caddy collector
+matched the pinned runtime executable to its recipe-checksummed upstream archive,
+matched binary dependency versions/sums and wrapper revision to its full official
+buildable source, and retained exact Docker/dist sources and 210 notice documents,
+including the embedded Go 1.26.8 runtime's full license and patent notice at its
+exact upstream source revision.
+Upstream signatures are retained but not yet verified. Temporary downloads and
+isolated source helpers do not access production state.
+
+All 31 updater boundary/fault tests passed, including real filesystem/SQLite
+checks and simulated Docker/GitHub failures. The complete 64-test release suite
+passed in 3.642 seconds. These establish implementation boundaries; actual Docker
+and production behavior remain pending. Bundles default to `artifact-foundation`
+even with a committed updater; readiness is an explicit gated publisher decision.
+The privileged helper is never silently replaced by code from an application
+update. Store strategy research remains uncommitted as requested.
+
+### VPS update tooling requirements
 
 - [ ] Add an update command shared by manual SSH operation and Actions. Accept a
       validated release identifier from the configured trusted repository;

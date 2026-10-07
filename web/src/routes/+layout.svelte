@@ -55,6 +55,7 @@
     {#key $page.url.pathname}{@render children()}{/key}
   </main>
   <footer>
+    <a href="/legal">{$t(m("legalTitle"))}</a>
     <details class="encryption-details">
       <summary>{$t(m("encryptedOnYourDevice"))}</summary>
       <p>{$t(m("useTrustedHTTPSAndClientSoftwareThisWebsiteDepends"))}</p>

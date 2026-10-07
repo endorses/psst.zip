@@ -1107,4 +1107,19 @@ export interface MessageArguments {
   adminLimits: never;
   adminMonitoring: never;
   adminServerSettingsDescription: never;
+  legalTitle: never;
+  legalProjectLicense: never;
+  legalLicense: never;
+  legalNotices: never;
+  legalInventory: never;
+  legalHostedVersion: never;
+  legalLoading: never;
+  legalVersion: never;
+  legalRevision: never;
+  legalExactSource: never;
+  legalProjectSource: never;
+  legalUnavailable: never;
+  legalBack: never;
+  legalBackendNotices: never;
+  legalRuntimeNotices: never;
 }

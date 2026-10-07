@@ -6535,5 +6535,137 @@
       "android/app/src/main/java/zip/psst/android/i18n/UiText.kt:118"
     ],
     "translator_note": "Preserve positional argument indexes and types. Both values already contain their localized units; do not append bytes or another unit."
+  },
+  "legal_title": {
+    "english": {
+      "string": "Source & licenses"
+    },
+    "purpose": "Source & licenses",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_client_version": {
+    "english": {
+      "string": "Client version: %1$s"
+    },
+    "purpose": "Client version: %1$s",
+    "arguments": ["1:s"],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_project_source": {
+    "english": {
+      "string": "Project source repository"
+    },
+    "purpose": "Project source repository",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_client_source": {
+    "english": {
+      "string": "Download this client’s source"
+    },
+    "purpose": "Download this client’s source",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_license": {
+    "english": {
+      "string": "Project license (AGPL v3)"
+    },
+    "purpose": "Project license (AGPL v3)",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_notices": {
+    "english": {
+      "string": "Third-party notices"
+    },
+    "purpose": "Third-party notices",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_notices_unavailable": {
+    "english": {
+      "string": "Notices are unavailable in this build."
+    },
+    "purpose": "Notices are unavailable in this build.",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_hosted_version": {
+    "english": {
+      "string": "Hosted server & web client"
+    },
+    "purpose": "Hosted server & web client",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_unavailable": {
+    "english": {
+      "string": "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version."
+    },
+    "purpose": "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_exact_source": {
+    "english": {
+      "string": "Download source for this version"
+    },
+    "purpose": "Download source for this version",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "legal_server_licenses": {
+    "english": {
+      "string": "Server source & licenses"
+    },
+    "purpose": "Server source & licenses",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
+    ],
+    "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
   }
 }

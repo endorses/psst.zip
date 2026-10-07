@@ -378,3 +378,15 @@
 "psst.zip" = "psst.zip";
 "psst.zip abuse report" = "psst.zip abuse report";
 "File" = "File";
+
+"Native client" = "Native client";
+"Project source repository" = "Project source repository";
+"Download this client’s source" = "Download this client’s source";
+"Project license (AGPL v3)" = "Project license (AGPL v3)";
+"Third-party notices" = "Third-party notices";
+"Hosted server & web client" = "Hosted server & web client";
+"Download source for this version" = "Download source for this version";
+"Exact source metadata is unavailable. Ask the server operator for the source of this deployed version." = "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.";
+"Server source & licenses" = "Server source & licenses";
+"Source & licenses" = "Source & licenses";
+"Notices are unavailable in this build." = "Notices are unavailable in this build.";
