@@ -100,6 +100,32 @@ icon data matched all 1,866 original SVG child tag/attribute arrays and sizes,
 and the package license matched the original. Full build correspondence remains
 pending.
 
+## Integrated source retention verification
+
+`tools/package_upstream_application_sources.py` and mandatory release-input
+assembly now retain all three pinned originals in a common source offering. A
+fresh official HTTPS collection and independent replay for application source
+`2a6d2a5d65ad50b2565aa09624e5681c0976c262` and planned `v0.1.0` passed in 4.3 seconds.
+The exact committed npm lock and catalog were read from Git; all 6,238 source
+archive members were validated without extraction or upstream script execution.
+
+The retained `psst.zip-upstream-inputs-v0.1.0.tar.gz` is 7,910,216 bytes, SHA256
+`eb446636422a60dda1fd25b1efba2c0cff2ac0665cab61bc0f3ba4a84f17f7fd`.
+Collection-record SHA256 is
+`39dc1699752af1e16c7962d623c3612545c88ffee1fbef45e9d1ef5ffe41648a`;
+independent replay SHA256 is
+`d36478694b660161c921a14b9cb39fa301a2cd92087fb8c8fc9e629a0746f253`.
+The offering includes untouched archives, complete measured inventories and the
+exact catalog/lock inputs. Every association, complete-output correspondence,
+reproduction, source-completeness and publication approval flag remains false.
+
+Twelve collector/replay tests and twelve assembly tests passed, including
+substitution after verification. The signing fixture covers the additional asset;
+all 272 release-tooling tests passed in 19.9 seconds. These results verify
+retention and integrity for their recorded source, rather than completion of the
+full release source/distribution gates. New selected source commits require fresh
+collection and measurements.
+
 ## Additional source references to resolve
 
 Public registry metadata for

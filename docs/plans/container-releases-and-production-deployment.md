@@ -1062,9 +1062,12 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       asset binding. Twelve assembly checks passed, including missing/tampered
       inputs and changes after replay. The signing fixture verifies all fourteen
       subjects, including the common source asset.
-- [ ] Exercise the collector and replay with the actual retained upstream bytes
-      against the selected committed application locks. Keep source completeness,
-      build reproduction, authenticated offering and public delivery pending.
+- [x] Exercise the collector and independent replay through fresh official HTTPS
+      downloads for exact source `2a6d2a5d65ad50b2565aa09624e5681c0976c262` and planned
+      `v0.1.0`: all three original archives and 6,238 members verified in 4.3 seconds.
+      Retain the 7,910,216-byte common offering and private replay evidence. Source
+      completeness, build reproduction, authenticated offering and public delivery
+      remain pending; see the [source review](../security/application-package-source-review.md).
 
 The combined release-tooling suite passed all 272 tests in 19.9 seconds after
 this integration. Formatting, CLI help, Python/shell syntax and the bounded source
