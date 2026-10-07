@@ -75,6 +75,25 @@ stays false. The final helper-license copy must equal its original locked npm
 member. Current installed recipe/notice replay against the retained dependency
 archive passed in 1.5 seconds; this does not verify the new committed final image.
 
+The profile also captures all copied static originals, not only JavaScript,
+and the locked static adapter's manifest, `index.js` and `platforms.js`. Its one
+known generated static input, `licenses/release.json`, must match the exact native
+repository/version/revision/license/notice identity and built copy. Other untracked
+static files remain rejected. The Dockerfile is a Git-bound recipe input.
+
+A real AMD64 builder at `e3a5c8354b862647331d11298e5fc18759607c13` built in
+20.9 seconds; captured-input verification passed in 1.8 seconds with 122 Git
+inputs, 18 npm archives, 21 unchanged static originals, 23 virtual associations
+and 11 generated associations. The adapter's two implementation files also
+matched the full pinned Kit originals. The 17,972,224-byte capture has SHA256
+`55891d37cdb5b62d3f308cf868ce43dee06bdcde3c80cfedb1e173b8b55b003e`.
+A field-name error in the diagnostic's dependency descriptor reader was corrected
+before resuming replay of the retained capture; no rebuild or download was needed.
+Private evidence is under `/tmp/psst-browser-static-review-e3a5c8354b86/`.
+The owned container/image tag and temporary replay directory were removed.
+This focused check verifies builder inputs, not the current final native OCI pair,
+complete source coverage, hosted ARM64, transfer/recovery or approval.
+
 The records remain unsigned and do not authorize publication. Both architectures,
 authenticated measurements, vulnerability gates, full corresponding-source and
 distribution review, and post-matrix release assembly are still required.

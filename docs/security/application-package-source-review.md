@@ -348,6 +348,24 @@ Authentication and public delivery still need verification. Adding these
 originals does not approve preferred-source completeness or distribution; all
 such flags remain false.
 
+The subsequent catalog at `e3a5c83` includes adapter-static 3.0.10's original
+manifest and both implementation files in the pinned Kit source inspection.
+A real native builder's installed `index.js` (3,603 bytes, SHA256
+`db5c00f44f5f1af66b2f1c62a8671b5f05aac337778622d83a6af007fa2ad2b1`)
+and `platforms.js` (1,722 bytes, SHA256
+`8eb9d1b79d1c80855af75f2170653180b816740acfbb87094f4739df6095b5bf`)
+matched those preferred originals. The original manifest identifies 3.0.10;
+packaging fields differ, so this is not a full-manifest equality claim.
+All 21 copied static files also matched their exact Git originals.
+
+The updated fourteen-original offering was collected in 4.1 seconds and
+independently replayed in 4.2 seconds without repeating downloads. It retains the
+same 31,033 original members, is 103,751,391 bytes and has SHA256
+`418ececca767da6944f05091713266d865820d8c49e0b9d5f84c69efb4da4967`.
+The private receipt is retained under
+`/tmp/psst-upstream-source-offering-review-e3a5c8354b86/`. These checks do not
+establish complete compiler/generator coverage or approve distribution.
+
 ## Remaining review
 
 - [x] Match all fourteen observed rendered-package manifests to locked retained

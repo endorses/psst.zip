@@ -1103,9 +1103,14 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       fallback/generated outputs distinct from copied originals. Eight focused
       fixture checks passed in 0.7 seconds after replacing production watchdog
       polling with direct bounded Git calls in the tiny fixtures.
-- [ ] Verify the expanded static/adapter profile on a real committed Docker web
-      builder, including its generated release metadata. This is a focused
-      capture/replay check, separate from the complete native release rehearsal.
+- [x] Verify the expanded static/adapter profile on a real Docker web builder
+      at committed `e3a5c83`. The build passed in 20.9 seconds and captured-input
+      replay in 1.8 seconds: 122 Git inputs, 18 integrity-bound npm archives and
+      all 21 copied static originals. The exact generated metadata matched its
+      native identity. Both adapter implementation files matched their preferred
+      Kit originals. Reuse unchanged retained archives; remove the owned image
+      tag/container and temporary replay directory. Retain private capture and
+      receipt; final OCI, ARM64 and complete closure remain separate pending gates.
 - [x] Include the original Vite and bundled Rollup generator license terms in
       browser notices and serve their exact original license bytes. Check lock,
       generator and notice hashes and reject stale inputs. Existing focused notice
@@ -1128,6 +1133,12 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       31,033 members and 102,971,136 original bytes. The 103,751,003-byte offering
       has SHA256 `56f2addf264c5bc2c918ba17c5027bf911e2e434db1c17f32299508d10c2b88a`.
       Retain the private receipt; completeness and publication flags remain false.
+- [x] Replay the updated fourteen-original source catalog with the added adapter
+      inspection inputs at `e3a5c83`. Collection passed in 4.1 seconds and replay
+      in 4.2 seconds without downloads. The 103,751,391-byte offering retains the
+      same 31,033 original members and has SHA256
+      `418ececca767da6944f05091713266d865820d8c49e0b9d5f84c69efb4da4967`.
+      Source completeness, authentication and publication remain unapproved.
 - [ ] Verify the new final native recipe/notice profile on both hosted
       architectures. Complete source/distribution gates and public delivery remain
       separate requirements.
