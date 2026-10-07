@@ -1254,7 +1254,31 @@
           "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2",
           "upstream_sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
         }
-      ]
+      ],
+      "supplementary_license": {
+        "schema_version": 1,
+        "name": "dijkstrajs",
+        "version": "1.0.3",
+        "path": "node_modules/dijkstrajs",
+        "license": "MIT",
+        "integrity": "sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==",
+        "upstream_notice": {
+          "file": "LICENSE.md",
+          "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
+        },
+        "supplement": {
+          "file": "licenses/dijkstrajs-1.0.3/MIT-terms.txt",
+          "sha256": "ac1eca5d65fdaafc88db57dffa00c89393630c19d2acffd16347710e8f3e3044"
+        },
+        "source": {
+          "referenced_url": "http://www.opensource.org/licenses/mit-license.php",
+          "resolved_url": "https://opensource.org/license/mit",
+          "retrieved_date": "2026-10-08",
+          "html_sha256": "3e4563265969459431ac476ab2428a1d4812fe343998112c81cbdfa49807592e"
+        },
+        "explanation": "The upstream notice identifies the MIT license and retains the Wyatt Baldwin 2008 copyright and disclaimer, but omits the permission grant. These supplementary full MIT template terms were extracted from the referenced Open Source Initiative page (HTML entities decoded, paragraphs wrapped at 80 columns). The source template placeholders are unchanged; no additional copyright owner or year is asserted. This supplement was not present in the npm upstream notice.",
+        "distributed_sha256": "ac1eca5d65fdaafc88db57dffa00c89393630c19d2acffd16347710e8f3e3044"
+      }
     },
     {
       "path": "node_modules/emoji-regex",

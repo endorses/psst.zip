@@ -201,6 +201,54 @@ specific outstanding review items, rather than source-completeness approvals.
 The esm-env package retains its original small JavaScript modules, export
 configuration and full MIT text, with no declared build step.
 
+## Original framework and cipher recipes
+
+Three further official full-commit archives recover concrete omitted recipes.
+The noble-ciphers version tag resolves to the registry's `gitHead`; the SvelteKit
+and Svelte annotated version tags resolve to the commits below. Their original
+package manifests identify the exact locked versions. All ten noble-ciphers
+TypeScript originals, 163 SvelteKit source files and 368 Svelte source files match
+the actual retained npm bytes, with no missing or different compared files.
+
+| Package              | Source commit                                                                                                                        | Archive SHA256                                                     |     Bytes |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | --------: |
+| @noble/ciphers 2.4.0 | [d9e8a6a599e7ed729d9be03854c46a3c73bd9a79](https://github.com/paulmillr/noble-ciphers/tree/d9e8a6a599e7ed729d9be03854c46a3c73bd9a79) | `3bcf1bc60f00480615d370001efbcd000f10b542c7f15b3ab00acdb97cf6a41d` | 1,289,689 |
+| @sveltejs/kit 2.70.3 | [39e8e1fbd4feba7f22dd46bfdf7335362c38de16](https://github.com/sveltejs/kit/tree/39e8e1fbd4feba7f22dd46bfdf7335362c38de16)            | `6d19fda7fb03101a40a0ccb45a89338303a442e33dbc2b7a5e983686a18dc46b` | 4,350,585 |
+| svelte 5.57.1        | [636eaaaa6f064b55072e7d192bb76dc9d8c4516e](https://github.com/sveltejs/svelte/tree/636eaaaa6f064b55072e7d192bb76dc9d8c4516e)         | `951e36068331f3f7e206bdc948e25824375f1c3a0356c34c462b0f3e8e1148c7` | 1,938,208 |
+
+The cipher archive retains its missing TypeScript configuration and exact jsbt
+0.7.1 / TypeScript 6.0.3 requirements. The framework originals retain monorepo
+locks, version/type generators, Svelte's Rollup/browser-support recipes, original
+message Markdown and message templates. The two original version generators
+were run in separate disposable directories using only their original manifests
+and scripts; their output matched the retained originals byte-for-byte in 26 ms
+and 19 ms. The directories were removed. This is not a complete upstream build
+reproduction or message-generator execution.
+
+The catalog now retains twelve original archives totaling 90,991,337 bytes and
+24,853 members. Eight internal links remain metadata only; all twelve originals
+passed the collector's existing bounded inspection without changing its limits.
+Private archive, member, input-comparison and generator evidence is retained in
+`/tmp/psst-browser-recipe-review-edc6610/`, not used as a download cache.
+
+For the five packages outside the preceding nine-upstream catalog, every observed
+rendered module's input hash also matches its retained npm member: three cipher,
+23 SvelteKit, 59 Svelte, one dijkstrajs and one esm-env files. esm-env's five small
+original modules, conditional exports and full MIT text require no additional
+upstream compilation recipe. tus-js-client contributes neither rendered nor
+excluded modules in this measured build; its recorded source-reference mismatch
+remains a separate review item, not evidence of a missing rendered module.
+
+dijkstrajs's original Wyatt Baldwin notice remains unchanged. The web generator
+now adds explicitly supplementary full MIT template terms from the upstream's
+referenced [Open Source Initiative page](https://opensource.org/license/mit),
+retrieved on 2026-10-08. The supplement preserves the source template placeholders
+and does not invent an owner or year. Its checked-in catalog binds the exact
+1.0.3 lock integrity, original notice and supplementary text hashes. Three small
+fixtures verify preservation, changed inputs before output writes, and unsafe
+paths. This fixes the missing permission text without claiming it originally
+appeared in the npm notice or authorizing the complete distribution.
+
 ## Browser build module observations
 
 The client build now emits `licenses/browser-module-inventory.json` using

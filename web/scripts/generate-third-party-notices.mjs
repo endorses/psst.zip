@@ -30,6 +30,19 @@ import { fileURLToPath } from "node:url";
  */
 /** @typedef {{schema_version: number, components: EmbeddedComponent[]}} EmbeddedCatalog */
 /**
+ * @typedef {object} DijkstraSupplement
+ * @property {number} schema_version
+ * @property {string} name
+ * @property {string} version
+ * @property {string} path
+ * @property {string} license
+ * @property {string} integrity
+ * @property {{file: string, sha256: string}} upstream_notice
+ * @property {{file: string, sha256: string}} supplement
+ * @property {{referenced_url: string, resolved_url: string, retrieved_date: string, html_sha256: string}} source
+ * @property {string} explanation
+ */
+/**
  * @typedef {object} PackageNotice
  * @property {string} path
  * @property {string} name
@@ -39,6 +52,7 @@ import { fileURLToPath } from "node:url";
  * @property {boolean} optional
  * @property {string | null} integrity
  * @property {Notice[]} notices
+ * @property {DijkstraSupplement & {distributed_sha256: string}} [supplementary_license]
  * @property {string} [omitted_text_reason]
  */
 
@@ -193,6 +207,80 @@ function embeddedNotices(web, lock, notices) {
     };
   });
 }
+
+// This additive repair applies only to the reviewed dijkstrajs release. Its
+// original notice remains in the output, followed by explicitly separate terms.
+/**
+ * @param {string} web
+ * @param {PackageLock} lock
+ * @param {PackageNotice[]} packages
+ * @param {string[]} notices
+ */
+function dijkstraSupplement(web, lock, packages, notices) {
+  for (const record of packages.filter((item) => item.name === "dijkstrajs")) {
+    /** @type {DijkstraSupplement} */
+    const reviewed = JSON.parse(
+      regularBytes(web, "licenses/dijkstrajs-1.0.3-supplement.json").toString("utf8"),
+    );
+    if (
+      reviewed.schema_version !== 1 ||
+      reviewed.name !== "dijkstrajs" ||
+      reviewed.version !== "1.0.3" ||
+      reviewed.path !== "node_modules/dijkstrajs" ||
+      reviewed.license !== "MIT" ||
+      reviewed.upstream_notice?.file !== "LICENSE.md" ||
+      reviewed.supplement?.file !== "licenses/dijkstrajs-1.0.3/MIT-terms.txt" ||
+      reviewed.source?.referenced_url !== "http://www.opensource.org/licenses/mit-license.php" ||
+      reviewed.source?.resolved_url !== "https://opensource.org/license/mit" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(reviewed.source.retrieved_date) ||
+      !/^[a-f0-9]{64}$/.test(reviewed.source.html_sha256) ||
+      typeof reviewed.explanation !== "string" ||
+      !reviewed.explanation ||
+      reviewed.explanation.length > 4096
+    )
+      throw new Error("Invalid reviewed dijkstrajs supplement");
+    const entry = lock.packages[reviewed.path];
+    /** @type {InstalledPackage} */
+    const installed = JSON.parse(
+      regularBytes(web, `${reviewed.path}/package.json`).toString("utf8"),
+    );
+    if (
+      record.path !== reviewed.path ||
+      record.optional ||
+      !entry ||
+      entry.version !== reviewed.version ||
+      entry.license !== reviewed.license ||
+      entry.integrity !== reviewed.integrity ||
+      !/^sha512-[A-Za-z0-9+/]{86}==$/.test(reviewed.integrity) ||
+      installed.name !== reviewed.name ||
+      installed.version !== reviewed.version
+    )
+      throw new Error("dijkstrajs differs from reviewed supplement lock");
+    const upstream = regularBytes(web, `${reviewed.path}/${reviewed.upstream_notice.file}`);
+    if (
+      !/^[a-f0-9]{64}$/.test(reviewed.upstream_notice.sha256) ||
+      hash(upstream) !== reviewed.upstream_notice.sha256
+    )
+      throw new Error("dijkstrajs upstream notice changed");
+    const supplemental = regularBytes(web, reviewed.supplement.file);
+    if (
+      !/^[a-f0-9]{64}$/.test(reviewed.supplement.sha256) ||
+      hash(supplemental) !== reviewed.supplement.sha256
+    )
+      throw new Error("dijkstrajs supplementary terms changed");
+    const content = normalize(supplemental);
+    record.supplementary_license = { ...reviewed, distributed_sha256: hash(content) };
+    notices.push(
+      `=== dijkstrajs@1.0.3: supplementary full MIT terms ===`,
+      reviewed.explanation,
+      `Referenced source: ${reviewed.source.referenced_url}`,
+      `Resolved source: ${reviewed.source.resolved_url} (retrieved ${reviewed.source.retrieved_date})`,
+      `Supplement: ${reviewed.supplement.file}`,
+      content,
+      "",
+    );
+  }
+}
 /**
  * @param {string} web Explicit web root for deterministic offline fixtures.
  * @param {{check?: boolean}} [options]
@@ -270,6 +358,7 @@ export function generateNotices(web, { check = false } = {}) {
     }
     packages.push(record);
   }
+  dijkstraSupplement(web, lock, packages, notices);
   const embedded_components = embeddedNotices(web, lock, notices);
   const files = new Map([
     [

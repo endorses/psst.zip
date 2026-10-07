@@ -1128,6 +1128,19 @@ retention review passed.
       planned `v0.1.0`. Fresh official downloads of all nine originals took
       31.2 seconds; independent replay took 2.4 seconds. The retained offering is
       83,381,770 bytes. This is an explicit release check, not a routine unit test.
+- [x] Retain three further exact noble-ciphers, SvelteKit and Svelte originals,
+      including omitted TypeScript/framework generators, message inputs and
+      monorepo locks. Compare 541 original source files to retained npm inputs;
+      run both original version generators in disposable directories and verify
+      byte equality. All twelve archives passed existing bounds unchanged.
+- [x] Preserve dijkstrajs's abbreviated upstream notice and add explicitly
+      supplementary full MIT terms from its referenced official page. Bind exact
+      version/integrity and both notice hashes; three tiny failure/preservation
+      fixtures and notice freshness/type checks passed. The complete web suite
+      passed 130 tests in 1.4 seconds, the production build passed in 7.2 seconds,
+      and final served terms/static inventory verification passed.
+- [ ] Collect and independently replay the twelve-original offering from its
+      exact committed catalog before hosted assembly.
 - [ ] Authenticate the expanded offering and verify final hosted image
       correspondence and public retrieval before publication.
 - [x] Keep new regressions limited to actual notice/input/archive failures with

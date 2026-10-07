@@ -228,6 +228,102 @@
         "version": "1.4.0-1"
       },
       "repository": "danimoh/jsQR"
+    },
+    {
+      "archive": {
+        "file": "noble-ciphers-d9e8a6a599e7ed729d9be03854c46a3c73bd9a79.tar.gz",
+        "sha256": "sha256:3bcf1bc60f00480615d370001efbcd000f10b542c7f15b3ab00acdb97cf6a41d",
+        "size": 1289689
+      },
+      "commit": "d9e8a6a599e7ed729d9be03854c46a3c73bd9a79",
+      "id": "noble-ciphers",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/aes.ts",
+        "src/_polyval.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/ciphers": "2.4.0"
+      },
+      "repository": "paulmillr/noble-ciphers"
+    },
+    {
+      "archive": {
+        "file": "kit-39e8e1fbd4feba7f22dd46bfdf7335362c38de16.tar.gz",
+        "sha256": "sha256:6d19fda7fb03101a40a0ccb45a89338303a442e33dbc2b7a5e983686a18dc46b",
+        "size": 4350585
+      },
+      "commit": "39e8e1fbd4feba7f22dd46bfdf7335362c38de16",
+      "id": "sveltekit",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/kit/package.json",
+        "packages/kit/scripts/generate-version.js",
+        "packages/kit/scripts/generate-dts.js",
+        "packages/kit/src/version.js"
+      ],
+      "packages": {
+        "@sveltejs/kit": "2.70.3"
+      },
+      "repository": "sveltejs/kit"
+    },
+    {
+      "archive": {
+        "file": "svelte-636eaaaa6f064b55072e7d192bb76dc9d8c4516e.tar.gz",
+        "sha256": "sha256:951e36068331f3f7e206bdc948e25824375f1c3a0356c34c462b0f3e8e1148c7",
+        "size": 1938208
+      },
+      "commit": "636eaaaa6f064b55072e7d192bb76dc9d8c4516e",
+      "id": "svelte",
+      "inspect_paths": [
+        "LICENSE.md",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/svelte/package.json",
+        "packages/svelte/rollup.config.js",
+        "packages/svelte/scripts/generate-version.js",
+        "packages/svelte/scripts/generate-types.js",
+        "packages/svelte/scripts/generate-browser-support.ts",
+        "packages/svelte/scripts/check-treeshakeability.js",
+        "packages/svelte/tsconfig.generated.json",
+        "packages/svelte/scripts/process-messages/index.js",
+        "packages/svelte/messages/client-errors/errors.md",
+        "packages/svelte/messages/client-warnings/warnings.md",
+        "packages/svelte/messages/compile-errors/options.md",
+        "packages/svelte/messages/compile-errors/script.md",
+        "packages/svelte/messages/compile-errors/style.md",
+        "packages/svelte/messages/compile-errors/template.md",
+        "packages/svelte/messages/compile-warnings/a11y.md",
+        "packages/svelte/messages/compile-warnings/misc.md",
+        "packages/svelte/messages/compile-warnings/options.md",
+        "packages/svelte/messages/compile-warnings/script.md",
+        "packages/svelte/messages/compile-warnings/style.md",
+        "packages/svelte/messages/compile-warnings/template.md",
+        "packages/svelte/messages/server-errors/errors.md",
+        "packages/svelte/messages/server-warnings/warnings.md",
+        "packages/svelte/messages/shared-errors/errors.md",
+        "packages/svelte/messages/shared-warnings/warnings.md",
+        "packages/svelte/scripts/process-messages/templates/client-errors.js",
+        "packages/svelte/scripts/process-messages/templates/client-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/compile-errors.js",
+        "packages/svelte/scripts/process-messages/templates/compile-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/server-errors.js",
+        "packages/svelte/scripts/process-messages/templates/server-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/shared-errors.js",
+        "packages/svelte/scripts/process-messages/templates/shared-warnings.js"
+      ],
+      "packages": {
+        "svelte": "5.57.1"
+      },
+      "repository": "sveltejs/svelte"
     }
   ]
 }

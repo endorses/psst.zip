@@ -6558,6 +6558,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
+=== dijkstrajs@1.0.3: supplementary full MIT terms ===
+The upstream notice identifies the MIT license and retains the Wyatt Baldwin 2008 copyright and disclaimer, but omits the permission grant. These supplementary full MIT template terms were extracted from the referenced Open Source Initiative page (HTML entities decoded, paragraphs wrapped at 80 columns). The source template placeholders are unchanged; no additional copyright owner or year is asserted. This supplement was not present in the npm upstream notice.
+Referenced source: http://www.opensource.org/licenses/mit-license.php
+Resolved source: https://opensource.org/license/mit (retrieved 2026-10-08)
+Supplement: licenses/dijkstrajs-1.0.3/MIT-terms.txt
+The MIT License
+
+Copyright <YEAR> <COPYRIGHT HOLDER>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the “Software”), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
 === jsqr-es6@1.4.0-1: embedded within qr-scanner@1.4.2 (bundled-within) ===
 Source: https://github.com/danimoh/jsQR/tree/42dbfd55f35db625119e8f33247b6e9d073902ec
 QR Scanner describes its basis as Cosmo Wolfe’s JavaScript port of Google’s ZXing library. jsqr-es6 is the danimoh/jsQR ES6 fork of cozmo/jsQR.
