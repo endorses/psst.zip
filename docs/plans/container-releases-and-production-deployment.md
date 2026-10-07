@@ -841,6 +841,27 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       producers. Source-asset hash measurements explicitly leave completeness
       and review pending; they cannot mint a corresponding-source approval.
 
+### Post-matrix release input assembly
+
+- [x] Remove the native-job/full-binding dependency cycle. Native producers use
+      validated repository/version/commit/platform context and schema-2 local
+      measurements; authenticated aggregation binds their image configurations,
+      OCI children and source hashes after both jobs finish. Emulated smoke cannot
+      satisfy native release evidence. Fourteen producer regressions passed.
+
+- [x] Add a concrete preparation command consuming both native build records,
+      measurements, source packs and all four OCI exports. Verify shared resolved
+      bases, actual Go/Node versions, exact local image/source facts, and native
+      execution before assembling indexes, bundle, manifest and application
+      source archive from the selected tagged Git tree.
+- [x] Verify assembly with real disposable Git repositories and OCI graphs,
+      including platform omissions, stale/emulated/substituted measurements,
+      changed bases/toolchains/source bytes, dirty tracked inputs, untracked
+      exclusion and output overwrite rejection. Five focused tests passed.
+- [ ] Run this command against real final AMD64 and ARM64 artifacts, authenticate
+      native measurements after the complete binding exists, and integrate the
+      command in the release workflow. Preparation does not approve publication.
+
 ### Runtime source replay
 
 - [x] Implement a verifier that replays an externally hash-bound runtime source

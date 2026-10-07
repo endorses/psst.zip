@@ -151,8 +151,12 @@ class GateReports(unittest.TestCase):
 
     def native(self, platform="linux/amd64", execute=None):
         return producer.collect_native_measurement(
-            self.binding,
-            platform=platform,
+            producer.NativeSourceContext(
+                self.binding.repository,
+                self.binding.version,
+                self.binding.commit,
+                platform,
+            ),
             pack=self.packs[platform],
             archives=self.archives[platform],
             tested_configs=self.configs[platform],
@@ -263,7 +267,8 @@ class GateReports(unittest.TestCase):
     def test_native_driver_runs_harness_and_maps_actual_configs_to_final_children(self):
         result = self.native()
         self.assertFalse(result["publication_authorized"])
-        self.assertEqual(result["binding_digest"], self.binding.digest)
+        self.assertNotIn("binding_digest", result)
+        self.assertEqual(result["source"]["commit"], self.binding.commit)
         for component in ("backend", "web"):
             self.assertEqual(
                 result["images"][component]["config_digest"],
@@ -341,6 +346,7 @@ class GateReports(unittest.TestCase):
             ("runtime_pack_sha256", None),
             ("checks", []),
             ("revision", "b" * 40),
+            ("execution", "emulated"),
             ("publication_authorized", True),
             ("tested_configs", self.configs["linux/arm64"]),
         ):
@@ -427,6 +433,61 @@ class GateReports(unittest.TestCase):
         )()
         with self.assertRaisesRegex(InvalidRelease, "correspondence"):
             producer.aggregate_native_reports(self.binding, paths, authenticator)
+
+    def test_matrix_measurement_precedes_other_arch_bundle_and_full_binding(self):
+        # The matrix producer has only its own checked source context and files.
+        # A final Binding is neither constructed nor inspected during collection.
+        with patch.object(
+            producer,
+            "checked_binding",
+            side_effect=AssertionError("full binding requested in native job"),
+        ):
+            native = self.native()
+        self.assertEqual(
+            set(native["source"]), {"repository", "version", "commit", "platform"}
+        )
+        self.assertNotIn("binding_digest", native)
+        self.assertNotIn("bundle", json.dumps(native))
+        paths = self.collect_both()
+        authenticator = type(
+            "AuthenticatedFixture", (), {"authenticate": lambda *args: None}
+        )()
+        incomplete = publication.Binding(
+            self.binding.repository,
+            self.binding.version,
+            self.binding.commit,
+            tuple(
+                (key, value) for key, value in self.binding.subjects if key != "bundle"
+            ),
+        )
+        with self.assertRaisesRegex(InvalidRelease, "complete"):
+            producer.aggregate_native_reports(incomplete, paths, authenticator)
+        for field, wrong in (
+            ("repository", "wrong/repository"),
+            ("commit", "b" * 40),
+            ("platform", "linux/amd64"),
+        ):
+            value = json.loads(paths["linux/arm64"].read_bytes())
+            original = copy.deepcopy(value)
+            value["source"][field] = wrong
+            paths["linux/arm64"].write_bytes(json_bytes(value))
+            with (
+                self.subTest(field=field),
+                self.assertRaisesRegex(InvalidRelease, "Stale"),
+            ):
+                producer.aggregate_native_reports(self.binding, paths, authenticator)
+            paths["linux/arm64"].write_bytes(json_bytes(original))
+        changed_sources = publication.Binding(
+            self.binding.repository,
+            self.binding.version,
+            self.binding.commit,
+            tuple(
+                (key, value + "0" if key.startswith("source:") else value)
+                for key, value in self.binding.subjects
+            ),
+        )
+        with self.assertRaisesRegex(InvalidRelease, "source asset differs"):
+            producer.aggregate_native_reports(changed_sources, paths, authenticator)
 
     def test_source_hash_measurements_do_not_invent_source_completeness_or_approval(
         self,

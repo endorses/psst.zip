@@ -284,6 +284,47 @@ have not been verified by this container work. In particular, the existing
 root-level `go mod tidy` pre-hook must be reviewed before enabling binary
 publication in this multi-module repository.
 
+## Assemble the two native build results
+
+After both native jobs finish, `tools/prepare_release_inputs.py` assembles their
+actual final OCI exports, measurements, source packs and build records. Each job
+can complete its local measurements before the release manifest exists. The
+assembly step checks both native platforms, shared immutable bases, matching
+actual Go/Node versions, exact smoke-tested configurations and OCI bytes, and
+source asset hashes. It creates deterministic paired indexes, the deployment
+bundle, detached manifest and an application source archive from the exact tagged
+Git tree. Untracked operator files and research are excluded by `git archive`.
+
+Use a new private output directory and the actual selected version/commit:
+
+```sh
+python3 tools/prepare_release_inputs.py \
+  --root . --repository endorses/psst.zip \
+  --ref "refs/tags/$PSST_RELEASE_VERSION" --event-sha "$PSST_SOURCE_COMMIT" \
+  --reviewed-commit "$PSST_SOURCE_COMMIT" \
+  --candidate "$REVIEW_DIR/candidate-bases.json" \
+  --build "linux/amd64=$REVIEW_DIR/amd64/build-record.json" \
+  --build "linux/arm64=$REVIEW_DIR/arm64/build-record.json" \
+  --measurement "linux/amd64=$REVIEW_DIR/amd64/native-measurement.json" \
+  --measurement "linux/arm64=$REVIEW_DIR/arm64/native-measurement.json" \
+  --pack "linux/amd64=$REVIEW_DIR/amd64/pack" \
+  --pack "linux/arm64=$REVIEW_DIR/arm64/pack" \
+  --archive "backend-amd64=$REVIEW_DIR/amd64/export/backend-amd64.oci.tar" \
+  --archive "web-amd64=$REVIEW_DIR/amd64/export/web-amd64.oci.tar" \
+  --archive "backend-arm64=$REVIEW_DIR/arm64/export/backend-arm64.oci.tar" \
+  --archive "web-arm64=$REVIEW_DIR/arm64/export/web-arm64.oci.tar" \
+  --migration-notes "$PSST_MIGRATION_NOTES" --rollback-notes "$PSST_ROLLBACK_NOTES" \
+  --output "$REVIEW_DIR/prepared"
+```
+
+`release-inputs.json` records every image/file/source subject for subsequent
+authenticated aggregation. Its `publication_authorized` remains false and
+`measurement_authentication_required` remains true. The `deployment-ready`
+payload profile means the bundle contains the updater; publication still requires
+the authenticated completed checks and reviews in the
+[publication guide](container-publication.md). A failed partial preparation is
+kept for inspection and cannot be resumed by overwriting the directory.
+
 ## Disposable final-image smoke check
 
 After pulling the exact selected images, run the paired-image check with the

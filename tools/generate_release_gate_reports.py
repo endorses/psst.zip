@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -76,6 +77,28 @@ SMOKE_FIELDS = {
 
 class MeasurementAuthenticator(Protocol):
     def authenticate(self, content: bytes, binding: Binding) -> None: ...
+
+
+@dataclass(frozen=True)
+class NativeSourceContext:
+    """Matrix-local identity, available before cross-platform release assembly."""
+
+    repository: str
+    version: str
+    commit: str
+    platform: str
+
+    def checked(self) -> dict[str, str]:
+        repository_name(self.repository)
+        matches(self.version, VERSION, "Invalid native source version")
+        matches(self.commit, COMMIT, "Invalid native source commit")
+        require(self.platform in PLATFORMS, "Invalid native source platform")
+        return {
+            "repository": self.repository,
+            "version": self.version,
+            "commit": self.commit,
+            "platform": self.platform,
+        }
 
 
 def checked_binding(binding: Binding) -> dict[str, str]:
@@ -227,17 +250,17 @@ def source_ci_report(
     }
 
 
-def runtime_inputs(binding: Binding, platform: str, pack: Path) -> tuple[dict, dict]:
-    subjects = checked_binding(binding)
-    require(platform in PLATFORMS, "Invalid native release platform")
+def runtime_inputs(context: NativeSourceContext, pack: Path) -> tuple[dict, dict]:
+    context.checked()
+    platform = context.platform
     raw = read_bounded_file(pack / "runtime-pack.json")
     record = read_json(raw)
     require(
         isinstance(record, dict)
         and type(record.get("schema_version")) is int
         and record["schema_version"] == 1
-        and record.get("version") == binding.version
-        and record.get("revision") == binding.commit
+        and record.get("version") == context.version
+        and record.get("revision") == context.commit
         and record.get("architecture") == platform.split("/")[1],
         "Runtime pack belongs to another release/platform",
     )
@@ -254,10 +277,9 @@ def runtime_inputs(binding: Binding, platform: str, pack: Path) -> tuple[dict, d
         source_digest(path) == checksum
         and type(asset.get("size")) is int
         and asset["size"] == path.stat().st_size
-        and subjects.get("source:" + name) == "file:" + name + "@" + checksum
         and asset.get("url")
-        == f"https://github.com/{binding.repository}/releases/download/{binding.version}/{name}",
-        "Runtime source bytes/offer differ from the immutable release binding",
+        == f"https://github.com/{context.repository}/releases/download/{context.version}/{name}",
+        "Runtime source bytes/offer differ from the native source context",
     )
     overlays = fields(record.get("overlays"), {"backend", "web"}, "runtime overlays")
     for files in overlays.values():
@@ -286,18 +308,19 @@ def runtime_inputs(binding: Binding, platform: str, pack: Path) -> tuple[dict, d
 
 
 def validate_smoke(
-    record: object, binding: Binding, platform: str, runtime_digest: str
+    record: object, context: NativeSourceContext, runtime_digest: str
 ) -> dict:
+    context.checked()
     record = fields(record, SMOKE_FIELDS, "actual completed smoke measurement")
     require(
         type(record["schema_version"]) is int
         and record["schema_version"] == 1
         and record["kind"] == "release-image-smoke"
         and record["publication_authorized"] is False
-        and record["version"] == binding.version
-        and record["revision"] == binding.commit
-        and record["platform"] == platform
-        and record["execution"] in {"native", "emulated"}
+        and record["version"] == context.version
+        and record["revision"] == context.commit
+        and record["platform"] == context.platform
+        and record["execution"] == "native"
         and record["runtime_pack_sha256"] == runtime_digest,
         "Smoke is incomplete, lacks runtime coverage or belongs to another image pair",
     )
@@ -319,19 +342,19 @@ def validate_smoke(
 
 
 def collect_native_measurement(
-    binding: Binding,
+    context: NativeSourceContext,
     *,
-    platform: str,
     pack: Path,
     archives: dict[str, Path],
     tested_configs: dict[str, str],
     execute=command,
 ) -> dict:
     """Run real final-image checks; accept no caller-provided completion JSON."""
-    subjects = checked_binding(binding)
+    source = context.checked()
+    platform = context.platform
     fields(archives, {"backend", "web"}, "native pair archives")
     fields(tested_configs, {"backend", "web"}, "native tested configurations")
-    _, runtime = runtime_inputs(binding, platform, pack)
+    _, runtime = runtime_inputs(context, pack)
 
     def inspect_pair():
         result = {}
@@ -339,17 +362,11 @@ def collect_native_measurement(
             value = inspect_archive(
                 archives[component],
                 platform=platform,
-                repository=binding.repository,
-                version=binding.version,
-                commit=binding.commit,
+                repository=context.repository,
+                version=context.version,
+                commit=context.commit,
                 tested_config=tested_configs[component],
                 component=component,
-            )
-            require(
-                subjects[component + "-" + platform.split("/")[1]].endswith(
-                    "@" + value["manifest_digest"]
-                ),
-                "Native export is not the selected final child",
             )
             result[component] = value
         return result
@@ -381,13 +398,13 @@ def collect_native_measurement(
                 "--web-image",
                 tested_configs["web"],
                 "--version",
-                binding.version,
+                context.version,
                 "--revision",
-                binding.commit,
+                context.commit,
                 "--platform",
                 platform,
                 "--source-url",
-                "https://github.com/" + binding.repository,
+                "https://github.com/" + context.repository,
                 "--runtime-pack",
                 str(pack.resolve()),
                 "--report",
@@ -398,8 +415,7 @@ def collect_native_measurement(
         )
         smoke = validate_smoke(
             read_json(read_bounded_file(report)),
-            binding,
-            platform,
+            context,
             runtime["runtime_pack_sha256"],
         )
         require(
@@ -408,14 +424,13 @@ def collect_native_measurement(
         )
     require(images == inspect_pair(), "Native OCI exports changed during smoke")
     require(
-        runtime == runtime_inputs(binding, platform, pack)[1],
+        runtime == runtime_inputs(context, pack)[1],
         "Runtime inputs changed during smoke",
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "native-release-measurement",
-        "binding_digest": binding.digest,
-        "platform": platform,
+        "source": source,
         "smoke": smoke,
         "images": images,
         "runtime": runtime,
@@ -440,8 +455,7 @@ def aggregate_native_reports(
             {
                 "schema_version",
                 "kind",
-                "binding_digest",
-                "platform",
+                "source",
                 "smoke",
                 "images",
                 "runtime",
@@ -451,10 +465,12 @@ def aggregate_native_reports(
         )
         require(
             type(value["schema_version"]) is int
-            and value["schema_version"] == 1
+            and value["schema_version"] == 2
             and value["kind"] == "native-release-measurement"
-            and value["binding_digest"] == binding.digest
-            and value["platform"] == platform
+            and value["source"]
+            == NativeSourceContext(
+                binding.repository, binding.version, binding.commit, platform
+            ).checked()
             and value["publication_authorized"] is False,
             "Stale or malformed native measurement",
         )
@@ -479,7 +495,11 @@ def aggregate_native_reports(
             "Missing checked runtime pack digest",
         )
         smoke = validate_smoke(
-            value["smoke"], binding, platform, runtime["runtime_pack_sha256"]
+            value["smoke"],
+            NativeSourceContext(
+                binding.repository, binding.version, binding.commit, platform
+            ),
+            runtime["runtime_pack_sha256"],
         )
         asset = runtime.get("source_asset")
         fields(asset, {"name", "digest", "size"}, "authenticated runtime source asset")
@@ -521,9 +541,13 @@ def aggregate_native_reports(
                 isinstance(image, dict)
                 and image.get("platform") == platform
                 and image.get("config_digest") == smoke["tested_configs"][component]
-                and subjects[component + "-" + platform.split("/")[1]].endswith(
-                    "@" + str(image.get("manifest_digest"))
-                ),
+                and subjects[component + "-" + platform.split("/")[1]]
+                == "oci://ghcr.io/"
+                + binding.repository.split("/")[0]
+                + "/psst-zip-"
+                + component
+                + "@"
+                + str(image.get("manifest_digest")),
                 "Authenticated smoke/config/export correspondence differs",
             )
             configs[component + "-" + platform.split("/")[1]] = image["config_digest"]
