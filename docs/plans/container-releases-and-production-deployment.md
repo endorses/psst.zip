@@ -889,6 +889,23 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       source delivery and authorized distribution review remain separate gates;
       technical runtime replay cannot clear those approvals.
 
+### Native image scanner measurements
+
+- [x] Implement a native scanner command over exact OCI exports and tested image
+      configurations. Authenticate pinned Trivy/Cosign bytes and upstream signing
+      identity before execution; snapshot the scanner database and unchanged OCI
+      layout, record tool/database/date identities, and retain complete findings
+      across every severity and unfixed package without ignores or approval flags.
+- [x] Verify the actual patched AMD64 backend/web pair through this producer.
+      Both installed Alpine graphs have zero findings; all 21 backend and one
+      Caddy module findings remain in the raw JSON. Ten boundary/CLI regressions
+      passed, including native ARM tool authentication fixtures. Those fixtures
+      do not establish ARM64 execution.
+- [ ] Execute final native ARM64 scans, authenticate all four image measurements,
+      and derive each finding's disposition from exact binary/source/package
+      graphs and official advisory evidence. A completed scan remains unapproved
+      until that release gate succeeds.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports
@@ -982,6 +999,9 @@ reviews remain pending; this source result does not approve publication.
 - [ ] Confirm the GHCR package namespace and initial release version, and configure
       branch/tag protection before publication. Review release inputs for
       accidental private deployment state.
+- [x] Select `v0.1.0` as the first container release, as confirmed by the operator.
+      Preserve the existing `v0.0.0` tag; create the new tag only after the reviewed
+      workflow and release inputs are ready.
 - [ ] Inspect the live installation's actual volume mappings and settings before
       migration. Preserve `/opt/psst.zip`, project name `psst-zip`, and the original
       local images/configuration as the first migration recovery baseline.

@@ -92,18 +92,25 @@ A prior successful main CI run cannot satisfy this producer.
 [GitHub workflow-job attempt API](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
 
 `collect_native_measurement` runs the actual final-image smoke harness with the
-runtime pack and image configuration IDs. It requires all application, runtime
+matrix-local `NativeSourceContext(repository, version, commit, platform)`, runtime
+pack and image configuration IDs. It requires all application, runtime
 offer, authentication/restart and cleanup checks. Before and after the harness,
-it validates the OCI exports against the selected child/configuration identities
-and verifies immutable pack/source-asset bytes. The typed result is a measurement
-with `publication_authorized: false`; candidate smoke without a runtime pack
-cannot produce it.
+it validates the actual local OCI exports against the tested configuration IDs
+and verifies immutable pack/source-asset bytes and intended release URLs. The
+schema 2 typed result contains checked source identity and local facts, with
+`publication_authorized: false`. It needs no other architecture, deployment bundle
+or global binding, so matrix jobs can finish before post-matrix assembly. Candidate
+smoke without a runtime pack and emulated execution cannot produce this record.
 
 `aggregate_native_reports` first authenticates both architecture measurements
 with `GhEvidenceVerifier.authenticate`, preserving the same signer/source/ref,
 snapshot and process policies as gate-report verification. Only then does it
 generate complete `final-image-smoke` and `runtime-notices` gate objects bound to
-all release subjects. The smoke report records native/emulated execution and all
+all release subjects. Aggregation requires the complete binding from
+`prepare_inputs`, matching both source contexts, actual child/configuration maps
+and native source assets to the final subjects. Another repository, source,
+architecture, source archive or child fails even when the record is signed. The
+smoke report records native execution and all
 four tested configuration digests for transport. Runtime evidence retains notice
 hashes, source-asset identity and the requirement for distribution review. The
 trusted workflow must sign the exact emitted report bytes before preparation;
@@ -114,6 +121,60 @@ bound digest and records sizes. It explicitly leaves source completeness
 unverified and creates no `corresponding-source` success gate. Hash equality and
 source-pack preparation flags cannot establish complete corresponding sources or
 replace the independent distribution review.
+
+### Native image scanner measurements
+
+`tools/measure_release_image_scans.py` validates the actual OCI archive graph,
+release/source labels, platform and layer/configuration correspondence before
+running tools. It copies the checked layout into private temporary storage;
+Trivy receives an OCI directory, rather than the OCI tar archive. Layout bytes,
+original archive, scanner executable and frozen vulnerability database must remain
+unchanged through completion. `Metadata.ImageID` must equal the actual smoke-tested
+configuration digest; both Alpine package and application Go-binary inventories
+must appear in the result.
+
+The producer snapshots hash-pinned native Cosign 2.6.5 and Trivy 0.75.0 assets.
+Before extracting or executing Trivy, it verifies the official Sigstore bundle
+online with exact reusable-release workflow/tag identity, GitHub OIDC issuer,
+repository, source commit, event and workflow name, requiring SCT and Rekor checks.
+AMD64 and ARM64 use separate official archive/bundle pins; an ARM64 executable
+checksum is derived only from successfully authenticated release bytes, with ELF
+architecture checked before execution. The command environment excludes inherited
+credentials, trust/proxy overrides and Trivy configuration. Explicit empty
+configuration and ignore policy, all severities, unfixed findings and suppressed
+finding detection prevent ambient filtering. Commands have a 16 MiB output bound,
+55-second verification/version deadline and 660-second scan deadline with process
+group cleanup. [Official Trivy signature verification](https://github.com/aquasecurity/trivy/blob/v0.75.0/docs/getting-started/signature-verification.md).
+
+`measure_image_scan` accepts the same matrix-local source context and returns a
+typed measurement plus the full raw JSON bytes. It records exact OCI/configuration
+identity, tool/source/signature/verifier hashes, database/schema/metadata hashes,
+update/download/scan times and every OS/module finding with a canonical finding
+hash. `Status: fixed` describes available remediation; it is not an approved
+disposition. Unknown severity and missing fixes remain findings.
+
+The producer cannot emit a `final-image-scanners` success report, even when it
+finds no vulnerabilities. Measurements explicitly leave publication unauthorized
+and review pending. The final gate still needs authenticated measurements for
+both architectures, authenticated finding dispositions bound to exact
+image/binary/source/advisory hashes, and trusted database acquisition evidence.
+Caller-supplied `not-applicable` JSON cannot satisfy those requirements.
+
+The CLI accepts `--repository`, `--version`, `--commit`, `--platform`,
+`--component`, `--archive`, `--tested-config`, `--tool-archive`, `--tool-bundle`,
+`--cosign`, `--database` and `--output`. Database is a retained directory containing
+`trivy.db` and `metadata.json`; output must not already exist. Only after completed
+measurement does the CLI reserve a private directory and atomically write
+`scan.json`, then `measurement.json`, without overwriting either file. Scanner or
+write failures produce no usable completed output directory.
+
+On 2026-10-07, the actual private AMD64 pair at source `750f440` completed this
+producer with the pinned official Trivy signature verified again and database
+`sha256:5f4b978a55284b1997dc31e9f2fc3f4f1abae80829f51451ade221d5675a69b9`.
+It retained zero OS findings, 21 backend module findings and one Caddy module
+finding; no finding dispositions or publication approval were inferred. Ten
+focused fixtures passed, including the ARM64 asset/signature path. Native ARM64
+execution and live signed scanner measurements remain pending.
 
 - [ ] Add completed source/image scanner producers with exact targets, tool/database/date and reviewed finding dispositions.
 - [ ] Add full corresponding-source completeness evidence and authenticated distribution review.
