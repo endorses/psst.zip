@@ -55,6 +55,15 @@ class NativeBrowser(unittest.TestCase):
             "static/appearance.js",
             (self.web / "build/appearance.js").read_bytes(),
         )
+        for name, raw in {
+            "brand/logo.svg": b"<svg>original brand fixture</svg>\n",
+            "favicon.png": b"\x89PNG\r\n\x1a\noriginal favicon fixture",
+        }.items():
+            self.local.write(self.web, "static/" + name, raw)
+            self.local.write(self.web, "build/" + name, raw)
+        self.local.write(
+            self.web, "build/index.html", b"<html>generated fallback</html>\n"
+        )
         location = self.local.package_path
         npm = tar_bytes(
             {
@@ -75,14 +84,14 @@ class NativeBrowser(unittest.TestCase):
         )
         self.local.write(self.web, npm_name, npm)
         catalog = json.loads((self.web / native.RECIPE_CATALOG).read_bytes())
-        for recipe in (catalog["vite"], catalog["kit"]):
+        for recipe in (catalog["vite"], catalog["kit"], catalog["adapter_static"]):
             self.add_recipe_package(recipe)
         self.git("init", "--quiet")
         self.git(
             "add",
             *["web/" + name for name in native.FIXED],
             "web/src/main.ts",
-            "web/static/appearance.js",
+            "web/static",
         )
         self.git(
             "-c",
@@ -101,11 +110,28 @@ class NativeBrowser(unittest.TestCase):
         self.local.inventory["source"].update(
             version=self.context.version, revision=revision
         )
+        # The real Dockerfile writes this after COPY; it is deliberately not
+        # tracked by Git alongside the static originals.
+        release = {
+            "name": "psst.zip",
+            "version": self.context.version,
+            "revision": revision,
+            "license": "AGPL-3.0-only",
+            "source": "https://github.com/" + self.context.repository,
+            "source_archive": "https://github.com/"
+            + self.context.repository
+            + "/archive/"
+            + revision
+            + ".tar.gz",
+            "notice_files": ["/licenses/backend/THIRD_PARTY_NOTICES.txt"],
+        }
+        raw = self.local.write(self.web, native.GENERATED_RELEASE, release)
+        self.local.write(self.web, "build/licenses/release.json", raw)
         self.local.save()
         self.names = (
             native.selected(self.local.inventory, self.web)
             | {"build/" + name for name in native.static_facts(self.web / "build")}
-            | {npm_name}
+            | set(native.npm_members(self.web, self.local.inventory))
         )
         self.save_pack()
         self.runtime = {"overlays": {"web": {}}, "additional_files": {"web": {}}}
@@ -162,8 +188,13 @@ class NativeBrowser(unittest.TestCase):
         self.save_oci()
 
     def git(self, *args):
+        return self.command("git", "-C", str(self.root), *args)
+
+    def command(self, *args):
+        # Fixture Git calls are tiny and local; avoid the production transport's
+        # polling delay while still running the real command with a deadline.
         return subprocess.check_output(
-            ["git", "-C", str(self.root), *args], stderr=subprocess.DEVNULL
+            list(args), stderr=subprocess.DEVNULL, timeout=10
         )
 
     def save_pack(self, omit=None):
@@ -242,6 +273,7 @@ class NativeBrowser(unittest.TestCase):
             self.config,
             self.runtime,
             source_root=self.root,
+            execute=self.command,
         )
 
     def test_exact_git_npm_and_final_bytes_then_missing_or_substituted_inputs(self):
@@ -290,6 +322,25 @@ class NativeBrowser(unittest.TestCase):
             self.replay()
 
     def test_copied_script_source_and_unknown_emitted_origin_remain_distinct(self):
+        associations = self.replay()["source_associations"]
+        copied = {row["file"] for row in associations["copied_static"]}
+        self.assertEqual(copied, {"appearance.js", "brand/logo.svg", "favicon.png"})
+        self.assertNotIn("index.html", copied)
+        self.assertNotIn("style.css", copied)
+        self.assertNotIn(self.local.chunk, copied)
+        source = "static/brand/logo.svg"
+        (self.web / source).unlink()
+        self.save_pack(omit=source)
+        with self.assertRaisesRegex(InvalidRelease, "exact Git tree"):
+            self.replay()
+        original = b"<svg>original brand fixture</svg>\n"
+        self.local.write(self.web, source, original)
+        self.local.write(self.web, "build/brand/logo.svg", b"changed output\n")
+        self.save_pack()
+        self.save_oci()
+        with self.assertRaisesRegex(InvalidRelease, "differs from original"):
+            self.replay()
+        self.local.write(self.web, "build/brand/logo.svg", original)
         changed = b"changed copied source and output\n"
         self.local.write(self.web, "static/appearance.js", changed)
         self.local.write(self.web, "build/appearance.js", changed)
@@ -297,6 +348,82 @@ class NativeBrowser(unittest.TestCase):
         self.save_oci()
         with self.assertRaisesRegex(InvalidRelease, "exact Git blob"):
             self.replay()
+
+    def test_static_adapter_generator_is_npm_bound_and_fallback_is_not_copied(self):
+        result = self.replay()["source_associations"]
+        adapter = result["adapter_static"]
+        self.assertEqual(adapter["fallback"], "index.html")
+        self.assertEqual(
+            adapter["fallback_output"], browser.file_fact(self.web, "build/index.html")
+        )
+        self.assertEqual(adapter["preferred_source"]["upstream_id"], "sveltekit")
+        self.assertFalse(adapter["preferred_source_member_correspondence_verified"])
+        self.assertFalse(adapter["generated_byte_reproduction_verified"])
+        self.assertEqual(
+            result["generated_release_metadata"]["metadata"]["revision"],
+            self.context.commit,
+        )
+        self.assertEqual(
+            result["generated_release_metadata"]["generator"], "Dockerfile"
+        )
+        self.assertNotIn(
+            "licenses/release.json", {row["file"] for row in result["copied_static"]}
+        )
+        fallback = (self.web / "build/index.html").read_bytes()
+        (self.web / "build/index.html").unlink()
+        self.refresh()
+        with self.assertRaisesRegex(InvalidRelease, "fallback output is missing"):
+            self.replay()
+        self.local.write(self.web, "build/index.html", fallback)
+        self.refresh()
+        generator = "node_modules/@sveltejs/adapter-static/index.js"
+        self.assertIn(generator, result["integrity_bound_recipe_files"])
+        self.local.write(self.web, generator, b"substituted adapter generator\n")
+        self.save_pack()
+        with self.assertRaisesRegex(InvalidRelease, "integrity-bound archive member"):
+            self.replay()
+
+    def test_generated_release_metadata_has_one_exact_context_bound_exception(self):
+        original = json.loads((self.web / native.GENERATED_RELEASE).read_bytes())
+        for key, changed in {
+            "revision": "a" * 40,
+            "source": "https://github.com/other/repository",
+            "notice_files": ["/licenses/arbitrary.txt"],
+            "source_archive": "https://github.com/other/repository/archive/x.tar.gz",
+        }.items():
+            with self.subTest(key=key):
+                altered = {**original, key: changed}
+                raw = self.local.write(self.web, native.GENERATED_RELEASE, altered)
+                self.local.write(self.web, "build/licenses/release.json", raw)
+                self.refresh()
+                with self.assertRaisesRegex(
+                    InvalidRelease, "differs from native context"
+                ):
+                    self.replay()
+        raw = self.local.write(self.web, native.GENERATED_RELEASE, original)
+        self.local.write(self.web, "build/licenses/release.json", raw)
+        for name in ("licenses/untracked.json", "brand/untracked.svg"):
+            with self.subTest(name=name):
+                self.local.write(self.web, "static/" + name, b"arbitrary untracked\n")
+                self.local.write(self.web, "build/" + name, b"arbitrary untracked\n")
+                self.refresh()
+                with self.assertRaisesRegex(InvalidRelease, "exact Git tree"):
+                    self.replay()
+                (self.web / "static" / name).unlink()
+                (self.web / "build" / name).unlink()
+
+    def test_static_original_cannot_shadow_generated_css_chunk_or_fallback(self):
+        for name in ("style.css", self.local.chunk, "index.html"):
+            with self.subTest(name=name):
+                path = self.web / "static" / name
+                self.local.write(
+                    self.web, "static/" + name, (self.web / "build" / name).read_bytes()
+                )
+                try:
+                    with self.assertRaisesRegex(InvalidRelease, "overlaps a generated"):
+                        native.copied_inputs(self.web, self.local.inventory)
+                finally:
+                    path.unlink()
 
     def test_known_virtual_and_generated_recipes_are_retained_but_not_reproduced(self):
         virtual = self.local.inventory["modules"][2]

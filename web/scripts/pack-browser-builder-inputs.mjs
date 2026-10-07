@@ -11,6 +11,7 @@ const fixed = [
   "src/app.html",
   "package.json",
   "package-lock.json",
+  "Dockerfile",
   "vite.config.ts",
   "svelte.config.js",
   "tsconfig.json",
@@ -67,7 +68,18 @@ for (const name of physical) {
     virtualCandidates.add(identifier("\0<root>/" + name + suffix));
 }
 for (const helper of recipes.vite.helper_ids) virtualCandidates.add(identifier("\0" + helper));
-const needed = new Set();
+const adapter = recipes.adapter_static;
+check(
+  adapter.name === "@sveltejs/adapter-static" &&
+    adapter.version === "3.0.10" &&
+    JSON.stringify(adapter.members) === JSON.stringify(["index.js", "platforms.js"]) &&
+    adapter.fallback === "index.html" &&
+    Object.keys(adapter.preferred_source).sort().join(",") === "commit,directory,upstream_id" &&
+    adapter.preferred_source.upstream_id === "sveltekit" &&
+    adapter.preferred_source.commit === "39e8e1fbd4feba7f22dd46bfdf7335362c38de16" &&
+    adapter.preferred_source.directory === "packages/adapter-static",
+);
+const needed = new Set(["adapter_static"]);
 for (const row of [...inventory.modules, ...inventory.excluded_modules]) {
   if (row.kind === "virtual" && virtualCandidates.has(row.id)) needed.add("vite");
   if (row.kind === "generated-application") {
@@ -138,24 +150,19 @@ function walk(name) {
   }
 }
 walk("build");
-const chunks = new Set(
-  inventory.outputs.filter((row) => row.type === "chunk").map((row) => row.file),
-);
+walk("static");
+regular("build/" + adapter.fallback);
+regular("static/licenses/release.json");
+const generatedOutputs = new Set(inventory.outputs.map((row) => row.file));
 for (const path of [...selected]) {
-  if (!path.startsWith("build/") || !path.endsWith(".js")) continue;
-  const name = path.slice(6);
-  const knownCopy = ["appearance.js", "language.js"].includes(name);
-  if (chunks.has(name) && !knownCopy) continue;
-  const original = "static/" + safe(name);
-  let exists = false;
-  try {
-    exists = lstatSync(root + "/" + original).isFile();
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+  if (path.startsWith("build/")) {
+    const name = path.slice(6);
+    if (["appearance.js", "language.js"].includes(name)) regular("static/" + safe(name));
   }
-  if (exists || knownCopy) {
-    regular(original);
-    selected.add(original);
+  if (path.startsWith("static/")) {
+    const name = path.slice(7);
+    check(name !== adapter.fallback && !generatedOutputs.has(name));
+    check(regular(path).equals(regular("build/" + safe(name))));
   }
 }
 const descriptor = openSync("/tmp/psst-browser-builder.tar", "wx", 0o600);

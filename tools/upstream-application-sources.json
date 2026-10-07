@@ -267,10 +267,14 @@
         "packages/kit/package.json",
         "packages/kit/scripts/generate-version.js",
         "packages/kit/scripts/generate-dts.js",
-        "packages/kit/src/version.js"
+        "packages/kit/src/version.js",
+        "packages/adapter-static/package.json",
+        "packages/adapter-static/index.js",
+        "packages/adapter-static/platforms.js"
       ],
       "packages": {
-        "@sveltejs/kit": "2.70.3"
+        "@sveltejs/kit": "2.70.3",
+        "@sveltejs/adapter-static": "3.0.10"
       },
       "repository": "sveltejs/kit"
     },

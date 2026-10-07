@@ -842,6 +842,21 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       not satisfy publication. These producers cannot sign or publish.
 - [x] Verify the report producers and shared input boundary with thirteen focused
       regressions; the complete release suite passed 139 checks in 8.120 seconds.
+- [x] Require substantive exact source/distribution records in publication
+      verification, even for authenticated reports. Reject empty or incomplete
+      source coverage, source/image/notice/policy substitutions and distribution
+      approval detached from its corresponding-source report. The focused
+      publication group passed 23 checks in 2.9 seconds.
+- [x] Implement authorized distribution-review production from exact committed
+      policy, an authenticated complete source report and read-only GitHub review
+      history. Require the configured protected-environment reviewer and exact
+      artifact/source/attempt comment, retain raw API evidence, and recheck for
+      changes. Fixture verification passed in 1.7 seconds; no live reviewer
+      approval or signing is claimed.
+- [ ] Provision the `container-release` review environment and wire the strict
+      distribution producer into the final trusted workflow after complete source
+      production. Present concrete final artifacts before approval; attest both
+      the gate and retained review evidence. Verify a real approval and rejection.
 - [ ] Wire the producers and signed native records into the reviewed workflow
       and validate actual two-platform aggregation. The current candidate-only
       workflow emits unsigned smoke measurements.
@@ -1081,6 +1096,16 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       Five focused regressions passed in 4.0 seconds and actual retained npm
       replay passed in 1.5 seconds. These are source associations, not generated
       byte reproduction or complete preferred-source approval.
+- [x] Retain all copied static originals, including brand SVGs, favicons and
+      notices, and compare them to unchanged built copies and the exact Git tree.
+      Include the locked adapter-static 3.0.10 generator and manifest in retained
+      npm replay, with its preferred originals from the pinned Kit tree. Keep
+      fallback/generated outputs distinct from copied originals. Eight focused
+      fixture checks passed in 0.7 seconds after replacing production watchdog
+      polling with direct bounded Git calls in the tiny fixtures.
+- [ ] Verify the expanded static/adapter profile on a real committed Docker web
+      builder, including its generated release metadata. This is a focused
+      capture/replay check, separate from the complete native release rehearsal.
 - [x] Include the original Vite and bundled Rollup generator license terms in
       browser notices and serve their exact original license bytes. Check lock,
       generator and notice hashes and reject stale inputs. Existing focused notice
@@ -1403,8 +1428,8 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release-tooling suite passed 337 tests in 27.3 seconds after the
-generator/source changes (one opt-in Docker case skipped; real builder capture
+combined local release-tooling suite passed 345 tests in 23.9 seconds after the
+source/distribution and copied-static changes (one opt-in Docker case skipped; real builder capture
 was run separately). The new source-archive regression exercises recursive-link
 rejection and the exact metadata-only exception; browser fixtures check source
 and notice substitutions. Do not add coverage-only cases or repeat broad suites

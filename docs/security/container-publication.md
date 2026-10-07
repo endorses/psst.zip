@@ -73,6 +73,47 @@ inspection record with `publication_authorized: false`. It cannot read success
 JSON and unlock publication. Full preparation is a library boundary requiring
 the trusted verifier implementation.
 
+## Exact source coverage and authorized distribution review
+
+The publication verifier now rejects a signed source or distribution report with
+empty, partial, stale or substituted detail records. The corresponding-source
+record must cover every exact source asset and all four final child images, with
+notice-inventory hashes and complete application, runtime and component-specific
+module/generator coverage. Each coverage item retains its evidence hash. The
+committed distribution policy is identified by source commit, Git blob and byte
+hash. Distribution review must match that source record's policy, image notices,
+source subjects, complete coverage hash and report hash. Structural validation
+alone cannot establish that a source review was performed.
+
+`tools/generate_distribution_review.py` implements the authorized-review producer.
+It first authenticates the complete corresponding-source report and validates its
+policy against the exact committed `tools/container-distribution-policy.json`.
+The current policy selects the `container-release` environment and reviewer
+`endorses`; it grants no approval by itself. The producer reads GitHub's selected
+version-tag workflow attempt, environment required reviewers and review history.
+It requires an approved decision from the configured authorized user, with the
+same GitHub user ID, environment ID and exact approval comment:
+
+```text
+psst.zip distribution review: <binding SHA256>; run <run ID>; attempt <attempt>; source report <source-report SHA256>
+```
+
+The workflow must present the final image/source/notice records for review and
+provide this exact comment before waiting on the environment. The comment binds
+all final subjects and the source report to the selected attempt. Earlier review
+comments cannot approve different artifacts or a rerun. Missing approvals,
+rejections, ambiguous decisions, different required reviewers, incomplete API
+responses and changes during verification fail. Only GET requests are used.
+The producer returns a gate report plus the retained API evidence; the trusted
+workflow must attest both. It does not sign, publish or infer source completeness.
+See GitHub's [review-history API](https://docs.github.com/en/rest/actions/workflow-runs#get-the-review-history-for-a-workflow-run)
+and [environment API](https://docs.github.com/en/rest/deployments/environments#get-an-environment).
+
+The environment has not been provisioned and this producer is not wired into the
+candidate-only workflow. Complete preferred-form source production, actual signed
+reports, real reviewer approval and hosted publication remain pending. Fixture
+checks exercise authorization and substitution failures, not live approval.
+
 ## Reports from completed checks
 
 `prepare_inputs` shares the publication core's exact source/tag, bundle, manifest,

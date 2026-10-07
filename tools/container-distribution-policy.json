@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "kind": "container-distribution-review-policy",
+  "environment": "container-release",
+  "reviewers": ["endorses"]
+}

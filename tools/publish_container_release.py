@@ -53,6 +53,21 @@ READBACK_GATES = frozenset(
     {"registry-readback", "anonymous-pull", "asset-readback", "provenance"}
 )
 SOURCE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}\Z")
+SOURCE_REVIEW_POLICY = "tools/container-distribution-policy.json"
+SOURCE_COVERAGE = {
+    component
+    + "-"
+    + arch: frozenset(
+        {"application", "runtime"}
+        | (
+            {"backend-modules"}
+            if component == "backend"
+            else {"browser-packages", "browser-generators"}
+        )
+    )
+    for component in ("backend", "web")
+    for arch in ("amd64", "arm64")
+}
 
 
 def sha256(content: bytes) -> str:
@@ -224,6 +239,126 @@ class EvidenceVerifier(Protocol):
         """Verify trusted issuer/reviewer, source, workflow/ref and subject bytes."""
 
 
+def source_review_details(
+    details: dict, binding: Binding, *, distribution: bool
+) -> None:
+    """Check authenticated producer facts, never turn an approval flag into evidence.
+
+    The producer must replay archives, read the exact Git policy bytes/blob, and
+    authenticate real GitHub protected-environment approval and its authorized
+    reviewer. Bounded names/hashes here are not reviewer authorization. This
+    boundary additionally rejects partial or stale coverage even for signed reports.
+    """
+    fields(
+        details,
+        {"schema_version", "source_subjects", "images", "policy"}
+        | ({"coverage_digest", "review"} if distribution else {"coverage"}),
+        "complete source/distribution review details",
+    )
+    require(
+        type(details["schema_version"]) is int and details["schema_version"] == 1,
+        "Unsupported source review detail schema",
+    )
+    subjects = dict(binding.subjects)
+    sources = {
+        name: subject
+        for name, subject in subjects.items()
+        if name.startswith("source:")
+    }
+    require(
+        bool(sources) and details["source_subjects"] == sources,
+        "Source review does not cover every exact source subject",
+    )
+    images = fields(
+        details["images"], set(SOURCE_COVERAGE), "all four reviewed final images"
+    )
+    for name, record in images.items():
+        fields(record, {"subject", "notice_inventory_digest"}, "reviewed image notices")
+        require(
+            record["subject"] == subjects.get(name),
+            "Source review covers another final image",
+        )
+        matches(
+            record["notice_inventory_digest"],
+            DIGEST,
+            "Missing exact final image notice inventory digest",
+        )
+    policy = fields(
+        details["policy"],
+        {"path", "source_commit", "record_digest", "git_blob"},
+        "reviewed committed distribution policy",
+    )
+    require(
+        policy["path"] == SOURCE_REVIEW_POLICY
+        and policy["source_commit"] == binding.commit,
+        "Distribution policy is not from the reviewed source commit",
+    )
+    matches(policy["record_digest"], DIGEST, "Missing committed policy record digest")
+    matches(policy["git_blob"], COMMIT, "Missing committed policy Git blob")
+    if distribution:
+        matches(
+            details["coverage_digest"],
+            DIGEST,
+            "Missing complete source coverage digest",
+        )
+        review = fields(
+            details["review"],
+            {
+                "decision",
+                "reviewer",
+                "record_digest",
+                "source_gate_report_digest",
+                "reviewed_subjects",
+            },
+            "authenticated authorized distribution review",
+        )
+        require(
+            review["decision"] == "approved"
+            and isinstance(review["reviewer"], str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@/-]{0,159}", review["reviewer"])
+            is not None
+            and review["reviewed_subjects"] == subjects,
+            "Distribution review is pending or does not cover the exact final subjects",
+        )
+        matches(
+            review["record_digest"],
+            DIGEST,
+            "Missing authenticated distribution review record digest",
+        )
+        matches(
+            review["source_gate_report_digest"],
+            DIGEST,
+            "Missing corresponding-source report binding",
+        )
+    else:
+        coverage = fields(
+            details["coverage"],
+            set(SOURCE_COVERAGE),
+            "source coverage for all final images",
+        )
+        for image, categories in SOURCE_COVERAGE.items():
+            entries = fields(
+                coverage[image],
+                set(categories),
+                "exact final source coverage categories",
+            )
+            for evidence in entries.values():
+                fields(
+                    evidence,
+                    {"status", "evidence_digest"},
+                    "completed source coverage evidence",
+                )
+                require(
+                    evidence["status"] == "complete",
+                    "Preferred-form source coverage remains incomplete",
+                )
+                matches(
+                    evidence["evidence_digest"],
+                    DIGEST,
+                    "Missing independently checked source coverage evidence",
+                )
+
+
 def verify_gates(
     reports: dict[str, Path],
     gates: frozenset[str],
@@ -231,7 +366,7 @@ def verify_gates(
     verifier: EvidenceVerifier,
 ) -> dict[str, str]:
     fields(reports, set(gates), "required verification reports")
-    result = {}
+    result, source_details = {}, None
     for gate in sorted(gates):
         report = read_bounded_file(reports[gate])
         receipt = verifier.verify(gate, reports[gate], binding)
@@ -319,6 +454,26 @@ def verify_gates(
             require(
                 receipt.details.get("subjects") == dict(binding.subjects),
                 "Provenance does not cover every updater and source subject",
+            )
+        elif gate == "corresponding-source":
+            source_review_details(receipt.details, binding, distribution=False)
+            source_details = receipt.details
+        elif gate == "distribution-review":
+            source_review_details(receipt.details, binding, distribution=True)
+            require(
+                source_details is not None and "corresponding-source" in result,
+                "Distribution review requires the verified corresponding-source gate",
+            )
+            require(
+                all(
+                    receipt.details[name] == source_details[name]
+                    for name in ("source_subjects", "images", "policy")
+                )
+                and receipt.details["coverage_digest"]
+                == sha256(json_bytes(source_details["coverage"]))
+                and receipt.details["review"]["source_gate_report_digest"]
+                == result["corresponding-source"],
+                "Distribution review differs from completed source/notice/policy evidence",
             )
         result[gate] = receipt.report_digest
     return result

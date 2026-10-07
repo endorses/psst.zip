@@ -68,5 +68,17 @@
   },
   "source_reproduction_verified": false,
   "browser_module_closure_verified": false,
-  "distribution_authorized": false
+  "distribution_authorized": false,
+  "adapter_static": {
+    "lock_path": "node_modules/@sveltejs/adapter-static",
+    "name": "@sveltejs/adapter-static",
+    "version": "3.0.10",
+    "members": ["index.js", "platforms.js"],
+    "preferred_source": {
+      "upstream_id": "sveltekit",
+      "commit": "39e8e1fbd4feba7f22dd46bfdf7335362c38de16",
+      "directory": "packages/adapter-static"
+    },
+    "fallback": "index.html"
+  }
 }

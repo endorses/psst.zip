@@ -38,8 +38,36 @@ def raw_index(children: dict[str, str]) -> bytes:
     )
 
 
+def source_review_fixture(binding):
+    """Small completed producer facts; this test adapter supplies trust, not JSON."""
+    subjects = dict(binding.subjects)
+    return {
+        "schema_version": 1,
+        "source_subjects": {
+            key: value for key, value in subjects.items() if key.startswith("source:")
+        },
+        "images": {
+            name: {"subject": subjects[name], "notice_inventory_digest": digest("a")}
+            for name in publication.SOURCE_COVERAGE
+        },
+        "coverage": {
+            name: {
+                category: {"status": "complete", "evidence_digest": digest("e")}
+                for category in categories
+            }
+            for name, categories in publication.SOURCE_COVERAGE.items()
+        },
+        "policy": {
+            "path": publication.SOURCE_REVIEW_POLICY,
+            "source_commit": binding.commit,
+            "record_digest": digest("b"),
+            "git_blob": "a" * 40,
+        },
+    }
+
+
 class FixtureVerifier:
-    """Tests' trusted adapter; production has no verifier implementation yet."""
+    """Tests' trusted adapter; it does not simulate real reviewer authorization."""
 
     def __init__(self):
         self.mutate = lambda receipt: receipt
@@ -83,6 +111,27 @@ class FixtureVerifier:
             details["execution"] = {name: "native" for name in release.PLATFORMS}
         elif gate == "provenance":
             details["subjects"] = dict(binding.subjects)
+        elif gate == "corresponding-source":
+            details = source_review_fixture(binding)
+        elif gate == "distribution-review":
+            source = source_review_fixture(binding)
+            details = {key: value for key, value in source.items() if key != "coverage"}
+            details.update(
+                {
+                    "coverage_digest": publication.sha256(
+                        release.json_bytes(source["coverage"])
+                    ),
+                    "review": {
+                        "decision": "approved",
+                        "reviewer": "fixture-reviewer",
+                        "record_digest": digest("c"),
+                        "source_gate_report_digest": publication.sha256(
+                            (path.parent / "corresponding-source.json").read_bytes()
+                        ),
+                        "reviewed_subjects": dict(binding.subjects),
+                    },
+                }
+            )
         details = self.details.get(gate, details)
         return self.mutate(
             publication.VerifiedEvidence(
@@ -475,12 +524,105 @@ class PublicationChecks(unittest.TestCase):
                     self.assertRaises(release.InvalidRelease),
                 ):
                     self.prepare()
+
             details = copy.deepcopy(valid)
             details["scans"].pop()
             self.verifier.details = {gate: details}
             with self.assertRaises(release.InvalidRelease):
                 self.prepare()
             self.verifier.details = {}
+
+    def test_source_review_rejects_signed_but_incomplete_or_stale_details(self):
+        binding = self.measure().binding
+        valid = source_review_fixture(binding)
+        mutations = [({}, "empty")]
+        for path, replacement in (
+            (("schema_version",), True),
+            (("source_subjects",), {}),
+            (("images",), {}),
+            (("images", "backend-amd64", "subject"), "wrong"),
+            (("images", "web-arm64", "notice_inventory_digest"), ""),
+            (("coverage", "backend-arm64"), {}),
+            (("coverage", "web-amd64", "browser-generators", "status"), "pending"),
+            (("coverage", "web-arm64", "browser-packages", "evidence_digest"), ""),
+            (("policy", "source_commit"), "f" * 40),
+            (("policy", "path"), "operator-supplied-policy.json"),
+            (("policy", "record_digest"), ""),
+            (("policy", "git_blob"), ""),
+        ):
+            changed = copy.deepcopy(valid)
+            target = changed
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = replacement
+            mutations.append((changed, path))
+        for field in ("images", "source_subjects", "coverage"):
+            changed = copy.deepcopy(valid)
+            changed[field]["extra"] = "unreviewed"
+            mutations.append((changed, field + " extra"))
+        changed = copy.deepcopy(valid)
+        changed["coverage"]["backend-amd64"]["browser-packages"] = {
+            "status": "complete",
+            "evidence_digest": digest("e"),
+        }
+        mutations.append((changed, "wrong category"))
+        reports = {"corresponding-source": self.reports["corresponding-source"]}
+        for details, name in mutations:
+            self.verifier.details = {"corresponding-source": details}
+            with self.subTest(name=name), self.assertRaises(release.InvalidRelease):
+                publication.verify_gates(
+                    reports, frozenset(reports), binding, self.verifier
+                )
+
+    def test_distribution_review_requires_exact_completed_source_policy_and_notices(
+        self,
+    ):
+        binding = self.measure().binding
+        valid = self.verifier.verify(
+            "distribution-review", self.reports["distribution-review"], binding
+        ).details
+        mutations = [({}, "empty")]
+        for path, replacement in (
+            (("review", "decision"), "pending"),
+            (("review", "decision"), True),
+            (("review", "reviewer"), ""),
+            (("review", "record_digest"), ""),
+            (("review", "reviewed_subjects"), dict(binding.subjects[:-1])),
+            (("review", "source_gate_report_digest"), digest("f")),
+            (("coverage_digest",), digest("f")),
+            (("images", "web-amd64", "notice_inventory_digest"), digest("f")),
+            (("policy", "record_digest"), digest("f")),
+            (("policy", "git_blob"), "f" * 40),
+        ):
+            changed = copy.deepcopy(valid)
+            target = changed
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = replacement
+            mutations.append((changed, path))
+        changed = copy.deepcopy(valid)
+        changed["review"]["caller_approved"] = True
+        mutations.append((changed, "bare approval"))
+        reports = {
+            gate: self.reports[gate]
+            for gate in ("corresponding-source", "distribution-review")
+        }
+        for details, name in mutations:
+            self.verifier.details = {"distribution-review": details}
+            with self.subTest(name=name), self.assertRaises(release.InvalidRelease):
+                publication.verify_gates(
+                    reports, frozenset(reports), binding, self.verifier
+                )
+        self.verifier.details = {}
+        with self.assertRaisesRegex(
+            release.InvalidRelease, "verified corresponding-source"
+        ):
+            publication.verify_gates(
+                {"distribution-review": self.reports["distribution-review"]},
+                frozenset({"distribution-review"}),
+                binding,
+                self.verifier,
+            )
 
     def test_smoke_requires_both_architectures_and_ci_requires_ios(self):
         for gate, details in (

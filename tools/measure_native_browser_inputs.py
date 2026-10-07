@@ -32,11 +32,13 @@ from release_artifacts import (
 from verify_runtime_source_pack import whiteout_targets
 
 RECIPE_CATALOG = "scripts/browser-source-recipes.json"
+GENERATED_RELEASE = "static/licenses/release.json"
 FIXED = {
     RECIPE_CATALOG,
     "src/app.html",
     "package.json",
     "package-lock.json",
+    "Dockerfile",
     "vite.config.ts",
     "svelte.config.js",
     "tsconfig.json",
@@ -108,6 +110,7 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
             "kind",
             "vite",
             "kit",
+            "adapter_static",
             "source_reproduction_verified",
             "browser_module_closure_verified",
             "distribution_authorized",
@@ -125,7 +128,7 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
         ),
         "Browser recipe catalog grants unsupported claims",
     )
-    vite, kit = catalog["vite"], catalog["kit"]
+    vite, kit, adapter = catalog["vite"], catalog["kit"], catalog["adapter_static"]
     require(
         set(vite)
         == {
@@ -138,10 +141,12 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
             "helper_ids",
         }
         and set(kit)
-        == {"lock_path", "name", "version", "members", "generated", "generated_nodes"},
+        == {"lock_path", "name", "version", "members", "generated", "generated_nodes"}
+        and set(adapter)
+        == {"lock_path", "name", "version", "members", "preferred_source", "fallback"},
         "Unexpected browser recipe fields",
     )
-    for recipe in (vite, kit):
+    for recipe in (vite, kit, adapter):
         location = browser.safe_path(recipe["lock_path"])
         require(
             location == "node_modules/" + recipe["name"],
@@ -159,6 +164,19 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
                 not any(part.startswith(".") for part in name.split("/")),
                 "Hidden generator input",
             )
+    require(
+        adapter["name"] == "@sveltejs/adapter-static"
+        and adapter["version"] == "3.0.10"
+        and adapter["members"] == ["index.js", "platforms.js"]
+        and adapter["fallback"] == "index.html"
+        and adapter["preferred_source"]
+        == {
+            "upstream_id": "sveltekit",
+            "commit": "39e8e1fbd4feba7f22dd46bfdf7335362c38de16",
+            "directory": "packages/adapter-static",
+        },
+        "Unreviewed static adapter recipe",
+    )
     require(
         vite["commonjs_suffixes"]
         == ["?commonjs-exports", "?commonjs-module", "?commonjs-es-import"]
@@ -236,7 +254,7 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
             },
         )
     virtual, generated = [], []
-    needed = set()
+    needed = {"adapter_static"}
     for row in inventory["modules"] + inventory["excluded_modules"]:
         if row["kind"] == "virtual":
             match = candidates.get(row["id"])
@@ -293,25 +311,113 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
         "inputs": inputs,
         "virtual_inputs": sorted(virtual, key=lambda row: row["id"]),
         "generated_inputs": sorted(generated, key=lambda row: row["file"]),
+        "adapter_static": {
+            "generator": adapter["lock_path"] + "/index.js",
+            "preferred_source": adapter["preferred_source"],
+            "members": {
+                adapter["lock_path"]
+                + "/"
+                + member: adapter["preferred_source"]["directory"]
+                + "/"
+                + member
+                for member in adapter["members"]
+            },
+            "fallback": adapter["fallback"],
+            "association": "reviewed-generator-preferred-source-association",
+            "preferred_source_member_correspondence_verified": False,
+            "generated_byte_reproduction_verified": False,
+        },
     }
 
 
 def copied_inputs(folder: Path, inventory: dict) -> set[str]:
-    chunks = {row["file"] for row in inventory["outputs"] if row["type"] == "chunk"}
-    names = set()
-    for name in static_facts(folder / "build"):
-        if not name.endswith(".js"):
+    """Every static original must be copied unchanged, never inferred from output."""
+    generated = {row["file"] for row in inventory["outputs"]}
+    built = static_facts(folder / "build")
+    originals = static_facts(folder / "static")
+    for name in {"appearance.js", "language.js"} & set(built):
+        require(name in originals, "Known copied browser source is missing")
+    for name, fact in originals.items():
+        require(
+            name not in generated and name != "index.html",
+            "Static original overlaps a generated browser output",
+        )
+        require(
+            built.get(name) == fact,
+            "Copied browser static output differs from original",
+        )
+    return {"static/" + name for name in originals} - {GENERATED_RELEASE}
+
+
+def generated_release_metadata(folder: Path, context) -> dict:
+    raw = browser.read_file(folder, GENERATED_RELEASE)
+    expected = {
+        "name": "psst.zip",
+        "version": context.version,
+        "revision": context.commit,
+        "license": "AGPL-3.0-only",
+        "source": "https://github.com/" + context.repository,
+        "source_archive": "https://github.com/"
+        + context.repository
+        + "/archive/"
+        + context.commit
+        + ".tar.gz",
+        "notice_files": ["/licenses/backend/THIRD_PARTY_NOTICES.txt"],
+    }
+    require(
+        browser.json_record(raw) == expected,
+        "Generated browser release metadata differs from native context",
+    )
+    require(
+        raw == browser.read_file(folder / "build", "licenses/release.json"),
+        "Generated browser release metadata differs from built copy",
+    )
+    return {
+        "file": "licenses/release.json",
+        "builder_input": GENERATED_RELEASE,
+        "generator": "Dockerfile",
+        "association": "context-validated-docker-generated-metadata",
+        **browser.file_fact(folder, GENERATED_RELEASE),
+        "metadata": expected,
+        "generated_byte_reproduction_verified": False,
+    }
+
+
+def git_static_binding(folder: Path, revision: str, source_root: Path, execute):
+    """A missing captured original must not quietly become an unknown output."""
+    listing = execute(
+        "git",
+        "-C",
+        str(source_root),
+        "ls-tree",
+        "-r",
+        "-z",
+        revision,
+        "--",
+        "web/static",
+    )
+    require(len(listing) <= browser.MAX_FILE, "Git static listing exceeds bounds")
+    expected = set()
+    for line in listing.split(b"\0"):
+        if not line:
             continue
-        path = "static/" + name
-        if name in {"appearance.js", "language.js"}:
-            browser.read_file(
-                folder, path
-            )  # Known copied inputs must not silently lose their source.
-            names.add(path)
-        elif name not in chunks and (folder / path).exists():
-            browser.read_file(folder, path)
-            names.add(path)
-    return names
+        metadata, path = line.decode().split("\t", 1)
+        mode, kind, oid = metadata.split()
+        require(
+            mode in {"100644", "100755"}
+            and kind == "blob"
+            and path.startswith("web/static/")
+            and path[4:] not in expected,
+            "Invalid exact Git static original",
+        )
+        expected.add(browser.safe_path(path[4:]))
+    require(
+        GENERATED_RELEASE not in expected
+        and expected
+        == {"static/" + name for name in static_facts(folder / "static")}
+        - {GENERATED_RELEASE},
+        "Captured static originals differ from exact Git tree",
+    )
 
 
 def selected(inventory: dict, folder: Path | None = None) -> set[str]:
@@ -348,6 +454,7 @@ def selected(inventory: dict, folder: Path | None = None) -> set[str]:
     if folder is not None:
         names.update(recipe_plan(folder, inventory)["inputs"])
         names.update(copied_inputs(folder, inventory))
+        names.add(GENERATED_RELEASE)
     return names
 
 
@@ -663,7 +770,10 @@ def replay(
             name
             for name in inputs
             if not name.startswith(("node_modules/", ".svelte-kit/"))
+            and name != GENERATED_RELEASE
         }
+        release_metadata = generated_release_metadata(folder, context)
+        git_static_binding(folder, context.commit, source_root, execute)
         git = git_binding(folder, context.commit, app, source_root, execute)
         npm = npm_members(folder, inventory)
         require(
@@ -766,7 +876,7 @@ def replay(
             fact = browser.file_fact(folder, path)
             require(
                 path in git and built[name] == fact,
-                "Copied browser JavaScript differs from Git-bound static original",
+                "Copied browser static output differs from Git-bound original",
             )
             origins.append(
                 {
@@ -788,6 +898,10 @@ def replay(
             if "static/" + row["file"] not in copied
         ]
         plan = recipe_plan(folder, inventory)
+        require(
+            plan["adapter_static"]["fallback"] in built,
+            "Static adapter fallback output is missing",
+        )
         recipe_files = {
             name: browser.file_fact(folder, name) for name in sorted(plan["inputs"])
         }
@@ -816,7 +930,15 @@ def replay(
                 "integrity_bound_recipe_files": recipe_files,
                 "virtual_inputs": plan["virtual_inputs"],
                 "generated_inputs": plan["generated_inputs"],
-                "copied_javascript": origins,
+                "copied_static": origins,
+                "copied_javascript": [
+                    row for row in origins if row["file"].endswith(".js")
+                ],
+                "adapter_static": {
+                    **plan["adapter_static"],
+                    "fallback_output": built.get(plan["adapter_static"]["fallback"]),
+                },
+                "generated_release_metadata": release_metadata,
                 "unresolved_javascript": unresolved,
                 "generated_byte_reproduction_verified": False,
                 "preferred_source_complete": False,
@@ -918,7 +1040,10 @@ def collect(
                 name
                 for name in inputs
                 if not name.startswith(("node_modules/", ".svelte-kit/"))
+                and name != GENERATED_RELEASE
             }
+            generated_release_metadata(retained, context)
+            git_static_binding(retained, context.commit, source_root, operations.run)
             git_binding(retained, context.commit, app, source_root, operations.run)
             descriptor = browser.json_record(
                 browser.read_file(dependency_collection, "dependency-collection.json")
