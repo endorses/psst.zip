@@ -495,7 +495,7 @@ def builder_identity(
     reference: str, kind: str, context: NativeSourceContext, execute
 ) -> dict:
     require(
-        reference.startswith(BASES[kind] + "@sha256:"),
+        reference.startswith(BASES[kind].rsplit(":", 1)[0] + "@sha256:"),
         "Unexpected or mutable release builder",
     )
     matches(reference.rsplit("@", 1)[1], DIGEST, "Invalid immutable builder digest")

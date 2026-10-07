@@ -543,12 +543,64 @@ class SourceScannerTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(InvalidRelease, "emulate"):
             source.builder_identity(
-                source.BASES["golang"] + "@sha256:" + "b" * 64,
+                source.BASES["golang"].rsplit(":", 1)[0] + "@sha256:" + "b" * 64,
                 "golang",
                 context,
                 execute,
             )
         self.assertEqual(len(calls), 1)
+
+    def test_candidate_canonical_builder_names_match_actual_inspected_config(self):
+        import prepare_release_candidate as candidate
+
+        context = NativeSourceContext(
+            "endorses/psst.zip", "v0.0.0", "a" * 40, "linux/amd64"
+        )
+        index = (
+            "sha256:" + "b" * 64,
+            {"linux/amd64": "sha256:" + "e" * 64, "linux/arm64": "sha256:" + "f" * 64},
+        )
+        with patch.object(candidate, "run", return_value=b"{}"), patch.object(
+            candidate, "index_record", return_value=index
+        ):
+            candidate_refs = candidate.resolve_bases(context.version, context.commit)[
+                "base_images"
+            ]
+        for kind in ["golang", "node"]:
+            reference = candidate_refs[kind]
+            calls = []
+
+            def execute(args, **kwargs):
+                calls.append(args)
+                if args[1] == "info":
+                    return b'"x86_64"'
+                if "inspect" in args:
+                    return json_bytes(
+                        [
+                            {
+                                "Os": "linux",
+                                "Architecture": "amd64",
+                                "Id": "sha256:" + "c" * 64,
+                                "RootFS": {"Layers": ["sha256:" + "d" * 64]},
+                            }
+                        ]
+                    )
+                return b""
+
+            measured = source.builder_identity(reference, kind, context, execute)
+            self.assertEqual(measured["reference"], reference)
+            self.assertEqual(measured["config_digest"], "sha256:" + "c" * 64)
+            self.assertEqual(
+                calls[1], ["docker", "pull", "--platform", "linux/amd64", reference]
+            )
+            for wrong in [
+                source.BASES[kind],
+                source.BASES[kind] + "@sha256:" + "b" * 64,
+                "docker.io/other/" + kind + "@sha256:" + "b" * 64,
+                reference + ":tag",
+            ]:
+                with self.subTest(reference=wrong), self.assertRaises(InvalidRelease):
+                    source.builder_identity(wrong, kind, context, execute)
 
     def test_failed_fixture_cleans_only_its_exact_owned_container(self):
         with tempfile.TemporaryDirectory() as directory:

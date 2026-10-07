@@ -356,13 +356,16 @@ inputs. It accepts a matrix-local `NativeSourceContext`; it does not authenticat
 that context, create a version tag, attest outputs, approve findings, or publish.
 The release workflow must validate the tag and authenticate the measurements
 before combining both native platforms with the complete release binding.
+Pass the untagged official repository digest references emitted by the candidate
+`resolve_bases` record. The digest resolves the configured Go/Node version tag;
+do not reconstruct a tagged reference or substitute a mutable tag.
 
 ```sh
 python3 tools/measure_release_source_scans.py \
   --repository endorses/psst.zip --version v1.2.3 --revision TAGGED_COMMIT \
   --platform linux/amd64 --repository-root "$PWD" \
-  --go-image docker.io/library/golang:1.26.8-alpine@sha256:RESOLVED_GO_INDEX \
-  --node-image docker.io/library/node:22-alpine@sha256:RESOLVED_NODE_INDEX \
+  --go-image docker.io/library/golang@sha256:RESOLVED_GO_INDEX \
+  --node-image docker.io/library/node@sha256:RESOLVED_NODE_INDEX \
   --output /private/release-review/source-scans-amd64
 python3 tools/test_release_source_scans.py
 ```
@@ -441,7 +444,7 @@ arguments with the exact privately retained runtime inputs:
 python3 tools/measure_release_source_scans.py --mode compiler-graph \
   --repository endorses/psst.zip --version v1.2.3 --revision TAGGED_COMMIT \
   --platform linux/amd64 --repository-root "$PWD" \
-  --go-image docker.io/library/golang:1.26.8-alpine@sha256:RESOLVED_GO_INDEX \
+  --go-image docker.io/library/golang@sha256:RESOLVED_GO_INDEX \
   --component web --runtime-pack /private/release-review/pack \
   --runtime-source-sha256 sha256:BOUND_RUNTIME_SOURCE_HASH \
   --image-archive /private/release-review/export/web-amd64.oci.tar \

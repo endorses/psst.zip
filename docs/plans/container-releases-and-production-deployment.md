@@ -927,6 +927,12 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       exact findings and authoritative advisory evidence. The new daemon guard
       was exercised in the final Caddy measurement; source/backend runs preceded
       that final guard and need repetition in the integrated workflow.
+- [x] Repair the resolver-to-scanner builder contract using the exact canonical
+      untagged official repository digest references emitted by `resolve-bases`.
+      Verify a resolver-derived regression and repeat actual source scanning on
+      `c73a5da` with the final native-daemon guard: 21 Go module findings retained,
+      no package/symbol findings, and zero npm findings. Signed scanner gates
+      and native ARM64 measurements remain pending.
 
 ### Native preparation orchestration
 
@@ -945,6 +951,12 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       both native runners, wire retained outputs into post-matrix assembly,
       authenticate the measurements, and complete publication gates. The scratch
       export check does not verify the complete application pipeline.
+- [x] Run the complete individual AMD64 command on exact committed source
+      `c73a5da`, genuine Buildx records and its original saved application pair.
+      Collection, signed Caddy sources, overlays, all ten actual native smoke
+      checks, byte-preserving OCI exports and independent runtime source replay
+      passed. Retain the private descriptor and measured artifacts; the planned
+      `v0.1.0` version has not been tagged or published.
 
 ### Application dependency input retention
 

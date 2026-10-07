@@ -85,5 +85,12 @@ PSST_NATIVE_EXPORT_INTEGRATION=1 PYTHONPATH=tools \
 
 That check passed on AMD64. Twelve focused preparation tests also passed; their
 collection and application smoke operations use explicit fixtures. Complete
-preparation from authentic application build records and native ARM64 execution
-remain separate pending checks.
+AMD64 preparation subsequently passed on exact committed source `c73a5da`, using
+genuine Buildx records and its original saved application pair. Source collection,
+fresh Caddy signatures, overlays, all ten native application checks, byte-preserved
+OCI export and independent runtime source replay completed. The native measurement
+SHA256 is `88946ba4ca737b189019f5db6c25f1497425e12c684fe3232c27335012c69dbf`;
+the corresponding runtime source archive SHA256 is
+`9feb647140d603bb6b81a3495cf7ae6cd90bb8f2d37ab5d7dd9ead3a978f4515`.
+These are private planned-version inputs, not a published release. Native ARM64
+execution, authenticated measurements and final publication gates remain pending.
