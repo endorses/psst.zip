@@ -1050,6 +1050,16 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       working-tree build verified 34 served outputs and 4,380 module records in
       under one second. Hosted CI and final OCI correspondence remain unrun.
 
+- [x] Include the imported browser inventory script in the restricted Docker
+      context. A real pinned-base native AMD64 web image build passed in 21.6
+      seconds and retained the generated browser inventory and both new legal
+      notices. Remove its owned image/container. This diagnostic working-tree
+      build used `dev`/`main`; it does not establish release source binding.
+- [ ] Retain the real web builder's observed source/generated/package inputs and
+      Vite metadata, replay them against each final tested web configuration and
+      exact committed inputs, and preserve this evidence through native transfer.
+      The existing local static verifier is not yet invoked by native preparation.
+
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked
       archives, including development and optional platforms, without executing
       package scripts. Independently verify H1/SHA512 integrity, preserve exact

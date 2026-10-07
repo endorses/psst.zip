@@ -211,6 +211,16 @@ or a fixture test does not prove the new ARM64 or hosted path.
 
 ## Upstream application source inputs
 
+The root Docker context explicitly permits the browser inventory plugin imported
+by Vite while excluding other web scripts and host-generated inputs. A disposable
+pinned-base AMD64 web build with this corrected context completed in 21.6 seconds,
+and the final image retained the inventory plus embedded Apache and supplemental
+MIT notices. Private diagnostic evidence is in
+`/tmp/psst-web-docker-context-review-c9e636d/`. Its owned container/image were
+removed; this `dev`/`main` working-tree build is not a release-source proof.
+Native preparation still needs retained original builder inputs and final tested
+configuration correspondence; the local static verifier alone does not provide it.
+
 Some locked npm archives contain generated JavaScript but omit original source or
 build scripts. `tools/upstream-application-sources.json` pins immutable full-commit
 source archives for twelve upstream inputs, their original hashes and sizes, and the exact

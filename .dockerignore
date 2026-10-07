@@ -10,6 +10,9 @@ web/*
 !web/svelte.config.js
 !web/vite.config.ts
 !web/tsconfig.json
+!web/scripts/
+web/scripts/*
+!web/scripts/browser-module-inventory.mjs
 !web/src/
 !web/src/**
 !web/static/
