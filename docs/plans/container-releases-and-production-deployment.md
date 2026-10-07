@@ -1091,6 +1091,11 @@ this integration. The actual hosted two-architecture pipeline remains unrun.
       Preserve ten explicitly reviewed package-self test links as inert archive
       metadata only; default link restrictions remain in force. Eighteen source
       retention checks passed in 0.7 seconds.
+- [x] Validate the actual checked-in upstream catalog and lock in a small offline
+      regression as well as synthetic archive fixtures. The first real expanded
+      replay caught an incorrect Rollup archive filename; the corrected name
+      follows its `rollup/plugins` repository. All nineteen affected checks passed
+      in 0.85 seconds, including the actual-catalog check.
 - [ ] Replay the expanded fourteen-original offering against the new committed
       catalog and verify its new final native recipe/notice profile on both hosted
       architectures. Complete source/distribution gates and public delivery remain

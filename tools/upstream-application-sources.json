@@ -349,7 +349,7 @@
     },
     {
       "archive": {
-        "file": "rollup-commonjs-8b5fb987f82644ed31660b44f5c4df1cb085bf32.tar.gz",
+        "file": "plugins-8b5fb987f82644ed31660b44f5c4df1cb085bf32.tar.gz",
         "sha256": "sha256:dbd76e3255715afaa2ed11e001f5a4b400e6beb9d50b70e8c6dfc8ac19832093",
         "size": 633189
       },

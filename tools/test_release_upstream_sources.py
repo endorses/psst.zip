@@ -141,6 +141,16 @@ class UpstreamInputs(unittest.TestCase):
         self.fetch_map[upstream.url(record)] = raw
         self.catalog_commit(catalog)
 
+    def test_real_catalog_and_lock_satisfy_collection_policy_without_downloads(self):
+        # The synthetic archives exercise the parser; also validate the inputs
+        # shipped by this project so a catalog typo cannot block a real release.
+        for name in (upstream.CATALOG, upstream.LOCK):
+            (self.root / name).write_bytes((upstream.ROOT / name).read_bytes())
+        self.commit()
+        upstream.policy(
+            self.root, upstream.context("endorses/psst.zip", "v1.2.3", self.revision)
+        )
+
     def test_collect_replays_original_inputs_deterministically_without_approval(self):
         first = self.collect()
         replay = self.verify()
