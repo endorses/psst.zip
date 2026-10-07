@@ -66,10 +66,40 @@ version string therefore cannot independently identify the exact upstream source
 commit. Preserve immutable upstream source references and hashes when adding
 missing inputs, and bind the offering to the final native image subjects.
 
+## Retained immutable upstream inputs
+
+Read-only upstream tag resolution identified the following commits. Archives were
+fetched by full commit from GitHub's official codeload endpoint, hashed, and read
+without extraction or script execution. They are retained privately for review;
+they are not yet attached to assembled release inputs or publicly offered.
+
+| Upstream                                                                                                    | Observed tag | Full source commit                         | Archive SHA256                                                     |     Bytes |
+| ----------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------ | ------------------------------------------------------------------ | --------: |
+| [lucide-icons/lucide](https://github.com/lucide-icons/lucide/tree/45b0e148db4ee4d748340d0f99982aa1c2159d52) | 1.51.0       | `45b0e148db4ee4d748340d0f99982aa1c2159d52` | `8d74567fb686aef7d6a7d2e773fc8dec223b7719360d7043cbd84568eadad691` | 5,540,149 |
+| [101arrowz/fflate](https://github.com/101arrowz/fflate/tree/dcb3714a6c25db3a2748641019c5277413d09714)       | v0.8.3       | `dcb3714a6c25db3a2748641019c5277413d09714` | `24d3150cf1b94ced292df0888d7a169473ab6aeead44518718dd2bd96893e981` |   120,872 |
+| [panva/hpke](https://github.com/panva/hpke/tree/24456ca764f094228b5b292508236bc26d76eeed)                   | v1.1.7       | `24456ca764f094228b5b292508236bc26d76eeed` | `d2e5df0f2c01304a575bd5da0c0c734c60bee0dc994886aa964d5387a5e4dcbb` | 1,995,407 |
+
+The fflate source archive contains the missing original `src/index.ts`, both
+TypeScript configurations and a package manifest identifying `fflate@0.8.3`.
+The hpke archive contains the missing `build.cjs`, package lock, original
+`index.ts` and noble adapter example/build inputs. Its original `index.ts` is
+byte-identical to the retained npm source, SHA256
+`532fa3b5979e1b340d0a34c27c716e0cf2db1d58efcf4d3a6f0ca430288d3d30`.
+The full generated npm outputs have not been reproduced.
+
+The Lucide archive retains both identified `.mts` scripts, the Svelte package
+configuration, monorepo package lock and 1,866 original SVG icon files. Its
+`packages/svelte/package.json` declares version `0.1.0`, although the observed tag
+and locked npm package are `1.51.0`. Resolve the release's version-setting and
+generation process before claiming correspondence; the tag name alone cannot
+prove that these inputs reproduce the published package.
+
 ## Remaining review
 
 - [x] Inspect this ten-package subset against the actual replayed archive,
       distinguishing original source, generated files and embedded map text.
+- [x] Retain the three immutable upstream source archives identified above and
+      check the hpke original source against its locked npm input.
 - [ ] Determine the complete final browser import closure, including transitive
       runtime packages and build inputs needed to reproduce the distributed code.
 - [ ] Retain and verify missing exact upstream source/build inputs, including the

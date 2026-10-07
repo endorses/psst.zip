@@ -1039,6 +1039,11 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       hpke build-script gap, and embedded QR/tus source-map contents in the
       [application package inspection](../security/application-package-source-review.md).
       This ten-package subset does not establish complete source coverage.
+- [x] Retain immutable upstream Lucide, fflate and hpke source archives for
+      the identified missing build inputs. Verify hpke's original TypeScript
+      against the locked npm archive. Record source/archive hashes and Lucide's
+      version-setting discrepancy; complete reproduction, offering assembly and
+      source-completeness review remain pending.
 - [ ] Review package inputs for complete preferred-form upstream source, include
       all required sources in the final corresponding-source offering, bind the
       archive to authenticated release inputs, and verify public delivery.
