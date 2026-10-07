@@ -81,6 +81,80 @@ hosts and carry no credentials. Collected assets record upstream URLs and actual
 hashes. Retaining upstream signatures does not verify them: the inventory reports
 that verification separately and currently leaves it false.
 
+### Caddy legacy Sigstore signature verification
+
+`tools/verify_caddy_source_signatures.py` now verifies the retained buildable
+source archive and checksum-file signatures and emits a separate evidence file.
+It leaves the collector inventory and its distribution review state unchanged.
+Caddy v2.11.7's [exact release workflow](https://github.com/caddyserver/caddy/blob/72dd0fb067f6d7826c7f79907670ba4a713bfe37/.github/workflows/release.yml)
+pins cosign v2.6.5 for legacy detached signatures/certificates; its [signing configuration](https://github.com/caddyserver/caddy/blob/72dd0fb067f6d7826c7f79907670ba4a713bfe37/.goreleaser.yml)
+also selects SHA512 release checksums. These are Sigstore blob signatures, not
+GitHub artifact attestations. New-format releases need an explicit verifier
+migration rather than a weaker fallback.
+
+Download the [official cosign v2.6.5 executable](https://github.com/sigstore/cosign/releases/tag/v2.6.5)
+into your private review tooling directory. The verifier checks its actual bytes
+and build identity before execution. Supported official executable SHA256 pins
+are:
+
+| Executable           | SHA256                                                             |
+| -------------------- | ------------------------------------------------------------------ |
+| `cosign-linux-amd64` | `c3b4f5410e608af03a5eb0aaac84a4313d8da131248e08ff1759ac70c79d1644` |
+| `cosign-linux-arm64` | `426193b4c5da4d4d643e822f48fe0cc8a476ca1782a272704831f5a0cef716d7` |
+
+Both pins were matched against the official release asset digests and
+`cosign_checksums.txt`. The executable reports clean source commit
+`3e82f50a2839855693aacf7b3d0e7e2f30774cb4`.
+
+```sh
+python3 tools/verify_caddy_source_signatures.py \
+  --collection /private/release-review/caddy \
+  --cosign /private/release-review/tooling/cosign-linux-amd64 \
+  --output /private/release-review/caddy-signature-verification.json
+python3 tools/test_caddy_source_signatures.py
+```
+
+The output must be a new file. Verification requires public network access to
+Sigstore trust/transparency services and no credentials. Subprocesses receive
+only a system executable path and `SIGSTORE_NO_CACHE=1`; no inherited token,
+proxy, alternate trust-root or cosign option environment is passed. Public trust
+metadata remains in memory. Certificate transparency and Rekor verification
+remain mandatory; failures or service unavailability reject verification.
+
+The exact certificate policy for v2.11.7 is:
+
+| Claim                            | Expected value                                                                         |
+| -------------------------------- | -------------------------------------------------------------------------------------- |
+| Subject alternative-name URI     | `https://github.com/caddyserver/caddy/.github/workflows/release.yml@refs/tags/v2.11.7` |
+| OIDC issuer                      | `https://token.actions.githubusercontent.com`                                          |
+| Workflow repository/name/trigger | `caddyserver/caddy` / `Release` / `push`                                               |
+| Workflow ref                     | `refs/tags/v2.11.7`                                                                    |
+| Workflow commit                  | `72dd0fb067f6d7826c7f79907670ba4a713bfe37`                                             |
+
+The version and expected source commit come from the collected binary/source
+binding. Verification uses exact claims, never broad identity regular
+expressions. It authenticates both signatures, then matches the retained
+buildable source and architecture-specific executable archive against the
+signed SHA512 list. The evidence binds the input inventory, verifier and covered
+assets by hash and rechecks them before returning success.
+
+On 2026-10-07, real online verification of the official v2.11.7 downloads
+succeeded with this pinned verifier: both signatures returned exit 0 and
+`Verified OK`; the signed list matched both retained archives. These download
+tests used a collector-format replay inventory, not a new complete final-image
+collection. The verified buildable archive SHA256 was
+`b430516910839fbaf35c0a9e9df80d1e2e30aa792530293c39f4a97a1b2c9060`, and the
+verified checksum-file SHA256 was
+`5d27b76b95f496638d79208c55250317b8755fd9e90005f7466aa32956944a90`.
+Real negative checks also rejected a different workflow subject URI, OIDC
+issuer, source commit and modified checksum-file bytes, each with exit 1.
+
+This proof authenticates the two Caddy assets and their signed checksum
+bindings. It does not authenticate Alpine APK sources, other Docker/dist/Go
+source archives, or complete runtime legal compliance. Those gates and final
+image/source correspondence remain pending. Overall `review_required` remains
+true even after the Caddy signature gate succeeds.
+
 ## Pinned missing-notice review evidence
 
 `tools/runtime-legal/review.json` retains a bounded review of the four origins

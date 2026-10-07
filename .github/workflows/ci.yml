@@ -52,6 +52,7 @@ jobs:
           python3 tools/generate_native_notices.py --check-inputs-only
           python3 -m unittest discover -s tools -p 'test_native_notices.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_notices.py' -v
+          python3 -m unittest discover -s tools -p 'test_caddy_source_signatures.py' -v
           python3 tools/runtime-legal/verify.py
           python3 tools/runtime-legal/test_verify.py
 

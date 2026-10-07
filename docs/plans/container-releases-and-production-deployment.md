@@ -616,6 +616,17 @@ or source delivery. The MPL text retains its checksum-bound upstream bytes;
 only that file's trailing-space check is exempted through `.gitattributes`.
 CI verifies the evidence hashes and all secret detectors remain enabled.
 
+A separate Caddy signature verifier now checks the official source and checksum
+assets with exact upstream cosign 2.6.5 executable hashes, GitHub Actions issuer,
+release workflow/ref/commit identity and mandatory SCT/Rekor verification. Real
+AMD64 verification passed the v2.11.7 signatures and signed source/executable
+SHA512 bindings. Wrong workflow subject, issuer, commit and modified checksum
+bytes failed. Seven boundary tests passed. This used a collector-format replay
+of official assets; final-image correspondence remains pending. The sidecar keeps
+`review_required: true`, does not mutate collector output and explicitly does
+not verify APK or other source archives' signatures. Overall distribution review
+and source publication remain unfinished.
+
 All 31 updater boundary/fault tests passed, including real filesystem/SQLite
 checks and simulated Docker/GitHub failures. The complete 64-test release suite
 passed in 3.642 seconds. These establish implementation boundaries; actual Docker
