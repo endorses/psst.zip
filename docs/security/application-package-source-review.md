@@ -179,6 +179,18 @@ has an explicit embedded relationship to the exact locked scanner, with one
 primary upstream association. Exact commits, archive hashes and sizes are in
 `tools/upstream-application-sources.json`.
 
+Fresh official HTTPS collection against committed source
+`224d95042349e5cd37421a992810eef1c58ec14d` and planned `v0.1.0` passed in
+31.2 seconds; independent replay of all nine originals passed in 2.4 seconds.
+The 83,381,770-byte offering has SHA256
+`927428c006c88aadbef21622c2f9a43226f72a2cd59a3f6ebb8c036886786f87`.
+Private collection and replay evidence is retained under
+`/tmp/psst-upstream-source-offering-review-224d95042349/`; this is evidence,
+not a reusable download cache. The replay record has SHA256
+`efd2f247b2b71896b6857ca4e213423fdc9aa29556d946e914cb3ee73de7e106`.
+Source completeness, upstream build reproduction, authenticated publication,
+final hosted image correspondence and public retrieval remain unverified.
+
 Upstream build reproduction remains unrun. Noble declares jsbt 0.7.1 and
 TypeScript 6.0.3 inputs distinct from the application's retained compiler; clsx
 declares terser 4.8.0. qrcode's original Rollup/Babel recipe uses tooling distinct

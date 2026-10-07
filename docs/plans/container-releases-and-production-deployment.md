@@ -1123,9 +1123,13 @@ retention review passed.
       scanner/worker file hashes; retain a separate embedded-component inventory.
       Three focused fixtures and actual 173-package/one-component notice checks
       passed. No native mobile implementation bundles this JavaScript component.
-- [ ] Collect and independently replay the expanded common source offering from
-      its exact new committed catalog. Authenticate it and verify final hosted
-      image correspondence and public retrieval before publication.
+- [x] Collect and independently replay the expanded common source offering from
+      exact committed catalog `224d95042349e5cd37421a992810eef1c58ec14d` for
+      planned `v0.1.0`. Fresh official downloads of all nine originals took
+      31.2 seconds; independent replay took 2.4 seconds. The retained offering is
+      83,381,770 bytes. This is an explicit release check, not a routine unit test.
+- [ ] Authenticate the expanded offering and verify final hosted image
+      correspondence and public retrieval before publication.
 - [x] Keep new regressions limited to actual notice/input/archive failures with
       small local fixtures and no network calls. The complete release-tooling
       suite passed 307 tests in 23.3 seconds; web passed 127 tests in 1.4 seconds.
