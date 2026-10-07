@@ -1030,6 +1030,10 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       payloads. Bind thirteen subjects and seven assets, pin copied bytes to the
       verified digests, and reject collection substitution before output. Actual
       publication and public retrieval remain pending.
+- [x] Update the operator guide's assembly command with both required dependency
+      and source-scanner inputs, and describe the implemented read-only main
+      dispatch. Keep uploaded candidate summaries distinct from the complete
+      retained inputs needed for authenticated assembly.
 - [ ] Review package inputs for complete preferred-form upstream source, include
       all required sources in the final corresponding-source offering, bind the
       archive to authenticated release inputs, and verify public delivery.

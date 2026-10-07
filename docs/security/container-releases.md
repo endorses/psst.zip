@@ -14,15 +14,28 @@ the tag's full source commit to match the triggering event and be reachable from
 `main`, and calls the reusable CI workflow from that same commit. All five CI
 jobs remain required, including native iOS and Android/shared checks.
 
-After CI succeeds, it resolves the application base-image indexes and BuildKit
-builder once and checks their AMD64 and ARM64 coverage. Separate native runners
-build and smoke-test the paired images for each architecture, recording the
-pinned bases and actual toolchains. The smoke harness locks execution to checked
-configuration IDs and records actual checks, native/emulated execution and
-cleanup in `image-smoke.json`. Only candidate metadata is uploaded as
-temporary Actions artifacts. Image archives remain private to each runner and
-are removed after checking. These outputs are not authenticated release manifests
-or installable deployment bundles.
+A main-only manual dispatch accepts an unused planned version, defaulting to
+`v0.1.0`, without creating a tag or release. It can exercise preparation before
+publication is enabled. Its successful checks cannot satisfy the exact-tag
+publication gate.
+
+After CI succeeds, the workflow resolves the application base-image indexes and
+BuildKit builder once and checks their AMD64 and ARM64 coverage. Separate native
+runners build the paired images and retain genuine build records and original
+Docker saves. Each runner then collects runtime sources, verifies signed Caddy
+sources, applies source/notice overlays, smoke-tests the final configurations,
+exports OCI archives without changing tested configuration bytes and independently
+replays runtime source correspondence. It also scans the exact archived
+application sources and final OCI images, measures compiler/dependency graphs,
+and retains selected Go/npm package inputs against committed locks.
+
+Only bounded unsigned records and complete scanner findings are uploaded as
+short-lived candidate artifacts. Image archives, source archives and raw compiler
+receipts remain private to each runner and are removed after checking; uploaded
+summaries cannot replace the full retained inputs required by release assembly
+and authenticated gates. The complete AMD64 preparation was exercised locally;
+the integrated hosted run and native ARM64 verification remain pending. These
+outputs are neither installable bundles nor publication approval.
 
 Docker's local `--load` exporter can report a configuration digest in its
 `containerimage.digest` field. Candidate records retain that raw metadata, but
@@ -293,9 +306,15 @@ actual final OCI exports, measurements, source packs and build records. Each job
 can complete its local measurements before the release manifest exists. The
 assembly step checks both native platforms, shared immutable bases, matching
 actual Go/Node versions, exact smoke-tested configurations and OCI bytes, and
-source asset hashes. It creates deterministic paired indexes, the deployment
-bundle, detached manifest and an application source archive from the exact tagged
-Git tree. Untracked operator files and research are excluded by `git archive`.
+source asset hashes. Both architecture-specific dependency collections are
+independently replayed against committed locks and complete source-scanner
+receipts. Assembly copies both runtime and both dependency archives into its
+output, pinning retained bytes to the verified hashes. It creates deterministic
+paired indexes, the deployment bundle, detached manifest and an application
+source archive from the exact tagged Git tree: seven release assets and thirteen
+bound subjects in total. Untracked operator files and research are excluded by
+`git archive`. Package integrity does not establish that every upstream package
+contains complete preferred-form source; that review remains required.
 
 Use a new private output directory and the actual selected version/commit:
 
@@ -315,6 +334,10 @@ python3 tools/prepare_release_inputs.py \
   --archive "web-amd64=$REVIEW_DIR/amd64/export/web-amd64.oci.tar" \
   --archive "backend-arm64=$REVIEW_DIR/arm64/export/backend-arm64.oci.tar" \
   --archive "web-arm64=$REVIEW_DIR/arm64/export/web-arm64.oci.tar" \
+  --dependencies "linux/amd64=$REVIEW_DIR/amd64/application-dependencies" \
+  --dependencies "linux/arm64=$REVIEW_DIR/arm64/application-dependencies" \
+  --source-scan "linux/amd64=$REVIEW_DIR/amd64/source-scans/source-scan-measurement.json" \
+  --source-scan "linux/arm64=$REVIEW_DIR/arm64/source-scans/source-scan-measurement.json" \
   --migration-notes "$PSST_MIGRATION_NOTES" --rollback-notes "$PSST_ROLLBACK_NOTES" \
   --output "$REVIEW_DIR/prepared"
 ```
