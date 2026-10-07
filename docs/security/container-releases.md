@@ -269,7 +269,9 @@ that the build project classifies as development dependencies.
 
 Source archive locators and application inventories do not by themselves establish
 complete distribution compliance. Hosted source/legal discovery and native
-notices are implemented; actual new iOS packaging awaits macOS CI.
+notices are implemented. [macOS CI run 37669775085](https://github.com/endorses/psst.zip/actions/runs/37669775085)
+passed all 176 XCTest cases on `b697119`, including actual app and embedded share
+extension license, notice, inventory and source-resource packaging assertions.
 Corresponding-source publication and the selected Caddy/Alpine runtime
 distribution's obligations remain release gates. The patched private
 AMD64 source pack, served runtime overlays and final-image scan review have

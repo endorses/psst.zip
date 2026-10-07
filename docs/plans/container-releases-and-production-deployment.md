@@ -557,8 +557,14 @@ the native candidate matrix, publication and production deployment remain pendin
 - [x] Verify web source metadata boundaries and browser discovery, Android build,
       focused JVM tests and packaged APK assets, portable Swift metadata tests,
       localization/source checks and resolved native notice freshness locally.
-- [ ] Verify the new iOS UI and actual app/share-extension legal resource packaging
-      assertions in the next macOS CI run. Earlier green runs predate these changes.
+- [x] Verify the new iOS views compile and actual app/share-extension legal
+      resource packaging assertions pass on macOS CI. Run
+      [37669775085](https://github.com/endorses/psst.zip/actions/runs/37669775085)
+      passed all five jobs on `b697119ba81c3aaf18725f38869b778f2e59df9d`.
+      All 176 native XCTest cases passed in 132.951 seconds, including the
+      real app and embedded extension license/notices/inventory/source-resource
+      test and source metadata boundaries. This does not establish physical-device
+      navigation, App Store signing or store distribution approval.
 - [x] Implement isolated APK source collection bound to exact installed origin,
       version and aports commit, including lower-layer package versions, original
       source checksum verification and local helper copyright notices.
