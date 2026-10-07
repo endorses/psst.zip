@@ -978,6 +978,33 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       workflow. Historical compiler measurements using tagged builder names
       cannot substitute for corrected canonical-reference measurements.
 
+### Integrated read-only native candidate verification
+
+- [x] Wire genuine paired build records and exact saves into native preparation,
+      final image smoke, actual source/image scanning, backend/Caddy compiler
+      correspondence and application dependency retention on both native matrix
+      runners. Keep publication, signing and production permissions absent.
+- [x] Add a main-only pre-tag dispatch for unused planned `v0.1.0`, preserving
+      strict tag-push validation. Verify exact HEAD/main ancestry and reject
+      existing version tags without creating or moving them. Main dispatch
+      records explicitly cannot establish the final tagged source-CI gate.
+- [x] Validate actionlint, embedded shell/Python syntax, thirteen real-Git
+      candidate tests, and bounded report copying against thirteen actual new
+      AMD64 records. Preserve all 21 backend/one Caddy findings; omit image/source
+      payloads and private diagnostics. Correct the Cosign download size bound
+      against its actual pinned 137,225,264-byte executable.
+- [x] Repeat corrected exact-image compiler and fresh official database scan
+      commands on `c73a5da`: backend reproduction matched its 236-package graph,
+      Caddy signed correspondence matched 970 packages/147 module pairs, and both
+      final OS graphs had zero findings with all module findings retained.
+      The complete local release test discovery passed 199 tests in 9.7 seconds.
+- [ ] Push this verified checkpoint with scoped authorization, run the new
+      read-only hosted dispatch on the exact pushed source, and resolve actual
+      ARM64/integration failures. Complete authenticated full gate assembly,
+      corresponding-source/distribution review, registry/release publication
+      and production migration separately. See the
+      [native preparation guide](../security/container-native-preparation.md).
+
 ### Application dependency input retention
 
 - [x] Retain every selected Go module ZIP/module/version input and all npm locked

@@ -94,3 +94,39 @@ the corresponding runtime source archive SHA256 is
 `9feb647140d603bb6b81a3495cf7ae6cd90bb8f2d37ab5d7dd9ead3a978f4515`.
 These are private planned-version inputs, not a published release. Native ARM64
 execution, authenticated measurements and final publication gates remain pending.
+
+The corrected source/compiler/scanner commands also passed on those exact AMD64
+inputs: source scanning retained 21 module-only Go findings and zero npm findings;
+the 236-package backend graph reproduced the executable bytes, and Caddy's
+970-package graph matched its signed source/binary and 147 embedded module pairs.
+Fresh official database scans retained all 21 backend and one Caddy module
+finding, with zero OS findings. These unsigned measurements remain separate from
+authenticated finding dispositions and release approval.
+
+## Read-only hosted verification
+
+After the workflow changes are pushed, run native verification before creating
+the first release tag:
+
+```sh
+gh workflow run release.yml --ref main -f planned_version=v0.1.0
+```
+
+The dispatch path requires the exact checked-out main commit, main ancestry and
+an unused strict version. It creates no tag. The existing tag-push path still
+validates the exact tag and event commit. A main dispatch cannot establish the
+tagged source-CI gate needed for publication.
+
+Both native runners execute exact source CI, source preparation, final smoke,
+fresh source/image scans, compiler correspondence and application dependency
+retention. Only bounded candidate JSON records and full scanner JSON are uploaded;
+image/source payloads and private diagnostics are removed after measurement.
+Compiler summaries have a distinct partial-evidence kind and cannot substitute
+for the full authenticated inputs needed by final gate aggregation.
+
+The workflow retains read-only repository permissions and disabled checkout
+credentials. Local actionlint, shell/Python syntax checks, thirteen real-Git
+candidate tests and replay of the report copier against all thirteen actual
+AMD64 records passed. The copier retained every finding without truncation;
+malformed, oversized, linked and protected-data records were rejected. Actual
+hosted execution of this extended workflow remains pending.
