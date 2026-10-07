@@ -162,6 +162,17 @@ class DependencyReplay(unittest.TestCase):
         self.assertFalse(result["publication_authorized"])
         self.assertFalse(result["corresponding_source_completeness_verified"])
         self.assertEqual(result["archive_sha256"], sha256(self.archive.read_bytes()))
+        self.assertEqual(
+            result["go_module_inputs"],
+            [
+                {
+                    "module": self.fixture.module,
+                    "version": self.fixture.version,
+                    "sum": self.fixture.zip_sum,
+                    "zip_sha256": sha256(self.fixture.zip),
+                }
+            ],
+        )
         self.assertEqual(set(Path("/tmp").glob("psst-dependency-replay-*")), before)
 
     def test_archive_hash_collection_identity_platform_name_and_origin_drift_fail(self):

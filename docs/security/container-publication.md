@@ -190,6 +190,36 @@ retention closes the identified missing-original inputs; exact generated-source
 relationships, remaining generator inputs and full completeness still require
 verification before publication. Collection and replay do not grant approval.
 
+`verify_backend_source_inputs` now authenticates both native backend compiler
+measurements and reuses their existing final-image reproduction checks. It
+compares the compiler's application snapshot against one independently read Git
+archive, then independently replays dependency originals once per platform. Each
+compiled dependency must match a retained module's path, version, H1 checksum and
+original ZIP digest. Additional verified build-only modules may remain in the
+offering. Source/runtime/image subjects and retained bytes are checked again
+before returning. This adds no compiler execution or scanner pass and still
+produces partial source facts, not a passed completeness gate.
+
+The runtime collection now retains the complete Go source tree selected by
+`tools/go-runtime-sources.json`. The current Go 1.26.8 original is pinned to commit
+`c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e`, archive SHA256
+`061b4e784db7ce97cd9ae99ea71a857a2ff8455c6400495e5d1a98b8accd2542`.
+The collector checks the resolved official tag against that committed pin and
+retains original runtime, standard-library, compiler and build sources. Go test
+archives remain untouched source-tree fixtures; they are not recursively parsed
+as distributed libraries. The bounded reader preserves all 38 original notice
+files found in this tree.
+
+Packaging reads actual backend and Caddy executable metadata without executing
+either program, requires both `GoVersion` values to match the retained tree, and
+adds the original Go notices to the backend overlay as well as the web overlay.
+Independent runtime replay checks the archived policy against the trusted selected
+source, the full original archive and VERSION, and both final executable versions.
+These Go sources are separately pinned; Caddy's signatures do not authenticate
+the Go archive. The existing AMD64 executable pair was checked against this
+original in three seconds. New final runtime packs, both architecture executions
+and hosted authentication remain pending.
+
 ### Native image scanner measurements
 
 `tools/measure_release_image_scans.py` validates the actual OCI archive graph,

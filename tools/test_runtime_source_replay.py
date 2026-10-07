@@ -46,6 +46,152 @@ class ReplayTests(unittest.TestCase):
         path.write_bytes(gzip.compress(tar_bytes(entries), mtime=0))
         return path
 
+    def go_source_fixture(self, entries=None):
+        folder = self.root / "go-collection"
+        folder.mkdir(exist_ok=True)
+        commit, version = "a" * 40, "go1.26.8"
+        prefix = "go-" + commit
+        if entries is None:
+            entries = [
+                ("LICENSE", b"Original Go BSD terms\n"),
+                ("PATENTS", b"Original Go patent grant\n"),
+                ("VERSION", b"go1.26.8\ntime 2026-08-28T16:20:06Z\n"),
+                ("src/go.mod", b"module std\n"),
+                ("src/runtime/proc.go", b"package runtime\n"),
+                ("src/cmd/compile/main.go", b"package main\n"),
+                ("src/make.bash", b"#!/bin/bash\n"),
+                ("src/vendor/example/LICENSE", b"Original vendored terms\n"),
+                (
+                    "src/archive/zip/testdata/invalid.zip",
+                    b"deliberately malformed fixture",
+                ),
+            ]
+        raw = gzip.compress(
+            tar_bytes([(prefix + "/" + name, data) for name, data in entries]), mtime=0
+        )
+        name = prefix + ".tar.gz"
+        (folder / name).write_bytes(raw)
+        for notice in ("LICENSE", "PATENTS"):
+            (folder / ("go-" + notice)).write_bytes(
+                dict(entries).get(notice, b"absent")
+            )
+        pinned = {
+            "version": version,
+            "commit": commit,
+            "file": name,
+            "url": f"https://codeload.github.com/golang/go/tar.gz/{commit}",
+            "sha256": digest(raw)[7:],
+            "size": len(raw),
+        }
+        policy = self.root / "go-runtime-sources.json"
+        policy.write_bytes(
+            json_bytes(
+                {
+                    "schema_version": 1,
+                    "kind": "pinned-go-runtime-sources",
+                    "sources": [pinned],
+                }
+            )
+        )
+        version_file = dict(entries).get("VERSION")
+        inventory = {
+            "go_version": version,
+            "go_source_revision": commit,
+            "go_source": {key: value for key, value in pinned.items() if key != "url"}
+            | {
+                "version_file_sha256": (
+                    digest(version_file)[7:] if version_file is not None else None
+                )
+            },
+            "sources": [
+                {"file": name, "sha256": pinned["sha256"], "url": pinned["url"]}
+            ],
+        }
+        return folder, inventory, policy, entries
+
+    def test_full_go_source_preserves_original_notices_and_malformed_test_fixtures(
+        self,
+    ):
+        folder, inventory, policy, entries = self.go_source_fixture()
+        archive = folder / inventory["go_source"]["file"]
+        original = archive.read_bytes()
+        with patch.object(replay.caddy, "GO_SOURCE_POLICY", policy):
+            notices = replay.caddy.verify_go_source(folder, inventory)
+            self.assertEqual(
+                notices["go-" + "a" * 40 + "/src/vendor/example/LICENSE"],
+                b"Original vendored terms\n",
+            )
+            self.assertEqual(len(notices), 3)
+            replay.caddy.verify_binary_go_source({"GoVersion": "go1.26.8"}, inventory)
+            for version in ("go1.26.7", "devel go1.27", None):
+                with self.subTest(version=version), self.assertRaises(InvalidRelease):
+                    replay.caddy.verify_binary_go_source(
+                        {"GoVersion": version}, inventory
+                    )
+        self.assertEqual(archive.read_bytes(), original)
+        folder, inventory, policy, _ = self.go_source_fixture(
+            [(name, data) for name, data in entries if name != "VERSION"]
+        )
+        with patch.object(replay.caddy, "GO_SOURCE_POLICY", policy):
+            self.assertEqual(len(replay.caddy.verify_go_source(folder, inventory)), 3)
+
+    def test_go_source_rejects_missing_runtime_wrong_version_or_substituted_policy_and_notices(
+        self,
+    ):
+        folder, inventory, policy, entries = self.go_source_fixture()
+        with patch.object(replay.caddy, "GO_SOURCE_POLICY", policy):
+            changed = copy.deepcopy(inventory)
+            changed["go_source"]["sha256"] = "f" * 64
+            changed["sources"][0]["sha256"] = "f" * 64
+            with self.assertRaisesRegex(InvalidRelease, "committed pinned policy"):
+                replay.caddy.verify_go_source(folder, changed)
+            changed = copy.deepcopy(inventory)
+            changed["sources"][0]["url"] = "https://other.example/go.tar.gz"
+            with self.assertRaisesRegex(InvalidRelease, "retained source binding"):
+                replay.caddy.verify_go_source(folder, changed)
+            (folder / "go-LICENSE").write_bytes(b"different owner or terms")
+            with self.assertRaisesRegex(InvalidRelease, "legal files differ"):
+                replay.caddy.verify_go_source(folder, inventory)
+        for mutated in (
+            [(name, data) for name, data in entries if name != "src/runtime/proc.go"],
+            [
+                (name, b"go1.26.7\n" if name == "VERSION" else data)
+                for name, data in entries
+            ],
+            entries + [("src/runtime/proc.go", b"duplicate source")],
+        ):
+            folder, inventory, policy, _ = self.go_source_fixture(mutated)
+            with patch.object(
+                replay.caddy, "GO_SOURCE_POLICY", policy
+            ), self.assertRaises(InvalidRelease):
+                replay.caddy.verify_go_source(folder, inventory)
+        link = tarfile.TarInfo("go-" + "a" * 40 + "/src/runtime/link.go")
+        link.type, link.linkname = tarfile.SYMTYPE, "/etc/passwd"
+        folder, inventory, policy, _ = self.go_source_fixture(
+            entries + [("src/runtime/link.go", link)]
+        )
+        with patch.object(
+            replay.caddy, "GO_SOURCE_POLICY", policy
+        ), self.assertRaisesRegex(
+            InvalidRelease, "Unsupported Go runtime source member"
+        ):
+            replay.caddy.verify_go_source(folder, inventory)
+
+    def test_go_executable_metadata_is_read_without_executing_the_program(self):
+        def read_metadata(*args):
+            self.assertEqual(args[:4], ("go", "version", "-m", "-json"))
+            self.assertEqual(Path(args[4]).read_bytes(), b"executable bytes")
+            self.assertEqual(Path(args[4]).stat().st_mode & 0o111, 0)
+            return json_bytes({"GoVersion": "go1.26.8"})
+
+        with patch.object(replay.caddy, "command", side_effect=read_metadata) as reader:
+            self.assertEqual(
+                replay.caddy.binary_build_info(b"executable bytes"),
+                {"GoVersion": "go1.26.8"},
+            )
+        reader.assert_called_once()
+        self.assertFalse(Path(reader.call_args.args[4]).exists())
+
     def test_exact_existing_bytes_are_replayed_without_repackaging(self):
         path = self.source_asset(
             [("recipe/LICENSE", b"Copyright actual owner\nFull terms \n")]

@@ -1110,7 +1110,7 @@ def measure_compiler_graph(
                 cosign is not None,
                 "Caddy graph requires actual upstream signature verifier",
             )
-            caddy_inventory, proof, _ = replay.verify_caddy_collection(
+            caddy_inventory, proof, _, _ = replay.verify_caddy_collection(
                 sources / "caddy",
                 cosign,
                 binary,

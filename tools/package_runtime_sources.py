@@ -33,6 +33,7 @@ from collect_runtime_notices import (
     verify_source_package,
 )
 from collect_caddy_sources import archive_member
+import collect_caddy_sources as caddy_source
 from release_artifacts import (
     COMMIT,
     DIGEST,
@@ -304,6 +305,7 @@ def image_binding(inventory: dict, component: str, version: str, revision: str) 
         info["Id"],
         binary,
     )
+    go_build = caddy_source.binary_build_info(actual)
     database = command(
         "docker",
         "run",
@@ -349,6 +351,11 @@ def image_binding(inventory: dict, component: str, version: str, revision: str) 
         "runtime_config_sha256": digest(json_bytes(info["Config"])),
         "binary_path": binary,
         "binary_sha256": digest(actual),
+        "go_version": matches(
+            go_build.get("GoVersion"),
+            caddy_source.GO_VERSION,
+            "Unsupported runtime executable GoVersion",
+        ),
         "final_packages": graph(packages(database)),
         "retained_packages": graph(inventory["packages"]),
         "retained_graph_sha256": digest(json_bytes(graph(inventory["packages"]))),
@@ -525,12 +532,21 @@ def package(
         not caddy_inventory["nested_non_archives_requiring_review"],
         "Unreviewed Caddy nested source fixture",
     )
+    go_policy_bytes = read(
+        caddy_source.GO_SOURCE_POLICY.parent, caddy_source.GO_SOURCE_POLICY.name
+    )
+    go_notices = caddy_source.verify_go_source(caddy, caddy_inventory)
+    go_archive_name = caddy_inventory["go_source"]["file"]
     supplied = {}
     for asset in caddy_inventory["sources"]:
         name = asset["file"]
         path = caddy / safe_member(name)
         require(file_hash(path) == asset["sha256"], "Caddy source asset differs")
-        if name.endswith(".tar.gz") and "_linux_" not in name:
+        if name == go_archive_name:
+            supplied.update(
+                {name + "::" + member: data for member, data in go_notices.items()}
+            )
+        elif name.endswith(".tar.gz") and "_linux_" not in name:
             invalid = []
             for member, content in source_notices(path, non_archives=invalid).items():
                 supplied[name + "::" + member] = content
@@ -557,6 +573,13 @@ def package(
         "backend": image_binding(backend_inventory, "backend", version, revision),
         "web": image_binding(web_inventory, "web", version, revision),
     }
+    for binding in bindings.values():
+        caddy_source.verify_binary_go_source(
+            {"GoVersion": binding["go_version"]}, caddy_inventory
+        )
+    caddy_source.verify_binary_go_source(
+        json.loads(read(caddy, "build-info.json")), caddy_inventory
+    )
     binary_name = f"caddy_{caddy_inventory['version'][1:]}_linux_{web_inventory['architecture']}.tar.gz"
     require(
         digest(archive_member(caddy / binary_name, "caddy", 512 * 1024 * 1024))
@@ -605,7 +628,13 @@ helper package graph. The helper is build tooling; its binaries are not shipped.
 For Caddy, the buildable-artifact tarball includes main.go, go.mod, go.sum and
 the complete vendor tree. Build it using the recorded Go version and settings
 from caddy/build-info.json, following the retained release recipe. Exact
-caddy-docker/dist archives and Go runtime license/patent notices are retained.
+caddy-docker/dist archives and the complete pinned Go runtime/compiler source
+archive are retained. go-runtime-sources.json records the Go version, full source
+commit, original archive URL and checksum. The same source supplies both final
+executables' GoVersion. Extract its original tree and use src/make.bash with a
+compatible bootstrap toolchain; preserve its VERSION file. If the source tree
+has no VERSION, write the recorded exact go version followed by a newline there
+before building. Original runtime/standard-library notices are retained in full.
 
 MIT metadata/public-key treatment preserves all notices actually supplied,
 declared licensing and complete terms without assigning a fabricated owner.
@@ -620,6 +649,12 @@ This local pack does not publish assets or approve an App Store release.
     (content / "runtime-sources.Dockerfile").write_bytes(
         (ROOT / "tools/runtime-sources.Dockerfile").read_bytes()
     )
+    require(
+        read(caddy_source.GO_SOURCE_POLICY.parent, caddy_source.GO_SOURCE_POLICY.name)
+        == go_policy_bytes,
+        "Trusted Go runtime source policy changed during packaging",
+    )
+    (content / "go-runtime-sources.json").write_bytes(go_policy_bytes)
     (content / "image-bindings.json").write_bytes(json_bytes(bindings))
     (content / "artifact-provenance.json").write_bytes(json_bytes(provenance))
     asset = output / asset_name
@@ -639,7 +674,10 @@ This local pack does not publish assets or approve an App Store release.
         + b"\nCaddy, vendored modules and Go runtime\n"
         + caddy_notices
     )
-    for component, notices in (("backend", backend_notices), ("web", combined)):
+    backend_full_notices = (
+        backend_notices + b"\nGo runtime\n" + caddy_source.go_notice_text(go_notices)
+    )
+    for component, notices in (("backend", backend_full_notices), ("web", combined)):
         context = output / "overlays" / component
         runtime = context / "runtime"
         runtime.mkdir(parents=True)

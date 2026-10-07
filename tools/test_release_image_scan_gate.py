@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import aggregate_release_image_scans as aggregate
+import generate_corresponding_source_review as corresponding
 import test_release_gate_reports as native_fixtures
 from generate_release_gate_reports import NativeSourceContext
 from publish_container_release import sha256
@@ -570,6 +573,164 @@ class ImageScanGateChecks(unittest.TestCase):
         self.save_graph(target)
         with self.assertRaisesRegex(InvalidRelease, "source asset differs"):
             self.aggregate()
+
+    def test_backend_source_binds_both_actual_binaries_to_verified_retained_modules(
+        self,
+    ):
+        git_archive = b"committed fixture archive"
+        source_scans, collections, replays = {}, {}, {}
+        subjects = dict(self.binding.subjects)
+        for platform in aggregate.PLATFORMS:
+            arch = platform.split("/")[1]
+            folder = self.root / ("dependency-" + arch)
+            folder.mkdir()
+            collections[platform] = folder
+            asset_name = (
+                f"psst.zip-dependency-inputs-{self.binding.version}-{arch}.tar.gz"
+            )
+            asset = b"independently replayed fixture dependency originals"
+            (folder / asset_name).write_bytes(asset)
+            (folder / "dependency-collection.json").write_bytes(b"fixture collection")
+            scan = folder / "source-scan-measurement.json"
+            scan.write_bytes(
+                json_bytes(
+                    {
+                        "source": corresponding.NativeSourceContext(
+                            self.binding.repository,
+                            self.binding.version,
+                            self.binding.commit,
+                            platform,
+                        ).checked(),
+                        "scans": [],
+                    }
+                )
+            )
+            source_scans[platform] = scan
+            self.auth.trust(scan)
+            subjects["source:" + asset_name] = (
+                "file:" + asset_name + "@" + sha256(asset)
+            )
+            target = "backend-" + arch
+            self.graph_records[target]["source_inputs"][
+                "application_archive_sha256"
+            ] = sha256(git_archive)
+            self.save_graph(target)
+            replays[platform] = {
+                "source": read_json(scan.read_bytes())["source"],
+                "package_inputs_replayed": True,
+                "source_measurement_sha256": sha256(scan.read_bytes()),
+                "archive_sha256": sha256(asset),
+                "collection_sha256": sha256(b"fixture collection"),
+                "go_modules": 2,
+                "go_module_inputs": [
+                    {
+                        "module": "golang.org/x/crypto",
+                        "version": "v0.57.0",
+                        "sum": "h1:" + "A" * 43 + "=",
+                        "zip_sha256": sha256(b"crypto"),
+                    },
+                    {
+                        "module": "build-only-module",
+                        "version": "v1.0.0",
+                        "sum": "h1:" + "B" * 43 + "=",
+                        "zip_sha256": sha256(b"build tool"),
+                    },
+                ],
+            }
+        binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
+
+        def replay(context, root, collection, scan):
+            self.assertEqual(
+                (root, collection, scan),
+                (
+                    self.root,
+                    collections[context.platform],
+                    source_scans[context.platform],
+                ),
+            )
+            return replays[context.platform]
+
+        def verify(**overrides):
+            return corresponding.verify_backend_source_inputs(
+                binding,
+                **{
+                    "root": self.root,
+                    "native_measurements": self.native_measurements,
+                    "runtime_packs": self.native.packs,
+                    "dependency_collections": collections,
+                    "source_scans": source_scans,
+                    "compiler_graphs": {
+                        key: value
+                        for key, value in self.graphs.items()
+                        if key.startswith("backend-")
+                    },
+                    "authenticator": self.auth,
+                    **overrides,
+                },
+            )
+
+        with patch.object(
+            corresponding, "git", return_value=git_archive
+        ) as git_read, patch.object(
+            corresponding.dependency_inputs, "verify", side_effect=replay
+        ):
+            result = verify()
+            git_read.assert_called_once_with(self.root, "archive", binding.commit)
+            self.assertEqual(set(result["images"]), {"backend-amd64", "backend-arm64"})
+            self.assertTrue(result["backend_source_inputs_verified"])
+            self.assertFalse(result["corresponding_source_completeness_verified"])
+            self.assertFalse(result["publication_authorized"])
+            self.assertEqual(
+                len(result["images"]["backend-amd64"]["binary_module_inputs"]), 1
+            )
+            with self.assertRaisesRegex(InvalidRelease, "unsigned"):
+                verify(authenticator=FixtureAuthenticator())
+            for path in (self.graphs["backend-amd64"], source_scans["linux/amd64"]):
+                content = path.read_bytes()
+                self.auth.trusted.remove(content)
+                with self.subTest(unsigned=path.name), self.assertRaisesRegex(
+                    InvalidRelease, "unsigned"
+                ):
+                    verify()
+                self.auth.trusted.add(content)
+            for inputs in (
+                "source_scans",
+                "compiler_graphs",
+                "dependency_collections",
+                "runtime_packs",
+            ):
+                with self.subTest(missing=inputs), self.assertRaises(InvalidRelease):
+                    verify(**{inputs: {}})
+            target = "backend-amd64"
+            original = copy.deepcopy(self.graph_records[target])
+            self.graph_records[target]["source_inputs"][
+                "application_archive_sha256"
+            ] = sha256(b"wrong commit archive")
+            self.save_graph(target)
+            with self.assertRaisesRegex(InvalidRelease, "source archive differs"):
+                verify()
+            self.graph_records[target] = original
+            self.save_graph(target)
+            original_replay = copy.deepcopy(replays["linux/amd64"])
+            replays["linux/amd64"]["archive_sha256"] = sha256(b"other asset")
+            with self.assertRaisesRegex(InvalidRelease, "publication binding"):
+                verify()
+            replays["linux/amd64"] = copy.deepcopy(original_replay)
+            replays["linux/amd64"]["source"]["platform"] = "linux/arm64"
+            with self.assertRaisesRegex(InvalidRelease, "native source scan"):
+                verify()
+            replays["linux/amd64"] = copy.deepcopy(original_replay)
+            for key in ("version", "sum"):
+                replays["linux/amd64"]["go_module_inputs"][0][key] = "different"
+                with self.subTest(module_field=key), self.assertRaisesRegex(
+                    InvalidRelease, "version/checksum"
+                ):
+                    verify()
+                replays["linux/amd64"] = copy.deepcopy(original_replay)
+            replays["linux/amd64"]["go_module_inputs"].pop(0)
+            replays["linux/amd64"]["go_modules"] = 1
+            with self.assertRaisesRegex(InvalidRelease, "version/checksum"):
+                verify()
 
 
 if __name__ == "__main__":

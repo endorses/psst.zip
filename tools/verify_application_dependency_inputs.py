@@ -434,6 +434,15 @@ def verify(
         "selected_go_graph_sha256": sha256(source_modules),
         "npm_lock_graph_sha256": sha256(npm_graph),
         "go_modules": len(replayed),
+        "go_module_inputs": [
+            {
+                "module": row["module"],
+                "version": row["version"],
+                "sum": row["sum"],
+                "zip_sha256": row["inputs"]["zip"]["sha256"],
+            }
+            for row in replayed
+        ],
         "npm_packages": len(replayed_npm),
         "additional_sums": len(added),
         "package_inputs_replayed": True,

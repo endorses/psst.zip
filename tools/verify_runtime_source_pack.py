@@ -272,7 +272,7 @@ def replay_image(
 
 def verify_caddy_collection(
     folder: Path, cosign: Path, binary: bytes, binding: dict
-) -> tuple[dict, dict, bytes]:
+) -> tuple[dict, dict, bytes, dict[str, bytes]]:
     inventory = json.loads(pack.read(folder, "caddy-source-inventory.json"))
     require(
         inventory["image_id"] == binding["original_image_id"],
@@ -283,6 +283,8 @@ def verify_caddy_collection(
         not inventory["nested_non_archives_requiring_review"],
         "Unreviewed Caddy source fixture",
     )
+    go_notices = caddy.verify_go_source(folder, inventory)
+    go_archive_name = inventory["go_source"]["file"]
     notices = {}
     for asset in inventory["sources"]:
         name = asset["file"]
@@ -291,7 +293,11 @@ def verify_caddy_collection(
             pack.file_hash(path) == asset["sha256"],
             "Caddy retained source asset differs",
         )
-        if name.endswith(".tar.gz") and "_linux_" not in name:
+        if name == go_archive_name:
+            notices.update(
+                {name + "::" + member: data for member, data in go_notices.items()}
+            )
+        elif name.endswith(".tar.gz") and "_linux_" not in name:
             invalid = []
             notices.update(
                 {
@@ -326,12 +332,10 @@ def verify_caddy_collection(
         pack.file_hash(folder / "build-info.json") == inventory["build_info_sha256"],
         "Recorded Caddy build information differs",
     )
-    with tempfile.TemporaryDirectory(prefix="psst-source-caddy-info-") as temporary:
-        executable = Path(temporary) / "caddy"
-        executable.write_bytes(binary)
-        actual = json.loads(command("go", "version", "-m", "-json", str(executable)))
+    actual = caddy.binary_build_info(binary)
     expected = json.loads(pack.read(folder, "build-info.json"))
     require(actual == expected, "Actual Caddy executable module/build metadata differs")
+    caddy.verify_binary_go_source(actual, inventory)
     source = folder / f"caddy_{short}_buildable-artifact.tar.gz"
     caddy.verify_modules(
         actual,
@@ -345,7 +349,7 @@ def verify_caddy_collection(
         and settings.get("vcs.modified") == "false",
         "Caddy source/toolchain revision differs",
     )
-    return inventory, signatures, full
+    return inventory, signatures, full, go_notices
 
 
 def verify(
@@ -399,6 +403,13 @@ def verify(
     with tempfile.TemporaryDirectory(prefix="psst-runtime-source-replay-") as temporary:
         root = Path(temporary)
         extract_source_asset(asset, root, source_sha256)
+        go_policy_bytes = pack.read(
+            caddy.GO_SOURCE_POLICY.parent, caddy.GO_SOURCE_POLICY.name
+        )
+        require(
+            pack.read(root, "go-runtime-sources.json") == go_policy_bytes,
+            "Archived Go runtime source policy differs from trusted selected source",
+        )
         instructions = pack.read(root, "SOURCE.md").decode()
         require(
             all(
@@ -469,11 +480,25 @@ def verify(
                 identity,
                 smoke["tested_configs"][component],
             )
-        caddy_inventory, signatures, caddy_notices = verify_caddy_collection(
-            root / "caddy",
-            cosign,
-            binaries["web"],
-            {**manifest["bindings"]["web"], "architecture": manifest["architecture"]},
+        caddy_inventory, signatures, caddy_notices, go_notices = (
+            verify_caddy_collection(
+                root / "caddy",
+                cosign,
+                binaries["web"],
+                {
+                    **manifest["bindings"]["web"],
+                    "architecture": manifest["architecture"],
+                },
+            )
+        )
+        backend_build = caddy.binary_build_info(binaries["backend"])
+        caddy.verify_binary_go_source(backend_build, caddy_inventory)
+        require(
+            manifest["bindings"]["backend"].get("go_version")
+            == backend_build["GoVersion"]
+            and manifest["bindings"]["web"].get("go_version")
+            == caddy_inventory["go_version"],
+            "Retained executable GoVersion bindings differ from actual OCI binaries",
         )
         provenance = pack.artifact_provenance(
             inventories["backend"], inventories["web"], caddy_inventory, signatures
@@ -491,12 +516,20 @@ def verify(
             + b"\nCaddy, vendored modules and Go runtime\n"
             + caddy_notices
         )
-        for component, full in [("backend", notices["backend"]), ("web", combined)]:
+        backend_notices = (
+            notices["backend"] + b"\nGo runtime\n" + caddy.go_notice_text(go_notices)
+        )
+        for component, full in [("backend", backend_notices), ("web", combined)]:
             require(
                 pack.digest(full)
                 == manifest["overlays"][component]["THIRD_PARTY_NOTICES.txt"],
                 "Source-derived full notices differ from final overlay",
             )
+        require(
+            pack.read(caddy.GO_SOURCE_POLICY.parent, caddy.GO_SOURCE_POLICY.name)
+            == go_policy_bytes,
+            "Trusted Go runtime source policy changed during replay",
+        )
     require(
         "sha256:" + pack.file_hash(asset) == source_sha256,
         "Runtime source asset changed after verification",
@@ -530,6 +563,15 @@ def verify(
             "retained_package_versions": sum(
                 len(v["packages"]) for v in inventories.values()
             ),
+            "go_runtime": {
+                "version": caddy_inventory["go_version"],
+                "commit": caddy_inventory["go_source_revision"],
+                "archive_sha256": "sha256:" + caddy_inventory["go_source"]["sha256"],
+                "executables": {
+                    "backend": backend_build["GoVersion"],
+                    "web": caddy_inventory["go_version"],
+                },
+            },
         },
         "caddy_signature_verification": signatures,
         "runtime_source_inputs_verified": True,

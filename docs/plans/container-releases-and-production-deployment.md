@@ -1472,6 +1472,53 @@ generator inputs. This establishes those source identities, not full generation
 or final-image completeness. All 53 affected gate, upstream and assembly
 regression checks passed in 5.8 seconds; formatting and staged checks passed.
 
+### Full Go runtime source retention and backend compiler binding
+
+- [x] Retain the complete official Go source tree for the actual current runtime
+      version, Go 1.26.8, pinned to commit
+      `c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e` and original archive checksum in
+      `tools/go-runtime-sources.json`. Preserve runtime, standard-library,
+      compiler, build files and original notices; keep nested test archives
+      unchanged rather than interpreting them as dependency archives.
+- [x] Extend runtime packaging and independent replay to require both actual
+      executables' Go versions to match their retained original. Read metadata
+      without running the programs, retain the exact Go policy in the source
+      pack, and supply the backend's original Go notices as well as the web's.
+- [x] Bind both authenticated backend compiler graphs to the exact committed
+      application snapshot and H1-verified module originals. Require all compiled
+      dependency versions/checksums and publication asset subjects to match;
+      permit additional verified build-only modules. Reuse existing native
+      compiler evidence without adding another build or scanner execution.
+- [x] Verify the actual pinned Go original and both previously tested native
+      AMD64 executable versions, retaining exact archive/configuration/binary
+      identities. This check is separate from preparing a new final runtime pack.
+- [ ] Prepare and verify new final runtime packs and overlaid image pairs on
+      both native architectures, with the complete Go source and notice changes.
+- [ ] Finish remaining preferred-form package/generator relationships and emit
+      the complete corresponding-source gate before hosted authorization and
+      publication. Backend compiler binding and Go originals do not finish all
+      source categories.
+
+The exact original Go archive is 34,443,123 bytes, SHA256
+`061b4e784db7ce97cd9ae99ea71a857a2ff8455c6400495e5d1a98b8accd2542`.
+Its bounded inspection covered 16,693 members and 145,163,055 expanded source
+bytes in 0.9 seconds, finding 38 original notices (70,348 bytes) and an exact
+Go 1.26.8 VERSION file. Download occurred only during explicit source acquisition;
+routine test fixtures are small local archives. Original source/runtime
+inspection against the retained `f90be19b543b31ef7738187a61ceb45aec518680`
+AMD64 pair took 3.0 seconds. Both actual executable versions matched. Private
+receipts remain retained; this does not relabel that older pair as a new build,
+validate ARM64 or approve full corresponding sources.
+
+All 386 affected release, native-preparation, browser-input, runtime source/notice
+and signature regressions passed in 26.4 seconds, with one existing opt-in Docker
+case skipped. The real original-source/executable inspection above ran separately.
+New cases target source substitution, missing preferred inputs, mismatched binary
+versions, module checksum mismatch and authentication refusal; no network calls,
+compiler builds or coverage-only tests were added to the routine suite. The
+updated source-scanner caller was included in those checks after the runtime
+replay API change.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
