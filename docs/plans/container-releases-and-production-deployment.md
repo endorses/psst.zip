@@ -906,9 +906,11 @@ reviews remain pending; this source result does not approve publication.
 
 ### Documentation and current VPS migration
 
-- [ ] Add a self-hosting quick start covering DNS, ports, Docker/Compose, public
+- [x] Add a self-hosting quick start covering DNS, ports, Docker/Compose, public
       image pulls, persistent storage, first-admin creation directly on the host,
-      and removal of bootstrap credentials after initialization.
+      and removal of both bootstrap credentials from the file and running
+      backend after initialization. The guide explicitly requires verified
+      published inputs; public installation and production adoption are unrun.
 - [ ] Document the maintainer path from reviewed commit to version tag to ready
       release, and the operator path for manual SSH updates, Actions deployment,
       maintenance, backup, failure recovery, and rollback.

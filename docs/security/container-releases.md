@@ -17,7 +17,9 @@ jobs remain required, including native iOS and Android/shared checks.
 After CI succeeds, it resolves the application base-image indexes and BuildKit
 builder once and checks their AMD64 and ARM64 coverage. Separate native runners
 build and smoke-test the paired images for each architecture, recording the
-pinned bases and actual toolchains. Only candidate metadata is uploaded as
+pinned bases and actual toolchains. The smoke harness locks execution to checked
+configuration IDs and records actual checks, native/emulated execution and
+cleanup in `image-smoke.json`. Only candidate metadata is uploaded as
 temporary Actions artifacts. Image archives remain private to each runner and
 are removed after checking. These outputs are not authenticated release manifests
 or installable deployment bundles.
@@ -68,8 +70,9 @@ public address. The example hostname is a placeholder. Set `PSST_DOMAIN` to your
 hostname and `PUBLIC_URL` to its canonical HTTPS origin; leave
 `AUTH_ALLOW_INSECURE_HTTP=false`. DNS and inbound TCP 80/443 must reach this server.
 The administrator password is entered directly on the VPS for first startup;
-remove `ADMIN_PASSWORD` from the environment file after account creation. Existing
-installations use their existing accounts and leave bootstrap credentials unset.
+sign in successfully before removing **both** `ADMIN_USERNAME` and
+`ADMIN_PASSWORD` from the environment file. Existing installations use their
+existing accounts and leave both bootstrap credentials unset.
 
 ```sh
 chmod 600 deploy/release.env
@@ -80,6 +83,28 @@ docker compose --env-file deploy/release.env \
 docker compose --env-file deploy/release.env \
   -f deploy/compose.release.yml up -d
 ```
+
+After first sign-in succeeds, edit the private environment file on the VPS to
+remove both bootstrap variables, then recreate only the backend with the same
+verified image and existing named volume:
+
+```sh
+docker compose --env-file deploy/release.env \
+  -f deploy/compose.release.yml up -d --no-deps --force-recreate --pull never backend
+```
+
+Sign in again and confirm your original administrator account and settings are
+present. This removes the bootstrap values from the running container, rather
+than only from the file. Keep the password in your password manager; do not put
+it in a command argument, repository or chat.
+
+The public website uses inbound TCP 80/443. Keep administration on SSH with
+key-only authentication; SSH can remain reachable on port 22 when a dynamic
+client address prevents a fixed source-IP rule. Allow outbound DNS, certificate
+issuance and image retrieval. Point the domain's A record to the server's IPv4;
+add an AAAA record only for a working server IPv6 address. Caddy
+[obtains and renews TLS certificates](https://caddyserver.com/docs/automatic-https);
+its named state volumes preserve them across updates.
 
 Use these direct commands only for a verified fresh installation. Upgrades need
 preflight, a stopped complete backup, and post-update verification through the
@@ -206,9 +231,10 @@ missing platforms, inconsistent source/version metadata, unsafe archive paths or
 entry types, duplicate JSON keys and oversized compressed or expanded input.
 
 Bundles default to `payload_profile: artifact-foundation`, including when a
-tracked updater is present. The updater is implemented but its Docker integration,
-publication and production adoption remain unverified. Only the gated publisher
-may explicitly select `--payload-profile deployment-ready` after the distribution
+tracked updater is present. The updater has passed isolated actual Docker
+migration/update/recovery exercises; authenticated public release acquisition,
+independent off-host provider recovery and production adoption remain unverified.
+Only the gated publisher may explicitly select `--payload-profile deployment-ready` after the distribution
 and recovery requirements pass. That profile requires the tracked updater, and
 the manifest profile must match the archive. Do not execute
 bundle tooling as root merely because checksum validation succeeded. Publication
@@ -216,7 +242,13 @@ must authenticate the detached manifest, archive and image digests with provenan
 from the expected repository, release workflow and source commit. See
 [GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations).
 The [updater and recovery guide](release-update-recovery.md) documents the
-implemented privileged verification policy and its remaining live checks.
+implemented privileged verification policy and its remaining live checks. The
+[publication guide](container-publication.md) covers exact inputs, signed evidence,
+reservation and partial-publication recovery. The
+[Actions deployment guide](actions-production-deployment.md) covers the separate
+manual version dispatch, environment protection and restricted SSH installation.
+Publishing a release makes images available; deploying it remains a separate
+operator action through that installed helper.
 
 ## Image metadata and dependency notices
 
@@ -237,9 +269,13 @@ that the build project classifies as development dependencies.
 
 Source archive locators and application inventories do not by themselves establish
 complete distribution compliance. Hosted source/legal discovery and native
-notices are implemented; actual new iOS packaging awaits macOS CI. Corresponding-source
-publication and the selected Caddy/Alpine
-runtime distribution's obligations remain release gates. Native store terms are
+notices are implemented; actual new iOS packaging awaits macOS CI.
+Corresponding-source publication and the selected Caddy/Alpine runtime
+distribution's obligations remain release gates. The patched private
+AMD64 source pack, served runtime overlays and final-image scan review have
+passed for their recorded subjects; [the dependency review](container-dependency-review.md)
+records exact images and bounded findings. ARM64 and actual public source delivery
+remain pending. Native store terms are
 tracked separately and are outside server deployment automation.
 
 GoReleaser retains its binary/archive definitions but no longer publishes images;
