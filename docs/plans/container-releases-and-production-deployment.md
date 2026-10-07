@@ -841,6 +841,24 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       producers. Source-asset hash measurements explicitly leave completeness
       and review pending; they cannot mint a corresponding-source approval.
 
+### Runtime source replay
+
+- [x] Implement a verifier that replays an externally hash-bound runtime source
+      archive against final native OCI exports and smoke evidence. Verify source
+      SHA512 tables, retained recipe/helper inputs, every origin revision,
+      reconstructed lower-layer and installed package graphs, exact executable
+      and notice bytes, and fresh Caddy source signatures/module correspondence.
+      Rehash archive, pack, smoke and OCI inputs before returning measurements.
+- [x] Exercise the unchanged patched AMD64 asset and both final native exports.
+      All 34 origin revisions and 53 retained package versions passed; the final
+      private report SHA256 is
+      `14bd03673034bdeaff0c2178cbfd0ffa691cb7f4efed20dc8221723984fde519`.
+      Eleven new regression tests and 51 related checks passed.
+- [ ] Run the replay for ARM64 in the release workflow and authenticate both
+      outputs against the final binding. Application source, public anonymous
+      source delivery and authorized distribution review remain separate gates;
+      technical runtime replay cannot clear those approvals.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports
