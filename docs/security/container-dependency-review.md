@@ -4,9 +4,10 @@ Reviewed on 2026-10-07. The backend source scan found no known vulnerable symbol
 reachable from the analyzed code and no vulnerabilities in imported packages.
 It reported 21 advisories at module level; their applicability is documented
 below. The web dependency audit passed after the source-map-js security patch.
-Final AMD64 image scans found unresolved fixable runtime findings below.
-ARM64 scans, release-toolchain web validation and native dependency scans remain
-pending. This record does not approve a container release.
+Historical AMD64 image scans found fixable runtime findings. Fresh patched
+AMD64 scans below resolve those Alpine findings; remaining binary module
+advisories have bounded import-graph dispositions. ARM64 scans and full release
+workflow evidence remain pending. This record does not approve a container release.
 
 ## Backend source analysis
 
@@ -287,3 +288,62 @@ source graph requires a new review; retain the module finding in raw reports and
 carry this disposition only with its matching binary/source evidence. No scanner
 ignore entry was added. Patched final-image rescans and ARM64 evidence remain
 pending.
+
+## Patched private AMD64 rescan
+
+The actual `750f440d143d6766d83b13e1ce789436471ae029` candidate pair was rebuilt,
+fully source-collected, overlaid, smoke-tested and OCI-verified before this
+2026-10-07 rescan. Both final installed Alpine graphs have **zero findings**.
+The unchanged scanner version, authenticated archive SHA256 and database SHA256
+above were reused; the new scanner download matched the exact previously
+signature-verified archive and bundle bytes. Extracted Trivy executable SHA256:
+`93f9da8e4ba5e0c1c76d8234ed2494cf9afb0a96fd21953e424bb795f3299b8e`.
+The database was downloaded at `2026-10-07T18:23:53.492313625Z` and retains the
+recorded `2026-10-07T07:38:55.515026687Z` update. Scans used the same bounded,
+credential-free offline analysis and no ignored findings.
+
+| Final subject | Exact configuration                                                       | Installed Alpine graph                                   | Remaining binary findings |
+| ------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------- |
+| Backend AMD64 | `sha256:efd3778408f2d98e8e79ca8aa8744602f3f45811b59146574dcde6de7e721880` | 17 packages; OpenSSL 3.3.7-r2, zlib 1.3.2-r1; 0 findings | 21 module findings        |
+| Web AMD64     | `sha256:9909e94d12f5e865363993673c538d206dffc7a2bd1ca32d8a820e7062d55138` | 32 packages; OpenSSL 3.5.8-r0, zlib 1.3.2-r1; 0 findings | 1 module finding          |
+
+Backend OCI archive SHA256:
+`ff832ed03451a635cd716ce8415a623ad88bd75380e5269dbc5d6385f5cbf648`;
+web OCI archive SHA256:
+`a3463107e1180d875b7fb0ac90c08d232e8a9d7264a202a728fe9b3820be42ff`.
+Both archives passed full blob/configuration/decompressed-layer validation
+against the exact native smoke-tested configurations before scanning.
+
+The backend executable remains SHA256
+`03824947e006205dcf592c4cccfa70fae371cb222b5da410a4d83c2f905efd0f`;
+the Caddy executable remains the exact SHA256 reviewed above. Between the
+backend source-analysis baseline and this candidate, the only changed backend
+file is its Dockerfile. Every one of the 21 backend scanner advisory IDs was
+independently matched to its current primary
+[Go vulnerability database](https://vuln.go.dev/) record and aliases. All affected
+packages are SSH/SSH agent/OpenPGP or Windows paths absent from the reviewed
+backend import graph. Their bounded disposition remains **not applicable to
+this unchanged Linux AMD64 executable**. The correspondence JSON SHA256 is
+`3bb0f4cc2ad3cee6c816fa64a8fba65d6c498e694a73c632b79729a5c8129b15`. Caddy's single OpenPGP finding likewise retains the exact
+matching-binary/import-graph disposition above. Raw reports keep every finding;
+no scanner ignore or blanket module suppression was introduced.
+
+Patched backend report SHA256:
+`3303f81d6ba4dc747335bc2b5f4471a873fac58f1a5e758e16e08e22561cb93a`;
+patched web report SHA256:
+`441e2e2a622f9c91e83397edaa3311c878b44a500a08a2379a9ebc40702c984a`.
+
+The source pack covers all 20 retained backend package versions from 13 origins
+and 33 web versions from 21 origins, including superseded vulnerable lower-layer
+copies. Those copies are source-accounted, not claimed to be patched or covered
+by the zero-finding statement about final installed graphs. The exact new runtime
+source archive is 156854687 bytes, SHA256
+`4ce28130c2d926558568fdcc58cdd78193da92fefe54873c827fb3454d45bad6`.
+Its pack hash is `498820d85333eb2022344396e7b6e7f41a95c9a97faf044441cabb09bbf3810d`.
+Native HTTP checks verified exact served notices/source metadata, unchanged
+runtime binaries, administrator/session persistence and complete fixture cleanup.
+
+This closes the recorded patched AMD64 image scan review for the exact subjects.
+It does not approve public distribution or substitute for ARM64 scans, source
+publication, exact-tag CI, authenticated workflow evidence or live release checks.
+Private review version `v0.0.0` does not move or replace the existing remote tag.

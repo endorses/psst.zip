@@ -764,9 +764,16 @@ signing them. The adapter alone does not establish distribution readiness.
       multi-platform base indexes; their current tags still resolve to the
       vulnerable original layers. Record and collect sources for retained and
       actually installed package versions instead of flattening the image.
-- [ ] Rebuild and smoke both patched native image pairs, repeat source collection
-      and overlays, and scan their actual final configurations before publishing.
-      The previous vulnerable image scan remains historical evidence.
+- [x] Rebuild and smoke the patched AMD64 pair from exact source `750f440`;
+      repeat complete retained-layer source collection, Caddy signatures, legal
+      overlays and exact served-byte checks. Verify OCI config/blob/diff-ID bytes
+      against the actually tested configuration IDs, then scan those archives.
+      Both final installed Alpine graphs have zero findings. Retain and match all
+      21 backend/one Caddy module findings to bounded absent-package evidence.
+      See the [exact patched scan review](../security/container-dependency-review.md).
+- [ ] Repeat these checks for the patched ARM64 native pair and bind both
+      architectures into authenticated release workflow evidence. The previous
+      vulnerable image scan remains historical evidence.
 
 Package minimums select compatible newer revisions from the configured Alpine
 branch. A base digest plus live APK repositories does not promise byte-for-byte
