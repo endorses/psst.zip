@@ -1637,12 +1637,28 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release-tooling suite passed 345 tests in 23.9 seconds after the
-source/distribution and copied-static changes (one opt-in Docker case skipped; real builder capture
-was run separately). The new source-archive regression exercises recursive-link
-rejection and the exact metadata-only exception; browser fixtures check source
-and notice substitutions. Do not add coverage-only cases or repeat broad suites
-without changes, failures or unresolved risks that justify them.
+combined local release/notice regression suite passed 396 tests in 24.3 seconds
+on 2026-10-08, including native preparation, browser input and runtime source
+replay fixtures. One existing opt-in Docker case was skipped; actual container
+builds remain separate release checks. Per-test timing included fixture setup
+and cleanup; the slowest case took 0.78 seconds. The source-archive regression
+exercises recursive-link rejection and the exact metadata-only exception;
+browser fixtures check source and notice substitutions.
+
+For every new test, identify the observable failure it catches and whether an
+existing case already covers that contract. Reuse fixtures and retained inputs;
+do not add redundant assertions merely to increase coverage. Keep routine
+release-tooling fixtures offline, without container builds or arbitrary sleeps.
+Investigate if this combined suite exceeds one minute on a comparable runner or
+if a routine backend/web job approaches its existing 15-minute limit. These are
+investigation thresholds, not reasons to increase timeouts, weaken assertions or
+skip meaningful checks. Measure the next hosted run before claiming CI timing.
+Do not repeat broad suites without changes, failures or unresolved risks that
+justify them.
+
+- [x] Profile the complete routine release/notice regression suite after the
+      browser preferred-source and modernc archive changes; record wall time
+      and slowest cases, including fixture setup and cleanup.
 
 Transfer staging performs browser replay once before copying and once when
 independently verifying the completed destination. Intermediate consistency
