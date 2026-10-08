@@ -67,6 +67,10 @@ jobs:
     name: Resolve official multi-platform base indexes
     needs: [validate-tag, ci]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       golang_image: ${{ steps.bases.outputs.golang_image }}
       alpine_image: ${{ steps.bases.outputs.alpine_image }}
@@ -91,6 +95,22 @@ jobs:
             --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
             --output "$RUNNER_TEMP/candidate-bases.json" \
             --github-output "$GITHUB_OUTPUT"
+      - name: Attest the exact immutable base resolution for this tag attempt
+        id: bases-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: ${{ runner.temp }}/candidate-bases.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-bases-attestation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.bases-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
@@ -644,6 +664,7 @@ jobs:
             --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
             --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
             --output "$RUNNER_TEMP/candidate-source-review" \
+            --resolved-bases "$RUNNER_TEMP/candidate-assembly/bases/candidate-bases.json" \
             --checks-output "$RUNNER_TEMP/candidate-check-reports"
       - name: Attest completed source and native check reports
         id: source-attestation
@@ -656,6 +677,8 @@ jobs:
             ${{ runner.temp }}/candidate-check-reports/source-ci.json
             ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
             ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
+            ${{ runner.temp }}/candidate-check-reports/source-scanners.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-scanners.json
           push-to-registry: false
           create-storage-record: false
           show-summary: false
@@ -673,8 +696,9 @@ jobs:
             --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
             --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
             --output "$RUNNER_TEMP/candidate-source-review" \
+            --resolved-bases "$RUNNER_TEMP/candidate-assembly/bases/candidate-bases.json" \
             --checks-output "$RUNNER_TEMP/candidate-check-reports" --verify-only
-          printf '%s\n' 'Corresponding source, all five source CI jobs, native smoke and runtime notices verified for this exact version-tag run and attempt; publication still requires separate gates.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'Corresponding source, all five source CI jobs, native smoke, runtime notices and source/final-image scanner gates verified for this exact version-tag run and attempt; publication still requires distribution approval and delivery gates.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
@@ -685,6 +709,8 @@ jobs:
             ${{ runner.temp }}/candidate-check-reports/source-ci.json
             ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
             ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
+            ${{ runner.temp }}/candidate-check-reports/source-scanners.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-scanners.json
             ${{ steps.source-attestation.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 1

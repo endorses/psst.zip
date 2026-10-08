@@ -25,7 +25,13 @@ import final_image_notice_inventory as final_notices
 from generate_distribution_review import committed_policy
 from github_release_evidence import GhEvidenceVerifier
 
-from aggregate_release_image_scans import checked_graph, load_authenticated, load_raw
+from aggregate_release_image_scans import (
+    aggregate_image_scans,
+    checked_graph,
+    load_authenticated,
+    load_raw,
+)
+from aggregate_release_source_scans import aggregate_source_scans
 from generate_release_gate_reports import (
     MeasurementAuthenticator,
     NativeSourceContext,
@@ -977,7 +983,15 @@ PREPARED_RECORD_FIELDS = {
     "measurement_authentication_required",
 }
 MAX_COMMAND_OUTPUT = 16 * 1024**2
-CHECK_GATES = frozenset({"source-ci", "final-image-smoke", "runtime-notices"})
+CHECK_GATES = frozenset(
+    {
+        "source-ci",
+        "final-image-smoke",
+        "runtime-notices",
+        "source-scanners",
+        "final-image-scanners",
+    }
+)
 
 
 def command_inputs(
@@ -1258,7 +1272,7 @@ def verify_checks_output(
     require(
         {path.name for path in output.iterdir()}
         == {path.name for path in reports.values()},
-        "Check verification requires exactly three report files",
+        "Check verification requires exactly five report files",
     )
     snapshots = {}
     for gate, path in reports.items():
@@ -1317,8 +1331,13 @@ def run_command(args) -> tuple[dict, dict]:
     browser_inventory.root_directory(args.output.parent)
     verify_only = getattr(args, "verify_only", False)
     checks_output = getattr(args, "checks_output", None)
+    resolved_bases = getattr(args, "resolved_bases", None)
     require(type(verify_only) is bool, "Invalid source command mode")
     if checks_output is not None:
+        require(
+            isinstance(resolved_bases, Path),
+            "Paired release checks require authenticated resolved bases",
+        )
         browser_inventory.root_directory(checks_output.parent)
         source_directory, check_directory = (
             args.output.resolve(),
@@ -1415,6 +1434,9 @@ def run_command(args) -> tuple[dict, dict]:
         snapshots.update(
             {path: source_digest(path) for path in native_measurements.values()}
         )
+        bases_raw = read_bounded_file(resolved_bases)
+        authenticator.authenticate(bases_raw, binding)
+        snapshots[resolved_bases] = sha256(bases_raw)
     report, evidence = corresponding_source_report(
         binding,
         root=args.root,
@@ -1455,6 +1477,44 @@ def run_command(args) -> tuple[dict, dict]:
     if checks_output is not None:
         checks = aggregate_native_reports(binding, native_measurements, authenticator)
         checks["source-ci"] = ci_report
+        checks["source-scanners"] = aggregate_source_scans(
+            binding,
+            native_measurements={
+                p: t / "source-scans/source-scan-measurement.json"
+                for p, t in trees.items()
+            },
+            repository_root=args.root,
+            resolved_bases=resolved_bases,
+            authenticator=authenticator,
+        )
+        checks["final-image-scanners"] = aggregate_image_scans(
+            binding,
+            native_measurements=native_measurements,
+            runtime_packs={p: t / "native/pack" for p, t in trees.items()},
+            scans={
+                component
+                + "-"
+                + p.split("/")[1]: t / ("image-scan-" + component + "/measurement.json")
+                for p, t in trees.items()
+                for component in ("backend", "web")
+            },
+            raw_scans={
+                component
+                + "-"
+                + p.split("/")[1]: t / ("image-scan-" + component + "/scan.json")
+                for p, t in trees.items()
+                for component in ("backend", "web")
+            },
+            compiler_graphs={
+                component
+                + "-"
+                + p.split("/")[1]: t
+                / ("compiler-" + component + "/compiler-graph-measurement.json")
+                for p, t in trees.items()
+                for component in ("backend", "web")
+            },
+            authenticator=authenticator,
+        )
         fields(checks, set(CHECK_GATES), "complete paired release checks")
         checks_payloads = {
             gate + ".json": json_bytes(checks[gate]) for gate in CHECK_GATES
@@ -1513,6 +1573,7 @@ def main(argv=None) -> None:
         parser.add_argument("--" + name, type=int, required=True)
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--checks-output", type=Path)
+    parser.add_argument("--resolved-bases", type=Path)
     args = parser.parse_args(argv)
     try:
         run_command(args)

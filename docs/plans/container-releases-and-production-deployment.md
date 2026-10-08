@@ -1869,10 +1869,11 @@ remain separate gates. The selected committed policy, all original source assets
 measurements, runtime pack metadata and final image archives are rechecked before
 returning the report.
 
-- [x] Wire source-CI, final-image-smoke and runtime-notices reports into the same
+- [x] Wire source-CI, final-image-smoke, runtime-notices, source-scanners and
+      final-image-scanners reports into the same
       tagged assembly and authenticated verification path. Reuse the prepared
       binding and measurement authenticator without another source archive pass.
-- [ ] Verify these three gates against actual two-platform hosted evidence for
+- [ ] Verify these five gates against actual two-platform hosted evidence for
       the selected tag attempt; local command fixtures do not establish this.
 
 The four new small regression methods cover substituted or missing runtime/source
@@ -1920,12 +1921,13 @@ all 22 shell steps passed `bash -n` and three inline Python blocks parsed; actua
 hosted signing and execution remain pending.
 
 The optional `--checks-output` directory retains exactly the source-CI,
-final-image-smoke and runtime-notices reports alongside the separate two-file
+final-image-smoke, runtime-notices, source-scanners and final-image-scanners reports
+alongside the separate two-file
 source output. It shares the existing binding and verifier, checks current CI
 before expensive source replay, and reuses authenticated small native records.
 Neither generation nor post-attestation verification adds an image build or
 source archive pass. Assembly has explicit Actions read permission for the CI
-API; all five reports are attested together and independently verified before
+API; the two source files and five check reports are attested together and independently verified before
 artifact retention. Planned main dispatches cannot execute this tagged path.
 
 The five command fixtures passed in 0.022 seconds, including three new paired
@@ -1934,6 +1936,33 @@ overlapping directories and failed CI that must leave complete outputs absent.
 The existing eighteen gate-producer fixtures passed in 1.93 seconds and ten
 authentication fixtures in 0.123 seconds. These targeted checks followed the
 26.7-second full-suite baseline below; another broad suite was unnecessary.
+
+Scanner aggregation reuses the retained raw native reports and all four compiler
+graphs. `--resolved-bases` is required with `--checks-output`; exact tagged base
+resolution is now attested and authenticated before the substantive source replay.
+Aggregation independently derives finding dispositions from retained evidence,
+and verification rejects unresolved findings or missing target coverage. It adds
+no collector, scanner, container build or upstream signature execution. The
+source scanner aggregate creates a local committed Git snapshot and reads/hashes
+retained raw reports; image aggregation reuses runtime packs and compiler facts.
+Post-attestation verification authenticates completed reports without invoking
+these producers or reopening bases.
+
+The existing five command fixtures were extended with native-path mapping,
+missing/substituted scanner reports, unresolved findings and early bases
+authentication rejection; they passed in 0.028 seconds. Twelve existing source
+scanner boundary cases passed in 2.03 seconds and nine image scanner cases in
+1.05 seconds. No new test methods, downloads or builds were added to routine CI.
+Existing native compiler collection remains release-only and does perform real
+source extraction, compiler analysis and backend correspondence compilation;
+these small aggregation timings do not promise a faster full release pipeline.
+
+Read-only GitHub inspection on 2026-10-08 confirmed public `endorses/psst.zip`,
+remote main `b697119ba81c3aaf18725f38869b778f2e59df9d` and successful CI run
+`37669775085`. No protected environments, rulesets or published releases were
+configured. The only version tag is preserved `v0.0.0`, pointing to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`; `v0.1.0` has not been created.
+This inspection changed no remote configuration, refs or publication state.
 
 ## Verification and completion criteria
 

@@ -391,6 +391,8 @@ class CorrespondingSourceCommand(unittest.TestCase):
     def paired_mocks(self):
         prepared, auth, producer = self.mocks()
         self.args.checks_output = self.args.root / "check-reports"
+        self.args.resolved_bases = self.args.root / "candidate-bases.json"
+        self.args.resolved_bases.write_bytes(b'{"fixture":true}\n')
         for tree in (self.args.amd64_inputs, self.args.arm64_inputs):
             (tree / "native").mkdir()
             (tree / "native/native-measurement.json").write_bytes(b'{"fixture":true}\n')
@@ -425,6 +427,37 @@ class CorrespondingSourceCommand(unittest.TestCase):
                 "details": {"distribution_review_required": True},
             },
         }
+        for gate, targets in (
+            ("source-scanners", ("backend-source", "web-source")),
+            ("final-image-scanners", tuple(SOURCE_COVERAGE)),
+        ):
+            self.checks[gate] = {
+                **common,
+                "gate": gate,
+                "details": {
+                    "scans": [
+                        {
+                            "target": target,
+                            "subject": (
+                                "git:"
+                                + self.binding.repository
+                                + "@"
+                                + self.binding.commit
+                                if gate == "source-scanners"
+                                else dict(self.binding.subjects)[target]
+                            ),
+                            "status": "complete",
+                            "exit_code": 0,
+                            "scanner": "fixture scanner",
+                            "version": "fixture version",
+                            "database": "fixture database",
+                            "scanned_at": "2026-01-01T00:00:00Z",
+                            "findings": [],
+                        }
+                        for target in targets
+                    ]
+                },
+            }
         stack = ExitStack()
         self.addCleanup(stack.close)
         ci = stack.enter_context(
@@ -442,6 +475,23 @@ class CorrespondingSourceCommand(unittest.TestCase):
                 },
             )
         )
+
+        def source_scans(binding, **kwargs):
+            kwargs["authenticator"].authenticate(
+                kwargs["resolved_bases"].read_bytes(), binding
+            )
+            return self.checks["source-scanners"]
+
+        source = stack.enter_context(
+            patch.object(command, "aggregate_source_scans", side_effect=source_scans)
+        )
+        image = stack.enter_context(
+            patch.object(
+                command,
+                "aggregate_image_scans",
+                return_value=self.checks["final-image-scanners"],
+            )
+        )
         signed = {**self.checks, "corresponding-source": self.report}
 
         def receipt(gate, path, binding):
@@ -455,10 +505,10 @@ class CorrespondingSourceCommand(unittest.TestCase):
             )
 
         auth.return_value.verify.side_effect = receipt
-        return prepared, auth, producer, ci, native
+        return prepared, auth, producer, ci, native, source, image
 
     def test_paired_outputs_generate_and_verify_without_replays(self):
-        prepared, auth, producer, ci, native = self.paired_mocks()
+        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
         command.main(
             [
                 "--" + key.replace("_", "-") + "=" + str(value)
@@ -472,6 +522,41 @@ class CorrespondingSourceCommand(unittest.TestCase):
             self.binding,
             producer.call_args.kwargs["native_measurements"],
             auth.return_value,
+        )
+        source.assert_called_once_with(
+            self.binding,
+            native_measurements=producer.call_args.kwargs["source_scans"],
+            repository_root=self.args.root,
+            resolved_bases=self.args.resolved_bases,
+            authenticator=auth.return_value,
+        )
+        self.assertEqual(auth.return_value.authenticate.call_count, 2)
+        auth.return_value.authenticate.assert_called_with(
+            self.args.resolved_bases.read_bytes(), self.binding
+        )
+        image.assert_called_once_with(
+            self.binding,
+            native_measurements=producer.call_args.kwargs["native_measurements"],
+            runtime_packs=producer.call_args.kwargs["runtime_packs"],
+            **{
+                key: {
+                    component + "-" + arch: tree / relative.format(component=component)
+                    for arch, tree in (
+                        ("amd64", self.args.amd64_inputs),
+                        ("arm64", self.args.arm64_inputs),
+                    )
+                    for component in ("backend", "web")
+                }
+                for key, relative in (
+                    ("scans", "image-scan-{component}/measurement.json"),
+                    ("raw_scans", "image-scan-{component}/scan.json"),
+                    (
+                        "compiler_graphs",
+                        "compiler-{component}/compiler-graph-measurement.json",
+                    ),
+                )
+            },
+            authenticator=auth.return_value,
         )
         auth.assert_called_once_with(token="fixture-token", run_id=1234, run_attempt=2)
         before = {}
@@ -494,6 +579,8 @@ class CorrespondingSourceCommand(unittest.TestCase):
                 self.assertEqual(path.read_bytes(), json_bytes(report))
                 before[path] = path.read_bytes()
         self.args.verify_only = True
+        # Signed output verification does not reopen substantive scanner inputs.
+        self.args.resolved_bases.unlink()
         command.run_command(self.args)
         self.assertEqual(
             {call.args[0] for call in auth.return_value.verify.call_args_list},
@@ -503,12 +590,14 @@ class CorrespondingSourceCommand(unittest.TestCase):
         self.assertEqual(producer.call_count, 1)
         self.assertEqual(ci.call_count, 1)
         self.assertEqual(native.call_count, 1)
+        self.assertEqual(source.call_count, 1)
+        self.assertEqual(image.call_count, 1)
         self.assertEqual(prepared.call_count, 2)
 
     def test_paired_verification_rejects_missing_substituted_stale_and_changed_reports(
         self,
     ):
-        prepared, auth, producer, ci, native = self.paired_mocks()
+        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
         command.run_command(self.args)
         self.args.verify_only = True
         path = self.args.checks_output / "source-ci.json"
@@ -549,6 +638,28 @@ class CorrespondingSourceCommand(unittest.TestCase):
                 (self.args.checks_output / "extra.json").unlink(missing_ok=True)
         notice_path = self.args.checks_output / "runtime-notices.json"
 
+        for gate in ("source-scanners", "final-image-scanners"):
+            scanner_path = self.args.checks_output / (gate + ".json")
+            scanner_original = scanner_path.read_bytes()
+            for mutation in ("missing", "substituted", "unresolved"):
+                with self.subTest(gate=gate, mutation=mutation):
+                    changed = copy.deepcopy(self.checks[gate])
+                    if mutation == "missing":
+                        scanner_path.unlink()
+                    else:
+                        changed["details"]["scans"][0]["findings"] = [
+                            {"disposition": "unresolved", "reason": "fixture finding"}
+                        ]
+                        scanner_path.write_bytes(json_bytes(changed))
+                        if mutation == "unresolved":
+                            self.checks[gate]["details"] = changed["details"]
+                    with self.assertRaises(InvalidRelease):
+                        command.run_command(self.args)
+                    self.checks[gate]["details"] = read_json(scanner_original)[
+                        "details"
+                    ]
+                    scanner_path.write_bytes(scanner_original)
+
         def change_paired_output(raw, binding):
             notice_path.write_bytes(notice_path.read_bytes() + b" ")
 
@@ -560,11 +671,21 @@ class CorrespondingSourceCommand(unittest.TestCase):
         self.assertEqual(producer.call_count, 1)
         self.assertEqual(ci.call_count, 1)
         self.assertEqual(native.call_count, 1)
+        self.assertEqual(source.call_count, 1)
+        self.assertEqual(image.call_count, 1)
 
     def test_paired_generation_failure_and_existing_output_create_no_complete_reports(
         self,
     ):
-        prepared, auth, producer, ci, native = self.paired_mocks()
+        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
+        resolved_bases = self.args.resolved_bases
+        self.args.resolved_bases = None
+        with self.assertRaisesRegex(
+            InvalidRelease, "require authenticated resolved bases"
+        ):
+            command.run_command(self.args)
+        producer.assert_not_called()
+        self.args.resolved_bases = resolved_bases
         self.args.checks_output.mkdir()
         with self.assertRaisesRegex(InvalidRelease, "must be a new directory"):
             command.run_command(self.args)
@@ -573,6 +694,17 @@ class CorrespondingSourceCommand(unittest.TestCase):
         ci.side_effect = InvalidRelease("Exact source CI is unfinished")
         with self.assertRaises(InvalidRelease):
             command.run_command(self.args)
+        self.assertFalse(self.args.output.exists())
+        self.assertFalse(self.args.checks_output.exists())
+        ci.side_effect = None
+        auth.return_value.authenticate.side_effect = InvalidRelease(
+            "Resolved bases lack current workflow authentication"
+        )
+        with self.assertRaisesRegex(InvalidRelease, "Resolved bases"):
+            command.run_command(self.args)
+        producer.assert_not_called()
+        source.assert_not_called()
+        image.assert_not_called()
         self.assertFalse(self.args.output.exists())
         self.assertFalse(self.args.checks_output.exists())
 
