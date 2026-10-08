@@ -2154,6 +2154,10 @@ production migration have run.
       installing SSH credentials, configuring a host or dispatching deployment.
 - [x] Track the applied non-secret ruleset/environment payloads and operator
       guidance, preserving separate pending live publication and VPS checks.
+- [x] Document the independent immutable-release inspection credential setup:
+      a fine-grained token scoped to this repository with Administration read,
+      stored directly in the protected `container-release` environment. Record
+      expiration/renewal and keep candidate checks independent of this token.
 - [ ] Configure the remaining environment variables, independent inspection
       credentials, public package namespaces and restricted deployment
       identity; verify hosted release and production behavior against them.
@@ -2452,8 +2456,12 @@ the first published release/VPS migration remain separate incomplete tasks.
       remains pending. Final run `37734917348` passed all five jobs with no
       GitHub annotations, including those fixture and backend timeout repairs.
       Protected PR #3 merged as `c4f7eaf1e3e0f0102bcb053548a973072e6f466b`.
-      Candidate preparation will use the verified bucket-free publication
-      workflow after its separate integration.
+      Planned `v0.1.0` candidate
+      [run `37739559953`](https://github.com/endorses/psst.zip/actions/runs/37739559953)
+      now uses integrated commit `d59ca65ae172e01e98258842c2a7b50cd7d44ba8`,
+      including the bucket-free publication workflow. It was dispatched on
+      2026-10-08 without creating a tag or enabling publication. Final candidate
+      source, image and recovery results remain pending.
 
 Application compiler, build tool and base-image upgrades are tracked separately
 in [the maintained toolchain plan](maintained-build-toolchains.md). The action
