@@ -231,8 +231,12 @@ replay require the package identities and entrypoints, bound each recipe to 512
 members, and reuse locked npm integrity/member checks. The ESM compiler resolves
 to `src/compiler/index.js`; retaining the CommonJS bundle does not establish that
 it executed. Retained helpers likewise do not imply every helper executed or that
-outputs reproduce. The prior AMD64 receipt predates this additional capture; its
-actual builder verification remains pending.
+outputs reproduce. A real capture from
+`7d0f42a8ffb2b44a38ae25c635c4ddefe4eaf1df` verified all 256 inputs against their
+locked npm originals and all 233 Svelte source files against the pinned upstream
+tree. Build/capture/replay took 21.4/0.7/1.9 seconds. The prior AMD64 final-image
+receipt predates this additional capture; complete final-image and preferred-source
+coverage remain pending.
 
 ### Native image scanner measurements
 

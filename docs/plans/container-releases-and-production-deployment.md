@@ -1533,7 +1533,7 @@ replay API change.
       bytes. Use seven representative files in fixtures; all 34 affected browser
       and native-preparation checks passed in 1.2 seconds, with one opt-in Docker
       case skipped. The actual native Docker check above ran separately.
-- [ ] Verify the complete new compiler/plugin capture against the actual builder
+- [x] Verify the complete new compiler/plugin capture against the actual builder
       and retained locked npm archives.
 - [ ] Finish preferred-source/generator relationships and the native ARM64
       preparation before emitting the complete corresponding-source gate.
@@ -1555,6 +1555,20 @@ source-helper image was absent. Recreating the helper and restoring the saved
 application images reused completed builds and dependency originals. No image
 was published or deployed. The compiler capture is a subsequent implementation;
 the earlier AMD64 receipt does not validate its additional inputs.
+
+The subsequent real builder capture from
+`7d0f42a8ffb2b44a38ae25c635c4ddefe4eaf1df` verified every new compiler/plugin
+member against its locked npm original. All 233 retained Svelte source files also
+matched their exact paths in the pinned upstream source tree; the two CommonJS
+files remain npm-bound inputs without a reproduction claim. The builder took
+21.4 seconds, capture 0.7 seconds and independent input replay 1.9 seconds.
+The 20,325,888-byte capture has SHA256
+`0088a4019bb088c727c163ee09d3bc60d86a2a389d602c602cbeb3e62aefa3c1`.
+The replay bound 122 Git inputs and 19 npm originals. Its private receipt preserves
+all 233 file hashes and the exact builder, capture and dependency asset identities.
+Temporary extraction caches and disposable containers/image aliases were cleaned.
+This additional check establishes builder input correspondence, not a new final
+OCI pair, complete preferred-source coverage or publication authority.
 
 ## Verification and completion criteria
 
