@@ -156,10 +156,20 @@ still needs its exact signed gates and the configured human approvals.
       `84313f4d74e9f624a62327af180b1f7399e2097b`. Run `37790269573`, attempt 1,
       passed exact server CI, both native image preparations, signed source
       assembly and authenticated recovery on both architectures. Its fresh
-      packet is `candidate-distribution-presentation-37790269573-1`; GitHub is
-      waiting for the configured human review. The earlier version's approval
-      cannot authorize this attempt. Publication and anonymous retrieval remain
-      pending.
+      packet is `candidate-distribution-presentation-37790269573-1`. The operator's
+      fresh distribution review was authenticated and the publisher separately
+      approved. The publisher passed its repaired hosted runtime preflight but
+      stopped in the publication command before retaining a journal or receipt;
+      its exact exception is not exposed. Diagnose that failure before any retry.
+      Preserve both existing version tags. Publication and anonymous retrieval
+      remain pending.
+
+      Read-only checks subsequently authenticated all eight retained gate reports
+      and validated the real smoke-configuration mapping. They did not reproduce
+      the hosted failure. The publisher now emits fixed preparation-stage names
+      and fixed failure categories without exposing exception text or credentials.
+      These diagnostics identify a future failure boundary; they do not establish
+      successful publication or authorize retrying old mutation state.
 
 - [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
       both multi-platform image indexes, all four native children, source assets

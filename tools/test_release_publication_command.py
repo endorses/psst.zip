@@ -1,6 +1,8 @@
 """Actual orchestration/transport fixtures; these never attest or publish live."""
 
 import copy
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import tarfile
 import sys
 from types import SimpleNamespace
@@ -406,13 +408,105 @@ class PublicationCommand(unittest.TestCase):
 
     def test_private_packages_block_before_reservation_or_registry_mutations(self):
         self.api.visibility = "private"
-        with self.assertRaisesRegex(InvalidRelease, "not public"):
+        output = io.StringIO()
+        with (
+            redirect_stdout(output),
+            self.assertRaisesRegex(InvalidRelease, "not public"),
+        ):
             self.publish()
+        self.assertEqual(
+            output.getvalue().splitlines()[-1], "Publication stage: package-preflight"
+        )
+        self.assertNotIn("Publication stage: publication-lease", output.getvalue())
         self.assertEqual(self.api.registry, {})
         self.assertEqual(self.api.releases, [])
         self.assertEqual(self.api.assets, {})
         self.assertFalse(self.adapter.tags_created)
         self.assertFalse((self.state / "v1.2.3.jsonl").exists())
+
+    def test_command_reports_safe_prelease_stage_and_category_without_remote_writes(
+        self,
+    ):
+        secret = "fixture-secret-token /private/credential-path private process stderr"
+        cases = (
+            (
+                driver,
+                "GhEvidenceVerifier",
+                RuntimeError(secret),
+                {"verifier": None},
+                "verifier-initialization",
+                "unexpected-error",
+            ),
+            (
+                self.verifier,
+                "verify",
+                InvalidRelease(secret),
+                {},
+                "release-gates",
+                "rejected",
+            ),
+            (
+                signer_module,
+                "WorkflowAttestor",
+                TypeError(secret),
+                {"attestor": None},
+                "attestor-initialization",
+                "interface-error",
+            ),
+            (
+                transport.GitHubReleaseTransport,
+                "package_preflight",
+                OSError(secret),
+                {},
+                "package-preflight",
+                "io-error",
+            ),
+        )
+        for target, attribute, error, changes, stage, category in cases:
+            with self.subTest(stage=stage):
+                output = io.StringIO()
+                with (
+                    patch.object(target, attribute, side_effect=error),
+                    patch.object(
+                        driver, "main", side_effect=lambda argv: self.publish(**changes)
+                    ),
+                    redirect_stdout(output),
+                    redirect_stderr(output),
+                    self.assertRaises(SystemExit) as stopped,
+                ):
+                    driver.run_command([])
+                lines = output.getvalue().splitlines()
+                self.assertEqual(
+                    lines[-2:],
+                    [
+                        "Publication stage: " + stage,
+                        "Publication failure category: " + category,
+                    ],
+                )
+                self.assertTrue(
+                    all(
+                        line
+                        in {
+                            "Publication stage: " + name
+                            for name in driver.PUBLICATION_STAGES
+                        }
+                        or line == "Publication failure category: " + category
+                        for line in lines
+                    )
+                )
+                self.assertNotIn("Publication stage: publication-lease", lines)
+                self.assertNotIn(secret, output.getvalue() + str(stopped.exception))
+                self.assertEqual(
+                    str(stopped.exception),
+                    "Publication stopped; inspect retained journals before any further action.",
+                )
+                self.assertTrue(all(call[0] == "GET" for call in self.api.calls))
+                self.assertEqual(self.api.registry, {})
+                self.assertEqual(self.api.releases, [])
+                self.assertEqual(self.api.assets, {})
+                self.assertFalse((self.state / "v1.2.3.jsonl").exists())
+                self.assertEqual(list(self.state.glob("publication-inputs-*")), [])
+                self.assertEqual(list(self.state.glob("publication-signer-*")), [])
 
     def test_explicit_first_package_setup_reuses_the_reviewed_pair_in_one_run(self):
         request = self.api.request

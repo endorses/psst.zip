@@ -40,6 +40,7 @@ from publish_container_release import (
 )
 from release_artifacts import (
     DIGEST,
+    InvalidRelease,
     PLATFORMS,
     fields,
     json_bytes,
@@ -77,6 +78,46 @@ WORKFLOW_ENV = {
     "ACTIONS_ID_TOKEN_REQUEST_URL",
     "PSST_INITIALIZE_GHCR_PACKAGES",
 }
+PUBLICATION_STAGES = frozenset(
+    {
+        "cli-inputs",
+        "workflow-inputs",
+        "verifier-initialization",
+        "state-initialization",
+        "snapshot-inputs",
+        "release-gates",
+        "workflow-context",
+        "native-smoke",
+        "final-oci",
+        "attestor-initialization",
+        "transport-initialization",
+        "workflow-api-preflight",
+        "package-preflight",
+        "snapshot-durability",
+        "publication-lease",
+    }
+)
+
+
+def publication_stage(stage: str) -> None:
+    """Expose only reviewed constant boundaries, never publication input data."""
+    require(stage in PUBLICATION_STAGES, "Unknown publication diagnostic stage")
+    print("Publication stage: " + stage, flush=True)
+
+
+def failure_category(error: BaseException) -> str:
+    """Classify by type without exposing exception text or external responses."""
+    if isinstance(error, KeyboardInterrupt):
+        return "interrupted"
+    if isinstance(error, InvalidRelease):
+        return "rejected"
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, OSError):
+        return "io-error"
+    if isinstance(error, TypeError):
+        return "interface-error"
+    return "unexpected-error"
 
 
 def package_initialization_enabled(environment: dict) -> bool:
@@ -227,6 +268,7 @@ def publish(
     transport_factory=GitHubReleaseTransport,
 ) -> dict:
     """Drive the actual lifecycle. Fixture adapters must be injected explicitly."""
+    publication_stage("workflow-inputs")
     require(
         environment.get("GITHUB_REPOSITORY") == repository
         and environment.get("GITHUB_REF") == ref
@@ -252,9 +294,11 @@ def publish(
             environment.get("GITHUB_RUN_ATTEMPT"), NUMBER, "Invalid workflow attempt"
         )
     )
+    publication_stage("verifier-initialization")
     verifier = verifier or GhEvidenceVerifier(
         token=environment["GH_TOKEN"], run_id=run_id, run_attempt=attempt
     )
+    publication_stage("state-initialization")
     private_directory(state)
     version = ref.removeprefix("refs/tags/")
     matches(version, VERSION, "Invalid publication version tag")
@@ -263,6 +307,7 @@ def publish(
         and not (state / (version + ".jsonl")).is_symlink(),
         "Publication journal exists; explicit reconciliation is required",
     )
+    publication_stage("snapshot-inputs")
     with input_snapshots(state) as snapshots, ExitStack() as signer_scope:
         private = snapshots.root
 
@@ -306,6 +351,7 @@ def publish(
             target = private / "gates" / (gate + ".json")
             snapshot_input(path, target, 16 * 1024**2)
             report_paths[gate] = target
+        publication_stage("release-gates")
         plan = prepare_publication(
             root=root,
             repository=repository,
@@ -319,10 +365,13 @@ def publish(
             reports=report_paths,
             verifier=verifier,
         )
+        publication_stage("workflow-context")
         context = WorkflowContext.from_environment(plan, environment)
+        publication_stage("native-smoke")
         configs = tested_configurations(
             plan, report_paths["final-image-smoke"], verifier
         )
+        publication_stage("final-oci")
         for target, path in archive_paths.items():
             component, arch = target.split("-")
             actual = inspect_archive(
@@ -342,6 +391,7 @@ def publish(
                 "Final OCI archive is not the authenticated reviewed child",
             )
         if attestor is None:
+            publication_stage("attestor-initialization")
             from github_release_attestor import WorkflowAttestor as OfficialAttestor
 
             signer_cache = signer_scope.enter_context(
@@ -355,6 +405,7 @@ def publish(
                 private_output=private / "readbacks",
                 private_action_cache=Path(signer_cache),
             )
+        publication_stage("transport-initialization")
         adapter = transport_factory(
             plan,
             state,
@@ -365,8 +416,11 @@ def publish(
             journal_checkpoint=None,
             initialize_packages=initialize_packages,
         )
+        publication_stage("workflow-api-preflight")
         adapter.verify_workflow()
+        publication_stage("package-preflight")
         adapter.package_preflight()
+        publication_stage("snapshot-durability")
         exclusive_report(private / "snapshot-binding.json", plan.record())
         # File fsync does not persist the containing directory entries. Make
         # the complete retained snapshot reachable before any remote mutation.
@@ -376,6 +430,7 @@ def publish(
         sync_directory(state)
         # Once the publication lease is entered, an interrupted operation may
         # have mutated remote state. Preserve exact inputs for manual inspection.
+        publication_stage("publication-lease")
         snapshots.retain = True
         with reserve_draft(plan, adapter) as reservation:
             adapter.push_images(archive_paths, index_paths, tested_configs=configs)
@@ -498,6 +553,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Private runner-local publication journal directory",
     )
     args = parser.parse_args(argv)
+    publication_stage("cli-inputs")
     environment = {key: os.environ[key] for key in WORKFLOW_ENV if key in os.environ}
     inputs = fields(
         read_json(read_bounded_file(args.inputs)),
@@ -546,10 +602,15 @@ def main(argv: list[str] | None = None) -> None:
     )
 
 
-if __name__ == "__main__":
+def run_command(argv: list[str] | None = None) -> None:
     try:
-        main()
-    except (Exception, KeyboardInterrupt):
+        main(argv)
+    except (Exception, KeyboardInterrupt) as error:
+        print("Publication failure category: " + failure_category(error), flush=True)
         raise SystemExit(
             "Publication stopped; inspect retained journals before any further action."
         ) from None
+
+
+if __name__ == "__main__":
+    run_command()

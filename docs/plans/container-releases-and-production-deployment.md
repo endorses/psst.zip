@@ -3017,8 +3017,11 @@ without signing, network requests, additional application builds or benchmarks.
       source, image/source/notice subjects and exact attempt-bound comment.
       GitHub is holding distribution job `113367582260` for the configured
       `container-release` reviewer `endorses`.
-- [ ] Obtain the configured human distribution review for this candidate. The
-      previous version's reports and approval cannot authorize the changed source.
+- [x] Obtain the configured human distribution review for this candidate.
+      Distribution job `113367582260` authenticated, attested and independently
+      verified the operator's decision. The operator separately approved
+      publisher job `113369559069`. These approvals authorize this candidate's
+      attempt, not the previous version's subjects or a future changed source.
 - [ ] Publish the immutable release and paired public packages, verify fresh
       anonymous retrieval, and remove first-package initialization.
 
@@ -3030,3 +3033,47 @@ AMD64. Signed assembly took 5m01s; recovery took 8m23s on ARM64 and 8m37s on AMD
 All completed gate jobs have zero annotations at this checkpoint. Separate
 mobile builds were correctly skipped. No additional benchmark run or timeout
 increase was used to obtain these timings.
+
+Publisher job `113369559069` passed the repaired hosted runtime preflight,
+native transfer-tool build, retained-payload downloads and path mapping. Its
+publication command then stopped after approximately 42 seconds without a
+published receipt. The safe diagnostic artifact
+`publication-diagnostics-37790269573-1` reports `journal_present: false` and
+`records: []`. Read-only lookups returned 404 for the release and both packages.
+The exact exception is absent from the log; diagnosis remains pending. Preserve
+`v0.1.1` and do not retry mutations or claim public delivery from these approvals.
+
+- [x] Check the publisher's report authentication independently using only small
+      retained artifacts. The original 14-subject inventory reconstructed from
+      the presentation matches the complete binding above. Production
+      `GhEvidenceVerifier` authenticated all eight reports in 35.743 seconds and
+      cached cross-gate validation passed in 0.011 seconds. Approximately 860KB
+      of compressed reports were downloaded; no image/source archives, rebuilds,
+      signing or remote writes were needed. The owned temporary directory was
+      removed. This did not reproduce the failure and does not verify the
+      original hosted credentials, environment or transient state.
+- [x] Expose fixed preparation-stage and exception-category diagnostics before
+      another publication attempt, preserving credential privacy, signed gates,
+      mutation order and journal recovery. The CLI emits allowlisted constant
+      stage names and fixed type-derived categories, never raw exceptions,
+      paths, API bodies, credentials or subprocess stderr. Four injected
+      secret-bearing pre-transaction failures preserved useful diagnostics,
+      cleaned snapshots and made no remote writes or journal. The existing
+      lifecycle/order and private-package checks also passed. The full focused
+      publisher-command module passed all 14 tests in 1.816 seconds; per-file
+      Black and diff checks passed. This validates diagnostics locally, not the
+      cause or resolution of the original hosted failure.
+- [x] Check the next pure smoke-configuration predicate using authenticated
+      real report bytes and actual retained binding/child references. The exact
+      committed `tested_configurations` predicate passed all four native
+      configurations in 4.307 seconds. Its explicitly limited metadata projection
+      does not establish full manifest/plan validation or the remaining hosted
+      preflight checks. No image/source download, build, signing or remote write
+      was required; the owned temporary directory was removed.
+- [ ] Identify the failing hosted preparation boundary before claiming that
+      publication is repaired. Preserve existing tags and authenticated subjects;
+      changed source requires a fresh unused patch-version attempt and review.
+
+The boundary review confirms that publisher mutations start after journal
+initialization. This attempt stopped before that transaction began; the lost
+exception prevents identifying the exact preparation boundary from its log.
