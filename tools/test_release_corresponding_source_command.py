@@ -409,8 +409,7 @@ class CorrespondingSourceCommand(unittest.TestCase):
                     "run_id": self.args.run_id,
                     "run_attempt": self.args.run_attempt,
                     "jobs": {
-                        name: "success"
-                        for name in ("security", "backend", "web", "android", "ios")
+                        name: "success" for name in ("security", "backend", "web")
                     },
                 },
             },

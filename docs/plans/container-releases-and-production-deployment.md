@@ -36,6 +36,13 @@ Assembly requires both to succeed; a failed or incomplete CI cannot produce the
 source-CI approval report or reach publication. Preparation may consume runner
 time after a CI failure. Whole-workflow publication serialization remains in place.
 
+On 2026-10-08 the operator agreed to separate mobile validation from server
+publication. Container releases require repository security, backend and web CI
+on the exact source commit. Routine application CI retains Android/shared and
+iOS checks; no mobile app is published by this plan. Earlier five-job release
+gate checkpoints below describe the previous contract and are superseded by the
+server-only release validation checkpoint.
+
 Build two images for `linux/amd64` and `linux/arm64`:
 
 | Component                  | Example release image                    | Compose service |
@@ -2717,10 +2724,9 @@ runner, not a claim that the later failed native-container preparation passed.
 - [ ] Complete a matching-checkpoint isolated restore and rollback exercise,
       preserving the original state and checking security reconciliation before
       accepting traffic.
-- [ ] Run the existing backend/web/Android/iOS release gates for the candidate.
-      Keep native iOS validation pending until macOS/Xcode builds both the app and
-      embedded share extension and runs XCTest. Record exact commands and runner
-      requirements in the release documentation; Linux checks do not replace it.
+- [ ] Run repository-security/backend/web release gates for the container
+      candidate. Keep routine mobile CI and its native macOS/Xcode requirements
+      separate; Linux checks do not replace mobile build/device verification.
 - [ ] Demonstrate anonymous installation from the published release bundle and
       images, followed by a successful manually selected production update and a
       verified recovery path. Document any remaining operator-only checks.
@@ -2728,3 +2734,56 @@ runner, not a claim that the later failed native-container preparation passed.
 This plan does not include Play Store/App Store distribution or native signing
 automation. It preserves both mobile platforms' existing release validation and
 shared protocol compatibility while adding server image publication/deployment.
+
+### Server-only release validation checkpoint
+
+- [x] Add a boolean reusable-CI container scope, defaulting off, that skips both
+      mobile jobs only for the server release caller. Retain ordinary PR/main
+      mobile selection, all protected main checks, server tests and time budgets.
+- [x] Require exact successful security/backend/web outcomes in both the source-CI
+      producer and publication consumer. Preserve exact tag/run/attempt/source
+      validation, pagination/duplicate handling and rejection of failed, skipped,
+      pending or missing required server checks. Known mobile jobs are excluded
+      from server evidence; unknown reusable job names still fail closed.
+- [x] Verify focused producer/publication regressions and both workflow schemas;
+      42 existing checks passed in 6.559s, including rejection of each required
+      server job when failed, skipped, pending or missing. Both workflows passed
+      Actionlint. The corresponding-source command's five existing checks also
+      passed in 0.028s after updating its fixture to the server-only contract.
+      No new test methods or full local application rerun were added.
+- [ ] Verify the integrated planned candidate executes all three server/security
+      checks, skips mobile compilation and overlaps native container preparation.
+      Actual publication and production migration remain separate pending gates.
+
+Candidate `37765615690` passed all five checks under the previous contract, then
+both native container jobs failed while fetching `apk-tools` `3.0.8-r0` sources
+from packaging commit `4588b452722bd4800efdc6cce4f6e980e02a997f`. The fixed
+diagnostic category was HTTP. This identifies a server runtime-source input,
+not an Android build failure. The original recipe/checksum passed locally;
+the official Alpine distfiles mirror also served the exact original bytes.
+Hosted validation of the mirror repair remains pending.
+
+The archive is retained from
+[Alpine's official distfiles](https://distfiles.alpinelinux.org/distfiles/v3.24/apk-tools-v3.0.8.tar.gz)
+against the unchanged
+[exact APKBUILD](https://raw.githubusercontent.com/alpinelinux/aports/4588b452722bd4800efdc6cce4f6e980e02a997f/main/apk-tools/APKBUILD).
+The diagnostic identifies an HTTP fetch failure; it does not establish its
+status code or a general runner-network outage.
+
+- [x] Restore the failing source fetch through abuild's supported official
+      `DISTFILES_MIRROR`. Read the validated helper's stable Alpine release once
+      without network and derive its fixed official major/minor mirror branch.
+      Keep original recipes, SHA512 sums, independent source verification and
+      container isolation unchanged. The exact implemented `apk-tools` path
+      fetched from the mirror and passed its original SHA512 independently;
+      18 runtime regressions passed in 0.009s and native preparation had 13
+      passes with one existing opt-in skip in 0.064s. Temporary probes were removed.
+- [ ] Verify the mirror repair in both native hosted jobs and complete source
+      replay, candidate assembly and disposable recovery before publication.
+
+The scheduling PR #12 completed all five required checks with zero annotations
+at `b023bddd0669f88bcebbd050db104c9caeeae7ac` and merged through protection as
+`3e599052e7170f8687004d132b47b25d3ec70221`; its tree matches the checked head.
+This verifies its selector-policy change on hosted CI, not a completed release
+or proof of overlapping preparation. A later release-workflow-only PR remains
+needed to observe application-step skipping on that particular change scope.

@@ -42,9 +42,10 @@ CI_NAMES = {
     "security": "Repository security",
     "backend": "Backend",
     "web": "Web",
-    "android": "Android and shared module",
-    "ios": "Native iOS app, extension and XCTest",
 }
+MOBILE_CI_NAMES = frozenset(
+    {"Android and shared module", "Native iOS app, extension and XCTest"}
+)
 CI_PREFIX = "Exact tagged commit CI / "
 CHECKS = frozenset(
     {
@@ -138,7 +139,7 @@ def timestamp(value: object) -> str:
 def source_ci_report(
     binding: Binding, *, run_id: int, attempt: int, token: str, http=None
 ) -> dict:
-    """Read the selected tag-run attempt's five completed reusable CI jobs.
+    """Read the selected tag-run attempt's completed server/security CI jobs.
 
     A successful old main run, cancelled/skipped jobs, API errors and incomplete
     pagination cannot yield a report. Unrelated release jobs may still be active.
@@ -218,6 +219,10 @@ def source_ci_report(
         name = job["name"]
         if not name.startswith(CI_PREFIX):
             continue
+        # The reusable caller skips these separate mobile checks for containers.
+        # Their presence in GitHub's jobs list is not server validation evidence.
+        if name.removeprefix(CI_PREFIX) in MOBILE_CI_NAMES:
+            continue
         require(name in names, "Unexpected reusable source CI job")
         key = names[name]
         require(
@@ -233,7 +238,10 @@ def source_ci_report(
             "name": name,
             "completed_at": timestamp(job.get("completed_at")),
         }
-    require(set(selected) == set(CI_NAMES), "Source CI lacks all five successful jobs")
+    require(
+        set(selected) == set(CI_NAMES),
+        "Source CI lacks successful security/backend/web jobs",
+    )
     same_run(get(root))
     return {
         "schema_version": 1,

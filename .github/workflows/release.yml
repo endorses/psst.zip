@@ -60,10 +60,12 @@ jobs:
     needs: validate-tag
     # The reusable workflow comes from the exact caller commit. A main dispatch
     # can exercise native preparation but cannot satisfy tagged source-CI gates.
-    # All five jobs must succeed; an old successful run is insufficient.
+    # Security, backend and web must succeed; mobile validation stays in routine CI.
+    # An old successful run is insufficient.
     uses: ./.github/workflows/ci.yml
     with:
       full_validation: true
+      container_release: true
     permissions:
       contents: read
 
@@ -161,7 +163,7 @@ jobs:
           rm -f -- "$RUNNER_TEMP/candidate-upstream-replay.json"
 
   build-and-smoke:
-    name: Native candidate pair (${{ matrix.arch }})
+    name: Native backend/web images (${{ matrix.arch }})
     # Preparation can overlap source CI; assembly below still requires CI success.
     needs: [validate-tag, resolve-bases]
     strategy:
@@ -743,7 +745,7 @@ jobs:
             --output "$RUNNER_TEMP/candidate-source-review" \
             --resolved-bases "$RUNNER_TEMP/candidate-assembly/bases/candidate-bases.json" \
             --checks-output "$RUNNER_TEMP/candidate-check-reports" --verify-only
-          printf '%s\n' 'Corresponding source, all five source CI jobs, native smoke, runtime notices and source/final-image scanner gates verified for this exact version-tag run and attempt; publication still requires distribution approval and delivery gates.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'Corresponding source, security/backend/web source CI, native container smoke, runtime notices and source/final-image scanner gates verified for this exact version-tag run and attempt; publication still requires distribution approval and delivery gates.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
@@ -787,7 +789,7 @@ jobs:
           rm -rf -- "$RUNNER_TEMP/candidate-assembly" "$RUNNER_TEMP/candidate-source-review" "$RUNNER_TEMP/candidate-check-reports"
 
   recovery-candidate:
-    name: Native candidate recovery (${{ matrix.arch }})
+    name: Native container recovery (${{ matrix.arch }})
     needs: [validate-tag, assemble-candidate]
     strategy:
       fail-fast: false

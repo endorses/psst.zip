@@ -208,7 +208,16 @@ class GateReports(unittest.TestCase):
                 source_assets={fixture.source.name: fixture.source},
             )
 
-    def test_source_ci_uses_exact_attempt_and_all_five_actual_outcomes(self):
+    def test_source_ci_uses_exact_attempt_and_server_outcomes_without_mobile(self):
+        for number, name in enumerate(sorted(producer.MOBILE_CI_NAMES), 201):
+            self.jobs.jobs.append(
+                {
+                    "id": number,
+                    "name": producer.CI_PREFIX + name,
+                    "status": "completed",
+                    "conclusion": "skipped",
+                }
+            )
         self.jobs.jobs.extend(
             {"id": number, "name": f"Other release job {number}"}
             for number in range(6, 107)
@@ -237,22 +246,25 @@ class GateReports(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(InvalidRelease):
                 self.ci()
         self.jobs.run = original_run
-        for field, value in (
-            ("status", "in_progress"),
-            ("conclusion", "failure"),
-            ("conclusion", "skipped"),
-            ("head_sha", "b" * 40),
-        ):
-            self.jobs.jobs = copy.deepcopy(original_jobs)
-            self.jobs.jobs[0][field] = value
-            with (
-                self.subTest(field=field, value=value),
-                self.assertRaises(InvalidRelease),
+        for index, required_job in enumerate(original_jobs):
+            for field, value in (
+                ("status", "in_progress"),
+                ("conclusion", "failure"),
+                ("conclusion", "skipped"),
+                ("head_sha", "b" * 40),
+            ):
+                self.jobs.jobs = copy.deepcopy(original_jobs)
+                self.jobs.jobs[index][field] = value
+                with (
+                    self.subTest(job=required_job["name"], field=field, value=value),
+                    self.assertRaises(InvalidRelease),
+                ):
+                    self.ci()
+            self.jobs.jobs = original_jobs[:index] + original_jobs[index + 1 :]
+            with self.subTest(missing=required_job["name"]), self.assertRaisesRegex(
+                InvalidRelease, "security/backend/web"
             ):
                 self.ci()
-        self.jobs.jobs = original_jobs[1:]
-        with self.assertRaisesRegex(InvalidRelease, "all five"):
-            self.ci()
 
     def test_api_failure_partial_pagination_and_duplicate_job_are_not_success(self):
         for status in (401, 403, 404, 429, 500):

@@ -317,6 +317,15 @@ class RuntimeBoundaries(unittest.TestCase):
             runtime.source_notices(Path("unused"), depth=5)
 
     def test_original_source_checksums_are_verified_without_regeneration(self):
+        for release, branch in ((b"3.24.2\n", "3.24"), (b"3.25.0", "3.25")):
+            with self.subTest(release=release):
+                self.assertEqual(
+                    runtime.alpine_distfiles_mirror(release),
+                    f"https://distfiles.alpinelinux.org/distfiles/v{branch}",
+                )
+        for release in (b"3.24.0_rc1", b"3.24", b"3.24.2\n../private", b"edge"):
+            with self.subTest(release=release), self.assertRaises(InvalidRelease):
+                runtime.alpine_distfiles_mirror(release)
         with tempfile.TemporaryDirectory(prefix="psst-runtime-test-") as folder:
             archive = Path(folder) / "source.tar.gz"
             data = b"Exact original upstream archive bytes"

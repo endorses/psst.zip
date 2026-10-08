@@ -503,11 +503,8 @@ def verify_gates(
         elif gate == "source-ci":
             require(
                 receipt.details.get("jobs")
-                == {
-                    name: "success"
-                    for name in ("security", "backend", "web", "android", "ios")
-                },
-                "Exact source CI did not pass all five jobs",
+                == {name: "success" for name in ("security", "backend", "web")},
+                "Exact source CI did not pass security/backend/web jobs",
             )
         elif gate == "upgrade-recovery":
             recovery_review_details(receipt.details, binding)

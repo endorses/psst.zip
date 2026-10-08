@@ -11,8 +11,9 @@ application steps from their source, build and fixture dependencies. Prose-only
 documentation and reviewed release-tooling changes can omit unrelated app builds.
 The five existing check names remain present; each scope step explains its
 selection. An omitted application suite has not executed. Unknown changes or
-unavailable Git baselines run everything. Manual CI and reusable release calls
-always request the full application suite.
+unavailable Git baselines run everything. Manual CI requests the full application
+suite. The container release caller requires complete security/backend/web
+validation and skips separate mobile builds.
 
 ## Release candidate checks
 
@@ -20,8 +21,10 @@ The current `.github/workflows/release.yml` verifies candidates and contains an
 explicitly enabled, protected publication job. Publication is disabled by default.
 It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
 the tag's full source commit to match the triggering event and be reachable from
-`main`, and calls the reusable CI workflow from that same commit. All five CI
-jobs remain required, including native iOS and Android/shared checks.
+`main`, and calls the reusable CI workflow from that same commit. Container
+publication requires successful repository-security, backend and web checks.
+Android/shared and iOS validation remain in routine application CI and do not
+block server container publication.
 
 A main-only manual dispatch accepts an unused planned version, defaulting to
 `v0.1.0`, without creating a tag or release. It can exercise preparation before
@@ -453,15 +456,16 @@ publication in this multi-module repository.
 ## Assemble the two native build results
 
 After source identity validation, native preparation and upstream source retention
-run alongside exact-commit CI. Assembly waits for all five CI jobs and both native
+run alongside exact-commit CI. Assembly waits for security/backend/web CI and both native
 results; failed or incomplete CI cannot reach source-CI approval or publication.
 The workflow keeps its existing serialized publication group. Preparation may
 consume runner time when CI fails, but does not authorize a release.
 
 Ordinary PR/main CI treats changes to this reviewed release workflow as release
 tooling and runs repository-security checks. CI/unknown workflow changes and
-selector-policy changes still require all application checks. Tags, planned
-dispatches and explicit full validation always run all five source-CI jobs.
+selector-policy changes still require all application checks. Container tags and
+planned release dispatches always run security/backend/web validation regardless
+of change selection. Other full-validation callers retain mobile checks by default.
 
 After CI and both native jobs finish, `tools/prepare_release_inputs.py` assembles their
 actual final OCI exports, measurements, source packs and build records. Each job
