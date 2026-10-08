@@ -176,8 +176,10 @@ still needs its exact signed gates and the configured human approvals.
       `57c64eafba191a0621f9ca452c79557507c7389b`. Run `37799619020`, attempt 1,
       passed exact server CI, both native image preparations, signed source
       assembly and authenticated recovery on both architectures. Its fresh
-      packet is `candidate-distribution-presentation-37799619020-1`; the configured
-      environment is waiting for the operator's new distribution review.
+      packet is `candidate-distribution-presentation-37799619020-1`. The operator
+      approved the configured environment, but the review producer rejected a
+      leading blank line in the otherwise correct comment. No distribution gate
+      was issued, and the publisher was skipped.
       Publication and anonymous retrieval remain pending. Preserve all existing
       version tags; this candidate does not update the VPS.
 

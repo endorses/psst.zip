@@ -8,6 +8,7 @@ import copy
 import io
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ from publish_container_release import (
     SOURCE_REVIEW_POLICY,
     VerifiedEvidence,
 )
+import github_release_evidence as evidence_verifier
 from release_artifacts import InvalidRelease, json_bytes, read_json
 
 
@@ -209,6 +211,79 @@ class CorrespondingSourceCommand(unittest.TestCase):
             patch.dict(command.os.environ, {"GH_TOKEN": "fixture-token"})
         )
         return prepared, auth, producer
+
+    def test_native_authentication_is_bounded_and_reuses_only_exact_byte_receipts(self):
+        paths = (
+            "native/native-measurement.json",
+            "native/source-completeness-verification.json",
+            "source-scans/source-scan-measurement.json",
+            "compiler-backend/compiler-graph-measurement.json",
+            "compiler-web/compiler-graph-measurement.json",
+            "native/browser/browser-verification.json",
+            "image-scan-backend/measurement.json",
+            "image-scan-web/measurement.json",
+        )
+        trees = {
+            "linux/amd64": self.args.amd64_inputs,
+            "linux/arm64": self.args.arm64_inputs,
+        }
+        contents = []
+        for platform, tree in trees.items():
+            for relative in paths:
+                path = tree / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                raw = json_bytes({"platform": platform, "observation": relative})
+                path.write_bytes(raw)
+                contents.append(raw)
+        barrier, lock = threading.Barrier(4, timeout=3), threading.Lock()
+        observed, active, peak = [], 0, 0
+
+        def verify(args, environment):
+            nonlocal active, peak
+            raw = Path(args[3]).read_bytes()
+            with lock:
+                observed.append(raw)
+                first_group = len(observed) <= 4
+                active += 1
+                peak = max(peak, active)
+            try:
+                if first_group:
+                    barrier.wait()
+                return b"verified"
+            finally:
+                with lock:
+                    active -= 1
+
+        authenticator = evidence_verifier.GhEvidenceVerifier(
+            gh=Path("/usr/bin/true"), run_id=1234, run_attempt=2
+        )
+        with patch.object(
+            evidence_verifier, "bounded_verify", side_effect=verify
+        ) as cli:
+            with patch.object(evidence_verifier, "verified_subject") as policy:
+                command.authenticate_native_inputs(self.binding, trees, authenticator)
+                self.assertEqual(peak, 4)
+                self.assertCountEqual(observed, contents)
+                self.assertEqual(cli.call_count, 16)
+                self.assertEqual(policy.call_count, 16)
+                for call in policy.call_args_list:
+                    self.assertEqual(call.kwargs["binding"], self.binding)
+                    self.assertEqual(call.kwargs["run_id"], 1234)
+                    self.assertEqual(call.kwargs["run_attempt"], 2)
+                for raw in contents:
+                    authenticator.authenticate(raw, self.binding)
+                self.assertEqual(cli.call_count, 16)
+                authenticator.authenticate(b"substituted observation", self.binding)
+                self.assertEqual(cli.call_count, 17)
+                policy.side_effect = InvalidRelease("Observation signer rejected")
+                (self.args.amd64_inputs / paths[0]).write_bytes(b"rejected observation")
+                with self.assertRaisesRegex(InvalidRelease, "signer rejected"):
+                    command.authenticate_native_inputs(
+                        self.binding, trees, authenticator
+                    )
+                with self.assertRaisesRegex(InvalidRelease, "signer rejected"):
+                    authenticator.authenticate(b"rejected observation", self.binding)
+                self.assertEqual(cli.call_count, 19)
 
     def test_typed_tag_binding_native_paths_current_attempt_and_exclusive_outputs(self):
         prepared, auth, producer = self.mocks()
@@ -459,6 +534,7 @@ class CorrespondingSourceCommand(unittest.TestCase):
             }
         stack = ExitStack()
         self.addCleanup(stack.close)
+        stack.enter_context(patch.object(command, "authenticate_native_inputs"))
         ci = stack.enter_context(
             patch.object(
                 command, "source_ci_report", return_value=self.checks["source-ci"]
@@ -505,6 +581,31 @@ class CorrespondingSourceCommand(unittest.TestCase):
 
         auth.return_value.verify.side_effect = receipt
         return prepared, auth, producer, ci, native, source, image
+
+    def test_rejected_concurrent_authentication_cannot_produce_source_or_check_outputs(
+        self,
+    ):
+        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
+        with patch.object(
+            command,
+            "authenticate_native_inputs",
+            side_effect=InvalidRelease("Observation signer rejected"),
+        ) as warm:
+            with self.assertRaisesRegex(InvalidRelease, "signer rejected"):
+                command.run_command(self.args)
+        warm.assert_called_once_with(
+            self.binding,
+            {
+                "linux/amd64": self.args.amd64_inputs,
+                "linux/arm64": self.args.arm64_inputs,
+            },
+            auth.return_value,
+        )
+        producer.assert_not_called()
+        source.assert_not_called()
+        image.assert_not_called()
+        self.assertFalse(self.args.output.exists())
+        self.assertFalse(self.args.checks_output.exists())
 
     def test_paired_outputs_generate_and_verify_without_replays(self):
         prepared, auth, producer, ci, native, source, image = self.paired_mocks()

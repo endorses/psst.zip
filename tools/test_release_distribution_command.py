@@ -307,6 +307,66 @@ class DistributionCommand(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "changed during authentication"):
             command.run_command(self.args)
 
+    def test_surrounding_ascii_whitespace_preserves_original_review_evidence(self):
+        original = "\r\n\t " + self.reviews[0]["comment"] + " \t\r\n\v\f"
+        self.reviews[0]["comment"] = original
+        report, evidence = self.produced()
+        self.assertEqual(evidence["github_evidence"]["reviews"], self.reviews)
+        self.assertEqual(evidence["github_evidence"]["reviews"][0]["comment"], original)
+        self.assertEqual(
+            report["details"]["review"]["record_digest"],
+            command.sha256(command.json_bytes(evidence)),
+        )
+        self.assertEqual(command.run_command(self.args), (report, evidence))
+
+    def test_whitespace_handling_rejects_internal_changes_and_malformed_comments(self):
+        exact = self.reviews[0]["comment"]
+        for invalid in (
+            exact.replace("; run ", ";  run "),
+            exact.replace("; attempt ", ";\n attempt "),
+            exact.replace("attempt 2;", "attempt 1;"),
+            exact.replace(self.binding.digest, "sha256:" + "0" * 64),
+            exact.replace(
+                command.sha256(self.args.source_report.read_bytes()),
+                "sha256:" + "0" * 64,
+            ),
+            "\u00a0" + exact,
+            None,
+            42,
+            [],
+            {"comment": exact},
+        ):
+            self.reviews[0]["comment"] = invalid
+            with self.subTest(comment=invalid), self.assertRaisesRegex(
+                InvalidRelease, "Missing or ambiguous approval"
+            ):
+                command.distribution_review_report(
+                    self.binding,
+                    root=self.args.root,
+                    source_report=self.args.source_report,
+                    verifier=self.verifier,
+                    run_id=self.args.run_id,
+                    attempt=self.args.run_attempt,
+                    token="fixture-token",
+                    http=self.http,
+                )
+
+    def test_padded_duplicate_approvals_remain_ambiguous(self):
+        duplicate = copy.deepcopy(self.reviews[0])
+        duplicate["comment"] = "\r\n" + duplicate["comment"] + "\r\n"
+        self.reviews.append(duplicate)
+        with self.assertRaisesRegex(InvalidRelease, "Missing or ambiguous approval"):
+            command.distribution_review_report(
+                self.binding,
+                root=self.args.root,
+                source_report=self.args.source_report,
+                verifier=self.verifier,
+                run_id=self.args.run_id,
+                attempt=self.args.run_attempt,
+                token="fixture-token",
+                http=self.http,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

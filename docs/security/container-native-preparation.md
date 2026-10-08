@@ -241,8 +241,17 @@ unverified source-CI/signer flags. Tagged preparation still requires the reviewe
 actual tag; the publisher retains its mandatory tag and authenticated-gate checks.
 The internal bundle profile describes its updater contents, not approval to deploy.
 
-After assembly, native AMD64 and ARM64 recovery jobs each validate both retained
-trees and execute the prepared candidate on their own native runner. They measure
+After signed assembly, tagged AMD64 and ARM64 recovery jobs authenticate the
+completed corresponding-source and final-image-smoke reports for the exact
+binding, run and attempt. They download both small descriptors, the manifest,
+deployment bundle and two indices, plus only their own saved Docker pair and two
+OCI exports. The other architecture's image facts come from authenticated smoke
+evidence. Each runner independently checks its selected OCI bytes, tested
+configurations and all loaded layer diff IDs; changed inputs or extra native
+projection files fail. Publication still retains all complete source archives.
+Unsigned planned candidates retain the full two-tree validation path.
+
+Each recovery job executes the prepared candidate on its own native runner. It measures
 ordinary and originally paused upgrade/reapply/isolated restore and injected
 startup failure, using the exact same candidate version for reapplication. Only
 terminal sanitized measurement JSON is uploaded, after bounded fixture cleanup.
@@ -264,9 +273,12 @@ produces artifacts for the same attempt. Rerunning only failed jobs can leave
 prerequisite artifacts at an earlier attempt; explicit download names reject that
 mixture rather than silently reuse earlier results.
 
-The complete hosted transfer/assembly/recovery pipeline remains unrun until the
-reviewed checkpoint is pushed and dispatched. A prior AMD64 source preparation
-or a fixture test does not prove the new ARM64 or hosted path.
+The original full-input hosted transfer/assembly/recovery path passed on both
+architectures in `v0.1.2`, run `37799619020`, attempt 1. The compact tagged
+projection above and four-worker native signature verification have passed focused
+local regressions; their hosted execution and elapsed-time improvement remain
+pending the next necessary release attempt. They do not establish public delivery
+or authorize production deployment.
 
 ## Upstream application source inputs
 

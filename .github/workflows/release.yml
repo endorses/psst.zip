@@ -511,6 +511,20 @@ jobs:
           path: ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/native-artifacts.json
           if-no-files-found: error
           retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          archive: true
+          name: candidate-recovery-images-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Recovery executes this architecture only. Source completeness and
+          # the other architecture are covered by the signed source/smoke gates.
+          path: |
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/final-images.docker.tar
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/export/backend-${{ matrix.arch }}.oci.tar
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/export/web-${{ matrix.arch }}.oci.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Preserve bounded public records, excluding source/image payloads and diagnostics
         if: always()
         env:
@@ -771,6 +785,18 @@ jobs:
           compression-level: 0
           retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: candidate-recovery-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          # The six large publication source archives are not recovery inputs.
+          path: |
+            ${{ runner.temp }}/candidate-assembly/prepared/release-manifest.json
+            ${{ runner.temp }}/candidate-assembly/prepared/psst.zip-deployment-${{ needs.validate-tag.outputs.version }}.tar.gz
+            ${{ runner.temp }}/candidate-assembly/prepared/backend-index.json
+            ${{ runner.temp }}/candidate-assembly/prepared/web-index.json
+          if-no-files-found: error
+          retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
           archive: true
@@ -847,32 +873,65 @@ jobs:
           esac
           test "$PLATFORM" = "linux/$architecture"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind != 'version-tag'
         with:
           name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-recovery/amd64
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind != 'version-tag'
         with:
           name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-recovery/arm64
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: candidate-recovery-prepared-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-recovery/prepared
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-native-descriptor-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/amd64/native
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-native-descriptor-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/arm64/native
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-recovery-images-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/${{ matrix.arch }}/native
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/source
       - name: Verify downloaded trees and measure real native update and recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           import os, sys
           from pathlib import Path
           sys.path.insert(0, str(Path('tools').resolve()))
           from generate_release_gate_reports import NativeSourceContext
+          from github_release_evidence import GhEvidenceVerifier
           from measure_release_recovery import measure_recovery
           from prepare_candidate_transfer import verify_native
           from release_artifacts import PLATFORMS, read_bounded_file, read_json, require
           root = Path(os.environ['GITHUB_WORKSPACE'])
           inputs = Path(os.environ['RUNNER_TEMP']) / 'candidate-recovery'
           version, commit, kind = [os.environ[key] for key in ['CANDIDATE_VERSION', 'SOURCE_COMMIT', 'SOURCE_KIND']]
-          for platform in PLATFORMS:
-              verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), inputs / platform.split('/')[1], kind)
+          authentication = {}
+          if kind == 'version-tag':
+              authentication = {
+                  'source_report': inputs / 'source/candidate-source-review/corresponding-source.json',
+                  'smoke_report': inputs / 'source/candidate-check-reports/final-image-smoke.json',
+                  'verifier': GhEvidenceVerifier(token=os.environ['GH_TOKEN'], run_id=int(os.environ['GITHUB_RUN_ID']), run_attempt=int(os.environ['GITHUB_RUN_ATTEMPT'])),
+              }
+          else:
+              for platform in PLATFORMS:
+                  verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), inputs / platform.split('/')[1], kind)
           prepared = inputs / 'prepared'
           manifest = read_json(read_bounded_file(prepared / 'release-manifest.json'))
           result = measure_recovery(
@@ -880,7 +939,7 @@ jobs:
               natives={p: inputs / p.split('/')[1] / 'native/native-artifacts.json' for p in PLATFORMS},
               manifest=prepared / 'release-manifest.json', bundle=prepared / manifest['bundle']['name'],
               previous_source='2ed02af8a062bb3cc21a80a1503d31775dd6e5d8',
-              output=inputs / 'recovery-measurement.json', root=root,
+              output=inputs / 'recovery-measurement.json', root=root, **authentication,
           )
           require(result['publication_authorized'] is False and result['upgrade_recovery_gate_pending'] is True, 'Recovery measurement cannot authorize release')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:

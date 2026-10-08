@@ -3093,7 +3093,7 @@ exception prevents identifying the exact preparation boundary from its log.
       contract check found no supported schema mismatch; no speculative event
       validation change was made.
 - [x] Confirm `v0.1.2` is unused, create it at the verified merged source above,
-      and push only that new tag. Run `37799619020`, attempt 1, is in progress.
+      and push only that new tag. Run `37799619020`, attempt 1, completed.
       Preserve `v0.0.0`, `v0.1.0` and `v0.1.1`; the new tag neither publishes a
       release nor updates the VPS.
 - [x] Complete this attempt's exact server CI, native image preparation and
@@ -3115,8 +3115,11 @@ exception prevents identifying the exact preparation boundary from its log.
       flow checks remain explicitly false.
 - [x] Present and inspect the fresh packet
       `candidate-distribution-presentation-37799619020-1`, matching the source,
-      binding, report hash and exact attempt above. GitHub is holding review job
-      `113402732572` for the configured `container-release` reviewer `endorses`.
+      binding, report hash and exact attempt above. The configured reviewer
+      `endorses` approved job `113402732572`, but its producer rejected a leading
+      CRLF in the otherwise correct comment. It issued no distribution gate;
+      the publisher was skipped. This is distinct from the unresolved v0.1.1
+      publisher preparation failure.
 - [ ] Obtain the configured human approvals and observe the publisher's real
       preparation stages. Earlier approvals cannot
       authorize these changed source subjects. The original failure's exact cause
@@ -3134,3 +3137,45 @@ not additional benchmark runs. All completed jobs have zero GitHub annotations,
 and separate Android/iOS builds were skipped. No tests or timeout increases were
 added. Only small review reports were downloaded locally; image and source
 archives were not downloaded for this review.
+
+### Release workflow efficiency
+
+- [x] Identify the actual v0.1.2 critical path from completed job and step timings,
+      without rerunning the workflow. Automated preparation took 30m28s before
+      approval. Exact server CI finished in parallel and was not the bottleneck;
+      mobile builds were skipped. AMD64 native preparation took 9m37s, assembly
+      5m17s, recovery 13m59s and aggregation 32s. Recovery downloaded approximately
+      2.7 GiB per runner: both native source/image trees and a 1.25 GiB publication
+      payload. AMD64 transfers took 6m03s, versus 33s on ARM64.
+- [x] Give recovery a four-file prepared projection: manifest, deployment bundle
+      and two image indices. Publication retains all complete source archives;
+      recovery never reads those standalone archives.
+- [x] For tagged recovery, authenticate the existing complete source and native
+      smoke reports, then download only the selected architecture's Docker pair
+      and OCI exports plus both small descriptors. Preserve exact binding,
+      configuration, loaded-layer, local OCI and unchanged-input checks. Keep the
+      full-input path for unsigned candidates and all three real upgrade/restore
+      scenarios. Retained descriptors indicate 348.49 MiB of selected AMD64 image
+      bytes and 332.60 MiB for ARM64, before the small report/binding files. This
+      reduces bytes transferred; elapsed-time improvement is not yet measured.
+- [x] Authenticate the sixteen independent native observations with at most four
+      workers using the same invocation's existing exact-byte verifier cache.
+      Base authentication and all subsequent source/schema/OCI checks stay in
+      place. Rejected signatures propagate before source/check reports are written;
+      modified bytes require new authentication. No persistent trust cache or
+      additional build/release experiment is introduced.
+- [x] Accept surrounding ASCII whitespace in the human approval comment while
+      retaining its original API bytes and rejecting changed internal content,
+      other attempts/subjects/reviewers, malformed values and duplicate approvals.
+- [x] Format and validate the changed workflow and run only the focused meaningful
+      input/authentication regressions. Fifty-nine relevant distribution,
+      source-review, gate and recovery checks passed in 8.734 seconds. They cover
+      both selected architectures, unsigned/mismatched/substituted evidence,
+      altered loaded layers and files, incomplete authentication, bounded
+      concurrent verification, signer failures and approval whitespace. Workflow
+      actionlint, embedded Python parsing and diff checks passed. Local fixtures
+      do not establish hosted signatures, artifact delivery or elapsed-time savings.
+- [ ] Commit the implementation and this plan, use normal protected review,
+      and measure the next necessary release attempt
+      rather than launching a separate benchmark workflow. Do not increase
+      timeouts or mark live publication, off-host recovery or VPS migration done.

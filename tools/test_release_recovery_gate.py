@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -15,12 +17,24 @@ import aggregate_release_recovery as aggregation
 import measure_release_recovery as recovery
 from publish_container_release import (
     Binding,
+    VerifiedEvidence,
     SOURCE_COVERAGE,
     image_subjects,
     recovery_review_details,
     sha256,
 )
-from release_artifacts import InvalidRelease, PLATFORMS, git, json_bytes, require
+from release_artifacts import (
+    InvalidRelease,
+    PLATFORMS,
+    REQUIRED_FILES,
+    build_bundle,
+    git,
+    json_bytes,
+    require,
+)
+from generate_release_gate_reports import CHECKS
+from test_release_oci import fixture as oci_fixture
+import assemble_release_oci as oci
 from test_release_artifacts import digest, manifest
 
 START = "2020-01-01T00:00:00+00:00"
@@ -642,6 +656,446 @@ class RecoveryGateChecks(unittest.TestCase):
         (args.prepared / "extra.json").write_text("{}")
         with self.assertRaisesRegex(InvalidRelease, "file set"):
             aggregation.authenticated_command_inputs(args, auth)
+
+
+class AuthenticatedRecoveryInputs(unittest.TestCase):
+    """Real tiny OCI/save/bundle bytes; only hosted signature trust is injected."""
+
+    @staticmethod
+    def archive(path, files):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(path, "w:") as archive:
+            for name, body in files.items():
+                member = tarfile.TarInfo(name)
+                member.size = len(body)
+                archive.addfile(member, io.BytesIO(body))
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="psst-recovery-projection-")
+        self.addCleanup(self.temporary.cleanup)
+        self.folder = Path(self.temporary.name)
+        self.root = self.folder / "source"
+        self.root.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        for name in REQUIRED_FILES | {
+            "deploy/update.py",
+            "backend/licenses/fixture.txt",
+        }:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("Small tracked source fixture\n")
+        git(self.root, "add", ".")
+        git(
+            self.root,
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
+        )
+        self.commit = git(self.root, "rev-parse", "HEAD").decode().strip()
+        self.context = recovery.NativeSourceContext(
+            "endorses/psst.zip", "v1.2.3", self.commit, PLATFORMS[0]
+        )
+        self.prepared = self.folder / "prepared"
+        self.prepared.mkdir()
+        self.bundle = build_bundle(
+            self.root, self.prepared, self.context.version, "deployment-ready"
+        )
+        self.natives, self.images, configs, archives, self.saved_files = (
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
+        self.oci_files = {}
+        self.descriptor_values = {}
+        for platform in PLATFORMS:
+            arch = platform.split("/")[1]
+            native = self.folder / arch / "native"
+            native.mkdir(parents=True)
+            pair, saved_manifest, artifacts = {}, [], {}
+            for component in ("backend", "web"):
+                files, old_config = oci_fixture(component, arch, gzip_layer=False)
+                index = json.loads(files["index.json"])
+                old_image = index["manifests"][0]["digest"]
+                image = json.loads(files.pop("blobs/sha256/" + old_image[7:]))
+                config = json.loads(files.pop("blobs/sha256/" + old_config[7:]))
+                labels = config["config"]["Labels"]
+                labels["org.opencontainers.image.revision"] = self.commit
+                labels["zip.psst.source.archive"] = (
+                    "https://github.com/endorses/psst.zip/archive/"
+                    + self.commit
+                    + ".tar.gz"
+                )
+                config_raw = json_bytes(config)
+                config_digest = sha256(config_raw)
+                image["config"].update(digest=config_digest, size=len(config_raw))
+                image_raw = json_bytes(image)
+                index["manifests"][0].update(
+                    digest=sha256(image_raw), size=len(image_raw)
+                )
+                files.update(
+                    {
+                        "index.json": json_bytes(index),
+                        "blobs/sha256/" + config_digest[7:]: config_raw,
+                        "blobs/sha256/" + sha256(image_raw)[7:]: image_raw,
+                    }
+                )
+                self.oci_files[arch, component] = files
+                path = native / "export" / (component + "-" + arch + ".oci.tar")
+                self.archive(path, files)
+                target = component + "-" + arch
+                pair[component] = configs[target] = config_digest
+                archives[target] = path
+                self.images[target] = oci.inspect_archive(
+                    path,
+                    platform=platform,
+                    repository=self.context.repository,
+                    version=self.context.version,
+                    commit=self.commit,
+                    tested_config=config_digest,
+                    component=component,
+                )
+                artifacts[component + "_archive"] = recovery.file_record(path, native)
+                config_name, layer_name = component + ".json", component + "-layer.tar"
+                self.saved_files[arch, config_name] = config_raw
+                self.saved_files[arch, layer_name] = files[
+                    "blobs/sha256/" + image["layers"][0]["digest"][7:]
+                ]
+                saved_manifest.append(
+                    {
+                        "Config": config_name,
+                        "Layers": [layer_name],
+                        "RepoTags": [component + ":fixture"],
+                    }
+                )
+            saved = {
+                name: raw for (a, name), raw in self.saved_files.items() if a == arch
+            }
+            saved["manifest.json"] = json_bytes(saved_manifest)
+            self.saved_files[arch, "manifest.json"] = saved["manifest.json"]
+            final = native / "final-images.docker.tar"
+            self.archive(final, saved)
+            artifacts["final_archive"] = recovery.file_record(final, native)
+            for name in recovery.ARTIFACTS | {"browser_inputs", "browser_verification"}:
+                artifacts.setdefault(
+                    name, {"file": name + ".fixture", "sha256": digest("f"), "size": 1}
+                )
+            descriptor = {
+                "schema_version": 2,
+                "kind": "native-release-artifacts",
+                "source": recovery.NativeSourceContext(
+                    self.context.repository, self.context.version, self.commit, platform
+                ).checked(),
+                "original_tested_configs": pair,
+                "tested_configs": pair,
+                "source_helper_config": digest("d"),
+                "oci_exporter": "docker-save-byte-preserving-oci-v1",
+                "artifacts": artifacts,
+                "publication_authorized": False,
+                "measurement_authentication_required": True,
+            }
+            self.descriptor_values[platform] = descriptor
+            self.natives[platform] = native / "native-artifacts.json"
+            self.natives[platform].write_bytes(json_bytes(descriptor))
+        assembled = oci.assemble(
+            archives,
+            configs,
+            repository=self.context.repository,
+            version=self.context.version,
+            commit=self.commit,
+            output=self.prepared,
+        )
+        value = manifest(self.commit)
+        value.update(payload_profile="deployment-ready", images=assembled["images"])
+        value["bundle"]["sha256"] = sha256(self.bundle.read_bytes())[7:]
+        self.manifest = self.prepared / "release-manifest.json"
+        self.manifest.write_bytes(json_bytes(value))
+        (self.prepared / "oci-correspondence.json").unlink()
+        subjects = {
+            **image_subjects(value),
+            "manifest": "file:release-manifest.json@"
+            + sha256(self.manifest.read_bytes()),
+            "bundle": "file:"
+            + self.bundle.name
+            + "@"
+            + sha256(self.bundle.read_bytes()),
+            "source:fixture.tar.gz": "file:fixture.tar.gz@" + digest("f"),
+        }
+        self.binding = Binding(
+            self.context.repository,
+            self.context.version,
+            self.commit,
+            tuple(sorted(subjects.items())),
+        )
+        source_details = {
+            "schema_version": 1,
+            "source_subjects": {
+                k: v for k, v in subjects.items() if k.startswith("source:")
+            },
+            "images": {
+                name: {
+                    "subject": subjects[name],
+                    "notice_inventory_digest": digest("b"),
+                }
+                for name in SOURCE_COVERAGE
+            },
+            "policy": {
+                "path": "tools/container-distribution-policy.json",
+                "source_commit": self.commit,
+                "record_digest": digest("c"),
+                "git_blob": "d" * 40,
+            },
+            "coverage": {
+                name: {
+                    category: {"status": "complete", "evidence_digest": digest("e")}
+                    for category in categories
+                }
+                for name, categories in SOURCE_COVERAGE.items()
+            },
+        }
+        records = {}
+        for platform in PLATFORMS:
+            arch = platform.split("/")[1]
+            records[platform] = {
+                "measurement_digest": digest("d"),
+                "smoke": {
+                    "schema_version": 1,
+                    "kind": "release-image-smoke",
+                    "version": self.context.version,
+                    "revision": self.commit,
+                    "platform": platform,
+                    "execution": "native",
+                    "tested_configs": self.descriptor_values[platform][
+                        "tested_configs"
+                    ],
+                    "runtime_pack_sha256": digest("c"),
+                    "checks": sorted(CHECKS),
+                    "completed_at": END,
+                    "publication_authorized": False,
+                },
+                "images": {c: self.images[c + "-" + arch] for c in ("backend", "web")},
+                "runtime": {"runtime_pack_sha256": digest("c")},
+            }
+        self.source_report, self.smoke_report = (
+            self.folder / "source.json",
+            self.folder / "smoke.json",
+        )
+        for path, gate, details in (
+            (self.source_report, "corresponding-source", source_details),
+            (
+                self.smoke_report,
+                "final-image-smoke",
+                {
+                    "execution": {p: "native" for p in PLATFORMS},
+                    "tested_configs": configs,
+                    "native_measurements": records,
+                },
+            ),
+        ):
+            path.write_bytes(
+                json_bytes(
+                    {
+                        "schema_version": 1,
+                        "gate": gate,
+                        "binding_digest": self.binding.digest,
+                        "passed": True,
+                        "details": details,
+                    }
+                )
+            )
+        self.trusted = {
+            sha256(p.read_bytes()) for p in (self.source_report, self.smoke_report)
+        }
+        self.calls = []
+        self.select(PLATFORMS[0])
+
+    def select(self, platform):
+        self.context = recovery.NativeSourceContext(
+            self.context.repository, self.context.version, self.commit, platform
+        )
+        for candidate in PLATFORMS:
+            arch = candidate.split("/")[1]
+            native = self.natives[candidate].parent
+            final = native / "final-images.docker.tar"
+            local_files = [
+                native / "export" / (c + "-" + arch + ".oci.tar")
+                for c in ("backend", "web")
+            ]
+            if candidate == platform:
+                self.archive(
+                    final,
+                    {
+                        name: raw
+                        for (a, name), raw in self.saved_files.items()
+                        if a == arch
+                    },
+                )
+                for component, path in zip(
+                    ("backend", "web"), local_files, strict=True
+                ):
+                    self.archive(path, self.oci_files[arch, component])
+            else:
+                for path in [final, *local_files]:
+                    path.unlink(missing_ok=True)
+
+    def verify(self, gate, path, binding):
+        raw = path.read_bytes()
+        require(
+            binding == self.binding and sha256(raw) in self.trusted,
+            "No exact-attempt authenticated evidence",
+        )
+        self.calls.append(gate)
+        return VerifiedEvidence(
+            gate, binding.digest, sha256(raw), True, json.loads(raw)["details"]
+        )
+
+    def validate(self):
+        return recovery.validate_authenticated_inputs(
+            self.context,
+            natives=self.natives,
+            manifest_path=self.manifest,
+            bundle=self.bundle,
+            source_report=self.source_report,
+            smoke_report=self.smoke_report,
+            verifier=self,
+            root=self.root,
+        )
+
+    def test_projection_uses_signed_other_platform_facts_and_selected_real_bytes(self):
+        inputs = self.validate()
+        self.assertEqual(self.calls, ["corresponding-source", "final-image-smoke"])
+        self.assertEqual(inputs.images, self.images)
+        self.assertEqual(inputs.paths[PLATFORMS[1]], {})
+        self.assertEqual(
+            set(p.name for p in self.prepared.iterdir()),
+            {
+                "release-manifest.json",
+                self.bundle.name,
+                "backend-index.json",
+                "web-index.json",
+            },
+        )
+        inputs.unchanged()
+        original = self.smoke_report.read_bytes()
+        self.smoke_report.write_bytes(self.smoke_report.read_bytes() + b"\n")
+        with self.assertRaisesRegex(InvalidRelease, "changed"):
+            inputs.unchanged()
+        self.smoke_report.write_bytes(original)
+        verify = self.verify
+
+        def change_after_authentication(gate, path, binding):
+            receipt = verify(gate, path, binding)
+            if gate == "final-image-smoke":
+                self.source_report.write_bytes(self.source_report.read_bytes() + b"\n")
+            return receipt
+
+        with patch.object(self, "verify", side_effect=change_after_authentication):
+            with self.assertRaisesRegex(InvalidRelease, "changed"):
+                self.validate()
+
+    def test_projection_refuses_unsigned_reports_and_changed_binding(self):
+        self.trusted.remove(sha256(self.source_report.read_bytes()))
+        with self.assertRaisesRegex(InvalidRelease, "authenticated"):
+            self.validate()
+        self.trusted.add(sha256(self.source_report.read_bytes()))
+        value = json.loads(self.source_report.read_bytes())
+        value["details"]["source_subjects"]["source:fixture.tar.gz"] = (
+            "file:fixture.tar.gz@" + digest("e")
+        )
+        self.source_report.write_bytes(json_bytes(value))
+        with self.assertRaisesRegex(InvalidRelease, "stale"):
+            self.validate()
+
+    def test_projection_selects_native_arm_images_and_rejects_partial_authentication(
+        self,
+    ):
+        self.select(PLATFORMS[1])
+        inputs = self.validate()
+        self.assertEqual(inputs.paths[PLATFORMS[0]], {})
+        self.assertEqual(
+            set(inputs.paths[PLATFORMS[1]]),
+            {"final_archive", "backend_archive", "web_archive"},
+        )
+        for arguments in (
+            {"source_report": self.source_report},
+            {"source_report": self.source_report, "smoke_report": self.smoke_report},
+            {"verifier": self},
+        ):
+            with self.subTest(arguments=tuple(arguments)), patch.object(
+                recovery, "native_platform", return_value=PLATFORMS[1]
+            ), patch.object(
+                recovery,
+                "validate_inputs",
+                side_effect=AssertionError("unsigned replay"),
+            ), patch.object(
+                recovery,
+                "validate_authenticated_inputs",
+                side_effect=AssertionError("partial signed replay"),
+            ):
+                execute = unittest.mock.Mock(
+                    side_effect=AssertionError("Docker execution")
+                )
+                with self.assertRaisesRegex(InvalidRelease, "both reports"):
+                    recovery.measure_recovery(
+                        self.context,
+                        natives=self.natives,
+                        manifest=self.manifest,
+                        bundle=self.bundle,
+                        previous_source="a" * 40,
+                        output=self.folder / "terminal.json",
+                        root=self.root,
+                        execute=execute,
+                        **arguments,
+                    )
+                execute.assert_not_called()
+
+    def test_projection_refuses_changed_descriptors_oci_and_missing_inputs(self):
+        descriptor_path = self.natives[PLATFORMS[1]]
+        original = descriptor_path.read_bytes()
+        descriptor = json.loads(original)
+        descriptor["tested_configs"]["web"] = digest("a")
+        descriptor_path.write_bytes(json_bytes(descriptor))
+        with self.assertRaisesRegex(InvalidRelease, "configurations"):
+            self.validate()
+        descriptor_path.write_bytes(original)
+        extra = descriptor_path.parent / "unexpected.tar"
+        extra.write_bytes(b"unrequested payload")
+        with self.assertRaisesRegex(InvalidRelease, "projection input"):
+            self.validate()
+        extra.unlink()
+        index = self.prepared / "web-index.json"
+        index_raw = index.read_bytes()
+        index.unlink()
+        with self.assertRaises((OSError, InvalidRelease)):
+            self.validate()
+        index.write_bytes(index_raw)
+        local = self.natives[PLATFORMS[0]].parent / "export/backend-amd64.oci.tar"
+        original = local.read_bytes()
+        local.write_bytes(original + b"bad")
+        with self.assertRaisesRegex(InvalidRelease, "changed"):
+            self.validate()
+        local.write_bytes(original)
+        local.unlink()
+        with self.assertRaises((OSError, InvalidRelease)):
+            self.validate()
+
+    def test_projection_checks_saved_layer_bytes_even_with_rehashed_descriptor(self):
+        arch = "amd64"
+        files = {name: raw for (a, name), raw in self.saved_files.items() if a == arch}
+        files["backend-layer.tar"] = b"tampered loaded layer"
+        native = self.natives[PLATFORMS[0]].parent
+        final = native / "final-images.docker.tar"
+        self.archive(final, files)
+        descriptor = json.loads(self.natives[PLATFORMS[0]].read_bytes())
+        descriptor["artifacts"]["final_archive"] = recovery.file_record(final, native)
+        self.natives[PLATFORMS[0]].write_bytes(json_bytes(descriptor))
+        with self.assertRaisesRegex(InvalidRelease, "Saved layer differs"):
+            self.validate()
 
 
 if __name__ == "__main__":
