@@ -603,7 +603,8 @@ class GateReports(unittest.TestCase):
                 "tested_web_config": self.configs[platform]["web"],
                 "browser_inputs_sha256": publication.source_digest(capture.pack),
                 "npm_archives": {},
-                "source_associations": {"generated_source_closure_required": True},
+                "source_associations": {"unresolved_javascript": []},
+                "git_inputs": {},
             }
             measurement = self.root / ("browser-" + platform.split("/")[1] + ".json")
             measurement.write_bytes(
@@ -682,7 +683,11 @@ class GateReports(unittest.TestCase):
             corresponding.preferred,
             "verify_captured_compiler_inputs",
             return_value={"fixture": "mapped compiler"},
-        ) as compiler:
+        ) as compiler, patch.object(
+            corresponding.preferred,
+            "verify_generator_relationships",
+            return_value={"fixture": "mapped generators"},
+        ):
             result = verify()
             offering.assert_called_once_with(
                 self.root,
@@ -720,7 +725,23 @@ class GateReports(unittest.TestCase):
             ):
                 verify()
             observations["linux/arm64"]["source_associations"] = {
-                "generated_source_closure_required": True
+                "unresolved_javascript": [{"file": "unknown-emitted-worker.js"}]
+            }
+            unresolved = {
+                **json.loads(original),
+                "source_associations": observations["linux/arm64"][
+                    "source_associations"
+                ],
+            }
+            arm.write_bytes(json_bytes(unresolved))
+            trusted.add(arm.read_bytes())
+            with self.assertRaisesRegex(
+                InvalidRelease, "Unattributed final JavaScript"
+            ):
+                verify()
+            arm.write_bytes(original)
+            observations["linux/arm64"]["source_associations"] = {
+                "unresolved_javascript": []
             }
             upstream["asset"]["digest"] = "sha256:" + "f" * 64
             with self.assertRaisesRegex(InvalidRelease, "publication binding"):

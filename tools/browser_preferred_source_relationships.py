@@ -469,3 +469,287 @@ def verify_captured_compiler_inputs(tree: Path, npm_members, upstreams, recipes)
         "inputs": result["modules"],
         "byte_reproduction_verified": False,
     }
+
+
+def verify_generator_relationships(
+    inventory,
+    tree: Path,
+    npm_members,
+    upstreams,
+    plan,
+    module_relationships,
+    git_inputs,
+):
+    """Map retained generator inputs; this does not regenerate derived JavaScript.
+
+    The caller has independently replayed native recipe_plan, npm and Git facts.
+    Unknown rendered virtual/generated inputs refuse a complete association.
+    """
+    authenticated = {
+        path: checksum
+        for archive in npm_members.values()
+        for path, checksum in archive["members"].items()
+    }
+
+    def captured(path):
+        raw = browser.read_file(tree, path)
+        require(
+            path in authenticated and browser.digest(raw) == authenticated[path],
+            "Generator input differs from authenticated npm original",
+        )
+        return raw
+
+    recipes = plan["recipes"]
+    generators, virtual, generated = {}, {}, {}
+    if "kit" in recipes:
+        kit = recipes["kit"]
+        for member in kit["members"]:
+            path = kit["lock_path"] + "/" + member
+            raw = captured(path)
+            original, fact = source_fact(
+                upstreams, "sveltekit", "packages/kit/" + member, kit
+            )
+            require(raw == original, "Kit generator differs from preferred original")
+            generators[path] = {"sha256": authenticated[path], "preferred_source": fact}
+    if "vite" in recipes:
+        vite = recipes["vite"]
+        path = vite["lock_path"] + "/" + vite["generator"]
+        raw = captured(path)
+        source_paths = [
+            "packages/vite/package.json",
+            "packages/vite/rollup.config.ts",
+            "pnpm-lock.yaml",
+            "packages/vite/src/node/build.ts",
+            "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+        ]
+        commonjs_paths = [
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "packages/commonjs/package.json",
+            "packages/commonjs/rollup.config.mjs",
+            "shared/rollup.config.mjs",
+            "packages/commonjs/src/index.js",
+            "packages/commonjs/src/helpers.js",
+            "packages/commonjs/src/proxies.js",
+            "packages/commonjs/src/utils.js",
+        ]
+        sources = recipe_facts(upstreams, "vite", source_paths, vite)
+        commonjs = recipe_facts(upstreams, "rollup-commonjs", commonjs_paths, vite)
+        lock, _ = source_fact(upstreams, "vite", "pnpm-lock.yaml", vite)
+        # Select the exact Vite importer, never another workspace's first version.
+        importer = re.findall(
+            rb"^  packages/vite:\n(.*?)(?=^  \S|^\S|\Z)", lock, re.M | re.S
+        )
+        require(len(importer) == 1, "Vite source lock importer missing or ambiguous")
+        locked = re.findall(
+            rb"^      '@rollup/plugin-commonjs':\n        specifier: [^\n]+\n        version: ([0-9]+\.[0-9]+\.[0-9]+)(?:\([^\n]*\))?\n",
+            importer[0],
+            re.M,
+        )
+        manifest_raw, _ = source_fact(
+            upstreams, "rollup-commonjs", "packages/commonjs/package.json", vite
+        )
+        manifest = json_input(manifest_raw)
+        require(
+            locked == [b"28.0.3"]
+            and manifest.get("name") == "@rollup/plugin-commonjs"
+            and manifest.get("version") == "28.0.3",
+            "Vite CommonJS generator version differs from preferred source lock",
+        )
+        helper_raw, _ = source_fact(
+            upstreams, "rollup-commonjs", "packages/commonjs/src/helpers.js", vite
+        )
+        helpers = re.findall(
+            rb"(?m)^const HELPERS = `([\s\S]*?)`;\n\nexport function getHelpersModule\(\) \{\n  return HELPERS;\n\}",
+            helper_raw,
+        )
+        require(
+            len(helpers) == 1
+            and helpers[0]
+            and helpers[0] in raw
+            and all(marker not in helpers[0] for marker in (b"`", b"${", b"\\")),
+            "Vite bundled CommonJS helper differs from preferred original",
+        )
+        installed_manifest = json_input(captured(vite["lock_path"] + "/package.json"))
+        source_manifest_raw, _ = source_fact(
+            upstreams, "vite", "packages/vite/package.json", vite
+        )
+        source_manifest = json_input(source_manifest_raw)
+        require(
+            installed_manifest.get("name") == source_manifest.get("name") == "vite"
+            and installed_manifest.get("version")
+            == source_manifest.get("version")
+            == vite["version"]
+            and installed_manifest.get("devDependencies", {}).get(
+                "@rollup/plugin-commonjs"
+            )
+            == source_manifest.get("devDependencies", {}).get("@rollup/plugin-commonjs")
+            == "^28.0.3",
+            "Vite package/generator identity differs from preferred source",
+        )
+        preload, _ = source_fact(
+            upstreams,
+            "vite",
+            "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+            vite,
+        )
+        templates = re.findall(rb"const preloadCode = `([^`]+)`", preload)
+        require(
+            len(templates) == 1, "Preferred Vite preload template missing or ambiguous"
+        )
+        renamed = (
+            templates[0]
+            .replace(b"${scriptRel}", b"${scriptRel2}")
+            .replace(b"${assetsURL}", b"${assetsURL2}")
+        )
+        require(
+            renamed in raw
+            and all(
+                marker in preload and marker in raw
+                for marker in (
+                    b"\\0vite/preload-helper.js",
+                    b"__vitePreload",
+                    b"__VITE_PRELOAD__",
+                )
+            ),
+            "Vite bundled preload template differs from preferred original",
+        )
+        generators[path] = {
+            "sha256": authenticated[path],
+            "preferred_sources": sources + commonjs,
+            "commonjs_helpers_sha256": browser.digest(helpers[0]),
+            "commonjs_helpers_size": len(helpers[0]),
+            "preload_template_sha256": browser.digest(templates[0]),
+            "preload_template_association": "scriptRel/assetsURL renamed to scriptRel2/assetsURL2",
+            "relationship": "vite-bundle-of-pinned-typescript-and-commonjs-generators",
+        }
+    allowed_families = {
+        "vite-commonjs-exports",
+        "vite-commonjs-module",
+        "vite-commonjs-es-import",
+        "vite-commonjs-helper",
+        "vite-preload-helper",
+    }
+    for row in plan["virtual_inputs"]:
+        if not row["rendered_in_client_chunks"]:
+            continue
+        require(
+            row["association"] == "reviewed-generator"
+            and row.get("family") in allowed_families
+            and row.get("generator") in generators,
+            "Unclassified rendered virtual generator",
+        )
+        origin = row.get("module_path")
+        if row["family"] in {
+            "vite-commonjs-exports",
+            "vite-commonjs-module",
+            "vite-commonjs-es-import",
+        }:
+            require(
+                origin in module_relationships["modules"],
+                "Virtual wrapper physical source is not covered",
+            )
+        else:
+            require(
+                origin is None, "Fixed virtual helper has an unexpected physical source"
+            )
+        virtual[row["id"]] = {
+            "family": row["family"],
+            "generator": row["generator"],
+            "physical_source": (
+                None
+                if origin is None
+                else {
+                    "module_path": origin,
+                    "sha256": module_relationships["modules"][origin]["sha256"],
+                }
+            ),
+        }
+    rows = {
+        row["module_path"]: row
+        for row in inventory["modules"] + inventory["excluded_modules"]
+        if row["kind"] == "generated-application"
+    }
+    for row in plan["generated_inputs"]:
+        if (
+            row["association"] != "reviewed-generator"
+            and not row["rendered_in_client_chunks"]
+        ):
+            continue
+        require(
+            row["association"] == "reviewed-generator"
+            and row.get("generator") in generators,
+            "Unclassified rendered application generator",
+        )
+        original = rows.get(row["file"])
+        raw = browser.read_file(tree, row["file"])
+        require(
+            original is not None and original["source_sha256"] == browser.digest(raw),
+            "Generated application input differs from measured source",
+        )
+        generator = captured(row["generator"])
+        require(
+            all(name.encode() in generator for name in row["function"].split("/")),
+            "Generated application function missing from retained recipe",
+        )
+        generated[row["file"]] = {
+            "source_sha256": browser.digest(raw),
+            "generator": row["generator"],
+            "function": row["function"],
+            "invocation": row["invocation"],
+            "rendered_in_client_chunks": row["rendered_in_client_chunks"],
+        }
+    require(
+        set(virtual)
+        == {
+            row["id"]
+            for row in inventory["modules"]
+            if row["kind"] == "virtual" and row["rendered_in"]
+        },
+        "Rendered virtual input missing from generator associations",
+    )
+    require(
+        {path for path, fact in generated.items() if fact["rendered_in_client_chunks"]}
+        == {
+            row["module_path"]
+            for row in inventory["modules"]
+            if row["kind"] == "generated-application" and row["rendered_in"]
+        },
+        "Rendered application input missing from generator associations",
+    )
+    project = {
+        path: fact
+        for path, fact in git_inputs.items()
+        if path.startswith("src/")
+        or path
+        in {
+            "package.json",
+            "package-lock.json",
+            "svelte.config.js",
+            "vite.config.ts",
+            "tsconfig.json",
+            "src/app.html",
+            "Dockerfile",
+            "scripts/browser-module-inventory.mjs",
+        }
+    }
+    require(
+        {
+            "package.json",
+            "package-lock.json",
+            "svelte.config.js",
+            "vite.config.ts",
+            "Dockerfile",
+        }
+        <= set(project),
+        "Git-bound browser project build inputs missing",
+    )
+    return {
+        "kind": "browser-generator-preferred-source-relationships",
+        "generators": generators,
+        "virtual_inputs": virtual,
+        "generated_inputs": generated,
+        "project_build_inputs": project,
+        "byte_reproduction_verified": False,
+    }

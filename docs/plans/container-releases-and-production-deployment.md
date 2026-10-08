@@ -1597,9 +1597,9 @@ OCI pair, complete preferred-source coverage or publication authority.
       from a committed source, reusing unchanged original archive bytes.
 - [x] Implement the browser source producer joining both authenticated native
       reports to independently replayed Git/npm/final OCI bytes and the exact
-      publication-bound upstream offering. Replay the common offering once,
-      reuse existing native input checks, and keep generated-source closure
-      separate from the package/compiler relationships.
+      publication-bound upstream offering. Replay the common offering once
+      and reuse existing native input checks for package, compiler and generator
+      associations.
 - [x] Verify the offering reader against retained real originals and builder
       capture inputs, and exercise authentication, image/replay substitution,
       missing architecture, publication binding and post-replay mutation refusal
@@ -1612,6 +1612,10 @@ OCI pair, complete preferred-source coverage or publication authority.
       inputs and unsupported additional configuration inheritance.
 - [x] Collect and independently replay the nineteen-original source offering
       from the updated committed catalog before hosted release preparation.
+- [x] Bind rendered Vite virtual helpers and SvelteKit generated application
+      inputs to retained preferred generator sources, exact npm bytes and project
+      Git inputs. Reject unknown rendered inputs, changed helper templates, wrong
+      workspace lock selections and unattributed final JavaScript.
 - [ ] Complete remaining generator/configuration relationships and authenticate
       the exact final-image inputs on both native architectures before producing
       the corresponding-source gate and requesting distribution review.
@@ -1640,8 +1644,9 @@ and missing or mismatched external lock inputs. Actual replay of the retained
 `7d0f42a` capture verified all 15 Noble external-configuration inputs in 0.03
 seconds. The complete release/notice suite passed 400 tests in 24.3 seconds
 (one existing opt-in Docker skip); the two new cases took 0.001 and 0.034 seconds.
-Vite virtual helpers, Kit generated application outputs and full backend generator
-relationships remain separate producer work.
+Vite virtual helpers and Kit generated application outputs are now associated
+with retained preferred generator sources. Full backend generator relationships
+and the combined corresponding-source gate remain pending.
 These facts do not establish offline or byte-identical dependency regeneration,
 complete corresponding-source coverage or publication authority.
 
@@ -1676,6 +1681,18 @@ extraction caches were cleaned and the private receipt retained. The two new
 regression methods took 0.23 and 0.03 seconds, including fixture setup/cleanup;
 the complete routine-suite result is recorded below.
 
+The subsequent generator replay used that nineteen-original offering and the
+retained `7d0f42a` capture. It mapped all 23 rendered virtual inputs, five rendered
+generated application inputs (eleven including excluded modules), seventeen
+generator/recipe inputs and 100 project source/build inputs in 0.011 seconds.
+The exact Vite workspace importer selects Rollup CommonJS 28.0.3; its helper
+body matches the authenticated Vite bundle, and the preload template matches
+with the documented two identifier substitutions. All sixteen captured Kit
+recipe files match the preferred originals. No downloads or rebuilds were
+needed; temporary extraction caches were cleaned and the private replay receipt
+retained. These are source associations, not byte-identical regeneration or
+authenticated final-image checks for the current commit on both architectures.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -1686,12 +1703,14 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 400 tests in 24.3 seconds
+combined local release/notice regression suite passed 402 tests in 24.8 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the two new external-configuration cases took 0.001 and 0.034
-seconds. The source-archive regression
+and cleanup; the slowest case took 0.72 seconds. The six focused browser-source
+checks, including the two new generator methods, took 0.005 seconds. These catch
+wrong workspace lock selection, substituted helper/configuration bytes and
+unclassified rendered source inputs. The source-archive regression
 exercises recursive-link rejection and the exact metadata-only exception;
 browser fixtures check source and notice substitutions.
 

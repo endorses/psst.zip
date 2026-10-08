@@ -242,7 +242,7 @@ def verify_browser_source_inputs(
 
     Reuse the retained build, Git, npm and OCI evidence; never rebuild or fetch.
     Replay the common offering once, then map each image's rendered package and
-    compiler inputs. Generated/virtual output closure remains a separate gate.
+    compiler and generator inputs. Source associations do not prove byte regeneration.
     """
     subjects = checked_binding(binding)
     for values, label in (
@@ -321,6 +321,10 @@ def verify_browser_source_inputs(
             measured == {**replayed, "builder_config": measured["builder_config"]},
             "Browser observation differs from independent Git/npm/OCI replay",
         )
+        require(
+            replayed["source_associations"]["unresolved_javascript"] == [],
+            "Unattributed final JavaScript output lacks a preferred source association",
+        )
         with tempfile.TemporaryDirectory(prefix="psst-browser-preferred-") as temporary:
             tree = Path(temporary)
             # Small capture extraction only; do not repeat Git/npm/OCI replay.
@@ -331,9 +335,18 @@ def verify_browser_source_inputs(
             mappings = preferred.verify_preferred_relationships(
                 inventory, tree, replayed["npm_archives"], originals
             )
-            recipes = browser_inputs.recipe_plan(tree, inventory)["recipes"]
+            plan = browser_inputs.recipe_plan(tree, inventory)
             compiler = preferred.verify_captured_compiler_inputs(
-                tree, replayed["npm_archives"], originals, recipes
+                tree, replayed["npm_archives"], originals, plan["recipes"]
+            )
+            generators = preferred.verify_generator_relationships(
+                inventory,
+                tree,
+                replayed["npm_archives"],
+                originals,
+                plan,
+                mappings,
+                replayed["git_inputs"],
             )
         target = "web-" + platform.split("/")[1]
         reports[target] = {
@@ -343,6 +356,7 @@ def verify_browser_source_inputs(
             "browser_inputs_sha256": replayed["browser_inputs_sha256"],
             "preferred_sources": mappings,
             "compiler_sources": compiler,
+            "generator_sources": generators,
             "source_associations": replayed["source_associations"],
         }
         snapshots.extend(
@@ -371,7 +385,8 @@ def verify_browser_source_inputs(
         "upstream_inputs": upstream,
         "images": reports,
         "browser_source_inputs_verified": True,
-        "generated_source_closure_required": True,
+        "generated_source_associations_verified": True,
+        "byte_reproduction_verified": False,
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,
     }
