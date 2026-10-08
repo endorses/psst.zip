@@ -236,12 +236,15 @@ and the validation image were removed. Hosted publishing remains pending.
       bytes in 57s (approximately 48s compression and eight seconds upload).
       PR #8 merged as `cf67e1eac2082bc7f095c630be2bb100bb06b0dc`;
       its tree matches the checked head.
-- [ ] Measure subsequent hosted restore, including transfer time, before claiming
-      a build-time reduction. Preserve all meaningful XCTest cases and current
-      build/readiness/test budgets. The initial cache belongs to
-      `refs/pull/8/merge`; GitHub's branch scope requires a main-scoped cache
-      before a candidate dispatched from main can reuse it. Use existing required
-      main/candidate CI rather than adding a benchmark suite or full CI rerun.
+- [x] Measure subsequent hosted restore, including transfer time. Required main
+      CI `37754625017` passed with zero annotations at `cf67e1e`, saving the
+      main-scoped cache. Planned candidate `37756970689`, source `2eb4503`,
+      then restored that exact 409,819,828-byte key in 29s and skipped saving.
+      Both jobs used image `20260928.0222.1` and Xcode 27.0 / `27A266a`.
+      All 176 warm-run cases passed in 93.706s; source CI had zero annotations.
+      Keep all meaningful tests and current build/readiness/test budgets. This
+      comparison used required main/candidate CI, with no benchmark suite or
+      extra full CI rerun.
 - [ ] Resolve the roughly 4m45s before the first Kotlin build phase. The current
       buffered Xcode log does not establish its cause; do not attribute it to
       duplicate framework compilation or simulator boot without evidence.
@@ -271,3 +274,30 @@ two builds. No experimental compiler flags or new test suites were added.
 [Kotlin compilation guidance](https://kotlinlang.org/docs/native-improving-compilation-time.html),
 [GitHub cache scope](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching),
 [pinned cache action](https://github.com/actions/cache/tree/55cc8345863c7cc4c66a329aec7e433d2d1c52a9).
+
+| Measured work                    | Cold main       | Warm candidate            |
+| -------------------------------- | --------------- | ------------------------- |
+| Complete native job              | 19m16s          | 17m07s                    |
+| Build step                       | 14m47s          | 12m46s                    |
+| First / second Gradle invocation | 8m30s / 23s     | 3m02s / 6s                |
+| Accumulated script work          | 536.706s        | 194.970s                  |
+| Accumulated Swift compilation    | 124.558s        | 186.228s                  |
+| XCTest step / actual cases       | 2m02s / 78.278s | 2m19s / 93.706s           |
+| Native cache transfer            | 46s save        | 29s restore, save skipped |
+
+The observed complete-job reduction is 2m09s. Do not promise the isolated 5m28s
+first-Gradle reduction for complete jobs: startup, Swift and test timings varied.
+The warm log contains no LLVM/libffi downloads and the second framework link is
+up to date. Project Kotlin compilation still ran, with no `FROM-CACHE` task;
+this verifies native toolchain/compiler-state reuse, not a cached project
+framework. Native scripts and Swift compilation are now comparable contributors.
+The evidence does not justify another cache mechanism or speculative heap change.
+
+The four-threads/three-processors warning comes from Kotlin/Native compilation,
+not application garbage collection. Kotlin 2.4.20 defaults native parallelism to
+four and supports `kotlin.native.parallelThreads=0` for automatic processor-count
+selection. No timing benefit for that separate setting has been established, and
+it remains unchanged during this cache comparison.
+[Kotlin warning producer](https://github.com/JetBrains/kotlin/blob/v2.4.20/kotlin-native/backend.native/compiler/ir/backend.native/src/org/jetbrains/kotlin/backend/konan/SetupConfiguration.kt#L200),
+[Gradle native parallelism](https://github.com/JetBrains/kotlin/blob/v2.4.20/libraries/tools/kotlin-gradle-plugin/src/common/kotlin/org/jetbrains/kotlin/gradle/plugin/PropertiesProvider.kt#L405),
+[native compiler option](https://github.com/JetBrains/kotlin/blob/v2.4.20/compiler/arguments/src/org/jetbrains/kotlin/arguments/description/NativeCompilerArguments.kt#L554).
