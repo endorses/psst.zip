@@ -13,8 +13,9 @@ setup and production deployment remain separate operations.
 `prepare_publication` requires a strict `vMAJOR.MINOR.PATCH` tag, the event SHA,
 the separately reviewed full commit, a checkout at that commit, an exact trusted
 GitHub origin and ancestry from `origin/main`. Tracked checkout changes fail.
-Remote protected-branch/tag settings and review authentication remain the future
-trusted workflow's responsibility; local ancestry alone does not establish them.
+The repository's active branch/tag rules are recorded below. Review authentication
+and exact hosted workflow execution remain separate requirements; local ancestry
+alone does not establish those settings or approvals.
 
 The detached manifest and deployment-ready bundle pass the existing bounded
 artifact parser. The actual bytes of each registry index must hash to its
@@ -490,6 +491,41 @@ the default path. Published immutable releases are incidents, not rewrite target
 There is no unattended delete-and-reupload or overwrite path.
 
 ## Remaining integration
+
+### Active repository protections
+
+On 2026-10-08, `endorses/psst.zip` had no active rulesets or legacy branch
+protection. The planned rulesets were applied and independently read back:
+
+| Ruleset                       | Target            | Active behavior                                                                          |
+| ----------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| `main-ci`, ID `24694051`      | `refs/heads/main` | Pull request, latest-base CI, resolved review threads; deletion and force pushes blocked |
+| `version-tags`, ID `24694056` | `refs/tags/v*`    | New tags allowed; existing tags cannot be updated or deleted                             |
+
+The main policy requires the current successful contexts `Repository security`,
+`Backend`, `Web`, `Android and shared module`, and
+`Native iOS app, extension and XCTest`, each from GitHub Actions integration
+`15368`. They were matched against the checks on remote main
+`b697119ba81c3aaf18725f38869b778f2e59df9d`. No bypass actors are configured.
+Required reviewer count is zero for this personal repository; code-owner,
+last-push and extra unattributed-change approval requirements are explicitly
+disabled. You can merge your own PR after its checks pass. Subsequent code pushes
+must use a branch and PR; direct pushes to main are rejected. The release workflow
+continues to validate stable tag syntax and ancestry.
+
+The applied policy payloads are tracked in
+[main.json](../../.github/rulesets/main.json) and
+[version-tags.json](../../.github/rulesets/version-tags.json).
+The effective branch-rules API confirmed all four main rules, and separate
+ruleset reads matched the tracked configuration. No force-push/delete probe was
+performed. The existing `v0.0.0` tag still points to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`.
+[GitHub ruleset API](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset).
+
+The `container-release` environment still has no variables or secrets configured.
+Its required reviewer and `v*` tag policy remain in place. Protected policies do
+not establish hosted evidence, package visibility, private provider retention or
+successful publication; those live prerequisites remain pending.
 
 - [x] Implement bounded authenticated gate verification and test its exact identity/snapshot policies.
 - [x] Implement GitHub/GHCR transport, durable mutation receipts and read-only interruption reconciliation with fixtures.

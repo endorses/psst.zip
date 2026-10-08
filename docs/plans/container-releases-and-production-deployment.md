@@ -2102,6 +2102,55 @@ network calls, Docker builds or sleeps. Workflow YAML, all 35 shell steps and se
 inline Python blocks parsed; formatting and diff checks passed. New hosted
 execution, provider retention and production rollout remain pending.
 
+### Live repository and production environment protections
+
+- [x] Configure and independently verify the active main ruleset using the five
+      existing successful GitHub Actions contexts. Require a PR and latest-base
+      checks, block deletion/force pushes, and allow the sole maintainer to merge
+      their own passing PR without another reviewer.
+- [x] Configure and independently read back the `refs/tags/v*` ruleset, allowing
+      new tags while blocking updates/deletion. Verify `v0.0.0` remains unchanged.
+- [x] Create and verify the main-only `production` environment policy without
+      installing SSH credentials, configuring a host or dispatching deployment.
+- [x] Track the applied non-secret ruleset/environment payloads and operator
+      guidance, preserving separate pending live publication and VPS checks.
+- [ ] Configure the remaining environment variables, independent inspection and
+      storage credentials, public package namespaces and restricted deployment
+      identity; verify hosted release and production behavior against them.
+
+On 2026-10-08, live inspection found no rulesets or legacy main protection and no
+production environment. Active `main-ci` ruleset `24694051` now requires exactly
+the five successful contexts from GitHub Actions integration `15368`, matched to
+remote main `b697119ba81c3aaf18725f38869b778f2e59df9d`. It requires latest-base
+checks, PRs and resolved review threads, with no bypass actors. Required reviewer
+count is zero; code-owner, last-push and extra unattributed-change approval are
+explicitly disabled. This permits self-merge after CI and changes subsequent
+publication of code to branch/PR pushes instead of direct pushes to main.
+
+Active `version-tags` ruleset `24694056` covers only `refs/tags/v*`; creation is
+allowed, update/deletion prohibited, and there are no bypass actors. An independent
+read confirmed `v0.0.0` still points to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`. Stable version syntax remains enforced
+by the existing release workflow. GitHub rejected an optional metadata-name rule
+with HTTP 422; it was removed from the prepared configuration and the unchanged
+active update/delete policy was independently verified. No protected-ref mutation
+probe or new tag was attempted.
+
+The `production` environment is `23741939516`, with custom deployment policies
+and only branch `main` (`62320707`). It has no additional reviewer requirement,
+secrets or variables; manual dispatch remains deliberate deployment authorization
+for this personal instance. Separate reads verified its settings, policy count
+and empty credential/variable lists. The release environment also still has no
+secrets or variables. No VPS account/key, host trust, public registry artifact or
+production transaction was created by this repository setup.
+
+Applied request payloads live under `.github/rulesets/` and
+`.github/environments/`; the publication and production operator guides record
+the effective settings. JSON parsed, formatter/diff checks passed, and independent
+API projections matched the tracked policy; no application tests or builds were
+repeated for these reversible configuration changes. Remaining provider/package
+and real hosted deployment checks remain pending.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -2112,11 +2161,12 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite ran 414 tests in 26.7 seconds
-on 2026-10-08, including native preparation, browser input and runtime source
+combined local release/notice regression suite ran 437 tests in 26.729 seconds
+on 2026-10-08 after publication wiring, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 0.80 seconds. The three backend source
+and cleanup; the slowest case took 0.753 seconds. All executable cases passed.
+The three backend source
 regressions took 0.020 seconds; they reject substituted project origins/members,
 wrong C source identities, changed generator pins and missing platform/tool inputs.
 The six focused browser-source
@@ -2140,6 +2190,12 @@ justify them.
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time
       and slowest cases, including fixture setup and cleanup.
+- [x] Recheck that profile after publication input mapping and external retention
+      wiring. Review their failure contracts and fixture costs: the eighteen
+      affected cases passed in approximately 1.43 seconds, using fake service
+      responses and small local files without application builds or network calls.
+      No material redundancy or slow fixture warranted removing tests or adding
+      another test suite. Hosted timing remains a separate pending check.
 
 Transfer staging performs browser replay once before copying and once when
 independently verifying the completed destination. Intermediate consistency
