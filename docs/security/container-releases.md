@@ -3,7 +3,7 @@
 The release stack runs published backend and web/Caddy images. Main-branch pushes
 run CI; publishing a version makes it available to install. Production updates
 are a separate manual action. The release publishing and updater tooling are
-being implemented; these templates alone do not establish a verified release. No
+implemented, with first publication and production adoption still pending. No
 tagged container release has been published through this release process yet.
 
 Routine pushes and pull requests retain security/history checks and select
@@ -26,8 +26,9 @@ publication requires successful repository-security, backend and web checks.
 Android/shared and iOS validation remain in routine application CI and do not
 block server container publication.
 
-A main-only manual dispatch accepts an unused planned version, defaulting to
-`v0.1.0`, without creating a tag or release. It can exercise preparation before
+A main-only manual dispatch accepts an unused planned version without creating a
+tag or release. Always supply an unused version: the workflow's `v0.1.0` default
+is now reserved by an existing tag. A dispatch can exercise preparation before
 publication is enabled. Its successful checks cannot satisfy the exact-tag
 publication gate.
 
@@ -52,9 +53,10 @@ nor successful structural assembly approve publication. Private operator state,
 credentials, disposable recovery stores, tools and caches are excluded. Runner
 cleanup removes only that job's working inputs after artifact retention.
 
-Complete AMD64 preparation and transfer replay were exercised locally. The new
-cross-job assembly/recovery workflow and native ARM64 verification remain unrun.
-These candidate outputs are not authenticated installable releases.
+Complete AMD64 preparation and transfer replay were exercised locally. Planned
+run `37778271584` also passed hosted preparation, cross-job assembly and recovery
+on both architectures. Tagged run `37782470022` passed their signed gates but
+failed publisher preflight. These candidate outputs are not installable releases.
 
 Docker's local `--load` exporter can report a configuration digest in its
 `containerimage.digest` field. Candidate records retain that raw metadata, but
@@ -65,9 +67,10 @@ The workflow defaults to read-only repository permissions. Tagged evidence jobs
 receive scoped OIDC/attestation permissions; only the guarded publication job can
 write packages or releases after exact signed gates and protected review. Planned
 dispatches remain unsigned, read-only candidates. No release job has production
-access. Main-branch pushes run CI only. Publication remains disabled until private
-recovery storage, dedicated inspection credentials and the first-package procedure
-are configured and verified as described in the
+access. Main-branch pushes run CI only. This repository has enabled guarded
+publication and configured dedicated inspection credentials and first-package
+initialization. Actual credential use, package initialization and public retrieval
+must still pass as described in the
 [publication guide](container-publication.md). Production deployment remains a
 separate manual operation. Tag ancestry checks do not replace branch/tag policy;
 the configured policies for this instance are recorded in the plan and operator
@@ -75,17 +78,17 @@ guides.
 
 ## Maintainer path to a ready release
 
-For the first container release, use `v0.1.0` and preserve the existing `v0.0.0`
-tag. A main push runs source CI. The guarded publication transport and signing
-bridge are wired into the tag workflow, but publication remains disabled while
-live prerequisites are incomplete.
+The current first-publication candidate is `v0.1.1`. Preserve both `v0.0.0` and
+the failed `v0.1.0` tag. A main push runs source CI. The guarded publication
+transport and signing bridge are enabled in the tag workflow; each candidate
+still needs its exact signed gates and the configured human approvals.
 
 - [x] Review and commit the complete release source and workflow. Push the
       reviewed checkpoint only with authorization, then verify routine CI on
       that exact commit. The planned candidate below repeats full source CI,
       including application suites selected out by routine checks.
 - [x] Exercise the main-only planned-version candidate. For this repository, the
-      dispatch command is:
+      historical successful dispatch command was:
 
       ```sh
       gh workflow run release.yml --repo endorses/psst.zip --ref main \
@@ -148,6 +151,25 @@ live prerequisites are incomplete.
       `v0.0.0` is preserved. Publication enablement and first-package
       initialization are configured. The protected distribution review remains
       required; the tag does not itself authorize publication or deploy the VPS.
+
+      The corrected `v0.1.1` tag points to
+      `84313f4d74e9f624a62327af180b1f7399e2097b`. Run `37790269573`, attempt 1,
+      passed exact server CI, both native image preparations, signed source
+      assembly and authenticated recovery on both architectures. Its fresh
+      packet is `candidate-distribution-presentation-37790269573-1`. The operator's
+      fresh distribution review was authenticated and the publisher separately
+      approved. The publisher passed its repaired hosted runtime preflight but
+      stopped in the publication command before retaining a journal or receipt;
+      its exact exception is not exposed. Diagnose that failure before any retry.
+      Preserve both existing version tags. Publication and anonymous retrieval
+      remain pending.
+
+      Read-only checks subsequently authenticated all eight retained gate reports
+      and validated the real smoke-configuration mapping. They did not reproduce
+      the hosted failure. The publisher now emits fixed preparation-stage names
+      and fixed failure categories without exposing exception text or credentials.
+      These diagnostics identify a future failure boundary; they do not establish
+      successful publication or authorize retrying old mutation state.
 
 - [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
       both multi-platform image indexes, all four native children, source assets
