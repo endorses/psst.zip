@@ -64,6 +64,85 @@ class PreferredSources(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unclassified rendered package"):
             preferred.verify_preferred_relationships(inventory, tree, npm, sources)
 
+    def test_noble_configuration_must_match_all_locked_external_inputs(self):
+        tree, inventory, npm, _ = self.fixture(
+            name="@noble/curves", relative="index.js"
+        )
+        package = inventory["modules"][0]["package"]
+        lock = {
+            "version": "0.7.1",
+            "resolved": "https://registry.npmjs.org/@paulmillr/jsbt/-/jsbt-0.7.1.tgz",
+            "integrity": "sha512-" + "A" * 86 + "==",
+        }
+        config = browser.canonical({"compilerOptions": {"strict": True}})
+        originals = {
+            "noble-curves": {
+                "record": {
+                    "id": "noble-curves",
+                    "commit": "a" * 40,
+                    "archive": {"sha256": browser.digest(b"noble original")},
+                    "packages": {package["name"]: package["version"]},
+                },
+                "files": {
+                    "src/index.ts": b"original TypeScript source\n",
+                    "package.json": browser.canonical({"scripts": {"build": "tsc"}}),
+                    "tsconfig.json": browser.canonical(
+                        {
+                            "compilerOptions": {"rootDir": "src", "outDir": "."},
+                            "extends": "@paulmillr/jsbt/tsconfig.json",
+                        }
+                    ),
+                    "package-lock.json": browser.canonical(
+                        {"packages": {"node_modules/@paulmillr/jsbt": lock}}
+                    ),
+                },
+            },
+            "jsbt": {
+                "record": {
+                    "id": "jsbt",
+                    "commit": "b" * 40,
+                    "archive": {"sha256": browser.digest(b"jsbt original")},
+                    "relationship": {
+                        "kind": "build-configuration",
+                        "name": "@paulmillr/jsbt",
+                        "version": "0.7.1",
+                        "integrity": lock["integrity"],
+                        "configuration_sha256": browser.digest(config),
+                    },
+                },
+                "files": {
+                    "tsconfig.json": config,
+                    "package.json": browser.canonical(
+                        {"name": "@paulmillr/jsbt", "version": "0.7.1"}
+                    ),
+                },
+            },
+        }
+        result = preferred.verify_preferred_relationships(
+            inventory, tree, npm, originals
+        )
+        external = next(iter(result["modules"].values()))["external_configuration"]
+        self.assertTrue(external["retained"])
+        self.assertEqual(external["source"]["sha256"], browser.digest(config))
+        for name, replacement in (
+            ("integrity", "sha512-wrong"),
+            ("version", "0.7.2"),
+            ("configuration_sha256", browser.digest(b"wrong")),
+        ):
+            relationship = originals["jsbt"]["record"]["relationship"]
+            original = relationship[name]
+            relationship[name] = replacement
+            with self.subTest(name=name), self.assertRaisesRegex(
+                ValueError, "external configuration differs"
+            ):
+                preferred.verify_preferred_relationships(
+                    inventory, tree, npm, originals
+                )
+            relationship[name] = original
+        del originals["jsbt"]
+        with self.assertRaisesRegex(ValueError, "Missing pinned upstream"):
+            preferred.verify_preferred_relationships(inventory, tree, npm, originals)
+
     def test_icon_original_data_and_aliases_are_required(self):
         record = {
             "id": "lucide",

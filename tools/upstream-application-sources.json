@@ -487,6 +487,28 @@
         "ccgo_linux_amd64.go",
         "ccgo_linux_arm64.go"
       ]
+    },
+    {
+      "archive": {
+        "file": "jsbt-c138efca67d90dce86a7cc22c01d6b66d193ea7a.tar.gz",
+        "sha256": "sha256:0c0f435d7945837d6473279d73da94582bea474fcc80edc127997a8d9172c94b",
+        "size": 224261
+      },
+      "commit": "c138efca67d90dce86a7cc22c01d6b66d193ea7a",
+      "id": "jsbt",
+      "inspect_paths": ["LICENSE", "package.json", "tsconfig.json"],
+      "packages": {
+        "@noble/curves": "2.4.0"
+      },
+      "relationship": {
+        "configuration_sha256": "sha256:be47d0e8938ae5896bbd69348b22fc5e756e5a820480229035d3ac06861875ac",
+        "integrity": "sha512-v6OsD1LOpAALat6MDT/hcyEGWzly8t8rSEF//2CVhV7aFyQ4EMVkWpPXh0OFO0z+SLXMHX1K0XdxWPrU5Rk+pw==",
+        "kind": "build-configuration",
+        "name": "@paulmillr/jsbt",
+        "package": "@noble/curves",
+        "version": "0.7.1"
+      },
+      "repository": "paulmillr/jsbt"
     }
   ]
 }

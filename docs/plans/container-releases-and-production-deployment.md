@@ -1604,6 +1604,14 @@ OCI pair, complete preferred-source coverage or publication authority.
       capture inputs, and exercise authentication, image/replay substitution,
       missing architecture, publication binding and post-replay mutation refusal
       with two small regression methods.
+- [x] Pin and retain the complete JSBT 0.7.1 project at its exact npm Git origin;
+      verify that its TypeScript configuration is byte-identical to the original
+      npm member whose SHA512 integrity is present in all three Noble locks.
+- [x] Bind Noble's external configuration to the offered source, package identity,
+      configuration hash and upstream lock integrity. Reject missing or changed
+      inputs and unsupported additional configuration inheritance.
+- [ ] Collect and independently replay the nineteen-original source offering
+      from the updated committed catalog before hosted release preparation.
 - [ ] Complete remaining generator/configuration relationships and authenticate
       the exact final-image inputs on both native architectures before producing
       the corresponding-source gate and requesting distribution review.
@@ -1621,9 +1629,19 @@ remain bounded; routine fixtures remain small.
 
 The browser relationship helper consumes already verified archive/capture/npm
 facts; it does not authenticate or authorize publication itself. Noble's upstream
-locks identify `@paulmillr/jsbt@0.7.1`, but that external configuration is explicitly
-reported as not yet retained. Vite virtual helpers, Kit generated application
-outputs and full backend generator relationships remain separate producer work.
+locks identify `@paulmillr/jsbt@0.7.1`; its full original project is now pinned at
+`c138efca67d90dce86a7cc22c01d6b66d193ea7a`. The 224,261-byte source archive has
+SHA256 `0c0f435d7945837d6473279d73da94582bea474fcc80edc127997a8d9172c94b`.
+The configuration is byte-identical to the integrity-checked npm member, SHA256
+`be47d0e8938ae5896bbd69348b22fc5e756e5a820480229035d3ac06861875ac`.
+The source relationship now requires that retained configuration and its exact
+locked integrity. Two tiny regressions cover configuration/identity substitution
+and missing or mismatched external lock inputs. Actual replay of the retained
+`7d0f42a` capture verified all 15 Noble external-configuration inputs in 0.03
+seconds. The complete release/notice suite passed 400 tests in 24.3 seconds
+(one existing opt-in Docker skip); the two new cases took 0.001 and 0.034 seconds.
+Vite virtual helpers, Kit generated application outputs and full backend generator
+relationships remain separate producer work.
 These facts do not establish offline or byte-identical dependency regeneration,
 complete corresponding-source coverage or publication authority.
 
@@ -1658,11 +1676,12 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 398 tests in 26.8 seconds
+combined local release/notice regression suite passed 400 tests in 24.3 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 1.08 seconds. The source-archive regression
+and cleanup; the two new external-configuration cases took 0.001 and 0.034
+seconds. The source-archive regression
 exercises recursive-link rejection and the exact metadata-only exception;
 browser fixtures check source and notice substitutions.
 

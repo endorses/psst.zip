@@ -141,6 +141,66 @@ class UpstreamInputs(unittest.TestCase):
         self.fetch_map[upstream.url(record)] = raw
         self.catalog_commit(catalog)
 
+    def test_build_configuration_retains_exact_identity_and_config_original(self):
+        catalog = self.catalog()
+        config = json_bytes({"compilerOptions": {"strict": True}})
+        commit = "b" * 40
+        prefix = "jsbt-" + commit
+        contents = {
+            prefix + "/LICENSE": b"Original MIT terms fixture\n",
+            prefix
+            + "/package.json": json_bytes(
+                {"name": "@paulmillr/jsbt", "version": "0.7.1"}
+            ),
+            prefix + "/tsconfig.json": config,
+        }
+        raw = upstream.tar_gzip(contents)
+        record = {
+            "id": "jsbt",
+            "repository": "paulmillr/jsbt",
+            "commit": commit,
+            "packages": {"fixture-package": "1.0.0"},
+            "inspect_paths": ["LICENSE", "package.json", "tsconfig.json"],
+            "archive": {
+                "file": prefix + ".tar.gz",
+                "sha256": upstream.sha256(raw),
+                "size": len(raw),
+            },
+            "relationship": {
+                "kind": "build-configuration",
+                "name": "@paulmillr/jsbt",
+                "version": "0.7.1",
+                "package": "fixture-package",
+                "integrity": "sha512-" + "A" * 86 + "==",
+                "configuration_sha256": upstream.sha256(config),
+            },
+        }
+        catalog["upstreams"].append(record)
+        self.fetch_map[upstream.url(record)] = raw
+        self.catalog_commit(catalog)
+        self.collect()
+        replay, sources = upstream.verify_source_files(
+            self.root, "endorses/psst.zip", "v1.2.3", self.revision, self.output
+        )
+        self.assertEqual(sources["jsbt"]["files"]["tsconfig.json"], config)
+        self.assertFalse(replay["publication_authorized"])
+        for path, replacement in (
+            ("tsconfig.json", b'{"compilerOptions":{"strict":false}}'),
+            (
+                "package.json",
+                json_bytes({"name": "@paulmillr/jsbt", "version": "0.7.2"}),
+            ),
+        ):
+            changed = upstream.tar_gzip({**contents, prefix + "/" + path: replacement})
+            substituted = copy.deepcopy(record)
+            substituted["archive"].update(
+                sha256=upstream.sha256(changed), size=len(changed)
+            )
+            with self.subTest(path=path), self.assertRaisesRegex(
+                InvalidRelease, "configuration identity or original bytes"
+            ):
+                upstream.inspect(changed, substituted)
+
     def test_preferred_file_consumer_receives_only_replayed_original_bytes(self):
         collected = self.collect()
         replay, sources = upstream.verify_source_files(

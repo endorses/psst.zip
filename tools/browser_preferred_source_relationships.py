@@ -234,6 +234,23 @@ def relationship(raw, relative, package, upstreams):
             and isinstance(jsbt.get("integrity"), str),
             "Noble external config lock absent",
         )
+        external_raw, external_fact = source_fact(upstreams, "jsbt", "tsconfig.json")
+        metadata_raw, metadata_fact = source_fact(upstreams, "jsbt", "package.json")
+        external = json_input(external_raw)
+        metadata = json_input(metadata_raw)
+        external_record = upstreams["jsbt"]["record"].get("relationship", {})
+        require(
+            external_record.get("kind") == "build-configuration"
+            and metadata.get("name") == external_record.get("name") == "@paulmillr/jsbt"
+            and metadata.get("version")
+            == external_record.get("version")
+            == jsbt["version"]
+            and external_record.get("integrity") == jsbt["integrity"]
+            and external_record.get("configuration_sha256") == external_fact["sha256"]
+            and isinstance(external.get("compilerOptions"), dict)
+            and "extends" not in external,
+            "Noble external configuration differs from pinned source/lock",
+        )
         return {
             "relationship": "typescript-emission",
             "inputs": [fact],
@@ -247,6 +264,9 @@ def relationship(raw, relative, package, upstreams):
                 "name": "@paulmillr/jsbt",
                 "path": "tsconfig.json",
                 **{key: jsbt[key] for key in ("version", "resolved", "integrity")},
+                "retained": True,
+                "source": external_fact,
+                "package_manifest": metadata_fact,
             },
         }
     if name in {"hpke", "@panva/hpke-noble"}:

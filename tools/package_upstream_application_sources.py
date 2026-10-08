@@ -312,13 +312,21 @@ def _policy_inputs(
         fixture_links(record)
         records.append(record)
         if "relationship" in record:
-            relationship = fields(
-                record["relationship"],
-                {"kind", "name", "version", "package"},
-                "embedded upstream relationship",
+            relationship = record["relationship"]
+            require(isinstance(relationship, dict), "Invalid upstream relationship")
+            build_configuration = relationship.get("kind") == "build-configuration"
+            fields(
+                relationship,
+                {"kind", "name", "version", "package"}
+                | (
+                    {"integrity", "configuration_sha256"}
+                    if build_configuration
+                    else set()
+                ),
+                "upstream relationship",
             )
             require(
-                relationship["kind"] == "embedded-component"
+                relationship["kind"] in {"embedded-component", "build-configuration"}
                 and isinstance(relationship["name"], str)
                 and re.fullmatch(
                     r"(?:@[a-z0-9_.-]+/)?[a-z0-9_.-]+", relationship["name"]
@@ -334,6 +342,24 @@ def _policy_inputs(
                 and relationship["name"] != relationship["package"],
                 "Invalid embedded component association",
             )
+            if build_configuration:
+                require(
+                    identifier == "jsbt"
+                    and record["repository"] == "paulmillr/jsbt"
+                    and relationship["name"] == "@paulmillr/jsbt"
+                    and relationship["version"] == "0.7.1"
+                    and {"LICENSE", "package.json", "tsconfig.json"} <= set(inspected)
+                    and isinstance(relationship["integrity"], str)
+                    and re.fullmatch(
+                        r"sha512-[A-Za-z0-9+/]{86}==", relationship["integrity"]
+                    ),
+                    "Unreviewed external build configuration",
+                )
+                matches(
+                    relationship["configuration_sha256"],
+                    DIGEST,
+                    "External configuration digest missing",
+                )
     for related in associations.values():
         require(
             sum("relationship" not in record for record in related) == 1,
@@ -640,6 +666,15 @@ def inspect(raw: bytes, record: dict) -> dict:
     require(
         retained_links == set(reviewed_links), "Reviewed source fixture link is missing"
     )
+    relationship = record.get("relationship", {})
+    if relationship.get("kind") == "build-configuration":
+        require(
+            observed["package.json"].get("package_identity")
+            == {"name": relationship["name"], "version": relationship["version"]}
+            and observed["tsconfig.json"]["sha256"]
+            == relationship["configuration_sha256"],
+            "External configuration identity or original bytes differ from pin",
+        )
     return {
         "schema_version": 1,
         "upstream": {"repository": record["repository"], "commit": record["commit"]},
