@@ -27,7 +27,7 @@ Version discovery is separate from successful build validation. GitHub's preview
       reviews; full final-image and retained-layer verification remains separate.
 - [ ] Validate the actual native release base images, full corresponding sources
       and container recovery through the planned release workflow.
-- [ ] Inspect hosted check annotations as well as conclusions. Verify that the
+- [x] Inspect hosted check annotations as well as conclusions. Verify that the
       Node action deprecation, moving Ubuntu runner and outdated Gradle notices
       are removed; investigate any new warnings without extending test budgets.
 - [x] Commit verified changes and plan checkpoints; keep store research drafts
@@ -120,8 +120,8 @@ startup maintenance after health readiness. Requests now allow six seconds,
 with no sleeps or retries and the unchanged overall 60-second test bound.
 Transport failures include the method, path and child server log. Five focused
 race-checked repetitions passed in 17.690 seconds. Production authentication and
-database behavior are unchanged; hosted verification of the correction remains
-pending.
+database behavior are unchanged. The final hosted backend race suite passed in
+run `37734917348`.
 
 Native logs also disclosed Google's newly deprecated `sdkmanager`, despite the
 current setup action release. Keep that pinned action only as the SDK downloader:
@@ -141,3 +141,27 @@ individual attribution. Both jobs now use supported warning mode `all` to expose
 the responsible script or plugin during their existing builds; this adds no
 builds or tests. Other compiler diagnostics remain visible. Empty GitHub check
 annotations are not a claim that all compiler output is warning-free.
+
+The final Android build passed with Android CLI SDK installation and no
+`sdkmanager` deprecation message. Its detailed problems report attributes
+`Configuration.setVisible` to current AGP 9.4.0; current SKIE 0.10.15 also uses
+the API in its [pinned source](https://github.com/touchlab/SKIE/blob/7e7b8b597a4da8ba121a33775799ad51e517beb5/SKIE/skie-gradle/plugin-impl/src/main/kotlin/co/touchlab/skie/plugin/subplugin/SkieSubPluginManager.kt#L21).
+Removal is scheduled for Gradle 11. The plain
+`KotlinNativeBundleArtifactsTypes` enum is defined by current KGP 2.4.20 itself,
+verified in its selected JAR and [pinned source](https://github.com/JetBrains/kotlin/blob/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/libraries/tools/kotlin-gradle-plugin/src/common/kotlin/org/jetbrains/kotlin/gradle/targets/native/toolchain/KotlinNativeBundleArtifactFormat.kt).
+Its failure boundary is Gradle 10. The warning's advice to upgrade KGP 2.0.x to
+2.1+ is stale for this selection. No newer stable AGP/KGP/SKIE release resolves
+these calls; keep them visible and require upstream compatibility fixes before
+adopting those future Gradle majors. The selected cryptography plugin 0.6.0 is
+current and is not the identified source of these warnings.
+
+Final exact-head workflow
+[`37734917348`](https://github.com/endorses/psst.zip/actions/runs/37734917348)
+passed all five jobs at `71342ed4ed9be91f1d59a7eddc89cd336b31234f`, with no
+GitHub annotations. Job times were security 1m36s, Android/shared 4m11s,
+backend 7m24s, web 7m36s and iOS 16m16s. Native compilation took 13m34s;
+readiness took one second and the XCTest step 1m50s. All 176 cases passed
+(77.677 seconds of case execution). The test, readiness and job bounds are
+unchanged. Protected PR #3 merged as
+`c4f7eaf1e3e0f0102bcb053548a973072e6f466b` after those checks. Full native
+container source/recovery and first publication remain pending.

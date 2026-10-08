@@ -11,11 +11,10 @@ from generate_release_gate_reports import CHECKS
 import github_release_transport as transport
 import publish_container_release as publication
 import publish_verified_release as driver
+import publication_diagnostics as diagnostics
 from release_artifacts import InvalidRelease, read_json
 import test_release_transport as transport_fixtures
-import publication_retention as retention_module
 import github_release_attestor as signer_module
-from test_release_publication_retention import FakeAWS, PREFIX
 
 
 class FixtureVerifier:
@@ -81,28 +80,6 @@ class FixtureAttestor:
             self.case.verifier.signed.add(report.read_bytes())
 
 
-class FixtureRetention:
-    """Explicit offline storage injection; production has no retention bypass."""
-
-    def __init__(self):
-        self.calls = []
-        self.fail = None
-
-    def persist_inputs(self, root, inventory):
-        if self.fail == "inputs":
-            raise InvalidRelease("fixture input retention failed")
-        self.calls.append(("inputs", inventory))
-
-    def checkpoint(self, path, sequence):
-        record = read_json(path.read_bytes().splitlines()[-1])
-        if self.fail == record["operation"] and record["phase"] == "intent":
-            raise InvalidRelease("fixture journal retention failed")
-        self.calls.append(("journal", sequence, record))
-
-    def finish(self, receipt):
-        self.calls.append(("receipt", receipt))
-
-
 class PublicationCommand(unittest.TestCase):
     def setUp(self):
         self.real = transport_fixtures.TransportChecks()
@@ -116,7 +93,6 @@ class PublicationCommand(unittest.TestCase):
         )
         self.verifier = FixtureVerifier(self.fixture.verifier)
         self.attestor = FixtureAttestor(self)
-        self.retention = FixtureRetention()
         self.adapter = None
         native = {}
         for platform in ("linux/amd64", "linux/arm64"):
@@ -196,13 +172,23 @@ class PublicationCommand(unittest.TestCase):
             environment=self.environment,
             verifier=self.verifier,
             attestor=self.attestor,
-            retention=self.retention,
             transport_factory=self.factory,
         )
         return driver.publish(**(args | changes))
 
     def events(self):
         return self.real.events()
+
+    def diagnostics(self, outcome):
+        return diagnostics.project(
+            self.state,
+            repository=self.environment["GITHUB_REPOSITORY"],
+            version="v1.2.3",
+            commit=self.fixture.commit,
+            run_id=self.environment["GITHUB_RUN_ID"],
+            attempt=self.environment["GITHUB_RUN_ATTEMPT"],
+            outcome=outcome,
+        )
 
     def test_complete_real_transport_lifecycle_has_actual_receipt_and_ordered_signing(
         self,
@@ -234,6 +220,9 @@ class PublicationCommand(unittest.TestCase):
             intents.index("attest-asset-readback"), intents.index("tag-backend")
         )
         self.assertEqual(intents[-1], "publish-release")
+        progress = self.diagnostics("success")
+        self.assertEqual(progress["records"][-1]["operation"], "public-readback")
+        self.assertEqual(progress["journal_sha256"], result["journal_sha256"])
         self.assertFalse(self.adapter.held)
         self.assertFalse(list(self.state.glob("publication-inputs-*")))
         self.assertNotIn("fixture-workflow-token", str(result) + str(self.events()))
@@ -309,9 +298,8 @@ class PublicationCommand(unittest.TestCase):
                 }
                 self.assertTrue(expected <= synced, expected - synced)
                 self.assertTrue((private / "snapshot-binding.json").is_file())
-                self.assertEqual(self.retention.calls[0][0], "inputs")
-                self.assertEqual(self.retention.calls[-1][0], "journal")
-                self.assertEqual(self.retention.calls[-1][2]["phase"], "intent")
+                self.assertEqual(self.events()[-1]["phase"], "intent")
+                self.assertEqual(self.events()[-1]["operation"], "reserve-draft")
                 mutations.append((method, url))
             return original_request(method, url, **kwargs)
 
@@ -321,48 +309,9 @@ class PublicationCommand(unittest.TestCase):
         ):
             self.publish()
         self.assertEqual(len(mutations), 1)
-        self.assertEqual(self.retention.calls[-1][0], "receipt")
 
-    def test_external_retention_failure_stops_before_the_release_write(self):
-        for failure in ("inputs", "reserve-draft"):
-            with self.subTest(failure=failure):
-                self.retention.fail = failure
-                with self.assertRaisesRegex(InvalidRelease, "retention failed"):
-                    self.publish()
-                self.assertFalse(self.api.releases)
-                self.assertFalse(self.api.registry)
-                self.assertFalse(self.api.assets)
-                self.assertFalse(
-                    any(
-                        method in {"POST", "PUT", "PATCH", "DELETE"}
-                        for method, _, _, _ in self.api.calls
-                    )
-                )
-        with patch.object(
-            driver, "snapshot", side_effect=AssertionError("copied inputs")
-        ):
-            with self.assertRaisesRegex(InvalidRelease, "retention configuration"):
-                self.publish(retention=None)
-
-    def test_default_retention_persists_the_real_driver_packet_and_terminal_receipt(
-        self,
-    ):
-        aws = FakeAWS()
-        environment = self.environment | {
-            PREFIX + name: value
-            for name, value in {
-                "ENDPOINT": "https://s3.example.test",
-                "BUCKET": "private-publication",
-                "REGION": "eu-central-1",
-                "ACCESS_KEY_ID": "fixture-key",
-                "SECRET_ACCESS_KEY": "fixture-secret",
-            }.items()
-        }
-        constructor = retention_module.S3PublicationRetention
+    def test_default_bucket_free_driver_uses_a_disposable_official_signer_cache(self):
         action_caches = []
-
-        def configured(binding, context, **kwargs):
-            return constructor(binding, context, execute=aws, **kwargs)
 
         def official_fixture(binding, **kwargs):
             cache = kwargs["private_action_cache"]
@@ -372,31 +321,16 @@ class PublicationCommand(unittest.TestCase):
             action_caches.append(cache)
             return self.attestor
 
-        with (
-            patch.object(
-                retention_module, "S3PublicationRetention", side_effect=configured
-            ),
-            patch.object(
-                signer_module, "WorkflowAttestor", side_effect=official_fixture
-            ),
+        with patch.object(
+            signer_module, "WorkflowAttestor", side_effect=official_fixture
         ):
-            result = self.publish(
-                retention=None, attestor=None, environment=environment
-            )
-        objects = aws.objects
-        receipt_key = next(
-            key for key in objects if key.endswith("/publication-receipt.json")
-        )
-        self.assertEqual(read_json(objects[receipt_key]), result)
-        retained_gates = [key for key in objects if "/inputs/gates/" in key]
-        self.assertEqual(len(retained_gates), len(publication.GATES))
-        self.assertEqual(len([key for key in objects if "/inputs/archives/" in key]), 4)
-        journal = self.state / "v1.2.3.jsonl"
-        self.assertIn(journal.read_bytes(), objects.values())
-        self.assertFalse(aws.private.exists())
+            result = self.publish(attestor=None)
+        self.assertTrue(result["immutable"])
         self.assertEqual(len(action_caches), 1)
         self.assertFalse(action_caches[0].exists())
-        self.assertNotIn(b"fixture-secret", b"".join(objects.values()))
+        self.assertFalse(
+            any("S3" in key or "AWS" in key for key in driver.WORKFLOW_ENV)
+        )
 
     def test_authenticated_smoke_must_bind_all_four_native_configs(self):
         self.fixture.verifier.details["final-image-smoke"]["tested_configs"][
@@ -415,6 +349,9 @@ class PublicationCommand(unittest.TestCase):
         self.assertEqual(len(self.api.releases), 1)
         self.assertTrue(self.api.releases[0]["draft"])
         self.assertTrue(any(row["phase"] == "uncertain" for row in self.events()))
+        progress = self.diagnostics("failure")
+        self.assertEqual(progress["records"][-1]["phase"], "stopped")
+        self.assertTrue(list(self.state.glob("publication-inputs-*")))
         self.commands.fail_copy = False
         before = len(self.api.calls)
         with self.assertRaisesRegex(InvalidRelease, "journal exists"):

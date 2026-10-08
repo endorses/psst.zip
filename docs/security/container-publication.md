@@ -524,7 +524,7 @@ performed. The existing `v0.0.0` tag still points to
 
 The `container-release` environment still has no variables or secrets configured.
 Its required reviewer and `v*` tag policy remain in place. Protected policies do
-not establish hosted evidence, package visibility, private provider retention or
+not establish hosted evidence, package visibility or
 successful publication; those live prerequisites remain pending.
 
 - [x] Implement bounded authenticated gate verification and test its exact identity/snapshot policies.
@@ -613,14 +613,12 @@ linking, branch/tag protection and the separate Administration-read inspection
 credential remain prerequisites. The [official API](https://docs.github.com/en/rest/repos/repos#enable-immutable-releases)
 documents the setting and required permissions.
 
-Runner-local fsync and retained snapshots do not survive removal of a hosted
-runner. `tools/publication_retention.py` now persists the complete input packet
-before mutation, and each journal intent before its corresponding remote write.
-It also retains completions, uncertainty records and the terminal publication
-receipt. The publishing job remains disabled while live storage and credentials
-are unresolved.
+Publication uses GHCR for images and GitHub Releases for the reviewed release
+files. A private storage bucket and storage credentials are not prerequisites.
+VPS off-host backups are a separate operator concern; this publication workflow
+does not copy the live database or uploaded files.
 
-### Guarded publishing job and external recovery records
+### Guarded publishing job and runner-local mutation records
 
 The `publish` job requires a version-tag push, successful source assembly, native
 recovery and distribution review, and repository variable
@@ -632,15 +630,12 @@ write permissions are confined to this publishing job; it has no production SSH
 credentials. It downloads completed payloads and signed gates, rather than
 repeating image builds, scanners, source replay or recovery experiments.
 
-The initial external adapter uses installed AWS CLI v2 and explicit configuration:
-
-| Protected environment setting                                                                        | Purpose                                                                              |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Variables `PSST_PUBLICATION_S3_ENDPOINT`, `PSST_PUBLICATION_S3_BUCKET`, `PSST_PUBLICATION_S3_REGION` | Fixed HTTPS storage origin, private bucket and signing region                        |
-| Secrets `PSST_PUBLICATION_S3_ACCESS_KEY_ID`, `PSST_PUBLICATION_S3_SECRET_ACCESS_KEY`                 | Separate publication-storage credential                                              |
-| Optional secret `PSST_PUBLICATION_S3_SESSION_TOKEN`                                                  | Temporary credential session token                                                   |
-| Secret `PSST_IMMUTABLE_INSPECTION_TOKEN`                                                             | Separate repository Administration-read credential; not the package publishing token |
-| Optional variable `PSST_INITIALIZE_GHCR_PACKAGES=true`                                               | Permit creation of both missing packages from the exact reviewed images in this run  |
+The protected environment requires `PSST_IMMUTABLE_INSPECTION_TOKEN`, a separate
+repository Administration-read credential. The optional variable
+`PSST_INITIALIZE_GHCR_PACKAGES=true` permits creation of both missing packages
+from the exact reviewed images in that held run. The workflow's publishing token
+remains separate from the inspection credential. No AWS CLI or S3 settings are
+required.
 
 ### First GHCR package creation
 
@@ -655,7 +650,7 @@ The default is strict existing-public-package verification. Initialization
 accepts both package lookups missing; it rejects mixed missing/existing state,
 existing private/unlinked packages, and permission/server failures. It does not
 bypass the eight authenticated gates, exact run/attempt checks, final reviewer
-approval, private input retention or mutation journaling.
+approval, local input snapshots or mutation journaling.
 
 In the same held run, the command reserves the draft and pushes the four reviewed
 children and two indexes by digest. It reuses the prepared archives without
@@ -674,55 +669,45 @@ delete the draft or overwrite a version. The normal new-reviewed-version recover
 policy remains unchanged. This path still needs live GHCR validation before the
 first release is treated as ready.
 
-### Storage permissions and retention
+### Diagnostics, receipts and retention limits
 
-The storage credential needs `s3:PutObject` and `s3:GetObject` restricted to
-`publication/endorses/psst.zip/*`, plus bucket-level
-`s3:GetBucketPublicAccessBlock` and `s3:GetBucketPolicyStatus`. It needs no delete,
-bucket-policy write or repository permission. Bucket policy and all four public
-access blocks must return authenticated nonpublic status. Missing, unsupported or
-denied privacy APIs stop the command. Provider provisioning, retention duration
-and independent restore verification remain operator setup tasks.
+Exact private snapshots and mutation journals are synced locally before writes.
+Interrupted publication preserves them for inspection during the runner's
+remaining lifetime. The official signing action uses a separate disposable cache
+outside the snapshots. Existing local journals prevent automatic reinvocation;
+repository serialization, immutable version checks and read-only reconciliation
+remain unchanged. Nothing automatically resumes or replaces a partial release.
 
-Each attempt has its own
-`publication/<repository>/<version>/run-<id>/attempt-<n>/` prefix. Inputs are
-individual objects with the snapshot's already measured SHA256; no extra large
-archive or hash pass is needed. Conditional `PutObject` prevents replacing an
-existing key, and a separate checksum-enabled `HeadObject` must confirm size,
-SHA256 and AES256 server-side encryption. The adapter does not retry failed writes.
-[AWS conditional upload API](https://docs.aws.amazon.com/cli/latest/reference/s3api/put-object.html),
-[checksum readback API](https://docs.aws.amazon.com/cli/latest/reference/s3api/head-object.html).
+Tagged preparation, native payloads, source review and signed review artifacts
+retain their existing seven-day GitHub artifact lifetime. Publication does not
+upload another copy of the four large OCI exports, the complete private journal
+or its snapshots. `tools/publication_diagnostics.py` produces a small explicit
+projection on success, failure or skipped publication, when the runner remains
+available. It exports only validated repository/version/commit/run/attempt,
+step outcome, binding and journal hashes, and sequence/phase/fixed operation
+categories. Asset names collapse to `upload-asset`; arbitrary details, error
+messages, credentials and API responses are excluded. Input is limited to one
+MiB and 128 records; output is limited to 64 KiB. Invalid, truncated, substituted
+or linked journals fail without exporting their contents.
 
-The packet includes the preparation binding, all exact source/bundle/manifest
-files, indexes, four final OCI archives and eight gate reports. The inventory is
-written only after its objects; journal records start only after packet readback
-and privacy checks pass. Every cumulative journal snapshot is a new numbered
-object. Local fsync precedes its external checkpoint, and successful external
-checkpoint readback precedes the application mutation. Storage failures preserve
-local inputs and stop further writes. The final receipt must match the last
-stored journal digest. Conditional writes do not establish Object Lock or prevent
-administrator deletion; configure and exercise the site's retention policy.
+The diagnostic artifact and verified successful receipt each have seven-day
+retention. Diagnostics creation/upload is best effort and cannot change the
+publication result. The success receipt exists only after immutable publication
+and anonymous release/image/asset readbacks pass. Successful input snapshots are
+removed when the driver returns after those readbacks; journals and the receipt
+remain until receipt upload succeeds. Mutation failures retain snapshots and the
+journal for the remaining runner lifetime. No diagnostics upload is guaranteed
+if the runner disappears, and
+GitHub artifacts can expire or be deleted. These records are not independent
+durable storage, a complete recovery packet, reviewer approval or permission to
+retry writes. Operators reconcile any interrupted attempt against authenticated
+GitHub/GHCR state and retained review inputs before further action.
 
-Credentials exist only in cleaned private temporary CLI files, outside retained
-state. The pinned official signing action uses a separate disposable cache outside
-the input packet; its existing byte and runtime verification still apply.
-Ambient profiles, proxies and metadata authentication are excluded. Private
-journals and snapshots are never uploaded as public workflow artifacts. Successful
-publication cleans the runner state only after the durable receipt and anonymous
-public readbacks pass; failed state remains locally inspectable for the remaining
-runner lifetime. Original remote records allow later manual reconciliation, not
-automatic resume or overwrite.
-
-Three small adapter fixtures passed in 0.006 seconds. Thirteen command fixtures
-passed in 1.58 seconds, including the driver-to-adapter packet integration and
-storage failure before release creation. Seventeen existing transport fixtures
-passed in 1.77 seconds, and sixteen signer fixtures in 0.097 seconds. These checks
-use local tiny payloads and injected commands;
-they do not prove a live bucket, OIDC signing or published-release recovery.
-
-Ten fixture checks exercise the actual transport lifecycle, snapshot durability, ordering, absent
-gates, substituted native configurations/archives/reports, first-package policy,
-interrupted pushes/signing, retained inputs and the no-retry boundary. They use
-explicit fixture signers/verifiers and confer no publication authority. Official
-hosted signing, live package policy/readbacks and workflow integration remain
-unverified; the candidate workflow continues to create no releases.
+The command fixtures cover the bucket-free real transport lifecycle, durable
+snapshot and intent ordering, missing gates, substituted native configurations,
+archives and signed readbacks, first-package policy, interrupted pushes/signing,
+retained inputs and the no-retry boundary. Small diagnostic fixtures additionally
+check privacy, attempt/binding identity and input bounds. They use explicit fixture
+signers/verifiers and confer no publication authority. Official hosted signing,
+live package policy/readbacks and workflow integration remain unverified; the
+candidate workflow continues to create no releases.

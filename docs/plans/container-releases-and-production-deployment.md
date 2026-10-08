@@ -18,6 +18,13 @@ GitHub Container Registry (GHCR) is the primary registry. Docker Hub is an optio
 mirror of the same released images; Compose files, deployment scripts and
 installation documentation live on GitHub.
 
+Publication does not require a private storage bucket. On 2026-10-08 the operator
+chose GHCR for images and GitHub Releases for durable public release files,
+superseding the private S3 publication-retention prerequisite below. Publishing
+keeps its local transaction journal and immutable inputs; bounded Actions
+diagnostics are temporary, best-effort records. VPS backups remain a separate
+recovery requirement and can use a suitable off-host destination without S3.
+
 ```text
 Pull request / main → CI
 Version tag → CI for that exact commit → publish release images and bundle
@@ -2030,9 +2037,10 @@ review execution and later publication/VPS rollout are pending.
       the first release. Independently verify the setting after the change.
 - [ ] Provision public, repository-linked `psst-zip-backend` and `psst-zip-web`
       GHCR packages and the separate Administration-read inspection credential.
-- [ ] Persist publication inputs and each mutation journal record beyond the
-      hosted runner's lifetime before enabling the publishing job. A local
-      fsync or final artifact upload alone does not protect against runner loss.
+- [x] Verify the bucket-free driver, local intent-before-write persistence and
+      bounded diagnostics with focused offline regressions. Preserve explicit reconciliation/no automatic
+      retries after interrupted writes. Actions artifacts expire and uploads can
+      fail; local fsync does not protect against runner loss.
 
 On 2026-10-08, the authenticated repository API reported no existing releases,
 immutable releases disabled, and HTTP 404 for both expected package names.
@@ -2055,11 +2063,11 @@ mapping fixtures and the five existing source-command cases passed in 0.036
 seconds, including a check that mapping never opens large source/bundle/OCI
 payloads. The dependent distribution and recovery command fixtures passed in
 0.018 and 0.481 seconds after the shared metadata refactor.
-At this checkpoint, the workflow granted no registry or release publication
-permission. External recovery-record storage was still pending; the subsequent
-guarded integration below implements an adapter without claiming live retention.
+The publication command retains the exact packet and eight authenticated gate
+checks. The operator subsequently chose bucket-free publication; the previous
+private S3 adapter and provisioning prerequisite are superseded.
 
-### Guarded publication and external journal integration
+### Guarded publication using GitHub and GHCR
 
 - [x] Wire the exact `publish` job after assembled source, signed native recovery
       and authorized distribution review. Keep planned dispatches read-only and
@@ -2067,48 +2075,54 @@ guarded integration below implements an adapter without claiming live retention.
 - [x] Serialize the whole release workflow using the literal
       `container-release-publication` group, with cancellation disabled. Confine
       Contents/package write scopes to the publishing job.
-- [x] Retain the complete immutable input packet, each pre-write journal intent,
-      subsequent completion/uncertainty and terminal receipt through a private
-      conditional-write S3 adapter. Reuse snapshot hashes and require independent
-      checksum/size/encryption readback before acknowledging persistence.
-- [x] Exercise adapter-to-driver integration and interrupted storage boundaries
-      using small offline fixtures; verify workflow YAML, shell and Python blocks.
-- [ ] Select and configure a capable private storage provider, check its privacy
-      and retention policy, recover stored inputs/journals independently, and
-      verify a live interruption before enabling publication.
-- [ ] Configure public repository-linked packages, least-privilege inspection and
-      storage credentials, branch/tag protection and the explicit enablement
-      variable; verify hosted OIDC, real reviewer decisions and public publication.
+- [x] Remove mandatory S3 configuration, AWS dependencies and the retired
+      publication-retention adapter/tests. Preserve independent inspection,
+      package initialization and the protected publication gate.
+- [x] Preserve immutable input snapshots, fsynced intent-before-write journal,
+      failure-state preservation, lease guards and read-only reconciliation.
+      An interrupted attempt must not automatically replay remote writes.
+- [x] Implement a bounded, explicitly whitelisted diagnostic projection and the
+      verified successful receipt as named Actions artifacts. Never upload the
+      private journal directory, arbitrary details/errors or credentials; reuse
+      existing prepared/native/source artifacts rather than copying large OCI
+      archives into another packet.
+- [x] Verify bucket-free default publication, substitution refusal, snapshots
+      before mutation, interrupted-write behavior and safe diagnostic projection
+      with existing focused regressions. Validate workflow syntax and formatting.
+- [ ] Configure public repository-linked packages, the least-privilege inspection
+      credential, branch/tag protection and explicit enablement; verify hosted
+      OIDC, real reviewer decisions and public publication.
 
-`tools/publication_retention.py` uses installed AWS CLI v2 with separate temporary
-credential files and no ambient AWS profiles/proxy/metadata authentication. The
-selected endpoint must support conditional uploads, SHA256 checksum readback,
-AES256 server-side encryption and authenticated public-access-block/bucket-policy
-status APIs. Unsupported provider capabilities stop publication. The storage
-choice remains pending; S3 support is prepared as the default, with no live bucket
-or credential provisioned. It does not assert Object Lock, independent restore or
-protection from administrator deletion.
+GHCR stores the released images; GitHub Releases stores the public source,
+deployment files, manifests and provenance. No private bucket or storage
+credentials are required for publication. Local journal writes and immutable
+snapshots protect the live process; they do not survive runner loss by themselves.
+Diagnostic uploads are best effort and expire. Existing tagged preparation,
+native/source packets and receipts use bounded Actions retention. Missing or
+expired diagnostic material requires fresh read-only inspection of release,
+package and tag state; an artifact is neither publication approval nor permission
+to retry an uncertain mutation.
 
 The opt-in publishing job checks configuration before downloading large inputs,
 uses the existing exact artifact layout, and invokes the shared publication
 command. It performs no additional build, source replay, scanner or recovery run.
-Its 30-minute deadline bounds real publication transfers and readback, separately
-from routine CI tests. No private journal is exposed through public artifacts.
-The default remains disabled until `CONTAINER_RELEASE_PUBLICATION_ENABLED=true`.
-The protected environment requires final publishing approval after distribution
-review; setting the variable alone cannot satisfy missing authenticated gates.
+Its 30-minute deadline bounds publication transfers and readback, separately from
+routine CI tests. Publication remains disabled until
+`CONTAINER_RELEASE_PUBLICATION_ENABLED=true`. Protected approval after distribution
+review remains required; enabling the variable cannot satisfy missing gates.
 
-Three adapter cases passed in 0.006 seconds; thirteen driver cases passed in 1.58
-seconds, seventeen transport cases in 1.77 seconds and sixteen signer cases in
-0.097 seconds. The two new driver cases
-catch external-retention failure before a release write and ensure the actual
-four-archive/eight-gate packet and terminal receipt are accepted by the real
-adapter. The integration also exercises the default signing adapter's separate
-disposable action cache, preserving an exact retained input inventory and cleanup.
-Fixtures use injected AWS/API commands and tiny local files, with no
-network calls, Docker builds or sleeps. Workflow YAML, all 35 shell steps and seven
-inline Python blocks parsed; formatting and diff checks passed. New hosted
-execution, provider retention and production rollout remain pending.
+VPS backups remain separately required before production migration. Their
+location, encryption and restore verification are addressed in the existing
+backup runbook, without making S3 a prerequisite for releasing containers.
+
+The complete existing release regression suite passed 369 cases in 24.376
+seconds; the focused publication suite passed 43 cases in 4.22 seconds. Review
+identified a possible FIFO block before the journal file-type check. A
+nonblocking open and direct FIFO refusal fixture fixed it; five diagnostic cases
+then passed in 0.002 seconds. Projection has a one-minute step bound. Actionlint
+and formatting/diff checks passed. The old S3-only adapter and fixtures were
+retired; no additional application build, sleeps or large OCI copies were added.
+Actual hosted artifact retention and first publication remain unverified.
 
 ### Live repository and production environment protections
 
@@ -2122,8 +2136,8 @@ execution, provider retention and production rollout remain pending.
       installing SSH credentials, configuring a host or dispatching deployment.
 - [x] Track the applied non-secret ruleset/environment payloads and operator
       guidance, preserving separate pending live publication and VPS checks.
-- [ ] Configure the remaining environment variables, independent inspection and
-      storage credentials, public package namespaces and restricted deployment
+- [ ] Configure the remaining environment variables, independent inspection
+      credentials, public package namespaces and restricted deployment
       identity; verify hosted release and production behavior against them.
 
 On 2026-10-08, live inspection found no rulesets or legacy main protection and no
@@ -2156,8 +2170,9 @@ Applied request payloads live under `.github/rulesets/` and
 `.github/environments/`; the publication and production operator guides record
 the effective settings. JSON parsed, formatter/diff checks passed, and independent
 API projections matched the tracked policy; no application tests or builds were
-repeated for these reversible configuration changes. Remaining provider/package
-and real hosted deployment checks remain pending.
+repeated for these reversible configuration changes. Remaining package/publication
+and real hosted deployment checks remain pending; off-host backup selection is
+separate.
 
 ### Release-compatible external gateway verification
 
@@ -2416,8 +2431,11 @@ the first published release/VPS migration remain separate incomplete tasks.
       compilation and all 176 XCTest cases. Readiness took one second; the test
       step took 1m52s. The updated artifact action's actual named ZIP layout was
       verified in preceding run `37731752144`; release bundle download/recovery
-      remains pending. Repository fixture and backend timeout repairs still need
-      a fully passing integrated workflow before candidate preparation restarts.
+      remains pending. Final run `37734917348` passed all five jobs with no
+      GitHub annotations, including those fixture and backend timeout repairs.
+      Protected PR #3 merged as `c4f7eaf1e3e0f0102bcb053548a973072e6f466b`.
+      Candidate preparation will use the verified bucket-free publication
+      workflow after its separate integration.
 
 Application compiler, build tool and base-image upgrades are tracked separately
 in [the maintained toolchain plan](maintained-build-toolchains.md). The action

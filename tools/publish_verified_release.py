@@ -75,12 +75,6 @@ WORKFLOW_ENV = {
     "GITHUB_EVENT_PATH",
     "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
     "ACTIONS_ID_TOKEN_REQUEST_URL",
-    "PSST_PUBLICATION_S3_ENDPOINT",
-    "PSST_PUBLICATION_S3_BUCKET",
-    "PSST_PUBLICATION_S3_REGION",
-    "PSST_PUBLICATION_S3_ACCESS_KEY_ID",
-    "PSST_PUBLICATION_S3_SECRET_ACCESS_KEY",
-    "PSST_PUBLICATION_S3_SESSION_TOKEN",
     "PSST_INITIALIZE_GHCR_PACKAGES",
 }
 
@@ -119,12 +113,6 @@ class WorkflowAttestor(Protocol):
         self, plan: PublicationPlan, assets: dict[str, Path], output: Path
     ) -> Path: ...
     def sign_report(self, binding: Binding, report: Path) -> None: ...
-
-
-class PublicationRetention(Protocol):
-    def persist_inputs(self, root: Path, inventory: dict) -> None: ...
-    def checkpoint(self, journal: Path, sequence: int) -> None: ...
-    def finish(self, receipt: dict) -> None: ...
 
 
 def exclusive_report(path: Path, value: dict) -> None:
@@ -236,7 +224,6 @@ def publish(
     environment: dict[str, str],
     verifier: EvidenceVerifier | None = None,
     attestor: WorkflowAttestor | None = None,
-    retention: PublicationRetention | None = None,
     transport_factory=GitHubReleaseTransport,
 ) -> dict:
     """Drive the actual lifecycle. Fixture adapters must be injected explicitly."""
@@ -265,10 +252,6 @@ def publish(
             environment.get("GITHUB_RUN_ATTEMPT"), NUMBER, "Invalid workflow attempt"
         )
     )
-    if retention is None:
-        from publication_retention import validate_configuration
-
-        validate_configuration(environment)
     verifier = verifier or GhEvidenceVerifier(
         token=environment["GH_TOKEN"], run_id=run_id, run_attempt=attempt
     )
@@ -280,16 +263,11 @@ def publish(
         and not (state / (version + ".jsonl")).is_symlink(),
         "Publication journal exists; explicit reconciliation is required",
     )
-    with input_snapshots(state) as snapshots, ExitStack() as retention_scope:
+    with input_snapshots(state) as snapshots, ExitStack() as signer_scope:
         private = snapshots.root
-        inventory = {}
 
         def snapshot_input(path: Path, target: Path, maximum=2 * 1024**3):
-            digest = snapshot(path, target, maximum)
-            inventory[str(target.relative_to(private))] = {
-                "sha256": digest,
-                "size": target.stat().st_size,
-            }
+            snapshot(path, target, maximum)
 
         asset_paths, index_paths, archive_paths, report_paths = {}, {}, {}, {}
         for subdir in ("assets", "indexes", "archives", "gates", "readbacks"):
@@ -366,7 +344,7 @@ def publish(
         if attestor is None:
             from github_release_attestor import WorkflowAttestor as OfficialAttestor
 
-            signer_cache = retention_scope.enter_context(
+            signer_cache = signer_scope.enter_context(
                 tempfile.TemporaryDirectory(prefix="publication-signer-", dir=state)
             )
             attestor = OfficialAttestor(
@@ -377,12 +355,6 @@ def publish(
                 private_output=private / "readbacks",
                 private_action_cache=Path(signer_cache),
             )
-        if retention is None:
-            from publication_retention import S3PublicationRetention
-
-            retention = retention_scope.enter_context(
-                S3PublicationRetention(plan.binding, context, environment=environment)
-            )
         adapter = transport_factory(
             plan,
             state,
@@ -390,16 +362,12 @@ def publish(
             github_token=environment["GH_TOKEN"],
             inspection_token=environment["PSST_IMMUTABLE_INSPECTION_TOKEN"],
             actor=environment.get("GITHUB_ACTOR", ""),
-            journal_checkpoint=retention.checkpoint,
+            journal_checkpoint=None,
             initialize_packages=initialize_packages,
         )
         adapter.verify_workflow()
         adapter.package_preflight()
         exclusive_report(private / "snapshot-binding.json", plan.record())
-        inventory["snapshot-binding.json"] = {
-            "sha256": source_digest(private / "snapshot-binding.json"),
-            "size": (private / "snapshot-binding.json").stat().st_size,
-        }
         # File fsync does not persist the containing directory entries. Make
         # the complete retained snapshot reachable before any remote mutation.
         for subdir in ("assets", "indexes", "archives", "gates", "readbacks"):
@@ -409,7 +377,6 @@ def publish(
         # Once the publication lease is entered, an interrupted operation may
         # have mutated remote state. Preserve exact inputs for manual inspection.
         snapshots.retain = True
-        retention.persist_inputs(private, inventory)
         with reserve_draft(plan, adapter) as reservation:
             adapter.push_images(archive_paths, index_paths, tested_configs=configs)
             adapter.wait_for_public_packages()
@@ -491,7 +458,6 @@ def publish(
                 ),
                 "public_readback": public,
             }
-        retention.finish(result)
         snapshots.retain = False
         return result
 
@@ -529,7 +495,7 @@ def main(argv: list[str] | None = None) -> None:
         "--state",
         type=Path,
         required=True,
-        help="Private durable publication journal directory",
+        help="Private runner-local publication journal directory",
     )
     args = parser.parse_args(argv)
     environment = {key: os.environ[key] for key in WORKFLOW_ENV if key in os.environ}
