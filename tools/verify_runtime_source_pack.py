@@ -492,7 +492,9 @@ def verify(
             )
         )
         backend_build = caddy.binary_build_info(binaries["backend"])
-        caddy.verify_binary_go_source(backend_build, caddy_inventory)
+        backend_go_inventory, backend_go_notices = pack.backend_go_runtime(
+            root, caddy_inventory, backend_build["GoVersion"]
+        )
         require(
             manifest["bindings"]["backend"].get("go_version")
             == backend_build["GoVersion"]
@@ -517,7 +519,9 @@ def verify(
             + caddy_notices
         )
         backend_notices = (
-            notices["backend"] + b"\nGo runtime\n" + caddy.go_notice_text(go_notices)
+            notices["backend"]
+            + b"\nGo runtime\n"
+            + caddy.go_notice_text(backend_go_notices)
         )
         for component, full in [("backend", backend_notices), ("web", combined)]:
             require(
@@ -564,9 +568,17 @@ def verify(
                 len(v["packages"]) for v in inventories.values()
             ),
             "go_runtime": {
-                "version": caddy_inventory["go_version"],
-                "commit": caddy_inventory["go_source_revision"],
-                "archive_sha256": "sha256:" + caddy_inventory["go_source"]["sha256"],
+                "sources": {
+                    component: {
+                        "version": inventory["go_version"],
+                        "commit": inventory["go_source_revision"],
+                        "archive_sha256": "sha256:" + inventory["go_source"]["sha256"],
+                    }
+                    for component, inventory in (
+                        ("backend", backend_go_inventory),
+                        ("web", caddy_inventory),
+                    )
+                },
                 "executables": {
                     "backend": backend_build["GoVersion"],
                     "web": caddy_inventory["go_version"],

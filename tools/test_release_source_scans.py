@@ -73,7 +73,9 @@ def go_fixture():
         "govulncheck-convert.exit": b"0\n",
         "govulncheck.txt": b"No vulnerable symbols\n",
         "govulncheck.json": stream(messages),
-        "go-version.txt": b"go version go1.26.8 linux/amd64\n",
+        "go-version.txt": (
+            "go version " + source.GO_VERSION + " linux/amd64\n"
+        ).encode(),
         "go-env.json": json_bytes(
             {
                 "GOOS": "linux",
@@ -275,7 +277,7 @@ class SourceScannerTests(unittest.TestCase):
             ("govulncheck.exit", b"1\n"),
             ("govulncheck.json", b""),
             ("govulncheck.json", b"{"),
-            ("go-version.txt", b"go version go1.27.1 linux/amd64\n"),
+            ("go-version.txt", b"go version go1.26.8 linux/amd64\n"),
             ("go-execution.complete", b""),
             ("govulncheck-convert.exit", b"1\n"),
         ]:
@@ -320,8 +322,8 @@ class SourceScannerTests(unittest.TestCase):
         }
         return {
             "node-execution.complete": b"complete\n",
-            "node-version.txt": b"v22.23.3\n",
-            "npm-version.txt": b"10.9.4\n",
+            "node-version.txt": b"v26.10.0\n",
+            "npm-version.txt": b"11.19.1\n",
             "npm-audit.exit": b"1\n" if finding else b"0\n",
             "npm-audit.json": json_bytes(report),
             "npm-lock-graph.json": json_bytes({"name": "web", "dependencies": {}}),
@@ -346,9 +348,12 @@ class SourceScannerTests(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "audit failed"):
             source.analyze_npm(raw, lock)
         raw, lock = self.npm_fixture()
-        raw["node-version.txt"] = b"v26.10.0\n"
-        with self.assertRaisesRegex(InvalidRelease, "Node/npm"):
-            source.analyze_npm(raw, lock)
+        for node in [b"v22.23.3\n", b"v25.9.0\n", b"v26.11.1-rc.1\n", b"v27.0.0\n"]:
+            raw["node-version.txt"] = node
+            with self.subTest(node=node), self.assertRaisesRegex(
+                InvalidRelease, "Node/npm"
+            ):
+                source.analyze_npm(raw, lock)
 
     def test_read_only_scanner_fixtures_never_mount_socket_and_disable_scripts(self):
         context = NativeSourceContext(
@@ -408,7 +413,9 @@ class SourceScannerTests(unittest.TestCase):
         raw = {
             "compiler-execution.complete": b"complete\n",
             "binary-build-info.json": json_bytes(build),
-            "go-version.txt": b"go version go1.26.8 linux/amd64\n",
+            "go-version.txt": (
+                "go version " + source.GO_VERSION + " linux/amd64\n"
+            ).encode(),
             "compiler-environment.json": json_bytes(environment),
             "compiler-graph.json": stream(
                 [
@@ -469,6 +476,7 @@ class SourceScannerTests(unittest.TestCase):
                 expected_build=build,
                 platform="linux/amd64",
             )
+
         raw, binary, build = self.compiler_fixture()
         env = json.loads(raw["compiler-environment.json"])
         env["CGO_ENABLED"] = "1"
@@ -481,6 +489,35 @@ class SourceScannerTests(unittest.TestCase):
                 expected_build=build,
                 platform="linux/amd64",
             )
+
+    def test_caddy_graph_requires_its_original_compiler_while_backend_requires_latest_pin(
+        self,
+    ):
+        raw, binary, build = self.compiler_fixture()
+        build["GoVersion"] = "go1.26.8"
+        build["Settings"].append({"Key": "-tags", "Value": "nobadger,nomysql,nopgx"})
+        raw["binary-build-info.json"] = json_bytes(build)
+        raw["go-version.txt"] = b"go version go1.26.8 linux/amd64\n"
+        environment = json.loads(raw["compiler-environment.json"])
+        environment["GOFLAGS"] = "-mod=vendor"
+        raw["compiler-environment.json"] = json_bytes(environment)
+        arguments = dict(
+            component="web",
+            actual_binary=binary,
+            expected_build=build,
+            platform="linux/amd64",
+            vendor_sum=b"dependency v1.0.0 h1:module\n",
+            vendor_modules=b"# dependency v1.0.0\n",
+        )
+        source.compiler_correspondence(raw, **arguments)
+        raw["go-version.txt"] = (
+            "go version " + source.GO_VERSION + " linux/amd64\n"
+        ).encode()
+        with self.assertRaisesRegex(InvalidRelease, "Compiler toolchain differs"):
+            source.compiler_correspondence(raw, **arguments)
+        arguments["component"] = "backend"
+        with self.assertRaisesRegex(InvalidRelease, "Backend compiler differs"):
+            source.compiler_correspondence(raw, **arguments)
 
     def test_caddy_uses_vendor_and_exact_native_flags_without_a_rebuild_floor(self):
         script = source.compiler_script(

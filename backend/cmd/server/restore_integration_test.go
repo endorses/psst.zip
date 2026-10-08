@@ -188,7 +188,11 @@ func restoreCLI(t *testing.T, ctx context.Context, directory, mode string) datab
 }
 func restoreHTTP(t *testing.T, p *restoreProcess, method, path, token string, body []byte, want int) ([]byte, *http.Response) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// Authentication can overlap startup maintenance after health readiness.
+	// Allow the database's five-second busy wait plus response overhead; this
+	// restore-correctness test retains its overall 60-second deadline.
+	const requestTimeout = 6 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, p.base+"/api/v1"+path, bytes.NewReader(body))
 	if err != nil {
@@ -201,10 +205,10 @@ func restoreHTTP(t *testing.T, p *restoreProcess, method, path, token string, bo
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%s %s: %v\n%s", method, path, err, p.logs())
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 128*1024+1))
 	closeErr := response.Body.Close()

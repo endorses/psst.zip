@@ -89,7 +89,7 @@ class InputPreparation(unittest.TestCase):
                         "checked_platform": platform,
                         "native_execution": True,
                         "toolchain_output": {
-                            "go": "go version go1.26.8 " + platform,
+                            "go": f"go version {dependency.GO_VERSION} {platform}",
                             "node": "v22.22.0",
                         },
                     }
@@ -134,7 +134,7 @@ class InputPreparation(unittest.TestCase):
                     .split(",dst=", 1)[0]
                 )
                 (reports / "go-version.txt").write_text(
-                    "go version go1.26.8 " + platform + "\n"
+                    f"go version {dependency.GO_VERSION} {platform}\n"
                 )
                 return result
 
@@ -204,7 +204,8 @@ class InputPreparation(unittest.TestCase):
         output = self.args["output"]
         manifest = read_json((output / "release-manifest.json").read_bytes())
         self.assertEqual(
-            manifest["build"]["toolchains"], {"go": "go1.26.8", "node": "v22.22.0"}
+            manifest["build"]["toolchains"],
+            {"go": dependency.GO_VERSION, "node": "v22.22.0"},
         )
         self.assertEqual(
             manifest["build"]["base_images"], self.candidate["base_images"]
@@ -314,7 +315,7 @@ class InputPreparation(unittest.TestCase):
                 go="go version go1.26.7 linux/arm64"
             ),
             lambda v: v["toolchain_output"].update(
-                go="go version go1.26.8 linux/amd64"
+                go=f"go version {dependency.GO_VERSION} linux/amd64"
             ),
             lambda v: v["toolchain_output"].update(node="arbitrary text"),
         ):

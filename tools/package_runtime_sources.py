@@ -497,6 +497,86 @@ def deterministic_archive(folder: Path, output: Path) -> None:
                 archive.addfile(entry, data)
 
 
+def backend_go_runtime(
+    root: Path, caddy_inventory: dict, version: str
+) -> tuple[dict, dict[str, bytes]]:
+    """Verify the complete source corresponding to the actual backend compiler."""
+    if version == caddy_inventory["go_version"]:
+        folder, inventory = root / "caddy", caddy_inventory
+    else:
+        folder = root / "backend-go-runtime"
+        inventory = json.loads(read(folder, "go-source-inventory.json"))
+        require(
+            isinstance(inventory, dict)
+            and set(inventory)
+            == {"go_version", "go_source_revision", "go_source", "sources", "notices"}
+            and isinstance(inventory["sources"], list)
+            and 3 <= len(inventory["sources"]) <= 7
+            and all(
+                isinstance(asset, dict)
+                and set(asset) == {"file", "sha256", "url"}
+                and isinstance(asset["file"], str)
+                for asset in inventory["sources"]
+            ),
+            "Invalid backend Go runtime collection",
+        )
+        names = [asset["file"] for asset in inventory["sources"]]
+        require(
+            len(names) == len(set(names))
+            and {"go-LICENSE", "go-PATENTS"} <= set(names),
+            "Backend Go original legal sources missing or duplicated",
+        )
+    caddy_source.verify_binary_go_source({"GoVersion": version}, inventory)
+    notices = caddy_source.verify_go_source(folder, inventory)
+    if version != caddy_inventory["go_version"]:
+        supplied = {
+            inventory["go_source"]["file"] + "::" + name: data
+            for name, data in notices.items()
+        }
+        for asset in inventory["sources"]:
+            name = asset["file"]
+            require(
+                file_hash(folder / safe_member(name)) == asset["sha256"],
+                "Backend Go retained source asset differs",
+            )
+            if name == inventory["go_source"]["file"]:
+                continue
+            require(
+                name
+                in {
+                    "go-" + legal
+                    for legal in (
+                        "LICENSE",
+                        "PATENTS",
+                        "AUTHORS",
+                        "CONTRIBUTORS",
+                        "COPYRIGHT",
+                        "NOTICE",
+                    )
+                }
+                and asset["url"]
+                == f"https://raw.githubusercontent.com/golang/go/{inventory['go_source_revision']}/{name[3:]}",
+                "Unexpected backend Go legal source",
+            )
+            data = read(folder, name)
+            require(
+                data
+                == archive_member(
+                    folder / inventory["go_source"]["file"],
+                    "go-" + inventory["go_source_revision"] + "/" + name[3:],
+                    exact=True,
+                ),
+                "Backend Go legal files differ from complete source tree",
+            )
+            supplied[name] = data
+        require(
+            {name: digest(data) for name, data in supplied.items()}
+            == inventory["notices"],
+            "Backend Go notices differ from retained original sources",
+        )
+    return inventory, notices
+
+
 def package(
     backend: Path,
     web: Path,
@@ -573,10 +653,9 @@ def package(
         "backend": image_binding(backend_inventory, "backend", version, revision),
         "web": image_binding(web_inventory, "web", version, revision),
     }
-    for binding in bindings.values():
-        caddy_source.verify_binary_go_source(
-            {"GoVersion": binding["go_version"]}, caddy_inventory
-        )
+    caddy_source.verify_binary_go_source(
+        {"GoVersion": bindings["web"]["go_version"]}, caddy_inventory
+    )
     caddy_source.verify_binary_go_source(
         json.loads(read(caddy, "build-info.json")), caddy_inventory
     )
@@ -605,6 +684,19 @@ def package(
         ("legal-review", LEGAL),
     ):
         copy_tree(folder, content / name)
+    backend_go_version = bindings["backend"]["go_version"]
+    if backend_go_version != caddy_inventory["go_version"]:
+        go_folder = content / "backend-go-runtime"
+        go_folder.mkdir()
+        backend_go_inventory, _ = caddy_source.collect_go_runtime_source(
+            go_folder, backend_go_version
+        )
+        (go_folder / "go-source-inventory.json").write_bytes(
+            json_bytes(backend_go_inventory)
+        )
+    backend_go_inventory, backend_go_notices = backend_go_runtime(
+        content, caddy_inventory, backend_go_version
+    )
     (content / "caddy-signature-verification.json").write_bytes(json_bytes(signatures))
     instructions = f"""# psst.zip runtime corresponding sources
 
@@ -630,8 +722,10 @@ the complete vendor tree. Build it using the recorded Go version and settings
 from caddy/build-info.json, following the retained release recipe. Exact
 caddy-docker/dist archives and the complete pinned Go runtime/compiler source
 archive are retained. go-runtime-sources.json records the Go version, full source
-commit, original archive URL and checksum. The same source supplies both final
-executables' GoVersion. Extract its original tree and use src/make.bash with a
+commit, original archive URL and checksum. Each executable is bound to its exact
+GoVersion. When the backend compiler differs from Caddy's, backend-go-runtime/
+retains its separate full tree and go-source-inventory.json. Extract the matching
+original tree and use src/make.bash with a
 compatible bootstrap toolchain; preserve its VERSION file. If the source tree
 has no VERSION, write the recorded exact go version followed by a newline there
 before building. Original runtime/standard-library notices are retained in full.
@@ -675,7 +769,9 @@ This local pack does not publish assets or approve an App Store release.
         + caddy_notices
     )
     backend_full_notices = (
-        backend_notices + b"\nGo runtime\n" + caddy_source.go_notice_text(go_notices)
+        backend_notices
+        + b"\nGo runtime\n"
+        + caddy_source.go_notice_text(backend_go_notices)
     )
     for component, notices in (("backend", backend_full_notices), ("web", combined)):
         context = output / "overlays" / component
@@ -693,6 +789,7 @@ This local pack does not publish assets or approve an App Store release.
             "image_bindings": bindings,
             "runtime_collections": {"backend": backend_inventory, "web": web_inventory},
             "caddy": caddy_inventory,
+            "backend_go_runtime": backend_go_inventory,
             "signature_verification": signatures,
             "artifact_provenance": provenance,
             "source_pack_complete": True,

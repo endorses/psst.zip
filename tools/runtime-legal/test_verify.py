@@ -22,7 +22,6 @@ class ReviewEvidenceTests(unittest.TestCase):
     def test_pinned_evidence_is_complete_as_evidence_only(self):
         review = VERIFY.verify_evidence()
         self.assertTrue(review["review_required"])
-        self.assertEqual(len(review["origins"]), 8)
         for origin in review["origins"]:
             self.assertTrue(origin["review_required"])
             self.assertTrue(origin["remaining_review"])

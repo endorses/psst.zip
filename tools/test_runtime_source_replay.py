@@ -46,16 +46,23 @@ class ReplayTests(unittest.TestCase):
         path.write_bytes(gzip.compress(tar_bytes(entries), mtime=0))
         return path
 
-    def go_source_fixture(self, entries=None):
-        folder = self.root / "go-collection"
+    def go_source_fixture(
+        self,
+        entries=None,
+        *,
+        version="go1.26.8",
+        commit=None,
+        folder_name="go-collection",
+    ):
+        folder = self.root / folder_name
         folder.mkdir(exist_ok=True)
-        commit, version = "a" * 40, "go1.26.8"
+        commit = commit or "a" * 40
         prefix = "go-" + commit
         if entries is None:
             entries = [
                 ("LICENSE", b"Original Go BSD terms\n"),
                 ("PATENTS", b"Original Go patent grant\n"),
-                ("VERSION", b"go1.26.8\ntime 2026-08-28T16:20:06Z\n"),
+                ("VERSION", version.encode() + b"\ntime 2026-08-28T16:20:06Z\n"),
                 ("src/go.mod", b"module std\n"),
                 ("src/runtime/proc.go", b"package runtime\n"),
                 ("src/cmd/compile/main.go", b"package main\n"),
@@ -108,6 +115,63 @@ class ReplayTests(unittest.TestCase):
             ],
         }
         return folder, inventory, policy, entries
+
+    def test_backend_and_caddy_keep_distinct_exact_go_sources(self):
+        caddy_folder, caddy_inventory, policy, _ = self.go_source_fixture(
+            folder_name="caddy"
+        )
+        older = json.loads(policy.read_bytes())["sources"][0]
+        folder, inventory, policy, _ = self.go_source_fixture(
+            version="go1.27.1", commit="b" * 40, folder_name="backend-go-runtime"
+        )
+        pinned = json.loads(policy.read_bytes())
+        pinned["sources"].insert(0, older)
+        policy.write_bytes(json_bytes(pinned))
+        with patch.object(replay.caddy, "GO_SOURCE_POLICY", policy):
+            notices = replay.caddy.verify_go_source(folder, inventory)
+            archive_name = inventory["go_source"]["file"]
+            supplied = {
+                archive_name + "::" + name: data for name, data in notices.items()
+            }
+            for name in ("LICENSE", "PATENTS"):
+                filename = "go-" + name
+                supplied[filename] = (folder / filename).read_bytes()
+                inventory["sources"].append(
+                    {
+                        "file": filename,
+                        "sha256": digest(supplied[filename])[7:],
+                        "url": f"https://raw.githubusercontent.com/golang/go/{inventory['go_source_revision']}/{name}",
+                    }
+                )
+            inventory["notices"] = {
+                name: digest(data)[7:] for name, data in supplied.items()
+            }
+            inventory_path = folder / "go-source-inventory.json"
+            inventory_path.write_bytes(json_bytes(inventory))
+            backend, backend_notices = replay.pack.backend_go_runtime(
+                self.root, caddy_inventory, "go1.27.1"
+            )
+            self.assertEqual(backend["go_source"]["commit"], "b" * 40)
+            self.assertEqual(backend_notices, notices)
+            same, _ = replay.pack.backend_go_runtime(
+                self.root, caddy_inventory, "go1.26.8"
+            )
+            self.assertEqual(same, caddy_inventory)
+            for mutated in (
+                caddy_inventory,
+                {**inventory, "go_source": caddy_inventory["go_source"]},
+            ):
+                inventory_path.write_bytes(json_bytes(mutated))
+                with self.subTest(
+                    source=mutated["go_source"]["version"]
+                ), self.assertRaises(InvalidRelease):
+                    replay.pack.backend_go_runtime(
+                        self.root, caddy_inventory, "go1.27.1"
+                    )
+            inventory_path.write_bytes(json_bytes(inventory))
+            (folder / archive_name).unlink()
+            with self.assertRaisesRegex(InvalidRelease, "archive differs"):
+                replay.pack.backend_go_runtime(self.root, caddy_inventory, "go1.27.1")
 
     def test_full_go_source_preserves_original_notices_and_malformed_test_fixtures(
         self,

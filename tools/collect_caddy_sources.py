@@ -365,6 +365,113 @@ def verify_go_source(folder: Path, inventory: dict) -> dict[str, bytes]:
     return notices
 
 
+def collect_go_runtime_source(
+    output: Path, version: str
+) -> tuple[dict, dict[str, bytes]]:
+    """Retain the exact pinned full compiler/runtime tree and upstream legal files."""
+    require(output.is_dir() and not output.is_symlink(), "Invalid Go source output")
+    retained, notices = [], {}
+    go_version = matches(version, GO_VERSION, "Unsupported Go toolchain version")
+    pinned_go = go_source_policy(go_version)
+    go_ref = json.loads(
+        command("gh", "api", f"repos/golang/go/git/ref/tags/{go_version}")
+    )
+    go_object = go_ref.get("object", {})
+    if go_object.get("type") == "tag":
+        tag = json.loads(
+            command(
+                "gh",
+                "api",
+                "repos/golang/go/git/tags/"
+                + matches(go_object.get("sha"), COMMIT, "Invalid Go toolchain tag"),
+            )
+        )
+        go_object = tag.get("object", {})
+    require(go_object.get("type") == "commit", "Unbound Go toolchain source")
+    go_commit = matches(
+        go_object.get("sha"), COMMIT, "Invalid Go toolchain source revision"
+    )
+    require(
+        go_commit == pinned_go["commit"],
+        "Resolved Go tag differs from pinned source policy",
+    )
+    go_root = json.loads(
+        command("gh", "api", f"repos/golang/go/contents?ref={go_commit}")
+    )
+    require(isinstance(go_root, list), "Invalid Go toolchain source listing")
+    go_files = {
+        item.get("name"): item for item in go_root if item.get("type") == "file"
+    }
+    require({"LICENSE", "PATENTS"} <= go_files.keys(), "Go runtime legal files missing")
+    for name in (
+        "LICENSE",
+        "PATENTS",
+        "AUTHORS",
+        "CONTRIBUTORS",
+        "COPYRIGHT",
+        "NOTICE",
+    ):
+        if name not in go_files:
+            continue
+        url = f"https://raw.githubusercontent.com/golang/go/{go_commit}/{name}"
+        data = read_url(url, RECIPE_LIMIT)
+        blob = hashlib.sha1(
+            b"blob " + str(len(data)).encode() + b"\0" + data
+        ).hexdigest()
+        require(
+            blob == go_files[name].get("sha"),
+            "Go runtime legal file differs from source tree",
+        )
+        filename = "go-" + name
+        (output / filename).write_bytes(data)
+        retained.append(
+            {"file": filename, "sha256": hashlib.sha256(data).hexdigest(), "url": url}
+        )
+        notices[filename] = data
+    go_archive_name = "go-" + go_commit + ".tar.gz"
+    go_archive_url = pinned_go["url"]
+    go_archive = public_download(go_archive_url, pinned_go["size"])
+    require(
+        len(go_archive) == pinned_go["size"]
+        and hashlib.sha256(go_archive).hexdigest() == pinned_go["sha256"],
+        "Downloaded full Go runtime source differs from pinned policy",
+    )
+    (output / go_archive_name).write_bytes(go_archive)
+    go_notices, version_digest = go_source_contents(
+        output / go_archive_name, go_version, go_commit
+    )
+    go_source = {
+        "file": go_archive_name,
+        "sha256": hashlib.sha256(go_archive).hexdigest(),
+        "size": len(go_archive),
+        "version": go_version,
+        "commit": go_commit,
+        "version_file_sha256": version_digest,
+    }
+    retained.append(
+        {"file": go_archive_name, "sha256": go_source["sha256"], "url": go_archive_url}
+    )
+    for name in ("LICENSE", "PATENTS"):
+        require(
+            go_notices["go-" + go_commit + "/" + name]
+            == (output / ("go-" + name)).read_bytes(),
+            "Downloaded Go runtime legal files differ from complete source archive",
+        )
+    notices.update(
+        {go_archive_name + "::" + name: data for name, data in go_notices.items()}
+    )
+    inventory = {
+        "go_version": go_version,
+        "go_source_revision": go_commit,
+        "go_source": go_source,
+        "sources": retained,
+        "notices": {
+            name: hashlib.sha256(data).hexdigest() for name, data in notices.items()
+        },
+    }
+    return inventory, notices
+
+
 def binary_build_info(binary: bytes) -> dict:
     """Read metadata from retained executable bytes; never execute the program."""
     require(0 < len(binary) <= LIMIT, "Go executable exceeds metadata-reader bounds")
@@ -538,97 +645,12 @@ def collect(image: str, base: str, output: Path) -> dict:
                 output / item["file"], non_archives=non_archives
             ).items():
                 notices[item["file"] + "::" + path] = content
-    go_version = matches(
-        build.get("GoVersion"), GO_VERSION, "Unsupported Caddy Go toolchain version"
-    )
-    pinned_go = go_source_policy(go_version)
-    go_ref = json.loads(
-        command("gh", "api", f"repos/golang/go/git/ref/tags/{go_version}")
-    )
-    go_object = go_ref.get("object", {})
-    if go_object.get("type") == "tag":
-        tag = json.loads(
-            command(
-                "gh",
-                "api",
-                "repos/golang/go/git/tags/"
-                + matches(go_object.get("sha"), COMMIT, "Invalid Go toolchain tag"),
-            )
-        )
-        go_object = tag.get("object", {})
-    require(go_object.get("type") == "commit", "Unbound Go toolchain source")
-    go_commit = matches(
-        go_object.get("sha"), COMMIT, "Invalid Go toolchain source revision"
-    )
-    require(
-        go_commit == pinned_go["commit"],
-        "Resolved Go tag differs from pinned source policy",
-    )
-    go_root = json.loads(
-        command("gh", "api", f"repos/golang/go/contents?ref={go_commit}")
-    )
-    require(isinstance(go_root, list), "Invalid Go toolchain source listing")
-    go_files = {
-        item.get("name"): item for item in go_root if item.get("type") == "file"
-    }
-    require({"LICENSE", "PATENTS"} <= go_files.keys(), "Go runtime legal files missing")
-    for name in (
-        "LICENSE",
-        "PATENTS",
-        "AUTHORS",
-        "CONTRIBUTORS",
-        "COPYRIGHT",
-        "NOTICE",
-    ):
-        if name not in go_files:
-            continue
-        url = f"https://raw.githubusercontent.com/golang/go/{go_commit}/{name}"
-        data = read_url(url, RECIPE_LIMIT)
-        blob = hashlib.sha1(
-            b"blob " + str(len(data)).encode() + b"\0" + data
-        ).hexdigest()
-        require(
-            blob == go_files[name].get("sha"),
-            "Go runtime legal file differs from source tree",
-        )
-        filename = "go-" + name
-        (output / filename).write_bytes(data)
-        retained.append(
-            {"file": filename, "sha256": hashlib.sha256(data).hexdigest(), "url": url}
-        )
-        notices[filename] = data
-    go_archive_name = "go-" + go_commit + ".tar.gz"
-    go_archive_url = pinned_go["url"]
-    go_archive = public_download(go_archive_url, pinned_go["size"])
-    require(
-        len(go_archive) == pinned_go["size"]
-        and hashlib.sha256(go_archive).hexdigest() == pinned_go["sha256"],
-        "Downloaded full Go runtime source differs from pinned policy",
-    )
-    (output / go_archive_name).write_bytes(go_archive)
-    go_notices, version_digest = go_source_contents(
-        output / go_archive_name, go_version, go_commit
-    )
-    go_source = {
-        "file": go_archive_name,
-        "sha256": hashlib.sha256(go_archive).hexdigest(),
-        "size": len(go_archive),
-        "version": go_version,
-        "commit": go_commit,
-        "version_file_sha256": version_digest,
-    }
-    retained.append(
-        {"file": go_archive_name, "sha256": go_source["sha256"], "url": go_archive_url}
-    )
-    for name in ("LICENSE", "PATENTS"):
-        require(
-            go_notices["go-" + go_commit + "/" + name]
-            == (output / ("go-" + name)).read_bytes(),
-            "Downloaded Go runtime legal files differ from complete source archive",
-        )
-    notices.update(
-        {go_archive_name + "::" + name: data for name, data in go_notices.items()}
-    )
+    go_inventory, go_notices = collect_go_runtime_source(output, build.get("GoVersion"))
+    go_version = go_inventory["go_version"]
+    go_commit = go_inventory["go_source_revision"]
+    go_source = go_inventory["go_source"]
+    retained.extend(go_inventory["sources"])
+    notices.update(go_notices)
     require(notices, "Caddy source has no notices")
     (output / "THIRD_PARTY_NOTICES.txt").write_bytes(
         b"psst.zip Caddy runtime notices\n"

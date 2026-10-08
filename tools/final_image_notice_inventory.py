@@ -273,27 +273,27 @@ def verify_backend_notices(
         and runtime.get("component") == "backend",
         "Embedded runtime notice inventory differs",
     )
-    caddy = runtime.get("caddy", {})
-    require(isinstance(caddy, dict), "Invalid runtime Go notice inventory")
-    go_source = caddy.get("go_source", {})
+    go_runtime = runtime.get("backend_go_runtime", runtime.get("caddy", {}))
+    require(isinstance(go_runtime, dict), "Invalid runtime Go notice inventory")
+    go_source = go_runtime.get("go_source", {})
     require(
         isinstance(go_source, dict)
         and isinstance(go_source.get("version"), str)
         and bool(go_source["version"])
         and go_source.get("version")
-        == caddy.get("go_version")
+        == go_runtime.get("go_version")
         == pack.get("bindings", {}).get("backend", {}).get("go_version"),
         "Go notice runtime identity differs",
     )
     matches(go_source.get("commit"), COMMIT, "Invalid Go notice source revision")
     require(
         go_source.get("file") == "go-" + go_source["commit"] + ".tar.gz"
-        and isinstance(caddy.get("notices"), dict),
+        and isinstance(go_runtime.get("notices"), dict),
         "Go original notice source identity differs",
     )
     name = go_source["file"] + "::go-" + go_source["commit"] + "/LICENSE"
     expected["go/LICENSE"] = matches(
-        "sha256:" + str(caddy.get("notices", {}).get(name)),
+        "sha256:" + str(go_runtime.get("notices", {}).get(name)),
         DIGEST,
         "Go original license hash is missing",
     )

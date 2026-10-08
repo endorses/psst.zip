@@ -1,9 +1,9 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.20"
 ktor = "3.1.1"
 kotlinx-coroutines = "1.10.1"
 kotlinx-serialization = "1.8.0"
-skie = "0.10.12"
+skie = "0.10.15"
 cryptography = "0.6.0"
 android-minSdk = "26"
 android-compileSdk = "35"
@@ -28,5 +28,5 @@ cryptography-provider-cryptokit = { module = "dev.whyoleg.cryptography:cryptogra
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 skie = { id = "co.touchlab.skie", version.ref = "skie" }
-android-library = { id = "com.android.library", version = "8.13.2" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version = "9.4.0" }
 cryptography = { id = "dev.whyoleg.cryptography", version.ref = "cryptography" }

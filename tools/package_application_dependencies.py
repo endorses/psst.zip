@@ -45,7 +45,7 @@ from release_artifacts import (
 MAX_PACKAGE = 512 * 1024**2
 MAX_TOTAL = 2 * 1024**3
 MAX_MEMBERS = 100_000
-GO_VERSION = "go1.26.8"
+GO_VERSION = "go1.27.1"
 GO_SCRIPT = r"""set -eu
 export GOTOOLCHAIN=local GOPATH=/tmp/go GOMODCACHE=/reports/cache GOCACHE=/tmp/build
 export GOWORK=off GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org

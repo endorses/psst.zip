@@ -307,13 +307,13 @@ locations, terminology and verification guidance.
 
 ## Native builds and verification
 
-Android uses Gradle 9.1.0, Kotlin 2.3.21, AGP 8.13.2, KSP 2.3.12,
-SKIE 0.10.12, and Room 2.8.4. Gradle can run on Java 25 while the app
+Android uses Gradle 9.8.1, Kotlin 2.4.20, AGP 9.4.0, KSP 2.3.12,
+SKIE 0.10.15, and Room 2.8.4. CI runs Gradle on Temurin 27+35 while the app
 continues targeting Java 17 bytecode. Set `JAVA_HOME` to your JDK and
 `ANDROID_HOME` to the Android SDK, then run from the repository root:
 
 ```bash
-./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
+./android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :shared:testAndroidHostTest --no-daemon
 ```
 
 Set the app's server URL to the shared HTTP or HTTPS address described above.
@@ -323,11 +323,16 @@ and a compatible AES-GCM implementation on HTTP LAN pages, with the browser's
 cryptographically secure random generator in both cases. After rebuilding,
 reinstall `android/app/build/outputs/apk/debug/app-debug.apk` to apply changes.
 
-On this Linux development machine, the JDK is `/opt/android-studio/jbr` and the
-SDK is `/home/grischa/Android/Sdk`. These paths are local configuration, not
-required installation locations. Android Studio's Gradle JDK setting should use
-the same JDK. See [Gradle Java 25 support](https://docs.gradle.org/9.1.0/release-notes.html)
+Select a Java 27 JDK for local validation and use the same JDK in Android
+Studio's Gradle settings. The local SDK is `/home/grischa/Android/Sdk`; this
+path is local configuration, not a required installation location. See
+[Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html)
 and [Kotlin plugin compatibility](https://kotlinlang.org/docs/gradle-configure-project.html).
+Kotlin's fully supported matrix currently stops at Gradle 9.7.0/AGP 9.3.1;
+run the native build and test checks above when updating the newer stable
+combination. The Android app uses AGP's built-in Kotlin support. The shared
+module uses the Android KMP library plugin and explicitly enables host tests
+in `src/androidHostTest`.
 
 For iOS project generation and signing, see [ios/README.md](ios/README.md).
 iOS compilation and device interoperability remain unverified on this Linux host.

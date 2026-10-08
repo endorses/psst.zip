@@ -762,9 +762,9 @@ Full POM-declared Apache License, Version 2.0:
    limitations under the License.
 
 
-Kotlin 2.3.21
-Upstream legal file: kotlin-2.3.21/COPYRIGHT.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/license/COPYRIGHT.txt
+Kotlin 2.4.20
+Upstream legal file: kotlin-2.4.20/COPYRIGHT.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/license/COPYRIGHT.txt
 /*
  * Copyright 2010-2024 JetBrains s.r.o. and Kotlin Programming Language contributors.
  *
@@ -782,9 +782,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
  */
 
 
-Kotlin 2.3.21
-Upstream legal file: kotlin-2.3.21/LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/license/LICENSE.txt
+Kotlin 2.4.20
+Upstream legal file: kotlin-2.4.20/LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/license/LICENSE.txt
 
                                  Apache License
                            Version 2.0, January 2004
@@ -989,9 +989,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
    limitations under the License.
 
 
-Kotlin 2.3.21
-Upstream legal file: kotlin-2.3.21/NOTICE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/license/NOTICE.txt
+Kotlin 2.4.20
+Upstream legal file: kotlin-2.4.20/NOTICE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/license/NOTICE.txt
    =========================================================================
    ==  NOTICE file corresponding to the section 4 d of                    ==
    ==  the Apache License, Version 2.0,                                   ==
@@ -1002,9 +1002,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
    Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/breakpad_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/breakpad_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/breakpad_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/breakpad_LICENSE.txt
 Copyright 2006 Google LLC
 
 Redistribution and use in source and binary forms, with or without
@@ -2073,9 +2073,9 @@ modification has such potential, you must delete any notice of this special
 exception to the GPL from your modified version.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/glibc_license.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/glibc_license.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/glibc_license.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/glibc_license.txt
 GCC RUNTIME LIBRARY EXCEPTION
 
 Version 3.1, 31 March 2009
@@ -2153,9 +2153,9 @@ requirements of the license of GCC.
 Hopefully that text is self-explanatory. If it isn't, you need to speak to your lawyer, or the Free Software Foundation.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/harmony_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/harmony_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/harmony_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/harmony_LICENSE.txt
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -2359,9 +2359,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
    limitations under the License.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/harmony_NOTICE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/harmony_NOTICE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/harmony_NOTICE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/harmony_NOTICE.txt
 Apache Harmony
 Copyright 2006, 2010 The Apache Software Foundation.
 
@@ -2378,9 +2378,9 @@ apply
          (C) Copyright 2006 Intel Corporation
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/json_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/json_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/json_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/json_LICENSE.txt
 JSON
 
 Copyright (c) 2002 JSON.org
@@ -2406,9 +2406,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/libbacktrace_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/libbacktrace_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/libbacktrace_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/libbacktrace_LICENSE.txt
 # Copyright (C) 2012-2016 Free Software Foundation, Inc.
 
 # Redistribution and use in source and binary forms, with or without
@@ -2440,9 +2440,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
 # POSSIBILITY OF SUCH DAMAGE.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/libffi_license.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/libffi_license.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/libffi_license.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/libffi_license.txt
 libffi - Copyright (c) 1996-2014  Anthony Green, Red Hat, Inc and others.
 See source files for details.
 
@@ -2466,9 +2466,9 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/llvm_license.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/llvm_license.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/llvm_license.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/llvm_license.txt
 ==============================================================================
 libc++ License
 ==============================================================================
@@ -2547,9 +2547,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/mingw-w64-headers_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/mingw-w64-headers_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/mingw-w64-headers_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/mingw-w64-headers_LICENSE.txt
 Kotlin/Native binary distribution may contain platform libraries, that are
 generated from the header files from mingw-w64 project.
 
@@ -2702,9 +2702,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 Lesser General Public License for more details.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/mpmc_queue_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/mpmc_queue_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/mpmc_queue_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/mpmc_queue_LICENSE.txt
 Multi-producer/multi-consumer bounded queue.
 Copyright (c) 2010-2011, Dmitry Vyukov. All rights reserved.
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -2723,9 +2723,9 @@ The views and conclusions contained in the software and documentation are those 
 as representing official policies, either expressed or implied, of Dmitry Vyukov.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/sdl_license.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/sdl_license.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/sdl_license.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/sdl_license.txt
 SDL 2.0 and newer are available under the zlib license :
 
 This software is provided 'as-is', without any express or implied
@@ -2745,9 +2745,9 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/unicode_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/unicode_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/unicode_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/unicode_LICENSE.txt
 Portions, Copyright © 1991-2005 Unicode, Inc. The following applies to Unicode.
 
 COPYRIGHT AND PERMISSION NOTICE
@@ -2811,9 +2811,9 @@ in documentation or programs, as long as there is an accompanying notice
 indicating the source.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/zephyr_LICENSE.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/zephyr_LICENSE.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/zephyr_LICENSE.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/zephyr_LICENSE.txt
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -3017,9 +3017,9 @@ Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b8
    limitations under the License.
 
 
-Kotlin/Native 2.3.21
-Upstream legal file: kotlin-native-2.3.21/third_party/zlib_license.txt
-Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/fea1ad8c18995b80d1ca0e3917056104613d23db/kotlin-native/licenses/third_party/zlib_license.txt
+Kotlin/Native 2.4.20
+Upstream legal file: kotlin-native-2.4.20/third_party/zlib_license.txt
+Exact source: https://raw.githubusercontent.com/JetBrains/kotlin/890ac1d94fdb80eb85f0eeb5be5e4352df987b2f/kotlin-native/licenses/third_party/zlib_license.txt
 zlib.h -- interface of the 'zlib' general purpose compression library
   version 1.2.11, January 15th, 2017
 
@@ -3045,9 +3045,9 @@ zlib.h -- interface of the 'zlib' general purpose compression library
   jloup@gzip.org          madler@alumni.caltech.edu
 
 
-SKIE 0.10.12
-Upstream legal file: skie-0.10.12/LICENSE.txt
-Exact source: https://raw.githubusercontent.com/touchlab/SKIE/9e7c7f1d8ffea884fb1d606962f2e37f6b56729a/LICENSE
+SKIE 0.10.15
+Upstream legal file: skie-0.10.15/LICENSE.txt
+Exact source: https://raw.githubusercontent.com/touchlab/SKIE/7e7b8b597a4da8ba121a33775799ad51e517beb5/LICENSE
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/

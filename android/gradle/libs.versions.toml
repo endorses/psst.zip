@@ -1,6 +1,6 @@
 [versions]
-kotlin = "2.3.21"
-agp = "8.13.2"
+kotlin = "2.4.20"
+agp = "9.4.0"
 compose-bom = "2025.01.01"
 activity-compose = "1.10.0"
 lifecycle = "2.8.7"
@@ -39,7 +39,6 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 

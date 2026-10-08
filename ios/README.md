@@ -5,7 +5,7 @@ The app and share extension are generated from `project.yml` using XcodeGen. Dis
 The Kotlin framework uses the pinned cryptography-kotlin CryptoKit provider for
 AES-256-GCM through public Apple APIs. Its Gradle plugin resolves Swift libraries
 from the selected Xcode installation; keep `DEVELOPER_DIR` consistent for Gradle
-and Xcode, including CI's versioned Xcode 26.0.1 installation. Both the app and
+and Xcode, including CI's versioned Xcode 27.0 installation. Both the app and
 share extension link the same shared framework. Ciphertexts retain the existing
 appended 16-byte authentication tag and separate 12-byte nonce format.
 `AesGcmCompatibilityTests` exercises that exported Kotlin provider in native
@@ -103,11 +103,22 @@ xcodebuild -project Psst.xcodeproj -scheme Psst \
 Select an installed simulator name from `xcrun simctl list devices available` if necessary. Format Swift with `swiftformat ios --swiftversion 5.9` from the repository root before committing subsequent changes. The generated project is ignored; edit `project.yml` and regenerate it.
 
 CI now defines a separate **Native iOS app, extension and XCTest** job on
-`macos-15`, selecting Xcode 26.0.1 explicitly and using the repository Gradle
-wrapper with JDK 25. The shared Kotlin 2.3.21 version lists Xcode 26.0 in its
+`xcode-27`, selecting stable Xcode 27.0 and the installed iOS 27.0 simulator explicitly,
+and using the repository Gradle wrapper with JDK 27. The shared Kotlin 2.4.20
+version lists Xcode 26.4 in its
 [compatibility table](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html);
-the chosen Xcode and iOS simulator runtime are listed in the
-[runner image manifest](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md).
+the newer CI pair requires actual native compilation and XCTest verification,
+which remains pending for this change. The chosen Xcode and iOS simulator runtime
+are listed in the
+[runner image manifest](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
+GitHub currently marks the runner infrastructure as preview; CI explicitly selects
+the installed stable compiler rather than its newer beta installations. Apple
+documents simulator cache-generation and `simctl` hang fixes in
+[Xcode 26.4](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_4-release-notes).
+Two older-toolchain runs built successfully but timed out waiting for readiness
+before XCTest. Those logs establish the failed boundary, not its internal cause.
+The upgraded pair includes those fixes; hosted validation must establish whether
+it resolves this project's startup failure.
 The job regenerates the project, selects its simulator and uses
 `build-for-testing` to compile the app, embedded extension and XCTest products
 once. It checks the embedded extension exists, then runs the complete native
@@ -117,6 +128,10 @@ avoiding a second build and repeated shared-framework Gradle scripts. See
 [Apple's command-line testing documentation](https://developer.apple.com/library/archive/technotes/tn2339/_index.html). It retains the `.xcresult` bundle for
 seven days. A missing toolchain or simulator fails the job rather than selecting
 an unverified fallback. This job can also be started through **Run workflow**.
+Simulator listing/boot and readiness are bounded; XCTest retains its ten-minute
+step and two-minute per-case limits. Failure diagnostics capture device/runtime
+inventory and a bounded CoreSimulator log tail, without repeating compilation
+or the test suite. Routine change selection avoids unrelated native builds.
 
 Simulator builds use ad hoc signing (`CODE_SIGN_IDENTITY=-`) for the app and
 extension, and verify both signatures before testing. This requires no Apple

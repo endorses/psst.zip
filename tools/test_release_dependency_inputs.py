@@ -269,7 +269,9 @@ class DependencyInputs(unittest.TestCase):
             .split(",dst=", 1)[0]
         )
         self.fill_cache(reports / "cache")
-        (reports / "go-version.txt").write_text("go version go1.26.8 linux/amd64\n")
+        (reports / "go-version.txt").write_text(
+            "go version " + dependency.GO_VERSION + " linux/amd64\n"
+        )
         (reports / "authenticated-go.sum").write_bytes(self.sum)
         (reports / "go-environment.json").write_bytes(
             json_bytes(
