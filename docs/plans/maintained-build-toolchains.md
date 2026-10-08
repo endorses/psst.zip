@@ -228,9 +228,20 @@ and the validation image were removed. Hosted publishing remains pending.
       dependency catalog and Gradle wrapper inputs, with no cross-toolchain
       fallback. Keep the existing Gradle cache separate and enable Gradle's
       local build cache for the standalone shared project.
-- [ ] Measure the cache's cold save and subsequent hosted restore, including
-      transfer time, before claiming a build-time reduction. Preserve all
-      meaningful XCTest cases and current build/readiness/test budgets.
+- [x] Verify the cold hosted cache save, including transfer time. Exact-head CI
+      `37751784908` passed all five jobs at `cc84fef0b9e5a2d4d0414d6b5be57dd82f0af619`
+      with zero annotations. Native iOS took 23m16s: build 18m18s, readiness
+      three seconds and XCTest 2m41s. All 176 cases passed in 108.483s of actual
+      case execution. The new cache missed as expected and saved 409,931,939
+      bytes in 57s (approximately 48s compression and eight seconds upload).
+      PR #8 merged as `cf67e1eac2082bc7f095c630be2bb100bb06b0dc`;
+      its tree matches the checked head.
+- [ ] Measure subsequent hosted restore, including transfer time, before claiming
+      a build-time reduction. Preserve all meaningful XCTest cases and current
+      build/readiness/test budgets. The initial cache belongs to
+      `refs/pull/8/merge`; GitHub's branch scope requires a main-scoped cache
+      before a candidate dispatched from main can reuse it. Use existing required
+      main/candidate CI rather than adding a benchmark suite or full CI rerun.
 - [ ] Resolve the roughly 4m45s before the first Kotlin build phase. The current
       buffered Xcode log does not establish its cause; do not attribute it to
       duplicate framework compilation or simulator boot without evidence.
@@ -239,6 +250,12 @@ and the validation image were removed. Hosted publishing remains pending.
       with delays distributed across different tool probes. Hosted image setup
       already runs Xcode first-launch preparation, so repeating it is not an
       evidence-based fix.
+      The cold-cache PR build's emitted-log gap was 7m06s, first Gradle invocation
+      7m48s and second invocation 45s. Its timing summary reports accumulated
+      script work of 518.283s, Swift compilation 176.297s and all tasks 837.992s;
+      these sums are not the critical path. No heap/GC-pressure, OOM or daemon
+      expiration warning was logged. Existing upstream Gradle and Kotlin/SKIE
+      diagnostics and source warnings remain; no new cache error occurred.
 
 The shared module's Android CI runs JVM host tests and does not build the Apple
 framework or exercise its Darwin/CryptoKit implementation and Swift interfaces.

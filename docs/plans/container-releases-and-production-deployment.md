@@ -2599,8 +2599,19 @@ runner, not a claim that the later failed native-container preparation passed.
       All existing tests and time budgets remain. See
       [the build-performance checkpoint](maintained-build-toolchains.md#native-ci-build-performance)
       for timing evidence and unresolved Xcode setup time.
-- [ ] Verify cold cache save and warm restore on hosted macOS, including cache
-      transfer overhead. Do not claim a timing improvement before measuring it.
+- [x] Verify cold cache save on hosted macOS. Exact-head CI `37751784908`
+      passed all five checks at `cc84fef0b9e5a2d4d0414d6b5be57dd82f0af619`,
+      with zero annotations. iOS passed all 176 cases with 108.483s of case
+      execution; its cold job took 23m16s, including an 18m18s build and a 57s
+      successful 409,931,939-byte compiler cache save. This proves cache
+      population, not faster compilation. PR #8 merged through protection as
+      `cf67e1eac2082bc7f095c630be2bb100bb06b0dc`; the merged tree equals the
+      checked head. The native container/recovery daemon setting still needs
+      the next complete planned candidate.
+- [ ] Verify warm restore on hosted macOS, including cache transfer overhead.
+      Seed the main-scoped cache through existing required main CI, then use the
+      candidate's full CI for the warm measurement. Do not add another test suite
+      or claim a timing improvement before measuring it.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
