@@ -141,6 +141,28 @@ class UpstreamInputs(unittest.TestCase):
         self.fetch_map[upstream.url(record)] = raw
         self.catalog_commit(catalog)
 
+    def test_preferred_file_consumer_receives_only_replayed_original_bytes(self):
+        collected = self.collect()
+        replay, sources = upstream.verify_source_files(
+            self.root, "endorses/psst.zip", "v1.2.3", self.revision, self.output
+        )
+        self.assertEqual(replay["asset"], collected["asset"])
+        self.assertEqual(set(sources), {"fixture-upstream"})
+        self.assertEqual(
+            sources["fixture-upstream"]["record"], self.catalog()["upstreams"][0]
+        )
+        self.assertEqual(
+            sources["fixture-upstream"]["files"]["src/input.ts"],
+            b"// original fixture input; no script execution\n",
+        )
+        self.assertFalse(replay["publication_authorized"])
+        asset = self.output / collected["asset"]["name"]
+        asset.write_bytes(asset.read_bytes() + b"hidden payload")
+        with self.assertRaises(InvalidRelease):
+            upstream.verify_source_files(
+                self.root, "endorses/psst.zip", "v1.2.3", self.revision, self.output
+            )
+
     def test_real_catalog_and_lock_satisfy_collection_policy_without_downloads(self):
         # The synthetic archives exercise the parser; also validate the inputs
         # shipped by this project so a catalog typo cannot block a real release.

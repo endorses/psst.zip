@@ -1595,6 +1595,15 @@ OCI pair, complete preferred-source coverage or publication authority.
       network requests or compiler execution.
 - [x] Collect and independently replay the expanded eighteen-original offering
       from a committed source, reusing unchanged original archive bytes.
+- [x] Implement the browser source producer joining both authenticated native
+      reports to independently replayed Git/npm/final OCI bytes and the exact
+      publication-bound upstream offering. Replay the common offering once,
+      reuse existing native input checks, and keep generated-source closure
+      separate from the package/compiler relationships.
+- [x] Verify the offering reader against retained real originals and builder
+      capture inputs, and exercise authentication, image/replay substitution,
+      missing architecture, publication binding and post-replay mutation refusal
+      with two small regression methods.
 - [ ] Complete remaining generator/configuration relationships and authenticate
       the exact final-image inputs on both native architectures before producing
       the corresponding-source gate and requesting distribution review.
@@ -1627,6 +1636,18 @@ Private committed-source collection and replay receipts are retained. The archiv
 includes the two full modernc projects alongside the sixteen unchanged originals;
 this does not finish the remaining complete-source producer or authorize release.
 
+The browser producer now authenticates both image observations before consuming
+large source inputs and checks their full independent replay results. It reuses
+retained compiler/npm inputs without rebuilding, downloading or rescanning.
+The real offering reader replayed all eighteen originals in 8.5 seconds; fourteen
+browser source maps resolved the retained 168 rendered package inputs and 256
+compiler/plugin inputs in 0.2 seconds. This check combines the exact `5da2ace`
+offering and `7d0f42a` capture identified above; it does not represent authenticated
+final-image execution for a new source commit or either architecture. Temporary
+extraction caches were cleaned and the private receipt retained. The two new
+regression methods took 0.23 and 0.03 seconds, including fixture setup/cleanup;
+the complete routine-suite result is recorded below.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -1637,11 +1658,11 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 396 tests in 24.3 seconds
+combined local release/notice regression suite passed 398 tests in 26.8 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 0.78 seconds. The source-archive regression
+and cleanup; the slowest case took 1.08 seconds. The source-archive regression
 exercises recursive-link rejection and the exact metadata-only exception;
 browser fixtures check source and notice substitutions.
 
@@ -1657,7 +1678,7 @@ Do not repeat broad suites without changes, failures or unresolved risks that
 justify them.
 
 - [x] Profile the complete routine release/notice regression suite after the
-      browser preferred-source and modernc archive changes; record wall time
+      browser source-producer and modernc archive changes; record wall time
       and slowest cases, including fixture setup and cleanup.
 
 Transfer staging performs browser replay once before copying and once when

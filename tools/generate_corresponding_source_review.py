@@ -10,6 +10,12 @@ from __future__ import annotations
 import gzip
 import io
 from pathlib import Path
+import tempfile
+
+import browser_preferred_source_relationships as preferred
+import measure_browser_source_inventory as browser_inventory
+import measure_native_browser_inputs as browser_inputs
+import package_upstream_application_sources as upstream_inputs
 
 from aggregate_release_image_scans import checked_graph, load_authenticated, load_raw
 from generate_release_gate_reports import (
@@ -215,6 +221,157 @@ def verify_backend_source_inputs(
         "images": reports,
         "backend_source_inputs_verified": True,
         "preferred_source_review_required": True,
+        "corresponding_source_completeness_verified": False,
+        "publication_authorized": False,
+    }
+
+
+def verify_browser_source_inputs(
+    binding: Binding,
+    *,
+    root: Path,
+    native_measurements: dict[str, Path],
+    runtime_packs: dict[str, Path],
+    browser_measurements: dict[str, Path],
+    captures: dict[str, Path],
+    web_archives: dict[str, Path],
+    upstream_collection: Path,
+    authenticator: MeasurementAuthenticator,
+) -> dict:
+    """Replay authenticated browser inputs against both final native OCI images.
+
+    Reuse the retained build, Git, npm and OCI evidence; never rebuild or fetch.
+    Replay the common offering once, then map each image's rendered package and
+    compiler inputs. Generated/virtual output closure remains a separate gate.
+    """
+    subjects = checked_binding(binding)
+    for values, label in (
+        (runtime_packs, "both browser runtime packs"),
+        (browser_measurements, "both authenticated browser measurements"),
+        (captures, "both browser captures"),
+        (web_archives, "both final web OCI archives"),
+    ):
+        fields(values, set(PLATFORMS), label)
+    native = aggregate_native_reports(binding, native_measurements, authenticator)[
+        "final-image-smoke"
+    ]["details"]["native_measurements"]
+    observations, snapshots = {}, []
+    # Authenticate both reports before reading potentially large source archives.
+    for platform in PLATFORMS:
+        value, digest = load_authenticated(
+            browser_measurements[platform], binding, authenticator
+        )
+        context = NativeSourceContext(
+            binding.repository, binding.version, binding.commit, platform
+        )
+        require(
+            value.get("kind") == "native-browser-input-measurement"
+            and value.get("source") == context.checked()
+            and value.get("image") == native[platform]["images"]["web"]
+            and value.get("tested_web_config")
+            == native[platform]["smoke"]["tested_configs"]["web"],
+            "Browser observation differs from authenticated final image/source",
+        )
+        matches(value.get("builder_config"), DIGEST, "Missing browser builder config")
+        observations[platform] = (value, digest)
+        snapshots.extend(
+            [
+                (browser_measurements[platform], digest),
+                (native_measurements[platform], native[platform]["measurement_digest"]),
+            ]
+        )
+    upstream, originals = upstream_inputs.verify_source_files(
+        root, binding.repository, binding.version, binding.commit, upstream_collection
+    )
+    asset = upstream["asset"]
+    require(
+        subjects.get("source:" + asset["name"])
+        == "file:" + asset["name"] + "@" + asset["digest"],
+        "Browser preferred source offering differs from publication binding",
+    )
+    snapshots.extend(
+        [
+            (upstream_collection / asset["name"], asset["digest"]),
+            (
+                upstream_collection / upstream_inputs.RECORD,
+                upstream["collection_sha256"],
+            ),
+        ]
+    )
+    reports = {}
+    for platform in PLATFORMS:
+        context = NativeSourceContext(
+            binding.repository, binding.version, binding.commit, platform
+        )
+        measured, digest = observations[platform]
+        pack, runtime = runtime_inputs(context, runtime_packs[platform])
+        require(
+            runtime == native[platform]["runtime"],
+            "Browser runtime inputs differ from authenticated native execution",
+        )
+        replayed = browser_inputs.replay(
+            context,
+            captures[platform],
+            web_archives[platform],
+            measured["tested_web_config"],
+            pack,
+            source_root=root,
+        )
+        require(
+            measured == {**replayed, "builder_config": measured["builder_config"]},
+            "Browser observation differs from independent Git/npm/OCI replay",
+        )
+        with tempfile.TemporaryDirectory(prefix="psst-browser-preferred-") as temporary:
+            tree = Path(temporary)
+            # Small capture extraction only; do not repeat Git/npm/OCI replay.
+            browser_inputs.unpack(captures[platform], tree)
+            inventory = browser_inventory.json_record(
+                browser_inventory.read_file(tree / "build", browser_inventory.INVENTORY)
+            )
+            mappings = preferred.verify_preferred_relationships(
+                inventory, tree, replayed["npm_archives"], originals
+            )
+            recipes = browser_inputs.recipe_plan(tree, inventory)["recipes"]
+            compiler = preferred.verify_captured_compiler_inputs(
+                tree, replayed["npm_archives"], originals, recipes
+            )
+        target = "web-" + platform.split("/")[1]
+        reports[target] = {
+            "subject": subjects[target],
+            "image": replayed["image"],
+            "browser_measurement_sha256": digest,
+            "browser_inputs_sha256": replayed["browser_inputs_sha256"],
+            "preferred_sources": mappings,
+            "compiler_sources": compiler,
+            "source_associations": replayed["source_associations"],
+        }
+        snapshots.extend(
+            [
+                (captures[platform], replayed["browser_inputs_sha256"]),
+                (web_archives[platform], replayed["image"]["archive_digest"]),
+            ]
+        )
+    for path, digest in snapshots:
+        require(
+            source_digest(path) == digest, "Browser source input changed during replay"
+        )
+    for platform in PLATFORMS:
+        context = NativeSourceContext(
+            binding.repository, binding.version, binding.commit, platform
+        )
+        require(
+            runtime_inputs(context, runtime_packs[platform])[1]
+            == native[platform]["runtime"],
+            "Runtime input changed during browser source replay",
+        )
+    return {
+        "schema_version": 1,
+        "kind": "native-browser-preferred-source-replay",
+        "binding_digest": binding.digest,
+        "upstream_inputs": upstream,
+        "images": reports,
+        "browser_source_inputs_verified": True,
+        "generated_source_closure_required": True,
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,
     }

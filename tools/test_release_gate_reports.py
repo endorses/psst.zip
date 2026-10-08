@@ -17,6 +17,7 @@ import generate_distribution_review as distribution
 import github_release_transport as transport
 import publish_container_release as publication
 import test_release_transport as transport_fixtures
+import test_native_browser_inputs as browser_fixtures
 from test_release_publication import source_review_fixture
 from release_artifacts import InvalidRelease, json_bytes
 
@@ -576,6 +577,171 @@ class GateReports(unittest.TestCase):
             corresponding.verify_application_source_archive(
                 replace(binding, commit=other_commit), root=fixture.root, source=source
             )
+
+    def test_browser_replay_requires_both_authenticated_images_and_bound_source_bytes(
+        self,
+    ):
+        # Lower-level Git/npm/OCI and preferred mappings have separate byte tests.
+        # Exercise the new join boundary without rebuilding or duplicating them.
+        native = self.collect_both()
+        capture = browser_fixtures.NativeBrowser()
+        capture.setUp()
+        self.addCleanup(capture.doCleanups)
+        measurements, observations = {}, {}
+        trusted = {path.read_bytes() for path in native.values()}
+        for platform, path in native.items():
+            image = json.loads(path.read_bytes())["images"]["web"]
+            observations[platform] = {
+                "kind": "native-browser-input-measurement",
+                "source": producer.NativeSourceContext(
+                    self.binding.repository,
+                    self.binding.version,
+                    self.binding.commit,
+                    platform,
+                ).checked(),
+                "image": image,
+                "tested_web_config": self.configs[platform]["web"],
+                "browser_inputs_sha256": publication.source_digest(capture.pack),
+                "npm_archives": {},
+                "source_associations": {"generated_source_closure_required": True},
+            }
+            measurement = self.root / ("browser-" + platform.split("/")[1] + ".json")
+            measurement.write_bytes(
+                json_bytes(
+                    {**observations[platform], "builder_config": "sha256:" + "c" * 64}
+                )
+            )
+            measurements[platform] = measurement
+            trusted.add(measurement.read_bytes())
+        asset_name = "psst.zip-upstream-inputs-" + self.binding.version + ".tar.gz"
+        collection = self.root / "upstream"
+        collection.mkdir()
+        (collection / asset_name).write_bytes(
+            b"independently replayed original fixture"
+        )
+        (collection / corresponding.upstream_inputs.RECORD).write_bytes(
+            b"collection fixture"
+        )
+        upstream = {
+            "asset": {
+                "name": asset_name,
+                "digest": publication.source_digest(collection / asset_name),
+            },
+            "collection_sha256": publication.source_digest(
+                collection / corresponding.upstream_inputs.RECORD
+            ),
+        }
+        subjects = dict(self.binding.subjects)
+        subjects["source:" + asset_name] = (
+            "file:" + asset_name + "@" + upstream["asset"]["digest"]
+        )
+        binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
+
+        class Authenticator:
+            def authenticate(inner, content, supplied):
+                self.assertEqual(supplied, binding)
+                if content not in trusted:
+                    raise InvalidRelease("unsigned browser/native measurement")
+
+        def replay(context, pack, archive, config, runtime, *, source_root):
+            self.assertEqual(pack, capture.pack)
+            self.assertEqual(archive, self.archives[context.platform]["web"])
+            self.assertEqual(config, self.configs[context.platform]["web"])
+            self.assertEqual(source_root, self.root)
+            return observations[context.platform]
+
+        def verify(**overrides):
+            return corresponding.verify_browser_source_inputs(
+                binding,
+                **{
+                    "root": self.root,
+                    "native_measurements": native,
+                    "runtime_packs": self.packs,
+                    "browser_measurements": measurements,
+                    "captures": {p: capture.pack for p in producer.PLATFORMS},
+                    "web_archives": {
+                        p: self.archives[p]["web"] for p in producer.PLATFORMS
+                    },
+                    "upstream_collection": collection,
+                    "authenticator": Authenticator(),
+                    **overrides,
+                },
+            )
+
+        with patch.object(
+            corresponding.browser_inputs, "replay", side_effect=replay
+        ), patch.object(
+            corresponding.upstream_inputs,
+            "verify_source_files",
+            return_value=(upstream, {}),
+        ) as offering, patch.object(
+            corresponding.preferred,
+            "verify_preferred_relationships",
+            return_value={"fixture": "mapped modules"},
+        ), patch.object(
+            corresponding.preferred,
+            "verify_captured_compiler_inputs",
+            return_value={"fixture": "mapped compiler"},
+        ) as compiler:
+            result = verify()
+            offering.assert_called_once_with(
+                self.root,
+                binding.repository,
+                binding.version,
+                binding.commit,
+                collection,
+            )
+            self.assertEqual(set(result["images"]), {"web-amd64", "web-arm64"})
+            self.assertFalse(result["corresponding_source_completeness_verified"])
+            self.assertFalse(result["publication_authorized"])
+            self.assertNotIn("gate", result)
+            with self.assertRaises(InvalidRelease):
+                verify(
+                    browser_measurements={"linux/amd64": measurements["linux/amd64"]}
+                )
+            arm = measurements["linux/arm64"]
+            original = arm.read_bytes()
+            arm.write_bytes(b"unsigned substitution")
+            with self.assertRaisesRegex(InvalidRelease, "unsigned"):
+                verify()
+            arm.write_bytes(original)
+            changed = {
+                **json.loads(original),
+                "tested_web_config": "sha256:" + "f" * 64,
+            }
+            arm.write_bytes(json_bytes(changed))
+            trusted.add(arm.read_bytes())
+            with self.assertRaisesRegex(InvalidRelease, "authenticated final image"):
+                verify()
+            arm.write_bytes(original)
+            observations["linux/arm64"]["source_associations"] = {"substituted": True}
+            with self.assertRaisesRegex(
+                InvalidRelease, "independent Git/npm/OCI replay"
+            ):
+                verify()
+            observations["linux/arm64"]["source_associations"] = {
+                "generated_source_closure_required": True
+            }
+            upstream["asset"]["digest"] = "sha256:" + "f" * 64
+            with self.assertRaisesRegex(InvalidRelease, "publication binding"):
+                verify()
+            upstream["asset"]["digest"] = publication.source_digest(
+                collection / asset_name
+            )
+            mappings = 0
+
+            def substitute_after_mapping(*args):
+                nonlocal mappings
+                mappings += 1
+                if mappings == 2:
+                    capture.pack.write_bytes(
+                        capture.pack.read_bytes() + b"changed after replay"
+                    )
+                return {"fixture": "mapped compiler"}
+
+            compiler.side_effect = substitute_after_mapping
+            with self.assertRaisesRegex(InvalidRelease, "changed during replay"):
+                verify()
 
     def distribution_fixture(self):
         fixture = self.fixture.fixture

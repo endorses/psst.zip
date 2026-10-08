@@ -817,9 +817,15 @@ def collect(
     return collection
 
 
-def verify(
-    root: Path, repository: str, version: str, commit: str, collection: Path
-) -> dict:
+def _verify(
+    root: Path,
+    repository: str,
+    version: str,
+    commit: str,
+    collection: Path,
+    *,
+    with_source_files: bool = False,
+):
     source = context(repository, version, commit)
     catalog, lock, records, go_inputs = _policy_inputs(root, source)
     require(
@@ -882,7 +888,7 @@ def verify(
         record == expected and asset == rebuilt,
         "Upstream collection record or retained payload differs from independent replay",
     )
-    return {
+    replay = {
         "schema_version": 1,
         "kind": "upstream-application-source-input-replay",
         "source": source,
@@ -898,6 +904,51 @@ def verify(
         "package_inputs_replayed": True,
         **UNAPPROVED,
     }
+
+    if not with_source_files:
+        return replay
+    # The independent offering replay above has already checked the complete
+    # original archives against committed pins. Read browser originals only;
+    # do not unpack the much larger backend projects a second time.
+    sources = {}
+    for item in records:
+        if "packages" not in item:
+            continue
+        prefix = item["repository"].split("/")[1] + "-" + item["commit"] + "/"
+        original = by_url[url(item)]
+        sources[item["id"]] = {
+            "record": item,
+            "files": {
+                member.name.removeprefix(prefix): content
+                for member, content in tar_members(original, upstream=True)
+                if member.isfile()
+            },
+        }
+    require(
+        regular(collection / RECORD, MAX_METADATA) == record_raw
+        and sha256(regular(collection / name, MAX_ASSET)) == replay["asset"]["digest"],
+        "Upstream inputs changed during preferred source replay",
+    )
+    return replay, sources
+
+
+def verify(
+    root: Path, repository: str, version: str, commit: str, collection: Path
+) -> dict:
+    return _verify(root, repository, version, commit, collection)
+
+
+def verify_source_files(
+    root: Path, repository: str, version: str, commit: str, collection: Path
+) -> tuple[dict, dict]:
+    """Replay one offering and expose validated browser originals to its consumer.
+
+    No extraction, upstream execution, authentication or approval is performed.
+    The consumer must bind the returned asset digest to its publication subjects.
+    """
+    return _verify(
+        root, repository, version, commit, collection, with_source_files=True
+    )
 
 
 def main() -> None:
