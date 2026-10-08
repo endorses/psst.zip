@@ -94,7 +94,9 @@ The current policy selects the `container-release` environment and reviewer
 `endorses`; it grants no approval by itself. The producer reads GitHub's selected
 version-tag workflow attempt, environment required reviewers and review history.
 It requires an approved decision from the configured authorized user, with the
-same GitHub user ID, environment ID and exact approval comment:
+same GitHub user ID, environment ID and approval comment below. Surrounding ASCII
+whitespace is ignored; internal content, hashes and attempt remain exact. The
+original API comment is retained unchanged in the authenticated evidence:
 
 ```text
 psst.zip distribution review: <binding SHA256>; run <run ID>; attempt <attempt>; source report <source-report SHA256>

@@ -102,8 +102,9 @@ def distribution_review_report(
 ) -> tuple[dict, dict]:
     """Produce a report and retained API evidence, never accept approval JSON.
 
-    Only an authorized user's exact approval comment for the selected run can
-    approve these subjects. The workflow must present the artifacts/review scope
+    Only an authorized user's approval comment matching the selected run after
+    removing surrounding ASCII whitespace can approve these subjects. The
+    workflow must present the artifacts/review scope
     before waiting on this environment and attest both returned records afterward.
     """
     policy, policy_fact = committed_policy(root, binding)
@@ -232,7 +233,8 @@ def distribution_review_report(
     selected = [
         review
         for review in reviews
-        if review.get("comment") == comment
+        if isinstance(review.get("comment"), str)
+        and review["comment"].strip(" \t\n\r\v\f") == comment
         and any(
             entry.get("id") == environment["id"]
             and entry.get("name") == policy["environment"]

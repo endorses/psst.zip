@@ -9,6 +9,7 @@ distribution approval and delivery gates.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import gzip
 import io
 import os
@@ -1375,6 +1376,36 @@ def verify_checks_output(
     return snapshots
 
 
+def authenticate_native_inputs(binding, trees, authenticator) -> None:
+    """Warm this invocation's exact-byte cache before sequential source replay."""
+    relative_paths = (
+        "native/native-measurement.json",
+        "native/source-completeness-verification.json",
+        "source-scans/source-scan-measurement.json",
+        "compiler-backend/compiler-graph-measurement.json",
+        "compiler-web/compiler-graph-measurement.json",
+        "native/browser/browser-verification.json",
+        "image-scan-backend/measurement.json",
+        "image-scan-web/measurement.json",
+    )
+    fields(trees, set(PLATFORMS), "both native authentication input trees")
+    contents = tuple(
+        dict.fromkeys(
+            read_bounded_file(tree / relative)
+            for tree in trees.values()
+            for relative in relative_paths
+        )
+    )
+    # The fresh verifier holds at most 17 observations, below its bounded cache.
+    # Every replay still rereads and authenticates its bytes; changes miss cache.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [
+            pool.submit(authenticator.authenticate, raw, binding) for raw in contents
+        ]
+        for future in futures:
+            future.result()
+
+
 def run_command(args) -> tuple[dict, dict]:
     """Produce new local gate/evidence files; never sign, publish or rebuild."""
     repository_name(args.repository)
@@ -1496,6 +1527,7 @@ def run_command(args) -> tuple[dict, dict]:
         bases_raw = read_bounded_file(resolved_bases)
         authenticator.authenticate(bases_raw, binding)
         snapshots[resolved_bases] = sha256(bases_raw)
+        authenticate_native_inputs(binding, trees, authenticator)
     report, evidence = corresponding_source_report(
         binding,
         root=args.root,

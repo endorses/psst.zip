@@ -2,9 +2,12 @@
 """Measure actual isolated upgrades after both native candidates are assembled.
 
 This producer has no publication, attestation, VPS or operator-approval path.
-It requires retained native inputs for BOTH architectures and the real assembled
-manifest/bundle. Only the selected native architecture executes the disposable
-Docker experiment. Registry acquisition is replaced with the exact loaded saved
+It requires both native identities and the real assembled manifest/bundle.
+Tagged measurements can authenticate completed source/smoke gates and retain
+only the selected architecture's exact images. Unsigned local measurements
+still replay both complete native input trees. Only the selected native
+architecture executes the disposable Docker experiment. Registry acquisition
+is replaced with the exact loaded saved
 pair, and encrypted export uses a separate store inside the same fixture daemon.
 Neither substitution proves public provenance or an independent off-host backup.
 """
@@ -23,17 +26,27 @@ import re
 import tarfile
 import tempfile
 
-from assemble_release_oci import StrictTarInfo, inspect_archive
+from assemble_release_oci import IMAGE_TYPES, StrictTarInfo, inspect_archive
 import measure_native_browser_inputs
 from generate_release_gate_reports import (
     NativeSourceContext,
+    checked_binding,
     runtime_inputs,
     timestamp,
     validate_smoke,
 )
 from github_release_transport import command
 from prepare_native_release import build_inputs, file_record, saved_pair
-from publish_container_release import source_digest, validate_registry_index
+from publish_container_release import (
+    Binding,
+    EvidenceVerifier,
+    VerifiedEvidence,
+    image_subjects,
+    sha256,
+    source_digest,
+    source_review_details,
+    validate_registry_index,
+)
 from release_artifacts import (
     COMMIT,
     DIGEST,
@@ -471,6 +484,277 @@ def validate_bundle_source(
     )
 
 
+def validate_authenticated_inputs(
+    context: NativeSourceContext,
+    *,
+    natives: dict[str, Path],
+    manifest_path: Path,
+    bundle: Path,
+    source_report: Path,
+    smoke_report: Path,
+    verifier: EvidenceVerifier,
+    root: Path = ROOT,
+) -> Inputs:
+    """Reuse signed complete source/smoke facts, inspecting only executed images.
+
+    Descriptors are metadata, not attested facts. Their relevant configurations
+    and OCI hashes must match the signed smoke report; the loaded saved pair's
+    configurations and every layer are checked independently below.
+    """
+    # The aggregate module imports this producer. Import its existing descriptor
+    # validator only at execution time, after both modules can initialize.
+    from aggregate_release_recovery import checked_descriptor
+
+    context.checked()
+    fields(natives, set(PLATFORMS), "both retained native descriptors")
+    require(
+        manifest_path.name == "release-manifest.json",
+        "Unexpected recovery manifest name",
+    )
+    snapshots = {}
+
+    def snapshot(path: Path) -> bytes:
+        raw = read_bounded_file(path)
+        snapshots[path] = sha256(raw)
+        return raw
+
+    manifest_raw = snapshot(manifest_path)
+    manifest = validate_manifest(read_json(manifest_raw), context.repository)
+    require(
+        manifest["payload_profile"] == "deployment-ready"
+        and manifest["version"] == context.version
+        and manifest["source"]["commit"] == context.commit,
+        "Recovery manifest source/version/profile differs",
+    )
+    validate_bundle(manifest, bundle)
+    validate_bundle_source(context, bundle, root)
+    snapshots[bundle] = source_digest(bundle)
+    source_raw = snapshot(source_report)
+    source = fields(
+        read_json(source_raw),
+        {"schema_version", "gate", "binding_digest", "passed", "details"},
+        "complete source recovery gate",
+    )
+    require(isinstance(source["details"], dict), "Missing complete source details")
+    source_subjects = source["details"].get("source_subjects")
+    require(
+        isinstance(source_subjects, dict)
+        and source_subjects
+        and all(
+            isinstance(name, str)
+            and name.startswith("source:")
+            and isinstance(subject, str)
+            for name, subject in source_subjects.items()
+        ),
+        "Missing complete recovery source subjects",
+    )
+    subjects = {
+        **image_subjects(manifest),
+        "manifest": "file:" + manifest_path.name + "@" + sha256(manifest_raw),
+        "bundle": "file:" + bundle.name + "@" + snapshots[bundle],
+        **source_subjects,
+    }
+    binding = Binding(
+        context.repository,
+        context.version,
+        context.commit,
+        tuple(sorted(subjects.items())),
+    )
+    checked_binding(binding)
+
+    def authenticate(gate: str, path: Path, raw: bytes) -> dict:
+        record = fields(
+            read_json(raw),
+            {"schema_version", "gate", "binding_digest", "passed", "details"},
+            "authenticated recovery input gate",
+        )
+        require(
+            type(record["schema_version"]) is int
+            and record["schema_version"] == 1
+            and record["gate"] == gate
+            and record["binding_digest"] == binding.digest
+            and record["passed"] is True
+            and isinstance(record["details"], dict)
+            and json_bytes(record) == raw,
+            "Recovery input gate is stale, incomplete or noncanonical",
+        )
+        receipt = verifier.verify(gate, path, binding)
+        require(
+            isinstance(receipt, VerifiedEvidence)
+            and receipt.gate == gate
+            and receipt.binding_digest == binding.digest
+            and receipt.report_digest == sha256(raw)
+            and receipt.passed is True
+            and receipt.details == record["details"],
+            "Recovery input authentication differs from exact gate bytes",
+        )
+        return receipt.details
+
+    source_details = authenticate("corresponding-source", source_report, source_raw)
+    source_review_details(source_details, binding, distribution=False)
+    smoke_details = authenticate(
+        "final-image-smoke", smoke_report, snapshot(smoke_report)
+    )
+    fields(
+        smoke_details,
+        {"execution", "tested_configs", "native_measurements"},
+        "authenticated native smoke details",
+    )
+    execution = fields(smoke_details["execution"], set(PLATFORMS), "smoke execution")
+    require(all(mode == "native" for mode in execution.values()), "Non-native smoke")
+    configs = fields(
+        smoke_details["tested_configs"],
+        {c + "-" + p.split("/")[1] for p in PLATFORMS for c in ("backend", "web")},
+        "all authenticated native configurations",
+    )
+    records = fields(
+        smoke_details["native_measurements"], set(PLATFORMS), "both signed native pairs"
+    )
+    descriptors, images, paths = {}, {}, {}
+    for platform in PLATFORMS:
+        native_context = NativeSourceContext(
+            context.repository, context.version, context.commit, platform
+        )
+        require(
+            natives[platform].name == "native-artifacts.json",
+            "Unexpected recovery descriptor name",
+        )
+        descriptor = checked_descriptor(
+            read_json(snapshot(natives[platform])), native_context
+        )
+        descriptors[platform] = descriptor
+        record = fields(
+            records[platform],
+            {"measurement_digest", "smoke", "images", "runtime"},
+            "authenticated native smoke record",
+        )
+        matches(
+            record["measurement_digest"], DIGEST, "Missing native measurement digest"
+        )
+        require(isinstance(record["runtime"], dict), "Missing authenticated runtime")
+        runtime_digest = matches(
+            record["runtime"].get("runtime_pack_sha256"),
+            DIGEST,
+            "Missing runtime digest",
+        )
+        smoke = validate_smoke(record["smoke"], native_context, runtime_digest)
+        require(
+            smoke["tested_configs"] == descriptor["tested_configs"],
+            "Native descriptor configurations differ from authenticated smoke",
+        )
+        measured_images = fields(
+            record["images"], {"backend", "web"}, "signed native images"
+        )
+        for component, value in measured_images.items():
+            target = component + "-" + platform.split("/")[1]
+            image = fields(
+                value,
+                {
+                    "platform",
+                    "manifest_digest",
+                    "manifest_size",
+                    "manifest_media_type",
+                    "config_digest",
+                    "archive_digest",
+                    "blob_count",
+                },
+                "authenticated native recovery image",
+            )
+            require(
+                image["platform"] == platform
+                and image["manifest_digest"]
+                == manifest["images"][component]["platform_digests"][platform]
+                and image["config_digest"]
+                == configs[target]
+                == descriptor["tested_configs"][component]
+                and image["archive_digest"]
+                == descriptor["artifacts"][component + "_archive"]["sha256"]
+                and image["manifest_media_type"] in IMAGE_TYPES
+                and type(image["manifest_size"]) is int
+                and image["manifest_size"] > 0
+                and type(image["blob_count"]) is int
+                and image["blob_count"] > 0,
+                "Recovery descriptor/image differs from authenticated native facts",
+            )
+            matches(
+                image["config_digest"], DIGEST, "Invalid authenticated configuration"
+            )
+            matches(
+                image["archive_digest"], DIGEST, "Invalid authenticated OCI archive"
+            )
+            images[target] = image
+        paths[platform] = {}
+        expected_files = {"native-artifacts.json"}
+        if platform == context.platform:
+            for name in ("final_archive", "backend_archive", "web_archive"):
+                expected_name = (
+                    "final-images.docker.tar"
+                    if name == "final_archive"
+                    else "export/"
+                    + name.removesuffix("_archive")
+                    + "-"
+                    + platform.split("/")[1]
+                    + ".oci.tar"
+                )
+                require(
+                    descriptor["artifacts"][name]["file"] == expected_name,
+                    "Unexpected selected recovery artifact path",
+                )
+                path = artifact_path(
+                    natives[platform].parent, descriptor["artifacts"][name]
+                )
+                paths[platform][name] = path
+                snapshots[path] = source_digest(path)
+                require(
+                    snapshots[path] == descriptor["artifacts"][name]["sha256"],
+                    "Selected recovery artifact changed during snapshot",
+                )
+                expected_files.add(expected_name)
+            for component in ("backend", "web"):
+                actual = inspect_archive(
+                    paths[platform][component + "_archive"],
+                    platform=platform,
+                    repository=context.repository,
+                    version=context.version,
+                    commit=context.commit,
+                    tested_config=descriptor["tested_configs"][component],
+                    component=component,
+                )
+                require(
+                    actual == images[component + "-" + platform.split("/")[1]],
+                    "Selected recovery OCI bytes differ from authenticated measurement",
+                )
+            saved_layers(paths[platform]["final_archive"], descriptor["tested_configs"])
+        actual_files = set()
+        for path in natives[platform].parent.rglob("*"):
+            require(not path.is_symlink(), "Linked recovery projection input")
+            if not path.is_dir():
+                require(path.is_file(), "Special recovery projection input")
+                actual_files.add(path.relative_to(natives[platform].parent).as_posix())
+        require(
+            actual_files == expected_files,
+            "Unexpected or missing native recovery projection input",
+        )
+    for component in ("backend", "web"):
+        index = manifest_path.parent / (component + "-index.json")
+        raw = snapshot(index)
+        validate_registry_index(raw, manifest["images"][component])
+        parsed = read_json(raw)
+        require(len(parsed["manifests"]) == 2, "Recovery index lacks exact native pair")
+        for child in parsed["manifests"]:
+            image = images[component + "-" + child["platform"]["architecture"]]
+            require(
+                child["size"] == image["manifest_size"]
+                and child["mediaType"] == image["manifest_media_type"],
+                "Recovery index child differs from authenticated image",
+            )
+    inputs = Inputs(
+        context, manifest, manifest_path, bundle, descriptors, paths, images, snapshots
+    )
+    inputs.unchanged()
+    return inputs
+
+
 def extract_bundle(inputs: Inputs, output: Path) -> None:
     """Extract only previously validated regular bundle members, never executables."""
     validate_bundle(inputs.manifest, inputs.bundle)
@@ -871,6 +1155,9 @@ def measure_recovery(
     root: Path = ROOT,
     execute=run,
     allow_legacy_browser: bool = False,
+    source_report: Path | None = None,
+    smoke_report: Path | None = None,
+    verifier: EvidenceVerifier | None = None,
 ) -> dict:
     context.checked()
     matches(
@@ -888,14 +1175,35 @@ def measure_recovery(
         context.platform == native_platform(),
         "Recovery requires actual native execution",
     )
-    inputs = validate_inputs(
-        context,
-        natives=natives,
-        manifest_path=manifest,
-        bundle=bundle,
-        root=root,
-        allow_legacy_browser=allow_legacy_browser,
+    authenticated = (source_report, smoke_report, verifier)
+    require(
+        all(value is None for value in authenticated)
+        or all(value is not None for value in authenticated),
+        "Authenticated recovery requires both reports and a verifier",
     )
+    if source_report is not None:
+        require(
+            not allow_legacy_browser, "Signed recovery refuses legacy browser scope"
+        )
+        inputs = validate_authenticated_inputs(
+            context,
+            natives=natives,
+            manifest_path=manifest,
+            bundle=bundle,
+            root=root,
+            source_report=source_report,
+            smoke_report=smoke_report,
+            verifier=verifier,
+        )
+    else:
+        inputs = validate_inputs(
+            context,
+            natives=natives,
+            manifest_path=manifest,
+            bundle=bundle,
+            root=root,
+            allow_legacy_browser=allow_legacy_browser,
+        )
     previous = (
         git(root, "rev-parse", "--verify", previous_source + "^{commit}")
         .decode()
