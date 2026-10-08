@@ -139,6 +139,57 @@ def checked_action(directory: Path) -> Path:
     return directory / "dist/index.js"
 
 
+def runner_node_from_ancestry() -> Path | None:
+    """Use the kernel's running worker location, not a caller-supplied runner root."""
+    # Runner 2.337.0 HostContext derives Root from its executing bin directory;
+    # NodeScriptActionHandler uses Root/externals/node24/bin/node. Hosted image
+    # metadata does not promise an absolute installation directory.
+    pid, seen, candidates = os.getppid(), set(), []
+    for _ in range(32):
+        if pid == 0:
+            require(len(candidates) <= 1, "Hosted runner ancestry is ambiguous")
+            return candidates[0] if candidates else None
+        require(pid > 0 and pid not in seen, "Hosted runner ancestry loops")
+        seen.add(pid)
+        process = Path("/proc") / str(pid)
+        try:
+            with (process / "status").open("rb") as stream:
+                status = stream.read(16 * 1024 + 1)
+        except OSError:
+            raise InvalidRelease("Hosted runner ancestry is unavailable") from None
+        parents = re.findall(rb"^PPid:\s*([0-9]+)\s*$", status, re.MULTILINE)
+        require(
+            len(status) <= 16 * 1024 and len(parents) == 1,
+            "Hosted runner ancestry is malformed",
+        )
+        try:
+            worker = Path(os.readlink(process / "exe"))
+        except OSError:
+            # A privileged ancestor's executable may be unreadable, even though
+            # its kernel parent relationship remains available in status.
+            worker = None
+        if worker is not None and worker.name == "Runner.Worker":
+            require(
+                worker.is_absolute() and worker.parent.name == "bin",
+                "Hosted runner worker location is malformed",
+            )
+            for path in (worker, worker.parent, worker.parent.parent):
+                require(
+                    not path.is_symlink()
+                    and (path.is_file() if path == worker else path.is_dir()),
+                    "Hosted runner worker location is unsafe",
+                )
+                metadata = path.stat()
+                require(
+                    metadata.st_uid in {0, os.geteuid()}
+                    and stat.S_IMODE(metadata.st_mode) & 0o022 == 0,
+                    "Hosted runner worker has unsafe ownership or permissions",
+                )
+            candidates.append(worker.parent.parent / "externals/node24/bin/node")
+        pid = int(parents[0])
+    raise InvalidRelease("Hosted runner ancestry exceeds bounds")
+
+
 def hosted_node() -> tuple[Path, str]:
     """Use the runner's Node24 runtime, never a caller-selected signer/PATH."""
     candidates = sorted(
@@ -146,6 +197,11 @@ def hosted_node() -> tuple[Path, str]:
     )
     candidates += [Path("/opt/actions-runner/externals/node24/bin/node")]
     require(len(candidates) <= 17, "Hosted Node24 runtime inventory exceeds bounds")
+    running_node = runner_node_from_ancestry()
+    if running_node is not None:
+        candidates = [running_node] + [
+            path for path in candidates if path != running_node
+        ]
     for node in candidates:
         if not node.is_file() or node.is_symlink():
             continue

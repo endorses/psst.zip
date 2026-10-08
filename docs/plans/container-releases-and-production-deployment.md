@@ -2925,10 +2925,13 @@ skipping on that particular change scope.
 - [x] Present the exact distribution packet before the configured human review.
       Artifact `candidate-distribution-presentation-37782470022-1` contains the
       final image/source/notice references and attempt-bound approval comment.
-      GitHub readback confirms job `113339930195` is waiting on the configured
-      `container-release` reviewer `endorses`; no approval has been supplied.
-- [ ] Obtain the configured human review, including its attempt-bound approval
-      comment. A signed source report does not grant this approval.
+      GitHub initially held job `113339930195` for the configured
+      `container-release` reviewer `endorses` before the operator approved it.
+- [x] Obtain the configured human review, including its attempt-bound approval
+      comment. Distribution job `113339930195` completed, attested the retained
+      approval evidence and independently verified it. The operator separately
+      approved the protected publisher. These decisions do not prove successful
+      publication.
 - [ ] Publish the immutable release and paired repository-linked public packages,
       then verify fresh anonymous image/source/deployment-file retrieval. Remove
       first-package initialization after successful publication.
@@ -2937,7 +2940,7 @@ The release tag and publication configuration do not deploy the VPS. Independent
 backup/restore and production migration remain deferred. Store research drafts
 and the delegated iOS diagnostic branch remain outside these release commits.
 
-All completed tagged jobs have zero annotations. Source CI took 1m04s for
+All completed pre-publication gate jobs have zero annotations. Source CI took 1m04s for
 repository security, 4m18s for backend and 6m43s for web. Native image jobs took
 9m12s on AMD64 and 8m59s on ARM64; signed assembly took 4m58s, with authenticated
 source production taking 2m37s and independent signature verification 24s.
@@ -2946,3 +2949,34 @@ The workflow reached human review in approximately 25 minutes. This includes
 native image/source preparation, artifact transfer and actual recovery, rather
 than a 25-minute routine application test suite. No timeout was extended or
 additional timing run requested.
+
+Publisher job `113343113073` subsequently failed in its trusted-tool preflight
+with `Official hosted runner Node24 runtime is unavailable`, before setup-go,
+payload downloads or the publication command. The workflow never reached a
+release reservation, image push, source upload or VPS operation. A read-only
+GitHub release lookup returned 404, and the existing annotated `v0.1.0` tag
+remains unchanged. Do not retry mutations or move that tag to hide the failure.
+
+- [x] Repair the hosted runtime resolver against the official runner's actual
+      runtime-selection contract, preserving signer, native architecture,
+      ownership/permission and bounded-execution checks. Derive the Node24
+      location from the kernel-reported `Runner.Worker` ancestor and official
+      relative `externals/node24/bin/node` path, with bounded ancestry traversal
+      and malformed/looping/ambiguous/unsafe-worker refusal. Preserve legacy
+      runtime inventory and never select a signer through caller PATH or an
+      environment-provided installation root. Seventeen focused attestor checks
+      passed in 0.076s, with the genuine hosted probe explicitly skipped locally;
+      this verifies local behavior, not the unavailable hosted path.
+- [ ] Exercise the actual resolver once on ordinary hosted repository-security
+      CI before preparing the next immutable patch-version candidate. Local
+      fixtures alone do not establish a real hosted installation path.
+
+The exact runner version was `2.337.0` on Ubuntu `26.04.1`, image
+`ubuntu26/20260927.149`. Its published
+[HostContext](https://raw.githubusercontent.com/actions/runner/v2.337.0/src/Runner.Common/HostContext.cs)
+derives the installation root from the executing worker's bin directory, and its
+[Node action handler](https://raw.githubusercontent.com/actions/runner/v2.337.0/src/Runner.Worker/Handlers/NodeScriptActionHandler.cs)
+selects the advertised runtime relative to that root. The failed job did not
+record an absolute runtime path; the repair does not invent one. One harmless,
+bounded unmocked lookup now runs in the existing hosted Linux security tests,
+without signing, network requests, additional application builds or benchmarks.
