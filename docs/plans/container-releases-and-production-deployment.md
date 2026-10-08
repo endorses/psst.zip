@@ -1593,7 +1593,7 @@ OCI pair, complete preferred-source coverage or publication authority.
       refusing other hosts/repositories, mismatched paths, tags and redirects.
       The 25 affected upstream/browser checks passed in 1.0 seconds without
       network requests or compiler execution.
-- [ ] Collect and independently replay the expanded eighteen-original offering
+- [x] Collect and independently replay the expanded eighteen-original offering
       from a committed source, reusing unchanged original archive bytes.
 - [ ] Complete remaining generator/configuration relationships and authenticate
       the exact final-image inputs on both native architectures before producing
@@ -1617,6 +1617,15 @@ reported as not yet retained. Vite virtual helpers, Kit generated application
 outputs and full backend generator relationships remain separate producer work.
 These facts do not establish offline or byte-identical dependency regeneration,
 complete corresponding-source coverage or publication authority.
+
+Actual collection and replay from `5da2acec232fa10cfaf7ad60cdf362bfa5c7b928`
+retained all 18 originals and 41,908 members. Collection took 7.1 seconds and
+independent replay 7.4 seconds, without repeating downloads. The 172,577,635-byte
+offering has SHA256
+`db40608f19d5d0f7244e3208dde113f9c425560ff4dc27202b4e230bcaa3ff59`.
+Private committed-source collection and replay receipts are retained. The archive
+includes the two full modernc projects alongside the sixteen unchanged originals;
+this does not finish the remaining complete-source producer or authorize release.
 
 ## Verification and completion criteria
 
