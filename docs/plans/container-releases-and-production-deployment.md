@@ -1610,7 +1610,7 @@ OCI pair, complete preferred-source coverage or publication authority.
 - [x] Bind Noble's external configuration to the offered source, package identity,
       configuration hash and upstream lock integrity. Reject missing or changed
       inputs and unsupported additional configuration inheritance.
-- [ ] Collect and independently replay the nineteen-original source offering
+- [x] Collect and independently replay the nineteen-original source offering
       from the updated committed catalog before hosted release preparation.
 - [ ] Complete remaining generator/configuration relationships and authenticate
       the exact final-image inputs on both native architectures before producing
@@ -1653,6 +1653,16 @@ offering has SHA256
 Private committed-source collection and replay receipts are retained. The archive
 includes the two full modernc projects alongside the sixteen unchanged originals;
 this does not finish the remaining complete-source producer or authorize release.
+
+The subsequent nineteen-original offering from
+`8bed82dc8d4e198808f8c286ec392f54a09c3a10` includes the pinned JSBT project and
+42,434 original members. Collection took 7.2 seconds and independent replay 8.9
+seconds using retained originals, without additional network requests. Its
+172,822,312-byte asset has SHA256
+`d9562099d25343b2e1c220812f59f6b6e6e0993a41cb3f61b6c7366768ee94f8`.
+The replay also checked the configuration and all three Noble lock integrities;
+private collection/replay receipts are retained. Full source-gate approval and
+hosted final-image verification remain pending.
 
 The browser producer now authenticates both image observations before consuming
 large source inputs and checks their full independent replay results. It reuses
