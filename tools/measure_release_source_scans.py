@@ -91,10 +91,25 @@ def native_platform() -> str:
 def run(
     args: list[str], *, timeout: int = 1200, diagnostics: Path | None = None
 ) -> bytes:
+    # Keep the selected native measurement daemon. Dropping DOCKER_HOST switches
+    # to the runner's default image store, whose IDs may be manifest digests.
+    # Use the workflow's installed CLI and only its Docker connection settings,
+    # never the complete workflow environment or credentials.
+    environment = {"PATH": os.environ.get("PATH", os.defpath)}
+    for name in (
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_CERT_PATH",
+        "DOCKER_TLS_VERIFY",
+        "XDG_RUNTIME_DIR",
+    ):
+        if name in os.environ:
+            environment[name] = os.environ[name]
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         process = subprocess.Popen(
             args,
-            env={"PATH": os.defpath},
+            env=environment,
             stdout=stdout,
             stderr=stderr,
             start_new_session=True,

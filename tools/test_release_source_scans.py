@@ -6,7 +6,9 @@ import copy
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -113,6 +115,45 @@ def go_fixture():
 
 
 class SourceScannerTests(unittest.TestCase):
+    def test_commands_keep_selected_docker_daemon_without_workflow_secrets(self):
+        connection = {
+            "DOCKER_HOST": "unix:///tmp/selected-native-daemon.sock",
+            "DOCKER_CONTEXT": "default",
+            "DOCKER_CONFIG": "/tmp/native-docker-config",
+            "DOCKER_CERT_PATH": "/tmp/native-docker-certs",
+            "DOCKER_TLS_VERIFY": "1",
+            "XDG_RUNTIME_DIR": "/tmp/native-runtime",
+        }
+        with patch.dict(
+            os.environ,
+            connection
+            | {
+                "PATH": "/tmp/selected-docker-cli:/usr/bin:/bin",
+                "HOME": "/private-home",
+                "GH_TOKEN": "fixture-secret",
+                "GITHUB_TOKEN": "fixture-secret",
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "fixture-secret",
+            },
+            clear=True,
+        ):
+            actual = json.loads(
+                source.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import json, os; print(json.dumps(dict(os.environ)))",
+                    ],
+                    timeout=5,
+                )
+            )
+        for name, value in connection.items():
+            self.assertEqual(actual.get(name), value)
+        self.assertEqual(actual["PATH"], "/tmp/selected-docker-cli:/usr/bin:/bin")
+        self.assertFalse(
+            set(actual)
+            & {"HOME", "GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+        )
+
     def cli_arguments(self):
         return [
             "--repository",

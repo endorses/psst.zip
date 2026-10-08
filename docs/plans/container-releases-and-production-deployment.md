@@ -2765,7 +2765,7 @@ from packaging commit `4588b452722bd4800efdc6cce4f6e980e02a997f`. The fixed
 diagnostic category was HTTP. This identifies a server runtime-source input,
 not an Android build failure. The original recipe/checksum passed locally;
 the official Alpine distfiles mirror also served the exact original bytes.
-Hosted validation of the mirror repair remains pending.
+Hosted validation of the mirror repair passed on candidate `37771648745` below.
 
 The archive is retained from
 [Alpine's official distfiles](https://distfiles.alpinelinux.org/distfiles/v3.24/apk-tools-v3.0.8.tar.gz)
@@ -2788,7 +2788,8 @@ status code or a general runner-network outage.
       collection and downstream overlay/image measurements with unchanged
       checksum guards. Private fetch URLs remain suppressed; this is a verified
       successful preparation, not a claim to have observed individual network
-      traces. Subsequent compiler/scanner steps remained active at this checkpoint.
+      traces. Both complete native jobs subsequently passed, including compiler
+      correspondence and source/final-image scanning and measurements.
 - [ ] Complete source replay, candidate assembly and disposable recovery before
       publication. A successful source-preparation step alone does not close these.
 
@@ -2800,6 +2801,35 @@ head. The planned candidate uses that exact merged commit; publication remained
 disabled at dispatch, no version tag was created, and no production state changed.
 The delegated iOS investigation continues independently on a local diagnostic
 branch; its follow-up changes do not gate this container candidate.
+
+### Selected Docker daemon consistency repair
+
+Candidate `37771648745` is terminal: both native container jobs passed, but
+assembly job `113296396976` failed with `Collector and scanner actual builders
+differ`. Disposable recovery and publication were skipped. The small retained
+records show scanner `config_digest` equal to the shared multiarchitecture
+manifest digest on both architectures, rather than distinct native configuration
+digests. The collector's embedded configuration record is not included in these
+small summaries, so they alone do not establish its exact observed digest.
+
+The collector preserves the selected `DOCKER_HOST`; the source scanner subprocess
+previously retained only a default `PATH`, dropping the workflow's isolated daemon
+and installed CLI. This switches the scanner to the runner's original Docker
+store, inconsistent with the explicit native measurement configuration. The
+immutable reference/configuration/platform comparison remains required.
+
+- [x] Preserve the installed CLI path and explicitly scoped Docker connection
+      settings in source/compiler scanner subprocesses, excluding GitHub tokens
+      and the remaining workflow environment. Add a bounded actual subprocess
+      regression for selected-daemon propagation and secret exclusion.
+- [x] Verify focused scanner, dependency-input and source-scan gate regressions
+      after the final edit: 41 checks passed in 2.242 seconds. The existing
+      immutable-builder mismatch checks remain active; formatting and diff checks
+      passed. No local full application build or extra timing run was added.
+- [ ] Validate the integrated hosted assembly and disposable recovery. A local
+      environment check does not prove a successful release candidate.
+- [ ] Publish the first reviewed server release only after the remaining gates
+      pass. Production backup/restore and migration remain explicitly deferred.
 
 The scheduling PR #12 completed all five required checks with zero annotations
 at `b023bddd0669f88bcebbd050db104c9caeeae7ac` and merged through protection as
