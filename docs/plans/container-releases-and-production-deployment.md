@@ -2967,9 +2967,20 @@ remains unchanged. Do not retry mutations or move that tag to hide the failure.
       environment-provided installation root. Seventeen focused attestor checks
       passed in 0.076s, with the genuine hosted probe explicitly skipped locally;
       this verifies local behavior, not the unavailable hosted path.
-- [ ] Exercise the actual resolver once on ordinary hosted repository-security
+- [x] Exercise the actual resolver once on ordinary hosted repository-security
       CI before preparing the next immutable patch-version candidate. Local
-      fixtures alone do not establish a real hosted installation path.
+      fixtures alone do not establish a real hosted installation path. PR #18 at
+      `f702cbed4536ef4e626640ca64a3e710d511032c` passed all five protected
+      contexts and GitGuardian with zero annotations. Run `37788969183`, security
+      job `113350941685`, explicitly reports the unmocked runtime probe `ok` on
+      runner `2.337.0` and image `20260927.149.1`, matching the failed publisher's
+      versions. Application steps were correctly skipped for these reviewed
+      release-helper changes. A bounded independent review found no blocker.
+
+- [ ] Prepare the corrected source as `v0.1.1`, preserving the existing failed
+      `v0.1.0` tag. Recompute and authenticate its exact subjects and obtain a
+      fresh attempt-bound distribution approval; the previous version's reports
+      and approval cannot authorize the changed source.
 
 The exact runner version was `2.337.0` on Ubuntu `26.04.1`, image
 `ubuntu26/20260927.149`. Its published
