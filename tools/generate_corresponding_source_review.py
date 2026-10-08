@@ -17,6 +17,7 @@ import backend_preferred_source_relationships as backend_preferred
 import measure_browser_source_inventory as browser_inventory
 import measure_native_browser_inputs as browser_inputs
 import package_upstream_application_sources as upstream_inputs
+import sqlite_vendoring
 
 from aggregate_release_image_scans import checked_graph, load_authenticated, load_raw
 from generate_release_gate_reports import (
@@ -39,6 +40,7 @@ from release_artifacts import (
     read_bounded_file,
     read_json,
     repository_name,
+    json_bytes,
     require,
 )
 
@@ -104,129 +106,151 @@ def verify_backend_source_inputs(
         (upstream_collection / upstream_inputs.RECORD, upstream["collection_sha256"]),
         (upstream_collection / upstream_asset["name"], upstream_asset["digest"]),
     ]
-    for platform in PLATFORMS:
-        context = NativeSourceContext(
-            binding.repository, binding.version, binding.commit, platform
-        )
-        target = "backend-" + platform.split("/")[1]
-        pack, runtime = runtime_inputs(context, runtime_packs[platform])
-        require(
-            runtime == native[platform]["runtime"],
-            "Runtime pack/source bytes differ from authenticated native execution",
-        )
-        source, source_digest_value = authenticated_sources[platform]
-        require(
-            source.get("source") == context.checked(),
-            "Backend source scan belongs to another native source context",
-        )
-        graph_path = compiler_graphs[target]
-        graph, graph_digest = authenticated_graphs[target]
-        checked_graph(
-            graph,
-            graph_path.parent,
-            context=context,
-            component="backend",
-            image=native[platform]["images"]["backend"],
-            runtime=runtime,
-            pack=pack,
-        )
-        require(
-            graph["source_inputs"]["application_archive_sha256"] == application_digest,
-            "Backend compiler source archive differs from selected committed Git source",
-        )
-        replay, module_originals = dependency_inputs.verify_module_source_files(
-            context,
-            root,
-            dependency_collections[platform],
-            source_scans[platform],
-            modules=frozenset(
-                {
-                    "modernc.org/sqlite",
-                    "modernc.org/libc",
-                    "modernc.org/cc/v4",
-                    "modernc.org/ccgo/v4",
-                    "modernc.org/fileutil",
-                }
-            ),
-        )
-        require(
-            replay.get("source") == context.checked()
-            and replay.get("package_inputs_replayed") is True
-            and replay.get("source_measurement_sha256") == source_digest_value,
-            "Dependency inputs differ from authenticated native source scan",
-        )
-        asset_name = f"psst.zip-dependency-inputs-{binding.version}-{platform.split('/')[1]}.tar.gz"
-        archive_digest = matches(
-            replay.get("archive_sha256"), DIGEST, "Dependency asset digest missing"
-        )
-        require(
-            subjects.get("source:" + asset_name)
-            == "file:" + asset_name + "@" + archive_digest,
-            "Backend dependency asset differs from exact publication binding",
-        )
-        retained = replay.get("go_module_inputs")
-        require(
-            isinstance(retained, list) and len(retained) == replay.get("go_modules"),
-            "Verified Go module input inventory missing",
-        )
-        modules = {}
-        for row in retained:
-            fields(row, {"module", "version", "sum", "zip_sha256"}, "verified module")
-            require(
-                isinstance(row["module"], str)
-                and row["module"]
-                and row["module"] not in modules,
-                "Duplicate or malformed verified module input",
+    comparator_source = git(root, "show", binding.commit + ":tools/sqlite_vendoring.go")
+    preferred_cache = {}
+    with sqlite_vendoring.build_verifier(comparator_source) as vendoring_verifier:
+        for platform in PLATFORMS:
+            context = NativeSourceContext(
+                binding.repository, binding.version, binding.commit, platform
             )
-            matches(row["zip_sha256"], DIGEST, "Verified module archive digest missing")
-            modules[row["module"]] = row
-        dependencies = []
-        for dep in graph["binary"]["build_info"]["Deps"]:
-            retained_dep = modules.get(dep["Path"])
+            target = "backend-" + platform.split("/")[1]
+            pack, runtime = runtime_inputs(context, runtime_packs[platform])
             require(
-                retained_dep is not None
-                and retained_dep["version"] == dep["Version"]
-                and retained_dep["sum"] == dep["Sum"],
-                "Actual backend module version/checksum lacks retained verified source inputs",
+                runtime == native[platform]["runtime"],
+                "Runtime pack/source bytes differ from authenticated native execution",
             )
-            dependencies.append(retained_dep)
-        preferred_sources = backend_preferred.verify_relationships(
-            originals, module_originals
-        )
-        reports[target] = {
-            "subject": subjects[target],
-            "image": native[platform]["images"]["backend"],
-            "binary_sha256": graph["binary"]["sha256"],
-            "rebuilt_sha256": graph["binary"]["rebuilt_sha256"],
-            "compiler_measurement_sha256": graph_digest,
-            "application_archive_sha256": application_digest,
-            "dependency_asset": {"name": asset_name, "sha256": archive_digest},
-            "dependency_replay": replay,
-            "binary_module_inputs": dependencies,
-            "preferred_sources": preferred_sources,
-        }
-        snapshots.extend(
-            [
-                (native_measurements[platform], native[platform]["measurement_digest"]),
-                (source_scans[platform], source_digest_value),
-                (graph_path, graph_digest),
-                (
-                    dependency_collections[platform] / "dependency-collection.json",
-                    replay["collection_sha256"],
+            source, source_digest_value = authenticated_sources[platform]
+            require(
+                source.get("source") == context.checked(),
+                "Backend source scan belongs to another native source context",
+            )
+            graph_path = compiler_graphs[target]
+            graph, graph_digest = authenticated_graphs[target]
+            checked_graph(
+                graph,
+                graph_path.parent,
+                context=context,
+                component="backend",
+                image=native[platform]["images"]["backend"],
+                runtime=runtime,
+                pack=pack,
+            )
+            require(
+                graph["source_inputs"]["application_archive_sha256"]
+                == application_digest,
+                "Backend compiler source archive differs from selected committed Git source",
+            )
+            replay, module_originals = dependency_inputs.verify_module_source_files(
+                context,
+                root,
+                dependency_collections[platform],
+                source_scans[platform],
+                modules=frozenset(
+                    {
+                        "modernc.org/sqlite",
+                        "modernc.org/libc",
+                        "modernc.org/cc/v4",
+                        "modernc.org/ccgo/v4",
+                        "modernc.org/fileutil",
+                    }
                 ),
-                (dependency_collections[platform] / asset_name, archive_digest),
-            ]
-        )
-        for scan in source["scans"]:
-            name = (
-                "go-modules.json"
-                if scan["target"] == "backend-source"
-                else "npm-lock-graph.json"
             )
-            raw = dependency_inputs.scanner_raw(source_scans[platform], scan, name)
-            snapshots.append(
-                (source_scans[platform].parent / scan["target"] / name, sha256(raw))
+            require(
+                replay.get("source") == context.checked()
+                and replay.get("package_inputs_replayed") is True
+                and replay.get("source_measurement_sha256") == source_digest_value,
+                "Dependency inputs differ from authenticated native source scan",
             )
+            asset_name = f"psst.zip-dependency-inputs-{binding.version}-{platform.split('/')[1]}.tar.gz"
+            archive_digest = matches(
+                replay.get("archive_sha256"), DIGEST, "Dependency asset digest missing"
+            )
+            require(
+                subjects.get("source:" + asset_name)
+                == "file:" + asset_name + "@" + archive_digest,
+                "Backend dependency asset differs from exact publication binding",
+            )
+            retained = replay.get("go_module_inputs")
+            require(
+                isinstance(retained, list)
+                and len(retained) == replay.get("go_modules"),
+                "Verified Go module input inventory missing",
+            )
+            modules = {}
+            for row in retained:
+                fields(
+                    row, {"module", "version", "sum", "zip_sha256"}, "verified module"
+                )
+                require(
+                    isinstance(row["module"], str)
+                    and row["module"]
+                    and row["module"] not in modules,
+                    "Duplicate or malformed verified module input",
+                )
+                matches(
+                    row["zip_sha256"], DIGEST, "Verified module archive digest missing"
+                )
+                modules[row["module"]] = row
+            dependencies = []
+            for dep in graph["binary"]["build_info"]["Deps"]:
+                retained_dep = modules.get(dep["Path"])
+                require(
+                    retained_dep is not None
+                    and retained_dep["version"] == dep["Version"]
+                    and retained_dep["sum"] == dep["Sum"],
+                    "Actual backend module version/checksum lacks retained verified source inputs",
+                )
+                dependencies.append(retained_dep)
+            # Both architectures may share source inputs. H1 replay still occurs on
+            # each actual native collection; reuse only identical origin/ZIP facts.
+            preferred_key = json_bytes(
+                {
+                    module: {"record": value["record"], "origin": value.get("origin")}
+                    for module, value in sorted(module_originals.items())
+                }
+            )
+            if preferred_key not in preferred_cache:
+                preferred_cache[preferred_key] = backend_preferred.verify_relationships(
+                    originals, module_originals, vendoring_verifier=vendoring_verifier
+                )
+            preferred_sources = preferred_cache[preferred_key]
+            reports[target] = {
+                "subject": subjects[target],
+                "image": native[platform]["images"]["backend"],
+                "binary_sha256": graph["binary"]["sha256"],
+                "rebuilt_sha256": graph["binary"]["rebuilt_sha256"],
+                "compiler_measurement_sha256": graph_digest,
+                "application_archive_sha256": application_digest,
+                "dependency_asset": {"name": asset_name, "sha256": archive_digest},
+                "dependency_replay": replay,
+                "binary_module_inputs": dependencies,
+                "preferred_sources": preferred_sources,
+            }
+            snapshots.extend(
+                [
+                    (
+                        native_measurements[platform],
+                        native[platform]["measurement_digest"],
+                    ),
+                    (source_scans[platform], source_digest_value),
+                    (graph_path, graph_digest),
+                    (
+                        dependency_collections[platform] / "dependency-collection.json",
+                        replay["collection_sha256"],
+                    ),
+                    (dependency_collections[platform] / asset_name, archive_digest),
+                ]
+            )
+            for scan in source["scans"]:
+                name = (
+                    "go-modules.json"
+                    if scan["target"] == "backend-source"
+                    else "npm-lock-graph.json"
+                )
+                raw = dependency_inputs.scanner_raw(source_scans[platform], scan, name)
+                snapshots.append(
+                    (source_scans[platform].parent / scan["target"] / name, sha256(raw))
+                )
     for path, digest in snapshots:
         require(
             source_digest(path) == digest, "Backend source input changed during replay"
@@ -263,6 +287,7 @@ def verify_backend_source_inputs(
         "images": reports,
         "backend_source_inputs_verified": True,
         "upstream_inputs": upstream,
+        "vendoring_verifier_source_sha256": sha256(comparator_source),
         "preferred_source_review_required": True,
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,

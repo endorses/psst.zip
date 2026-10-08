@@ -47,6 +47,10 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
 
+      - name: SQLite vendoring syntax regressions
+        # Two tiny standard-library cases; no dependency downloads or generators.
+        run: GOTOOLCHAIN=local GO111MODULE=off go test ./tools/sqlite_vendoring.go ./tools/sqlite_vendoring_test.go
+
       - name: Check distributed project licenses
         run: |
           cmp LICENSE backend/licenses/AGPL-3.0-only.txt

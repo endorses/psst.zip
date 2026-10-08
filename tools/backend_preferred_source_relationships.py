@@ -12,9 +12,13 @@ import json
 from pathlib import PurePosixPath
 import re
 
-from release_artifacts import require
+from release_artifacts import DIGEST, matches, require
+from package_upstream_application_sources import go_requirements
 
 SQLITE_ID = "873d4e274b4988d260ba8354a9718324a1c26187a4ab4c1cc0227c03d0f10e70"
+SQLITE_VENDOR_RECIPE_SHA256 = (
+    "sha256:619a55071e22cac99a8583858379a2c52f6504c38bec049ccb6f6f138ed8d223"
+)
 TOOLS = {
     "modernc.org/cc/v4": "v4.26.0",
     "modernc.org/ccgo/v4": "v4.26.0",
@@ -114,7 +118,7 @@ def project(upstreams, module_inputs, identifier, module, version):
     }
 
 
-def sqlite_relationship(upstreams, preferred):
+def sqlite_relationship(upstreams, preferred, vendoring_verifier):
     record, original = entry(
         upstreams, "backend-sqlite-c", "modernc.org/sqlite", "v1.37.0"
     )
@@ -145,6 +149,108 @@ def sqlite_relationship(upstreams, preferred):
         "vendor_libsqlite3/go.mod",
         "vendor_libsqlite3/go.sum",
     )
+    facts(preferred, paths)
+    sibling_record, sibling = entry(
+        upstreams, "backend-libsqlite3-project", "modernc.org/sqlite", "v1.37.0"
+    )
+    require(
+        sibling_record.get("repository") == "cznic/libsqlite3"
+        and sibling_record.get("relationship")
+        == {
+            "kind": "generator-project",
+            "name": "modernc.org/libsqlite3",
+            "version": "v1.9.0",
+            "module": "modernc.org/sqlite",
+        },
+        "SQLite sibling translator identity differs",
+    )
+    require(
+        digest(preferred["vendor_libsqlite3/main.go"]) == SQLITE_VENDOR_RECIPE_SHA256,
+        "SQLite vendoring recipe differs from reviewed transformation",
+    )
+    sibling_paths = set(sibling_record["inspect_paths"])
+    sibling_paths.update(
+        path
+        for path in sibling
+        if "/" not in path and path.startswith("generator") and path.endswith(".go")
+    )
+    facts(sibling, sibling_paths)
+    require(
+        re.findall(rb'versionTag\s*=\s*"([^"]+)"', sibling["generator.go"])
+        == [b"3490100"]
+        and b'"sqlite-amalgamation-" + versionTag + ".zip"' in sibling["generator.go"]
+        and b'"sqlite-src-" + versionTag + ".zip"' in sibling["generator.go"]
+        and all(
+            (b'"' + path.encode() + b'"') in sibling["generator.go"]
+            for path in ("sqlite_issue173.patch", "issue1.patch")
+        ),
+        "SQLite translator source/patch recipe differs",
+    )
+    declared = go_requirements(sibling["go.mod"])
+    expected_tools = {
+        "modernc.org/cc/v4": "v4.25.2",
+        "modernc.org/ccgo/v4": "v4.25.2",
+        "modernc.org/fileutil": "v1.3.0",
+    }
+    translator_tools = {}
+    for module, version in expected_tools.items():
+        sums = re.findall(
+            rb"(?m)^"
+            + re.escape(module.encode())
+            + b" "
+            + re.escape(version.encode())
+            + rb" (h1:[A-Za-z0-9+/]+={0,2})$",
+            sibling["go.sum"],
+        )
+        require(
+            declared.get(module) == version and len(sums) == 1,
+            "SQLite translator declared tool locks differ",
+        )
+        translator_tools[module] = {
+            "version": version,
+            "sum": sums[0].decode(),
+            "source_reproduction_environment_verified": False,
+        }
+    require(
+        callable(vendoring_verifier),
+        "SQLite source association requires its syntax verifier",
+    )
+    comparisons = {}
+    for arch in ("amd64", "arm64"):
+        source_path = "ccgo_linux_" + arch + ".go"
+        target_path = "lib/sqlite_linux_" + arch + ".go"
+        require(source_path in sibling, "SQLite sibling platform output missing")
+        require(
+            all(
+                re.findall(rb"(?m)^//go:build (.+)$", raw)
+                == [("linux && " + arch).encode()]
+                for raw in (sibling[source_path], preferred[target_path])
+            ),
+            "SQLite source platform build constraints differ",
+        )
+        comparison = vendoring_verifier(sibling[source_path], preferred[target_path])
+        require(
+            comparison.get("kind") == "sqlite-vendoring-go-ast-correspondence"
+            and comparison.get("original_sha256") == digest(sibling[source_path])
+            and comparison.get("vendored_sha256") == digest(preferred[target_path])
+            and comparison.get("expected_structural_sha256")
+            == comparison.get("target_structural_sha256")
+            and type(comparison.get("added_alias_count")) is int
+            and comparison["added_alias_count"] > 0
+            and comparison.get("generated_output_reproduction_verified") is False,
+            "SQLite syntax comparison belongs to different source inputs",
+        )
+        matches(
+            comparison["expected_structural_sha256"],
+            DIGEST,
+            "SQLite syntax comparison checksum missing",
+        )
+        matches(
+            comparison.get("verifier_source_sha256"),
+            DIGEST,
+            "SQLite syntax verifier source identity missing",
+        )
+        comparisons["linux/" + arch] = comparison
     return {
         "relationship": "sqlite-generated-identities-match-preferred-c-version",
         "upstream": "backend-sqlite-c",
@@ -154,10 +260,15 @@ def sqlite_relationship(upstreams, preferred):
         "original_inputs": facts(original, record["inspect_paths"]),
         "project_recipe_inputs": facts(preferred, paths),
         "generated_outputs": facts(preferred, outputs),
-        "sibling_libsqlite3_translation_mapping_verified": False,
-        "pending": [
-            "Bind sibling libsqlite3 translator and its generation inputs to both outputs"
-        ],
+        "sibling_libsqlite3_translation_mapping_verified": True,
+        "sibling_upstream": "backend-libsqlite3-project",
+        "sibling_commit": sibling_record["commit"],
+        "sibling_archive_sha256": sibling_record["archive"]["sha256"],
+        "sibling_recipe_inputs": facts(sibling, sibling_paths),
+        "vendoring_recipe_sha256": SQLITE_VENDOR_RECIPE_SHA256,
+        "declared_translator_tools": translator_tools,
+        "syntax_comparisons": comparisons,
+        "generated_output_reproduction_verified": False,
     }
 
 
@@ -294,7 +405,7 @@ def libc_relationship(upstreams, module_inputs, preferred):
     }
 
 
-def verify_relationships(upstreams, module_inputs):
+def verify_relationships(upstreams, module_inputs, *, vendoring_verifier=None):
     sqlite, sqlite_project = project(
         upstreams,
         module_inputs,
@@ -310,7 +421,7 @@ def verify_relationships(upstreams, module_inputs):
         "schema_version": 1,
         "associations": [
             sqlite_project,
-            sqlite_relationship(upstreams, sqlite),
+            sqlite_relationship(upstreams, sqlite, vendoring_verifier),
             libc_project,
             libc_relationship(upstreams, module_inputs, libc),
         ],

@@ -2,6 +2,7 @@
 
 import copy
 import unittest
+from unittest.mock import patch
 
 import backend_preferred_source_relationships as backend
 from release_artifacts import InvalidRelease
@@ -53,7 +54,42 @@ def fixture():
         + '"\n'
     ).encode()
     for arch in ("amd64", "arm64"):
-        sqlite["lib/sqlite_linux_" + arch + ".go"] = generated
+        sqlite["lib/sqlite_linux_" + arch + ".go"] = (
+            "//go:build linux && " + arch + "\n"
+        ).encode() + generated
+    sibling_files = {
+        "generator.go": b'versionTag = "3490100"; archivePath = "sqlite-amalgamation-" + versionTag + ".zip"; archive2Path = "sqlite-src-" + versionTag + ".zip"; "sqlite_issue173.patch"; "issue1.patch"',
+        "go.mod": b"module modernc.org/libsqlite3\nrequire (\n modernc.org/cc/v4 v4.25.2\n modernc.org/ccgo/v4 v4.25.2\n modernc.org/fileutil v1.3.0\n)\n",
+        "go.sum": b"".join(
+            (m + " " + v + " h1:" + "A" * 43 + "=\n").encode()
+            for m, v in (
+                ("modernc.org/cc/v4", "v4.25.2"),
+                ("modernc.org/ccgo/v4", "v4.25.2"),
+                ("modernc.org/fileutil", "v1.3.0"),
+            )
+        ),
+        "internal/sqlite_issue173.patch": b"original patch",
+        "internal/issue1.patch": b"original patch",
+        "ccgo_linux_amd64.go": b"//go:build linux && amd64\noriginal AMD64 syntax",
+        "ccgo_linux_arm64.go": b"//go:build linux && arm64\noriginal ARM64 syntax",
+    }
+    upstreams["backend-libsqlite3-project"] = {
+        "record": {
+            "id": "backend-libsqlite3-project",
+            "repository": "cznic/libsqlite3",
+            "commit": "8" * 40,
+            "archive": {"sha256": "sha256:" + "7" * 64},
+            "go_modules": {"modernc.org/sqlite": "v1.37.0"},
+            "relationship": {
+                "kind": "generator-project",
+                "name": "modernc.org/libsqlite3",
+                "version": "v1.9.0",
+                "module": "modernc.org/sqlite",
+            },
+            "inspect_paths": sorted(sibling_files),
+        },
+        "files": sibling_files,
+    }
     musl_pin = "d" * 40
     archive = "musl-" + musl_pin + ".tar.gz"
     libc = upstreams["backend-libc-project"]["files"]
@@ -143,29 +179,57 @@ def fixture():
     return upstreams, modules
 
 
+def comparison_fixture(original, vendored):
+    # This tests source/review joins; real syntax semantics have two Go regressions.
+    return {
+        "kind": "sqlite-vendoring-go-ast-correspondence",
+        "original_sha256": backend.digest(original),
+        "vendored_sha256": backend.digest(vendored),
+        "expected_structural_sha256": "sha256:" + "6" * 64,
+        "target_structural_sha256": "sha256:" + "6" * 64,
+        "added_alias_count": 14,
+        "generated_output_reproduction_verified": False,
+        "verifier_source_sha256": "sha256:" + "5" * 64,
+    }
+
+
 class BackendPreferredSources(unittest.TestCase):
+    def setUp(self):
+        # Tiny recipe bytes have their own reviewed hash; avoid copying upstream code.
+        fixture_pin = patch.object(
+            backend, "SQLITE_VENDOR_RECIPE_SHA256", backend.digest(b"original recipe")
+        )
+        fixture_pin.start()
+        self.addCleanup(fixture_pin.stop)
+
+    def verify(self, upstreams, modules, comparator=comparison_fixture):
+        return backend.verify_relationships(
+            upstreams, modules, vendoring_verifier=comparator
+        )
+
     def reject(self, mutate):
         upstreams, modules = fixture()
         mutate(upstreams, modules)
         with self.assertRaises(InvalidRelease):
-            backend.verify_relationships(upstreams, modules)
+            self.verify(upstreams, modules)
 
     def test_exact_project_origin_version_and_every_proxy_member(self):
         for path in (".", "a\nb.go", "a\tb.go", "a\x7fb.go", "a\x00b.go"):
             with self.subTest(invalid_path=path), self.assertRaises(InvalidRelease):
                 backend.checked_files({path: b"source"})
         upstreams, modules = fixture()
-        result = backend.verify_relationships(upstreams, modules)
+        result = self.verify(upstreams, modules)
         self.assertEqual(
             result,
-            backend.verify_relationships(
-                copy.deepcopy(upstreams), copy.deepcopy(modules)
-            ),
+            self.verify(copy.deepcopy(upstreams), copy.deepcopy(modules)),
         )
         self.assertFalse(result["corresponding_source_completeness_verified"])
         self.assertFalse(result["publication_authorized"])
-        self.assertFalse(
+        self.assertTrue(
             result["associations"][1]["sibling_libsqlite3_translation_mapping_verified"]
+        )
+        self.assertFalse(
+            result["associations"][1]["generated_output_reproduction_verified"]
         )
         for key in ("VCS", "URL", "Hash", "Ref"):
             with self.subTest(origin=key):
@@ -216,6 +280,54 @@ class BackendPreferredSources(unittest.TestCase):
             m["modernc.org/sqlite"]["files"][path] = raw
 
         self.reject(changed_output)
+        self.reject(
+            lambda u, m: u["backend-libsqlite3-project"]["files"].pop(
+                "ccgo_linux_arm64.go"
+            )
+        )
+        self.reject(
+            lambda u, m: u["backend-libsqlite3-project"]["files"].update(
+                {
+                    "go.mod": b"module modernc.org/libsqlite3\nrequire modernc.org/ccgo/v4 v4.26.0\n"
+                }
+            )
+        )
+
+        def changed_recipe(u, m):
+            u["backend-sqlite-project"]["files"][
+                "vendor_libsqlite3/main.go"
+            ] = b"changed recipe"
+            m["modernc.org/sqlite"]["files"][
+                "vendor_libsqlite3/main.go"
+            ] = b"changed recipe"
+
+        self.reject(changed_recipe)
+        self.reject(
+            lambda u, m: u["backend-libsqlite3-project"]["files"].update(
+                {
+                    "ccgo_linux_arm64.go": u["backend-libsqlite3-project"]["files"][
+                        "ccgo_linux_amd64.go"
+                    ]
+                }
+            )
+        )
+        upstreams, modules = fixture()
+        for field in (
+            "original_sha256",
+            "vendored_sha256",
+            "target_structural_sha256",
+            "verifier_source_sha256",
+        ):
+
+            def substituted(original, target):
+                return {**comparison_fixture(original, target), field: "substituted"}
+
+            with self.subTest(comparison_field=field), self.assertRaises(
+                InvalidRelease
+            ):
+                self.verify(upstreams, modules, substituted)
+        with self.assertRaisesRegex(InvalidRelease, "requires its syntax verifier"):
+            backend.verify_relationships(upstreams, modules)
 
     def test_active_libc_pin_tool_locks_originals_and_output_coverage(self):
         for path in (

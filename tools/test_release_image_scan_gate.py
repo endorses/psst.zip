@@ -713,7 +713,15 @@ class ImageScanGateChecks(unittest.TestCase):
             return_value={"associations": [], "pending": ["fixture translation"]},
         ) as preferred:
             result = verify()
-            git_read.assert_called_once_with(self.root, "archive", binding.commit)
+            self.assertEqual(
+                git_read.call_args_list,
+                [
+                    unittest.mock.call(self.root, "archive", binding.commit),
+                    unittest.mock.call(
+                        self.root, "show", binding.commit + ":tools/sqlite_vendoring.go"
+                    ),
+                ],
+            )
             offering.assert_called_once_with(
                 self.root,
                 binding.repository,
@@ -722,7 +730,7 @@ class ImageScanGateChecks(unittest.TestCase):
                 upstream_collection,
                 component="backend",
             )
-            self.assertEqual(preferred.call_count, 2)
+            self.assertEqual(preferred.call_count, 1)
             self.assertEqual(set(result["images"]), {"backend-amd64", "backend-arm64"})
             self.assertTrue(result["backend_source_inputs_verified"])
             self.assertFalse(result["corresponding_source_completeness_verified"])
@@ -741,7 +749,7 @@ class ImageScanGateChecks(unittest.TestCase):
                 verify()
             upstream["asset"]["digest"] = sha256(upstream_raw)
 
-            def mutate(*args):
+            def mutate(*args, **kwargs):
                 (upstream_collection / upstream_name).write_bytes(
                     b"changed after preferred replay"
                 )

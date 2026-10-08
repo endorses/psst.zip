@@ -1713,7 +1713,7 @@ authenticated final-image checks for the current commit on both architectures.
       full-commit canonical GitLab route.
 - [x] Collect and independently replay the twenty-original offering from the
       committed catalog, reusing existing original archives.
-- [ ] Encode and independently replay the sibling vendoring transformation
+- [x] Encode and independently replay the sibling vendoring transformation
       against both generated Linux outputs; keep byte regeneration separate.
 - [ ] Finish the complete corresponding-source producer and authenticate the
       final current candidate inputs on both native architectures.
@@ -1737,7 +1737,8 @@ seconds. The per-original limit is now 80 MiB; aggregate 256 MiB and expanded
 512 MiB limits remain unchanged. Both source outputs match the vendoring recipe
 under comment/whitespace token normalization, package rename, removal of
 `SQLITE_TRANSIENT` and 797 added aliases per platform. This research receipt
-identifies the inputs; the production transformation verifier remains pending.
+identified the inputs; the standard-library AST verifier now checks the same
+transformation, with semantic syntax and platform constraints preserved.
 The sibling's translator pins are CC/CCGo v4.25.2 and fileutil v1.3.0, distinct
 from libc's retained v4.26.0/v1.3.1 tools. Their declared recipes/locks are retained;
 independent regeneration would require its old tool environment and is not
@@ -1753,6 +1754,35 @@ bound and has SHA256
 Private collection/replay receipts are retained; full source-gate approval,
 current native final-image checks and publication remain pending.
 
+The SQLite verifier is bound to the selected application's committed checker
+source and the reviewed original vendoring recipe SHA256
+`619a55071e22cac99a8583858379a2c52f6504c38bec049ccb6f6f138ed8d223`.
+It applies the package/constant/type-alias changes and compares ordered Go AST
+structure. Type aliases, variadic parameters/calls, literal bytes, imports,
+declaration order and significant semicolons remain distinguishable. Exactly
+matching reviewed Linux build constraints are bound into the comparison;
+unsupported executable comment directives refuse verification. Ordinary comments
+and formatting are ignored. Inputs are bounded to 40 MiB, compilation to 60
+seconds and each comparison to 45 seconds, with no package downloads. One checker
+is compiled per backend review; identical independently H1-replayed module ZIP
+and origin facts reuse the preferred source result across architectures. Private
+checker/input directories are removed after the review.
+
+Actual replay used the twenty-original `06b1425` offering and the retained
+`4ae5954` dependency asset, together with the working checker source (SHA256
+`8fca230e66f00994e756e7b15ad6f83b1d5394239e1fd473b49cb68b788a393b`).
+Five module H1 checks took 1.6 seconds, the offering reader 12.6 seconds and
+preferred association including checker compilation and both real platform
+comparisons 4.8 seconds. Each platform requires 797 added aliases and has equal
+expected/target AST hashes. The private receipt records exact raw input and
+structural hashes. The two Go regressions passed in 0.004 seconds (warm-cache
+command wall time 0.044 seconds); CI runs these tiny fixtures explicitly. The
+Python protocol fixture checks reuse, source/receipt substitutions, timeouts and
+cleanup without another compilation. Neither upstream C translation nor the
+original GC-based vendoring tool was executed; native final-image authentication
+for the current candidate and the complete corresponding-source gate stay
+pending.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -1763,11 +1793,11 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 405 tests in 25.7 seconds
+combined local release/notice regression suite passed 406 tests in 27.1 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 1.02 seconds. The three new backend source
+and cleanup; the slowest case took 1.17 seconds. The three new backend source
 regressions took 0.020 seconds; they reject substituted project origins/members,
 wrong C source identities, changed generator pins and missing platform/tool inputs.
 The six focused browser-source
