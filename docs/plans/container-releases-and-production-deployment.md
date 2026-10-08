@@ -3319,9 +3319,51 @@ archives were not downloaded for this review.
       gates passed. No publication was attempted. Preserve the v0.1.4 tag.
 - [ ] Obtain fresh attempt-bound human distribution and publication reviews before
       publication. Earlier comments and approvals do not authorize different run
-      subjects or attempts. Do not automatically start another full preparation
-      run after this approval mismatch.
+      subjects or attempts. A retry must regenerate the attempt-bound artifacts;
+      rerunning only the failed review job cannot reuse the earlier attempt's inputs.
 - [ ] Complete actual hosted attestor initialization and independently verify
       the immutable public release, paired repository-linked packages and fresh
       anonymous delivery. Remove first-package initialization only after success;
       production migration and independent off-host recovery remain deferred.
+
+### v0.1.4 fresh attempt
+
+- [x] Merge the verified attempt-1 checkpoint through protected PR #24. Exact
+      head `be2ad95c66ccb55924c29643c7d2a0120c93f45e` passed all five required
+      contexts and GitGuardian. Merge `877031b5e74475dd098d7b664925212cbdbddbca`
+      has the identical tested tree; main CI `37838165470` passed. The two store
+      research drafts remain uncommitted.
+- [x] Continue publication with run `37834311383`, attempt 2, preserving the
+      v0.1.4 tag and source `0321a422d597420acfd5c39c35c5f650b03b7a62`.
+      Source validation, security, backend and web CI passed; mobile jobs were
+      skipped. Backend took 6m48s and web 7m58s. Native preparation passed in
+      10m43s on AMD64 and 10m25s on ARM64.
+- [x] Complete signed source/scan/smoke/notice assembly in job `113526679916`.
+      All six passed reports agree on binding
+      `sha256:add8ff393dfb38407a4d89c76cdaf92ad0424b65004c3c767c04df5538e8ac03`.
+      Four-image/six-archive source coverage is complete; source-report SHA256 is
+      `c416b83645e041a3080b2a846c5d28832fe7f268bed654ec6197d3f1b784cf35`.
+      Assembly took 6m44s versus 4m18s on attempt 1. Artifact downloads took
+      146s versus 25s, accounting for 121s of the 146s increase. Retained-tree
+      assembly took 64s in both attempts; evidence authentication took 120s
+      versus 115s and independent signed-source verification 28s in both.
+      These observations use completed job timestamps, without extra tests,
+      benchmarks or timeout increases.
+- [x] Authenticate both completed native recovery experiments and their signed
+      aggregate. AMD64 job `113529516791` passed in 7m01s; ARM64 job
+      `113529516644` passed in 7m27s. Aggregate job `113532688781` authenticated,
+      signed and independently verified both results in 39s. Recovery-report SHA256
+      is `4a039b8dc3311d65a5acce3f1e6ab8677ac89b19aedcd46552a2cd1dd16a0797`.
+      Disposable recovery is verified; independent off-host provider, public
+      provenance and browser/mobile-flow checks remain explicitly false.
+- [x] Inspect `candidate-distribution-presentation-37834311383-2` against the
+      actual source and recovery reports: exact repository/version/source/run/attempt,
+      binding, source-report hash, all fourteen subjects, complete coverage and
+      committed reviewer policy match. Automated preparation reached the review
+      gate in 27m14s. Earlier comments do not apply to this new attempt.
+- [ ] Obtain the configured attempt-2 human distribution and publication reviews.
+      Publication remains unauthorized until both actual GitHub gates complete.
+- [ ] Independently verify actual hosted publication, public linked packages,
+      immutable release and fresh anonymous delivery before removing first-package
+      initialization. Production migration and independent off-host recovery remain
+      deferred.
