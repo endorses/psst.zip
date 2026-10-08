@@ -172,6 +172,15 @@ still needs its exact signed gates and the configured human approvals.
       These diagnostics identify a future failure boundary; they do not establish
       successful publication or authorize retrying old mutation state.
 
+      The diagnostic `v0.1.2` tag points to
+      `57c64eafba191a0621f9ca452c79557507c7389b`. Run `37799619020`, attempt 1,
+      passed exact server CI, both native image preparations, signed source
+      assembly and authenticated recovery on both architectures. Its fresh
+      packet is `candidate-distribution-presentation-37799619020-1`; the configured
+      environment is waiting for the operator's new distribution review.
+      Publication and anonymous retrieval remain pending. Preserve all existing
+      version tags; this candidate does not update the VPS.
+
 - [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
       both multi-platform image indexes, all four native children, source assets
       and fresh anonymous retrieval. Follow the publication guide's protected

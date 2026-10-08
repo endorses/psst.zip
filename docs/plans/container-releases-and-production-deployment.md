@@ -3096,12 +3096,41 @@ exception prevents identifying the exact preparation boundary from its log.
       and push only that new tag. Run `37799619020`, attempt 1, is in progress.
       Preserve `v0.0.0`, `v0.1.0` and `v0.1.1`; the new tag neither publishes a
       release nor updates the VPS.
-- [ ] Complete this attempt's exact server CI, native preparation, authenticated
-      source/scan/smoke/notice reports and native recovery gate.
-- [ ] Present its fresh review packet, obtain its configured human approvals and
-      observe the publisher's real preparation stages. Earlier approvals cannot
+- [x] Complete this attempt's exact server CI, native image preparation and
+      authenticated source/scan/smoke/notice reports. Assembly job `113393232610`
+      passed signing and independent source verification. All six reports passed
+      with binding
+      `sha256:963debacc8edc86f8345e0a3e1b7c02040bf09e23c9b497fff14903a9c95a501`.
+      The source report covers all four images and six source archives; its
+      SHA256 is
+      `c80002e1b6d38623721996240f9c8d87f1116f5318e5cd78d582e1e9398329b9`.
+- [x] Authenticate both native recovery measurements and their signed aggregate
+      for this exact source binding and attempt. ARM64 job `113395767346`, AMD64
+      job `113395767342` and aggregate job `113402438762` passed. The gate binds
+      manifest
+      `sha256:4f37d56139509638f401c1bdad033ede20a370347c28a1e82489dd4c1065747f`
+      and deployment bundle
+      `sha256:8066149da8c14a7be192a21ae24c62c5b3156e3dc1e97ba1f8572e32b3449a2f`.
+      Its independent off-host provider, public provenance and browser/mobile
+      flow checks remain explicitly false.
+- [x] Present and inspect the fresh packet
+      `candidate-distribution-presentation-37799619020-1`, matching the source,
+      binding, report hash and exact attempt above. GitHub is holding review job
+      `113402732572` for the configured `container-release` reviewer `endorses`.
+- [ ] Obtain the configured human approvals and observe the publisher's real
+      preparation stages. Earlier approvals cannot
       authorize these changed source subjects. The original failure's exact cause
       remains unresolved.
 - [ ] Publish and independently verify the immutable public release, paired
       packages and anonymous delivery; remove first-package initialization only
       after success. Production migration and off-host recovery remain deferred.
+
+This tagged attempt's server CI took 1m25s for security, 6m08s for backend and
+7m42s for web. Native image preparation took 9m37s on AMD64 and 8m32s on ARM64;
+signed assembly took 5m17s. Recovery took 7m45s on ARM64 and 13m59s on AMD64;
+the latter spent approximately six minutes downloading retained inputs before
+running the recovery experiment. These are observed release-gate durations,
+not additional benchmark runs. All completed jobs have zero GitHub annotations,
+and separate Android/iOS builds were skipped. No tests or timeout increases were
+added. Only small review reports were downloaded locally; image and source
+archives were not downloaded for this review.
