@@ -115,10 +115,15 @@ live prerequisites are incomplete.
       Tagged run `37782470022`, attempt 1, at the same reviewed source completed
       the authenticated source/scan/smoke/notice reports and both tagged native
       recovery measurements. Their signed aggregate passed independent
-      verification. It is now waiting for the separate human distribution
-      review, with exact subjects and the required approval comment in artifact
-      `candidate-distribution-presentation-37782470022-1`. All completed jobs have
-      zero annotations. Public retrieval and production recovery remain pending.
+      verification. The operator's separate human distribution review was
+      authenticated, attested and independently verified. Its exact subjects and
+      approval comment remain in artifact
+      `candidate-distribution-presentation-37782470022-1`. All pre-publication
+      gate jobs have zero annotations. The publisher then failed its hosted
+      Node24 lookup preflight before reaching any release or registry write.
+      Preserve the existing tag; repair and verify that preflight before a new
+      immutable patch-version candidate. Public retrieval and production
+      recovery remain pending.
 
 - [ ] Configure reviewed branch/tag protection, immutable-release policy and
       narrowly scoped publication credentials. Review the

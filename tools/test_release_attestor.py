@@ -7,6 +7,7 @@ import copy
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -512,6 +513,17 @@ class AttestorFixtures(unittest.TestCase):
 
 
 class ActionSubprocessFixtures(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+        and sys.platform == "linux",
+        "Requires the genuine GitHub-hosted Linux runner runtime",
+    )
+    def test_hosted_runner_node24_runtime_is_available_before_publication(self):
+        # One production lookup and bounded version/architecture probe. No
+        # signer execution, remote access, builds or published artifacts.
+        signing.hosted_node()
+
     def test_official_source_download_requires_pinned_hash_and_success_status(self):
         name = "action.yml"
         raw = b"bounded public fixture source"
@@ -540,7 +552,9 @@ class ActionSubprocessFixtures(unittest.TestCase):
             result = SimpleNamespace(
                 returncode=0, stdout=b'["v24.9.0","linux","x64"]\n'
             )
-            with patch.object(Path, "glob", return_value=[node]), patch.object(
+            with patch.object(
+                signing, "runner_node_from_ancestry", return_value=None
+            ), patch.object(Path, "glob", return_value=[node]), patch.object(
                 signing.platform, "machine", return_value="x86_64"
             ), patch.object(
                 signing.subprocess, "run", return_value=result
@@ -558,8 +572,74 @@ class ActionSubprocessFixtures(unittest.TestCase):
                     result.stdout = facts
                     with self.assertRaises(InvalidRelease):
                         signing.hosted_node()
-            with patch.object(Path, "glob", return_value=[]):
+            with patch.object(
+                signing, "runner_node_from_ancestry", return_value=None
+            ), patch.object(Path, "glob", return_value=[]):
                 with self.assertRaisesRegex(InvalidRelease, "unavailable"):
+                    signing.hosted_node()
+
+    def test_runner_ancestry_resolves_official_relative_runtime_and_refuses_bad_roots(
+        self,
+    ):
+        with tempfile.TemporaryDirectory(
+            prefix="psst-worker-runtime-test-"
+        ) as temporary:
+            root = Path(temporary) / "hosted-installation" / "cached"
+            worker = root / "bin/Runner.Worker"
+            worker.parent.mkdir(parents=True)
+            worker.write_bytes(b"worker fixture not executed")
+            node = root / "externals/node24/bin/node"
+            node.parent.mkdir(parents=True)
+            node.write_bytes(b"runtime fixture not executed")
+            node.chmod(0o700)
+            status = {11: b"PPid:\t12\n", 12: b"PPid:\t0\n"}
+            executables = {11: "/usr/bin/bash", 12: str(worker)}
+            original_open = Path.open
+
+            def opened(path, *args, **kwargs):
+                if path.parts[:2] == ("/", "proc") and path.name == "status":
+                    return io.BytesIO(status[int(path.parent.name)])
+                return original_open(path, *args, **kwargs)
+
+            with patch.object(signing.os, "getppid", return_value=11), patch.object(
+                Path, "open", opened
+            ), patch.object(
+                signing.os,
+                "readlink",
+                side_effect=lambda path: executables[int(path.parent.name)],
+            ), patch.object(
+                Path, "glob", return_value=[]
+            ), patch.object(
+                signing.platform, "machine", return_value="x86_64"
+            ), patch.object(
+                signing.subprocess,
+                "run",
+                return_value=SimpleNamespace(
+                    returncode=0, stdout=b'["v24.18.1","linux","x64"]'
+                ),
+            ) as execution:
+                self.assertEqual(signing.hosted_node(), (node, "v24.18.1"))
+                self.assertEqual(execution.call_args.args[0][0], str(node))
+                for label, parents, paths in (
+                    ("malformed", {11: b"PPid: nope\n"}, executables),
+                    ("loops", {11: b"PPid: 12\n", 12: b"PPid: 11\n"}, executables),
+                    ("ambiguous", status, {11: str(worker), 12: str(worker)}),
+                    (
+                        "malformed",
+                        status,
+                        {11: "/usr/bin/bash", 12: "/tmp/Runner.Worker"},
+                    ),
+                ):
+                    with self.subTest(label=label):
+                        status_before, paths_before = status, executables
+                        status, executables = parents, paths
+                        with self.assertRaisesRegex(InvalidRelease, label):
+                            signing.hosted_node()
+                        status, executables = status_before, paths_before
+                worker.chmod(0o777)
+                with self.assertRaisesRegex(
+                    InvalidRelease, "unsafe ownership or permissions"
+                ):
                     signing.hosted_node()
 
     def test_action_commands_and_secret_diagnostics_are_withheld_and_failures_fail(
