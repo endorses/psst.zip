@@ -35,7 +35,13 @@ Version discovery is separate from successful build validation. GitHub's preview
       Ubuntu 24.04 mapping behind `ubuntu-latest`.
 - [x] Update all 16 Linux workflow runner labels, preserving native architectures
       and existing job limits. Verify actionlint using documented hosted labels.
-- [ ] Verify actual hosted execution with the Ubuntu 26.04 Python 3.14 runtime.
+- [x] Verify actual hosted Linux execution with the Ubuntu 26.04 Python 3.14
+      runtime. Exact-head run `37744385013` passed repository security, backend,
+      web and Android/shared with no check annotations. Security's job log records
+      Ubuntu 26.04.1 image `20260927.149.1`, whose pinned software manifest lists
+      default Python 3.14.4; all 371 release regressions passed in 34.855s.
+      Native iOS also passed all 176 XCTest cases with no annotations; the
+      Arm64 release job remains unrun.
 - [x] Replace Ubuntu's prerelease Skopeo package in the publishing job with
       the upstream stable 1.24.1 native build. Verify its pinned source, version,
       required containers configuration and digest-preserving OCI copy locally.

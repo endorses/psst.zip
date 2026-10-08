@@ -657,6 +657,15 @@ from the exact reviewed images in that held run. The workflow's publishing token
 is the built-in `GITHUB_TOKEN`, separate from the inspection credential. No AWS
 CLI or S3 settings are required.
 
+On 2026-10-08 the operator created the inspection token with the repository and
+read-only permissions above, selecting expiration on 2027-01-06. A separate API
+read confirmed `PSST_IMMUTABLE_INSPECTION_TOKEN` is present in `container-release`.
+This confirms secret setup metadata, not its value or authenticated API access;
+the protected publishing job must still verify actual immutable-release policy.
+Publication enablement and first-package initialization remain unset. The
+operator deferred VPS off-host backup setup; it remains a separate migration
+prerequisite and does not prevent candidate preparation or publication.
+
 ### First GHCR package creation
 
 GitHub creates a container package when an image is first published, with private
