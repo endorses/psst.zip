@@ -2317,8 +2317,15 @@ justify them.
       oversized inbox recovery 33.229 seconds. These different-run measurements
       do not demonstrate an inbox timing improvement over its earlier 27.282
       seconds. Keep that limitation explicit instead of claiming faster tests.
-- [ ] Verify and measure the final cached nonzero frame and original-width inbox
-      fixtures with real Kotlin/Apple boundaries in the next hosted native run.
+- [x] Verify and measure the final cached nonzero frame and original-width inbox
+      fixtures with real Kotlin/Apple boundaries. Exact-head run `37728045919`
+      at `14dc7c2` passed all 176 native cases with zero failures in 105.210
+      seconds. Streaming took 41.222 seconds and oversized inbox recovery
+      32.181 seconds; retain the different-run comparison limitation. The iOS
+      job took 13m22s, including an 8m50s build, six-second simulator readiness
+      and 2m29s XCTest step. Backend took 6m27s, web 8m02s, Android 2m39s and
+      security 1m33s; its release/Compose regressions took 42 seconds. All five
+      jobs executed and passed, rather than being selected out.
 - [x] Diagnose terminal run `37723307243` before superseding it: backend, web,
       Android and security passed; iOS exhausted the job budget after its build
       succeeded. Its completed log contains no XCTest case or suite start, so
@@ -2353,9 +2360,24 @@ justify them.
       removed. Both workflows passed actionlint 1.7.12, exact five-job/full-release
       wiring checks, shell parsing and embedded Python syntax checks. No release
       evidence-parser relaxation or additional reusable job was introduced.
-- [ ] Verify the changed workflow on GitHub before claiming its routine time
-      saving or complete native execution. Application skips mean unaffected
-      source was selected out, not that its tests executed.
+- [x] Verify the changed workflow on GitHub before claiming its routine time
+      saving or complete native execution. Exact-head run `37728045919` executed
+      and passed all five jobs for workflow/native changes. Documentation-only
+      run `37729387662` at `0d6a5b7` also completed successfully: security took
+      1m25s, while web/backend/Android/iOS jobs took 5/6/9/11 seconds. Step
+      metadata confirms all application toolchain setup, compilation and tests
+      were selected out; security checks ran unconditionally. Application skips
+      mean unaffected source was selected out, not that its tests executed. The
+      separate planned release run explicitly requests full validation.
+
+PR #1 merged the fully passing `14dc7c2` into main as
+`c2576f8132c5b790e2672543893b52ace3001272` on 2026-10-08; an independent diff
+confirmed identical file contents. Planned main-only candidate run
+[`37729240625`](https://github.com/endorses/psst.zip/actions/runs/37729240625)
+uses that exact merge commit and planned version `v0.1.0`. Its current native
+image/source/recovery checks remain pending; this dispatch creates no release
+tag and cannot authorize publication. Provider credentials, tagged review and
+the first published release/VPS migration remain separate incomplete tasks.
 
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time
