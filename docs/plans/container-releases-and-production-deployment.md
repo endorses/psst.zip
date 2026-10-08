@@ -756,7 +756,8 @@ boundaries. Adding this core does not complete the publishing tasks above.
 - [ ] Integrate actual check/report generation and signing into the reviewed
       release workflow, then exercise the verifier against its authenticated
       reports. Source/legal review approval policy and live publication remain
-      pending; the candidate workflow still has no signing/publishing permission.
+      pending. Tagged runs now have narrowly scoped attestation permissions;
+      package/release publishing and production access remain unavailable.
 
 The verifier follows the documented [GitHub CLI attestation policy
 flags](https://cli.github.com/manual/gh_attestation_verify). Its isolated process
@@ -821,8 +822,9 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       and five served-offer/measurement regressions passed.
 - [ ] Authenticate both native matrix measurement records and aggregate the full
       release smoke/notices evidence against the exact OCI child descriptors.
-      The candidate workflow records measurements without signing or publishing;
-      a missing runtime pack cannot satisfy the final publication gate.
+      Tagged native measurements are now signed; actual two-platform hosted
+      aggregation remains unverified. A missing runtime pack cannot satisfy
+      the final publication gate.
 
 ### Completed-check report producers
 
@@ -857,9 +859,9 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       distribution producer into the final trusted workflow after complete source
       production. Present concrete final artifacts before approval; attest both
       the gate and retained review evidence. Verify a real approval and rejection.
-- [ ] Wire the producers and signed native records into the reviewed workflow
-      and validate actual two-platform aggregation. The current candidate-only
-      workflow emits unsigned smoke measurements.
+- [ ] Validate the wired producers and signed native records against actual
+      two-platform hosted aggregation. Planned main dispatches still emit
+      unsigned measurements and cannot satisfy a tagged publication gate.
 - [ ] Implement actual source/final scanner, corresponding-source completeness,
       authorized distribution review, upgrade/recovery and readback/provenance
       producers. Source-asset hash measurements explicitly leave completeness
@@ -1821,6 +1823,12 @@ remain separate gates. The selected committed policy, all original source assets
 measurements, runtime pack metadata and final image archives are rechecked before
 returning the report.
 
+- [x] Wire source-CI, final-image-smoke and runtime-notices reports into the same
+      tagged assembly and authenticated verification path. Reuse the prepared
+      binding and measurement authenticator without another source archive pass.
+- [ ] Verify these three gates against actual two-platform hosted evidence for
+      the selected tag attempt; local command fixtures do not establish this.
+
 The four new small regression methods cover substituted or missing runtime/source
 evidence, incomplete categories, changed final notice bytes and OCI removals or
 links. Together they took approximately 0.05 seconds. They use local bytes and
@@ -1862,8 +1870,24 @@ Two tiny command fixtures cover exact paths/output binding, stale or partial
 outputs and substituted report evidence. A focused authentication fixture checks
 attempt substitution and safe cache reuse. These extend existing substantive
 replay tests instead of repeating large source fixtures. Workflow YAML parsed,
-all 22 shell steps passed `bash -n` and five inline Python blocks parsed; actual
+all 22 shell steps passed `bash -n` and three inline Python blocks parsed; actual
 hosted signing and execution remain pending.
+
+The optional `--checks-output` directory retains exactly the source-CI,
+final-image-smoke and runtime-notices reports alongside the separate two-file
+source output. It shares the existing binding and verifier, checks current CI
+before expensive source replay, and reuses authenticated small native records.
+Neither generation nor post-attestation verification adds an image build or
+source archive pass. Assembly has explicit Actions read permission for the CI
+API; all five reports are attested together and independently verified before
+artifact retention. Planned main dispatches cannot execute this tagged path.
+
+The five command fixtures passed in 0.022 seconds, including three new paired
+output cases. They catch stale/substituted reports, output mutation, partial or
+overlapping directories and failed CI that must leave complete outputs absent.
+The existing eighteen gate-producer fixtures passed in 1.93 seconds and ten
+authentication fixtures in 0.123 seconds. These targeted checks followed the
+26.7-second full-suite baseline below; another broad suite was unnecessary.
 
 ## Verification and completion criteria
 

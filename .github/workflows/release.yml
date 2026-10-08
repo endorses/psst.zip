@@ -550,6 +550,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      actions: read
       id-token: write
       attestations: write
     env:
@@ -635,8 +636,9 @@ jobs:
             --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
             --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
             --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
-            --output "$RUNNER_TEMP/candidate-source-review"
-      - name: Attest the completed source report and canonical coverage evidence
+            --output "$RUNNER_TEMP/candidate-source-review" \
+            --checks-output "$RUNNER_TEMP/candidate-check-reports"
+      - name: Attest completed source and native check reports
         id: source-attestation
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
@@ -644,6 +646,9 @@ jobs:
           subject-path: |
             ${{ runner.temp }}/candidate-source-review/corresponding-source.json
             ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+            ${{ runner.temp }}/candidate-check-reports/source-ci.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
+            ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
           push-to-registry: false
           create-storage-record: false
           show-summary: false
@@ -660,8 +665,9 @@ jobs:
             --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
             --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
             --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
-            --output "$RUNNER_TEMP/candidate-source-review" --verify-only
-          printf '%s\n' 'Corresponding-source report verified for this exact version-tag run and attempt; publication still requires separate gates.' >> "$GITHUB_STEP_SUMMARY"
+            --output "$RUNNER_TEMP/candidate-source-review" \
+            --checks-output "$RUNNER_TEMP/candidate-check-reports" --verify-only
+          printf '%s\n' 'Corresponding source, all five source CI jobs, native smoke and runtime notices verified for this exact version-tag run and attempt; publication still requires separate gates.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
@@ -669,6 +675,9 @@ jobs:
           path: |
             ${{ runner.temp }}/candidate-source-review/corresponding-source.json
             ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+            ${{ runner.temp }}/candidate-check-reports/source-ci.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
+            ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
             ${{ steps.source-attestation.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 1
@@ -682,7 +691,7 @@ jobs:
       - name: Remove only owned assembly input and output trees
         if: always()
         run: |
-          rm -rf -- "$RUNNER_TEMP/candidate-assembly" "$RUNNER_TEMP/candidate-source-review"
+          rm -rf -- "$RUNNER_TEMP/candidate-assembly" "$RUNNER_TEMP/candidate-source-review" "$RUNNER_TEMP/candidate-check-reports"
 
   recovery-candidate:
     name: Native candidate recovery (${{ matrix.arch }})

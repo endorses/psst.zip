@@ -33,6 +33,7 @@ from generate_release_gate_reports import (
     checked_binding,
     runtime_inputs,
     source_asset_measurements,
+    source_ci_report,
     timestamp,
 )
 import verify_application_dependency_inputs as dependency_inputs
@@ -44,6 +45,7 @@ from publish_container_release import (
     sha256,
     source_digest,
     source_review_details,
+    verify_gates,
 )
 from release_artifacts import (
     COMMIT,
@@ -975,6 +977,7 @@ PREPARED_RECORD_FIELDS = {
     "measurement_authentication_required",
 }
 MAX_COMMAND_OUTPUT = 16 * 1024**2
+CHECK_GATES = frozenset({"source-ci", "final-image-smoke", "runtime-notices"})
 
 
 def command_inputs(
@@ -1241,6 +1244,64 @@ def verify_command_output(
     return report, evidence
 
 
+def verify_checks_output(
+    output: Path,
+    binding: Binding,
+    authenticator: GhEvidenceVerifier,
+    *,
+    run_id: int,
+    attempt: int,
+) -> dict[Path, bytes]:
+    """Verify the exact separate signed check reports without repeating replays."""
+    browser_inventory.root_directory(output)
+    reports = {gate: output / (gate + ".json") for gate in CHECK_GATES}
+    require(
+        {path.name for path in output.iterdir()}
+        == {path.name for path in reports.values()},
+        "Check verification requires exactly three report files",
+    )
+    snapshots = {}
+    for gate, path in reports.items():
+        require(
+            path.stat().st_size <= MAX_COMMAND_OUTPUT, "Check report exceeds bounds"
+        )
+        raw = read_bounded_file(path)
+        record = fields(
+            read_json(raw),
+            {"schema_version", "gate", "binding_digest", "passed", "details"},
+            "canonical completed check report",
+        )
+        require(
+            type(record["schema_version"]) is int
+            and record["schema_version"] == 1
+            and record["gate"] == gate
+            and record["binding_digest"] == binding.digest
+            and record["passed"] is True
+            and isinstance(record["details"], dict)
+            and raw == json_bytes(record),
+            "Check report is noncanonical, incomplete or bound to another release",
+        )
+        if gate == "source-ci":
+            require(
+                type(record["details"].get("run_id")) is int
+                and record["details"]["run_id"] == run_id
+                and type(record["details"].get("run_attempt")) is int
+                and record["details"]["run_attempt"] == attempt,
+                "Source CI report belongs to another run or attempt",
+            )
+        snapshots[path] = raw
+    require(
+        sum(map(len, snapshots.values())) <= MAX_COMMAND_OUTPUT,
+        "Check reports exceed bounds",
+    )
+    digests = verify_gates(reports, CHECK_GATES, binding, authenticator)
+    require(
+        all(digests[gate] == sha256(snapshots[path]) for gate, path in reports.items()),
+        "Check reports changed during authentication",
+    )
+    return snapshots
+
+
 def run_command(args) -> tuple[dict, dict]:
     """Produce new local gate/evidence files; never sign, publish or rebuild."""
     repository_name(args.repository)
@@ -1255,12 +1316,30 @@ def run_command(args) -> tuple[dict, dict]:
     )
     browser_inventory.root_directory(args.output.parent)
     verify_only = getattr(args, "verify_only", False)
+    checks_output = getattr(args, "checks_output", None)
     require(type(verify_only) is bool, "Invalid source command mode")
+    if checks_output is not None:
+        browser_inventory.root_directory(checks_output.parent)
+        source_directory, check_directory = (
+            args.output.resolve(),
+            checks_output.resolve(),
+        )
+        require(
+            source_directory != check_directory
+            and source_directory not in check_directory.parents
+            and check_directory not in source_directory.parents,
+            "Source and check outputs require separate nonoverlapping directories",
+        )
     if not verify_only:
         require(
             not args.output.exists() and not args.output.is_symlink(),
             "Source command output must be a new directory",
         )
+        if checks_output is not None:
+            require(
+                not checks_output.exists() and not checks_output.is_symlink(),
+                "Check command output must be a new directory",
+            )
     binding, sources, record_raw, expected_names, snapshots = command_inputs(
         root=args.root,
         prepared=args.prepared,
@@ -1277,8 +1356,42 @@ def run_command(args) -> tuple[dict, dict]:
         run_attempt=args.run_attempt,
     )
     if verify_only:
+        output_snapshots = {
+            args.output / name: read_bounded_file(args.output / name)
+            for name in (
+                "corresponding-source.json",
+                "corresponding-source-evidence.json",
+            )
+        }
+        if checks_output is not None:
+            output_snapshots.update(
+                verify_checks_output(
+                    checks_output,
+                    binding,
+                    authenticator,
+                    run_id=args.run_id,
+                    attempt=args.run_attempt,
+                )
+            )
         report, evidence = verify_command_output(
             args.output, binding, authenticator, sources
+        )
+        require(
+            all(
+                read_bounded_file(path) == raw for path, raw in output_snapshots.items()
+            )
+            and {path.name for path in args.output.iterdir()}
+            == {path.name for path in output_snapshots if path.parent == args.output}
+            and (
+                checks_output is None
+                or {path.name for path in checks_output.iterdir()}
+                == {
+                    path.name
+                    for path in output_snapshots
+                    if path.parent == checks_output
+                }
+            ),
+            "Source/check outputs changed during authentication",
         )
         require(
             read_bounded_file(args.prepared / "release-inputs.json") == record_raw
@@ -1289,13 +1402,24 @@ def run_command(args) -> tuple[dict, dict]:
             "Prepared release changed during source authentication",
         )
         return report, evidence
+    native_measurements = {
+        p: t / "native/native-measurement.json" for p, t in trees.items()
+    }
+    if checks_output is not None:
+        ci_report = source_ci_report(
+            binding,
+            run_id=args.run_id,
+            attempt=args.run_attempt,
+            token=os.environ.get("GH_TOKEN"),
+        )
+        snapshots.update(
+            {path: source_digest(path) for path in native_measurements.values()}
+        )
     report, evidence = corresponding_source_report(
         binding,
         root=args.root,
         source_assets=sources,
-        native_measurements={
-            p: t / "native/native-measurement.json" for p, t in trees.items()
-        },
+        native_measurements=native_measurements,
         runtime_packs={p: t / "native/pack" for p, t in trees.items()},
         runtime_source_records={
             p: t / "native/source-completeness-verification.json"
@@ -1327,6 +1451,19 @@ def run_command(args) -> tuple[dict, dict]:
         },
         authenticator=authenticator,
     )
+    checks_payloads = {}
+    if checks_output is not None:
+        checks = aggregate_native_reports(binding, native_measurements, authenticator)
+        checks["source-ci"] = ci_report
+        fields(checks, set(CHECK_GATES), "complete paired release checks")
+        checks_payloads = {
+            gate + ".json": json_bytes(checks[gate]) for gate in CHECK_GATES
+        }
+        require(
+            all(0 < len(raw) <= MAX_COMMAND_OUTPUT for raw in checks_payloads.values())
+            and sum(map(len, checks_payloads.values())) <= MAX_COMMAND_OUTPUT,
+            "Check command evidence exceeds bounds",
+        )
     require(
         read_bounded_file(args.prepared / "release-inputs.json") == record_raw
         and {path.name for path in args.prepared.iterdir()} == expected_names,
@@ -1348,9 +1485,14 @@ def run_command(args) -> tuple[dict, dict]:
     # Create only after all substantive checks/rechecks finish. Existing or
     # partially written output is never reused or overwritten on a retry.
     browser_inventory.root_directory(args.output.parent)
+    if checks_output is not None:
+        browser_inventory.root_directory(checks_output.parent)
+        checks_output.mkdir(mode=0o700)
     args.output.mkdir(mode=0o700)
     for name, raw in payloads.items():
         create_output(args.output / name, raw)
+    for name, raw in checks_payloads.items():
+        create_output(checks_output / name, raw)
     return report, evidence
 
 
@@ -1370,6 +1512,7 @@ def main(argv=None) -> None:
     for name in ("run-id", "run-attempt"):
         parser.add_argument("--" + name, type=int, required=True)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--checks-output", type=Path)
     args = parser.parse_args(argv)
     try:
         run_command(args)

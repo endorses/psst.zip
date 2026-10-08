@@ -388,6 +388,194 @@ class CorrespondingSourceCommand(unittest.TestCase):
             self.assertEqual(rejected.exception.code, 1)
             self.assertNotIn("fixture-token", error.getvalue())
 
+    def paired_mocks(self):
+        prepared, auth, producer = self.mocks()
+        self.args.checks_output = self.args.root / "check-reports"
+        for tree in (self.args.amd64_inputs, self.args.arm64_inputs):
+            (tree / "native").mkdir()
+            (tree / "native/native-measurement.json").write_bytes(b'{"fixture":true}\n')
+        common = {
+            "schema_version": 1,
+            "binding_digest": self.binding.digest,
+            "passed": True,
+        }
+        self.checks = {
+            "source-ci": {
+                **common,
+                "gate": "source-ci",
+                "details": {
+                    "run_id": self.args.run_id,
+                    "run_attempt": self.args.run_attempt,
+                    "jobs": {
+                        name: "success"
+                        for name in ("security", "backend", "web", "android", "ios")
+                    },
+                },
+            },
+            "final-image-smoke": {
+                **common,
+                "gate": "final-image-smoke",
+                "details": {
+                    "execution": {platform: "native" for platform in command.PLATFORMS}
+                },
+            },
+            "runtime-notices": {
+                **common,
+                "gate": "runtime-notices",
+                "details": {"distribution_review_required": True},
+            },
+        }
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        ci = stack.enter_context(
+            patch.object(
+                command, "source_ci_report", return_value=self.checks["source-ci"]
+            )
+        )
+        native = stack.enter_context(
+            patch.object(
+                command,
+                "aggregate_native_reports",
+                return_value={
+                    gate: self.checks[gate]
+                    for gate in ("final-image-smoke", "runtime-notices")
+                },
+            )
+        )
+        signed = {**self.checks, "corresponding-source": self.report}
+
+        def receipt(gate, path, binding):
+            record = signed[gate]
+            return VerifiedEvidence(
+                gate,
+                binding.digest,
+                command.sha256(json_bytes(record)),
+                True,
+                record["details"],
+            )
+
+        auth.return_value.verify.side_effect = receipt
+        return prepared, auth, producer, ci, native
+
+    def test_paired_outputs_generate_and_verify_without_replays(self):
+        prepared, auth, producer, ci, native = self.paired_mocks()
+        command.main(
+            [
+                "--" + key.replace("_", "-") + "=" + str(value)
+                for key, value in vars(self.args).items()
+            ]
+        )
+        ci.assert_called_once_with(
+            self.binding, run_id=1234, attempt=2, token="fixture-token"
+        )
+        native.assert_called_once_with(
+            self.binding,
+            producer.call_args.kwargs["native_measurements"],
+            auth.return_value,
+        )
+        auth.assert_called_once_with(token="fixture-token", run_id=1234, run_attempt=2)
+        before = {}
+        for output, reports in (
+            (
+                self.args.output,
+                {
+                    "corresponding-source": self.report,
+                    "corresponding-source-evidence": self.evidence,
+                },
+            ),
+            (self.args.checks_output, self.checks),
+        ):
+            self.assertEqual(
+                {path.name for path in output.iterdir()},
+                {gate + ".json" for gate in reports},
+            )
+            for gate, report in reports.items():
+                path = output / (gate + ".json")
+                self.assertEqual(path.read_bytes(), json_bytes(report))
+                before[path] = path.read_bytes()
+        self.args.verify_only = True
+        command.run_command(self.args)
+        self.assertEqual(
+            {call.args[0] for call in auth.return_value.verify.call_args_list},
+            {*command.CHECK_GATES, "corresponding-source"},
+        )
+        self.assertEqual({path: path.read_bytes() for path in before}, before)
+        self.assertEqual(producer.call_count, 1)
+        self.assertEqual(ci.call_count, 1)
+        self.assertEqual(native.call_count, 1)
+        self.assertEqual(prepared.call_count, 2)
+
+    def test_paired_verification_rejects_missing_substituted_stale_and_changed_reports(
+        self,
+    ):
+        prepared, auth, producer, ci, native = self.paired_mocks()
+        command.run_command(self.args)
+        self.args.verify_only = True
+        path = self.args.checks_output / "source-ci.json"
+        original = path.read_bytes()
+        for mutation in (
+            "missing",
+            "substituted",
+            "old-attempt",
+            "old-run",
+            "noncanonical",
+            "linked",
+            "extra",
+        ):
+            with self.subTest(mutation=mutation):
+                changed = copy.deepcopy(self.checks["source-ci"])
+                if mutation == "missing":
+                    path.unlink()
+                elif mutation == "linked":
+                    path.unlink()
+                    path.symlink_to(self.args.output / "corresponding-source.json")
+                elif mutation == "extra":
+                    (self.args.checks_output / "extra.json").write_bytes(b"{}")
+                elif mutation == "noncanonical":
+                    path.write_bytes(original + b" ")
+                else:
+                    if mutation == "substituted":
+                        changed["details"]["jobs"]["ios"] = "failure"
+                    elif mutation == "old-attempt":
+                        changed["details"]["run_attempt"] -= 1
+                    else:
+                        changed["details"]["run_id"] += 1
+                    path.write_bytes(json_bytes(changed))
+                with self.assertRaises(InvalidRelease):
+                    command.run_command(self.args)
+                if path.is_symlink():
+                    path.unlink()
+                path.write_bytes(original)
+                (self.args.checks_output / "extra.json").unlink(missing_ok=True)
+        notice_path = self.args.checks_output / "runtime-notices.json"
+
+        def change_paired_output(raw, binding):
+            notice_path.write_bytes(notice_path.read_bytes() + b" ")
+
+        auth.return_value.authenticate.side_effect = change_paired_output
+        with self.assertRaisesRegex(
+            InvalidRelease, "outputs changed during authentication"
+        ):
+            command.run_command(self.args)
+        self.assertEqual(producer.call_count, 1)
+        self.assertEqual(ci.call_count, 1)
+        self.assertEqual(native.call_count, 1)
+
+    def test_paired_generation_failure_and_existing_output_create_no_complete_reports(
+        self,
+    ):
+        prepared, auth, producer, ci, native = self.paired_mocks()
+        self.args.checks_output.mkdir()
+        with self.assertRaisesRegex(InvalidRelease, "must be a new directory"):
+            command.run_command(self.args)
+        producer.assert_not_called()
+        self.args.checks_output.rmdir()
+        ci.side_effect = InvalidRelease("Exact source CI is unfinished")
+        with self.assertRaises(InvalidRelease):
+            command.run_command(self.args)
+        self.assertFalse(self.args.output.exists())
+        self.assertFalse(self.args.checks_output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
