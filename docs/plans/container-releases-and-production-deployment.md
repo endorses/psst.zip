@@ -855,10 +855,13 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       artifact/source/attempt comment, retain raw API evidence, and recheck for
       changes. Fixture verification passed in 1.7 seconds; no live reviewer
       approval or signing is claimed.
-- [ ] Provision the `container-release` review environment and wire the strict
+- [x] Provision the `container-release` review environment and wire the strict
       distribution producer into the final trusted workflow after complete source
       production. Present concrete final artifacts before approval; attest both
-      the gate and retained review evidence. Verify a real approval and rejection.
+      the gate and retained review evidence.
+- [ ] Verify a real approval and rejection against completed hosted artifacts
+      and the exact attempt. Environment provisioning alone is not distribution
+      approval or hosted execution verification.
 - [ ] Validate the wired producers and signed native records against actual
       two-platform hosted aggregation. Planned main dispatches still emit
       unsigned measurements and cannot satisfy a tagged publication gate.
@@ -1963,6 +1966,47 @@ remote main `b697119ba81c3aaf18725f38869b778f2e59df9d` and successful CI run
 configured. The only version tag is preserved `v0.0.0`, pointing to
 `998fd83fb8b2915c576547d70c3a472b4291bd7f`; `v0.1.0` has not been created.
 This inspection changed no remote configuration, refs or publication state.
+
+### Protected distribution presentation and signing
+
+- [x] Add `present`, `produce` and `verify` commands around the existing strict
+      distribution-review producer. Share the authenticated small binding and
+      source report; present exact candidate artifact names, final image/notice
+      identities, complete source coverage and attempt-bound approval text.
+- [x] Present the artifact packet after native recovery succeeds and before the
+      protected job waits. Produce and attest the authorized report plus retained
+      GitHub review evidence, then independently verify both without another
+      source replay or mutable review-history query.
+- [x] Provision and independently read back the live `container-release`
+      environment for the committed reviewer policy and `v*` tags only.
+- [ ] Run the protected workflow on the exact pushed source and verify actual
+      reviewer approval/rejection, report signing and artifact layout.
+
+Live provisioning on 2026-10-08 created environment `23740086979`, with exactly
+the required user reviewer `endorses` (`172757685`). Self-review is allowed so
+the sole personal-project maintainer can review their own release. Custom
+deployment policies contain only tag rule `62318446`, pattern `v*`; branches
+cannot enter this environment. Both API readbacks matched the selected policy.
+No environment secrets, publication permission, registry package or release
+were created. A job bypass without an exact authorized recorded review cannot
+satisfy the producer. These settings follow GitHub's
+[environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment)
+and [tag deployment policy API](https://docs.github.com/en/rest/deployments/branch-policies#create-a-deployment-branch-policy).
+
+The review packet and tagged native/prepared/source inputs are retained for
+seven days, so a pending review does not lose its inputs after one day. Planned
+main candidates keep one-day payload retention. Review must finish while its
+exact artifacts are retained; expired artifacts fail closed rather than fetching
+another attempt or recreating an approval. Published release source retention
+and durable interrupted-publication receipts remain separate requirements.
+
+Two tiny CLI fixtures passed in 0.019 seconds, covering presentation references,
+production/verification separation, exact authorization and output substitutions.
+The two existing producer authorization cases passed in 0.257 seconds. These
+tests use local bytes and mocked GitHub evidence; no real approval or publication
+is claimed. Workflow YAML parsed, all 29 shell steps passed `bash -n` and three
+inline Python blocks parsed. The new local workflow remains unpushed; live
+review execution and later publication/VPS rollout are pending.
 
 ## Verification and completion criteria
 

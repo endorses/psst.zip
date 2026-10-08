@@ -109,9 +109,19 @@ workflow must attest both. It does not sign, publish or infer source completenes
 See GitHub's [review-history API](https://docs.github.com/en/rest/actions/workflow-runs#get-the-review-history-for-a-workflow-run)
 and [environment API](https://docs.github.com/en/rest/deployments/environments#get-an-environment).
 
-The environment has not been provisioned and this producer is not wired into the
-candidate-only workflow. Complete preferred-form source production, actual signed
-reports, real reviewer approval and hosted publication remain pending. Fixture
+The `container-release` environment was provisioned and read back on 2026-10-08:
+required reviewer `endorses`, self-review allowed for this personal project, and
+only `v*` tag deployment policies. The local workflow now presents exact candidate
+artifact names and the attempt-bound comment before the protected job waits.
+`generate_distribution_review.py --mode produce` creates the report and retained
+review evidence; `--mode verify` authenticates both against the unchanged complete
+source report without repeating source replay or querying mutable review history.
+Tagged candidate inputs and the review packet are retained for seven days. Expired
+inputs require a fresh controlled run; approval cannot transfer across attempts.
+
+This local wiring has not been pushed or exercised on hosted artifacts. Actual
+signed reports, real reviewer approval/rejection and hosted publication remain
+pending. Fixture
 checks exercise authorization and substitution failures, not live approval.
 
 ## Reports from completed checks

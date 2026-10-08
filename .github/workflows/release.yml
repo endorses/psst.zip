@@ -457,7 +457,7 @@ jobs:
           path: ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/
           if-no-files-found: error
           compression-level: 1
-          retention-days: 1
+          retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
@@ -713,14 +713,14 @@ jobs:
             ${{ runner.temp }}/candidate-check-reports/final-image-scanners.json
             ${{ steps.source-attestation.outputs.bundle-path }}
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-assembly/prepared/
           if-no-files-found: error
           compression-level: 0
-          retention-days: 1
+          retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
@@ -732,7 +732,7 @@ jobs:
             ${{ runner.temp }}/candidate-assembly/prepared/release-manifest.json
             ${{ runner.temp }}/candidate-assembly/prepared/psst.zip-deployment-${{ needs.validate-tag.outputs.version }}.tar.gz
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
       - name: Remove only owned assembly input and output trees
         if: always()
         run: |
@@ -922,8 +922,99 @@ jobs:
             ${{ runner.temp }}/recovery-gate/upgrade-recovery.json
             ${{ steps.gate-attestation.outputs.bundle-path }}
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
+      - name: Present exact distribution artifacts before protected review
+        run: |
+          python3 tools/generate_distribution_review.py --mode present \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/recovery-gate/prepared" \
+            --source-report "$RUNNER_TEMP/recovery-gate/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/recovery-gate/review-presentation"
+          cat "$RUNNER_TEMP/recovery-gate/review-presentation/review.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-distribution-presentation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/review-presentation/
+          if-no-files-found: error
+          retention-days: 7
       - name: Remove only owned recovery gate inputs and report
         if: always()
         run: |
           rm -rf -- "$RUNNER_TEMP/recovery-gate"
+
+  distribution-review:
+    name: Verify authorized distribution review
+    needs: [validate-tag, assemble-candidate, aggregate-recovery]
+    if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: container-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-recovery-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution-review/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution-review/source
+      - name: Derive distribution evidence from the exact GitHub reviewer decision
+        run: |
+          python3 tools/generate_distribution_review.py --mode produce \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/distribution-review/prepared" \
+            --source-report "$RUNNER_TEMP/distribution-review/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/distribution-review/reports"
+      - name: Attest the authorized gate and retained reviewer evidence
+        id: distribution-attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: |
+            ${{ runner.temp }}/distribution-review/reports/distribution-review.json
+            ${{ runner.temp }}/distribution-review/reports/distribution-review-evidence.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - name: Independently verify approved evidence without another mutable API replay
+        run: |
+          python3 tools/generate_distribution_review.py --mode verify \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/distribution-review/prepared" \
+            --source-report "$RUNNER_TEMP/distribution-review/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/distribution-review/reports"
+          printf '%s\n' 'Authorized distribution review verified against the exact complete source report, release binding and run attempt. Registry publication and production rollout remain pending.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-distribution-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/distribution-review/reports/distribution-review.json
+            ${{ runner.temp }}/distribution-review/reports/distribution-review-evidence.json
+            ${{ steps.distribution-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only owned distribution-review input and output trees
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/distribution-review"
