@@ -1075,34 +1075,22 @@ jobs:
           ref: ${{ needs.validate-tag.outputs.commit }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Check explicit private retention configuration before downloading payloads
+      - name: Check protected publication settings before downloading payloads
         env:
           PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
           PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
-          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
-          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
-          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
-          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
-          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
-          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
         run: |
-          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
-            unset PSST_PUBLICATION_S3_SESSION_TOKEN
-          fi
           python3 - <<'PY'
           import os, sys
           sys.path.insert(0, 'tools')
-          from publication_retention import validate_configuration
           from publish_verified_release import package_initialization_enabled
           from release_artifacts import require
-          validate_configuration(os.environ)
           package_initialization_enabled(os.environ)
           require(bool(os.environ.get('PSST_IMMUTABLE_INSPECTION_TOKEN')), 'Missing immutable-release inspection credential')
           PY
       - name: Require trusted hosted transfer and attestation tools
         run: |
-          command -v aws gh >/dev/null
-          aws --version | python3 -c 'import re, sys; assert re.match(r"aws-cli/2\.[0-9]+\.[0-9]+(?:\s|$)", sys.stdin.read()), "AWS CLI v2 required"'
+          command -v gh >/dev/null
           gh attestation verify --help >/dev/null
           python3 - <<'PY'
           import sys
@@ -1143,41 +1131,65 @@ jobs:
             --inputs-root "$RUNNER_TEMP/publication-inputs" \
             --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
             --commit "$SOURCE_COMMIT" --output "$RUNNER_TEMP/publication-inputs.json"
-      - name: Publish after authenticating gates and persisting private recovery state
+      - name: Publish after authenticating gates and syncing local mutation state
         id: publication
         env:
           PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
           GH_TOKEN: ${{ github.token }}
           PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
-          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
-          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
-          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
-          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
-          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
-          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
         run: |
-          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
-            unset PSST_PUBLICATION_S3_SESSION_TOKEN
-          fi
           umask 077
           install -d -m 700 "$RUNNER_TEMP/publication-state"
           python3 tools/publish_verified_release.py \
             --inputs "$RUNNER_TEMP/publication-inputs.json" \
             --root "$GITHUB_WORKSPACE" --reviewed-commit "$SOURCE_COMMIT" \
             --state "$RUNNER_TEMP/publication-state"
-      - name: Remove local state only after verified publication and durable receipt
+      - name: Project bounded publication diagnostics without private details
+        if: always()
+        timeout-minutes: 1
+        continue-on-error: true
+        env:
+          PUBLICATION_OUTCOME: ${{ steps.publication.outcome || 'skipped' }}
+        run: |
+          python3 tools/publication_diagnostics.py \
+            --state "$RUNNER_TEMP/publication-state" \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --run-id "$GITHUB_RUN_ID" \
+            --attempt "$GITHUB_RUN_ATTEMPT" --outcome "$PUBLICATION_OUTCOME" \
+            --output "$RUNNER_TEMP/publication-diagnostics.json"
+      - name: Retain small publication diagnostics when the runner remains available
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: publication-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-diagnostics.json
+          archive: true
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Retain verified successful publication receipt
+        if: success() && steps.publication.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: publication-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-state/${{ env.CANDIDATE_VERSION }}-publication-receipt.json
+          archive: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove local state only after verified publication and receipt upload
         if: success() && steps.publication.outcome == 'success'
         run: |
           test -f "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
           test ! -L "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
-          # The successful driver already verified remote recovery storage and
-          # anonymous release/image readbacks; do not upload private state here.
+          # Successful anonymous release/image readbacks precede this receipt.
+          # Private journals and snapshots are never workflow artifacts.
           rm -rf -- "$RUNNER_TEMP/publication-state"
-          printf '%s\n' "Immutable container release $CANDIDATE_VERSION published with verified anonymous readback and a private durable recovery receipt." >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "Immutable container release $CANDIDATE_VERSION published with verified anonymous readback and a publication receipt." >> "$GITHUB_STEP_SUMMARY"
       - name: Remove only owned downloaded publication inputs and path map
         if: always()
         run: |
           rm -rf -- "$RUNNER_TEMP/publication-inputs"
           rm -f -- "$RUNNER_TEMP/publication-inputs.json"
-          # On failure, preserve local publication-state for inspection. Its
-          # checkpoints remain in private storage when durable writes succeeded.
+          rm -f -- "$RUNNER_TEMP/publication-diagnostics.json"
+          # Failed private state survives only for this runner lifetime. The
+          # small diagnostics artifact does not retain or authorize replay of it.

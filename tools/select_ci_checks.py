@@ -37,7 +37,7 @@ SECURITY_ONLY_TOOLS = frozenset(
         "prepare_candidate_transfer.py",
         "prepare_native_release.py",
         "prepare_publication_inputs.py",
-        "publication_retention.py",
+        "publication_diagnostics.py",
         "publish_container_release.py",
         "publish_verified_release.py",
         "release_artifacts.py",
