@@ -40,8 +40,10 @@ RECORD = "upstream-source-collection.json"
 # The embedded jsQR source includes original test images (45,404,815 bytes).
 # Retain its complete original archive rather than dropping source-tree inputs.
 MAX_ARCHIVE = 64 * 1024**2
-MAX_ASSET = 128 * 1024**2
-MAX_EXPANDED = 128 * 1024**2
+# The complete modernc SQLite project is 244,731,639 expanded bytes and includes
+# nested generator modules omitted by the Go proxy ZIP. Retain them unchanged.
+MAX_ASSET = 256 * 1024**2
+MAX_EXPANDED = 512 * 1024**2
 MAX_METADATA = 4 * 1024**2
 MAX_MEMBERS = 20_000
 UNAPPROVED = {
@@ -239,6 +241,13 @@ def _policy_inputs(
         upstream_repository(record["repository"])
         matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
         url(record)
+        if record.get("source_host") == "gitlab":
+            require(
+                association_key == "go_modules"
+                and set(record["go_modules"])
+                == {"modernc.org/" + record["repository"].split("/")[1]},
+                "Canonical modernc project must match its locked module",
+            )
         archive = fields(
             record["archive"], {"file", "sha256", "size"}, "pinned source archive"
         )
@@ -344,6 +353,24 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
 
 
 def url(record: dict) -> str:
+    if record.get("source_host") == "gitlab":
+        require(
+            record["repository"] in {"cznic/sqlite", "cznic/libc"},
+            "Only the exact canonical modernc project routes are supported",
+        )
+        matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
+        name = record["repository"].split("/")[1]
+        return (
+            "https://gitlab.com/"
+            + record["repository"]
+            + "/-/archive/"
+            + record["commit"]
+            + "/"
+            + name
+            + "-"
+            + record["commit"]
+            + ".tar.gz"
+        )
     if "source_host" in record:
         require(
             record["source_host"] == "musl"
@@ -371,6 +398,11 @@ def official_fetch(url: str) -> bytes:
         url,
     ):
         host = "codeload.github.com"
+    elif re.fullmatch(
+        r"https://gitlab\.com/cznic/(sqlite|libc)/-/archive/([0-9a-f]{40})/\1-\2\.tar\.gz",
+        url,
+    ):
+        host = "gitlab.com"
     else:
         require(
             re.fullmatch(

@@ -1570,6 +1570,54 @@ Temporary extraction caches and disposable containers/image aliases were cleaned
 This additional check establishes builder input correspondence, not a new final
 OCI pair, complete preferred-source coverage or publication authority.
 
+### Preferred browser relationships and complete modernc project originals
+
+- [x] Encode explicit original-source and build-recipe relationships for every
+      actually rendered package module, including Noble TypeScript, HPKE import
+      rewriting, fflate browser-worker rewriting, clsx minification and Lucide
+      SVG/metadata generation. Unknown packages, missing originals and changed
+      captured bytes refuse correspondence.
+- [x] Compare QR scanner source-map contents against every pinned decoder/worker
+      original and map the captured Svelte compiler/plugin inputs separately.
+      Actual offline replay resolved 168 rendered package modules and 256 captured
+      compiler/plugin inputs in 3.3 seconds from the existing `7d0f42a` evidence.
+      Three tiny regression methods cover substitution, missing originals,
+      unclassified rendered inputs and changed icon data.
+- [x] Acquire and pin the complete official modernc SQLite/libc project archives
+      at the exact retained Go origin commits. Preserve nested generator modules
+      omitted from proxy ZIPs, including SQLite's vendor tool and its module locks.
+- [x] Independently verify all 1,323 SQLite and 4,153 libc proxy files against
+      those complete project trees, with H1 replay and exact origin/version pins.
+      The actual comparison took 3.5 seconds and retained generator input hashes.
+- [x] Restrict acquisition to the two canonical full-commit GitLab archive routes,
+      refusing other hosts/repositories, mismatched paths, tags and redirects.
+      The 25 affected upstream/browser checks passed in 1.0 seconds without
+      network requests or compiler execution.
+- [ ] Collect and independently replay the expanded eighteen-original offering
+      from a committed source, reusing unchanged original archive bytes.
+- [ ] Complete remaining generator/configuration relationships and authenticate
+      the exact final-image inputs on both native architectures before producing
+      the corresponding-source gate and requesting distribution review.
+
+The SQLite module origin is `dc8212054b608339e80d7e986e530fa24bc5e369`
+in `cznic/sqlite`; its full 39,232,665-byte archive has SHA256
+`492752855dd34e06c4798019c6708e1f89e7b9444ef80ddd9e94c54a1322e167`.
+The libc origin is `d6b3f0f238e49c751b8ace5b5595ccc93db8b536`
+in `cznic/libc`; its 15,742,379-byte archive has SHA256
+`8bfc54fb0cd88402f0fcd902a3117e785cf30de3574216fe95ba22685f67e81f`.
+Both entire source trees are retained unchanged. The SQLite tree expands to
+244,731,639 bytes, so the bounded expanded-source limit is now 512 MiB and the
+combined offering limit is 256 MiB. Per-original archive and member-count limits
+remain bounded; routine fixtures remain small.
+
+The browser relationship helper consumes already verified archive/capture/npm
+facts; it does not authenticate or authorize publication itself. Noble's upstream
+locks identify `@paulmillr/jsbt@0.7.1`, but that external configuration is explicitly
+reported as not yet retained. Vite virtual helpers, Kit generated application
+outputs and full backend generator relationships remain separate producer work.
+These facts do not establish offline or byte-identical dependency regeneration,
+complete corresponding-source coverage or publication authority.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only

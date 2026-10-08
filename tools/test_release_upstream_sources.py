@@ -293,6 +293,49 @@ class UpstreamInputs(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(InvalidRelease):
                 upstream.url({**record, **changes})
 
+    def test_modernc_project_fetch_refuses_other_hosts_refs_and_redirects(self):
+        record = {
+            "repository": "cznic/sqlite",
+            "commit": "d" * 40,
+            "source_host": "gitlab",
+        }
+        source_url = upstream.url(record)
+        self.assertEqual(
+            source_url,
+            "https://gitlab.com/cznic/sqlite/-/archive/"
+            + "d" * 40
+            + "/sqlite-"
+            + "d" * 40
+            + ".tar.gz",
+        )
+        response = unittest.mock.Mock()
+        response.status = 200
+        response.getheader.return_value = "8"
+        response.read1.side_effect = [b"original", b""]
+        connection = unittest.mock.Mock()
+        connection.getresponse.return_value = response
+        with patch.object(
+            upstream.http.client, "HTTPSConnection", return_value=connection
+        ) as client:
+            self.assertEqual(upstream.official_fetch(source_url), b"original")
+        client.assert_called_once_with("gitlab.com", timeout=30)
+        response.status = 302
+        with patch.object(
+            upstream.http.client, "HTTPSConnection", return_value=connection
+        ), self.assertRaisesRegex(InvalidRelease, "redirects are refused"):
+            upstream.official_fetch(source_url)
+        for candidate in (
+            source_url.replace("https:", "http:"),
+            source_url.replace("gitlab.com", "gitlab.com.evil.invalid"),
+            source_url.replace("cznic/sqlite", "other/sqlite"),
+            source_url.replace("sqlite-" + "d" * 40, "sqlite-main"),
+            source_url + "?token=private",
+        ):
+            with self.subTest(candidate=candidate), self.assertRaises(InvalidRelease):
+                upstream.official_fetch(candidate)
+        with self.assertRaisesRegex(InvalidRelease, "canonical modernc"):
+            upstream.url({**record, "repository": "other/sqlite"})
+
     def test_collect_replays_original_inputs_deterministically_without_approval(self):
         first = self.collect()
         replay = self.verify()

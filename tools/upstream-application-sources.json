@@ -437,6 +437,56 @@
         "packages/typescript/test/node_modules/current-package": "../..",
         "packages/wasm/test/node_modules/current-package": "../.."
       }
+    },
+    {
+      "id": "backend-sqlite-project",
+      "repository": "cznic/sqlite",
+      "commit": "dc8212054b608339e80d7e986e530fa24bc5e369",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "archive": {
+        "file": "sqlite-dc8212054b608339e80d7e986e530fa24bc5e369.tar.gz",
+        "sha256": "sha256:492752855dd34e06c4798019c6708e1f89e7b9444ef80ddd9e94c54a1322e167",
+        "size": 39232665
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "vendor_libsqlite3/main.go",
+        "vendor_libsqlite3/go.mod",
+        "vendor_libsqlite3/go.sum",
+        "lib/sqlite_linux_amd64.go",
+        "lib/sqlite_linux_arm64.go"
+      ]
+    },
+    {
+      "id": "backend-libc-project",
+      "repository": "cznic/libc",
+      "commit": "d6b3f0f238e49c751b8ace5b5595ccc93db8b536",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/libc": "v1.65.0"
+      },
+      "archive": {
+        "file": "libc-d6b3f0f238e49c751b8ace5b5595ccc93db8b536.tar.gz",
+        "sha256": "sha256:8bfc54fb0cd88402f0fcd902a3117e785cf30de3574216fe95ba22685f67e81f",
+        "size": 15742379
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "generate.go",
+        "generator.go",
+        "internal/archive/archive.go",
+        "ccgo_linux_amd64.go",
+        "ccgo_linux_arm64.go"
+      ]
     }
   ]
 }

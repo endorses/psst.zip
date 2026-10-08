@@ -238,6 +238,24 @@ tree. Build/capture/replay took 21.4/0.7/1.9 seconds. The prior AMD64 final-imag
 receipt predates this additional capture; complete final-image and preferred-source
 coverage remain pending.
 
+`tools/browser_preferred_source_relationships.py` maps already authenticated
+capture/npm facts and verified pinned originals into per-file source/build-recipe
+relationships. It covers every actually rendered package module, checks Lucide
+icon objects against original SVG/metadata and checks QR scanner's embedded
+source-map contents against decoder/worker originals. Unknown inputs or changed
+bytes fail. Captured compiler/plugin sources are a separate mapping. The helper
+neither authenticates its caller's evidence nor creates a completeness gate.
+External Noble build configuration is recorded with its exact locked identity,
+not asserted to be retained or independently reproduced.
+
+The upstream offering additionally retains full `cznic/sqlite` and `cznic/libc`
+project trees from the Go module origin commits, including generator modules
+excluded from proxy ZIPs. Only their canonical GitLab full-commit archive paths
+are accepted. Exact H1-replayed proxy bytes match all 1,323 SQLite and 4,153 libc
+files in those source trees. These project originals complement the original
+SQLite C and musl trees; remaining complete generator relationships and both
+authenticated final-image source reviews still precede publication.
+
 ### Native image scanner measurements
 
 `tools/measure_release_image_scans.py` validates the actual OCI archive graph,
