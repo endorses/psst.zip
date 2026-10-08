@@ -2158,6 +2158,13 @@ production migration have run.
       a fine-grained token scoped to this repository with Administration read,
       stored directly in the protected `container-release` environment. Record
       expiration/renewal and keep candidate checks independent of this token.
+- [x] Confirm the operator-created `PSST_IMMUTABLE_INSPECTION_TOKEN` secret is
+      present in `container-release`. The operator selected only this repository,
+      Administration read and required Metadata read, with expiration on
+      2027-01-06. API readback verified the secret name and update metadata only;
+      it did not expose the value or prove successful authenticated use.
+- [ ] Verify the inspection credential's actual immutable-policy API access in
+      the protected publishing job after the candidate and distribution gates.
 - [ ] Configure the remaining environment variables, independent inspection
       credentials, public package namespaces and restricted deployment
       identity; verify hosted release and production behavior against them.
@@ -2184,9 +2191,18 @@ The `production` environment is `23741939516`, with custom deployment policies
 and only branch `main` (`62320707`). It has no additional reviewer requirement,
 secrets or variables; manual dispatch remains deliberate deployment authorization
 for this personal instance. Separate reads verified its settings, policy count
-and empty credential/variable lists. The release environment also still has no
-secrets or variables. No VPS account/key, host trust, public registry artifact or
-production transaction was created by this repository setup.
+and empty credential/variable lists. The release environment had no secrets or
+variables at that initial checkpoint. On 2026-10-08, the operator subsequently
+added `PSST_IMMUTABLE_INSPECTION_TOKEN`; API readback confirmed the exact name and
+update timestamp. Its value and successful API use remain unverified. Publication
+enablement and package-initialization variables remain unset. No VPS account/key,
+host trust, public registry artifact or production transaction was created.
+
+The operator explicitly deferred off-host backup setup on 2026-10-08. Continue
+container candidate verification and publication independently. Keep encrypted
+off-host protection, its real restore exercise, the first VPS migration and
+production Actions deployment pending; deferral does not satisfy or remove the
+updater's existing checkpoint gate. Do not provision backup storage meanwhile.
 
 Applied request payloads live under `.github/rulesets/` and
 `.github/environments/`; the publication and production operator guides record
@@ -2536,10 +2552,19 @@ runner, not a claim that the later failed native-container preparation passed.
 - [x] Run the combined lightweight release regressions after those corrections.
       All 371 cases passed on Python 3.14.7 in 25.653s. This does not repeat
       application builds or prove complete hosted container/recovery execution.
-- [ ] Verify these repairs and the latest stable Linux runners on hosted CI,
-      then run a new planned native candidate through complete source and recovery
-      checks. Do not restart the terminal failed attempt or claim fixture results
-      prove a complete image/source pair.
+- [x] Verify these repairs and the latest stable Linux x64 runner on hosted CI.
+      Exact-head run `37744385013` passed all five required checks at
+      `e6995f135b8e44d0927462fc6ceeac2e555a3a47`, with no check annotations.
+      The release regressions passed 371 cases in 34.855s. Native iOS took
+      19m01s: compilation 14m51s, readiness two seconds and XCTest 2m36s. All
+      176 cases passed with 108.306s of case execution. Existing limits held.
+      Protected PR #6 merged as `3a8db34023a6bec9e8528a4ceb51b333e85c156b`;
+      its tree matches the checked head. This does not prove Arm64 or the full
+      container/source/recovery workflow.
+- [ ] Run a new planned native candidate through complete source and recovery
+      checks from integrated main, including the latest stable Linux Arm64 runner.
+      Do not restart the terminal failed attempt or claim fixture results prove
+      a complete image/source pair.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
