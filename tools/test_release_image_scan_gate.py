@@ -618,6 +618,12 @@ class ImageScanGateChecks(unittest.TestCase):
             replays[platform] = {
                 "source": read_json(scan.read_bytes())["source"],
                 "package_inputs_replayed": True,
+                "backend_notice_sources_verified": True,
+                "backend_notice_sources": {
+                    "inventory_sha256": sha256(b"fixture backend notice inventory"),
+                    "generator_sha256": sha256(b"fixture backend notice recipe"),
+                    "modules": [],
+                },
                 "source_measurement_sha256": sha256(scan.read_bytes()),
                 "archive_sha256": sha256(asset),
                 "collection_sha256": sha256(b"fixture collection"),

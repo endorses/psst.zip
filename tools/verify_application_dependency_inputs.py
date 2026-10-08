@@ -15,6 +15,7 @@ import zipfile
 from assemble_release_oci import StrictTarInfo
 from generate_release_gate_reports import NativeSourceContext
 import package_application_dependencies as package
+from package_upstream_application_sources import go_requirements
 from publish_container_release import sha256
 from release_artifacts import (
     DIGEST,
@@ -42,6 +43,117 @@ ENVIRONMENT = {
     "GONOSUMDB": "",
     "GOFLAGS": "-mod=readonly",
 }
+NOTICE_INVENTORY = "backend/licenses/dependency-inventory.json"
+NOTICE_GENERATOR = "backend/scripts/generate-third-party-notices.py"
+# Reviewed recipe: root-level legal files, LF/edge-whitespace normalization only.
+# A changed recipe requires explicit review; no selected-source Python is executed.
+NOTICE_GENERATOR_SHA256 = (
+    "sha256:1c670e2f028fd422cf5948887946e3da26db7e43f5a49e55695035eb546317ca"
+)
+LEGAL_PREFIXES = (
+    "license",
+    "licence",
+    "copying",
+    "copyright",
+    "notice",
+    "sqlite-license",
+)
+
+
+def notice_inventory(root: Path, commit: str, locks: dict[str, bytes]) -> dict:
+    raw = git(root, "show", commit + ":" + NOTICE_INVENTORY)
+    recipe = git(root, "show", commit + ":" + NOTICE_GENERATOR)
+    require(
+        sha256(recipe) == NOTICE_GENERATOR_SHA256,
+        "Backend notice generator differs from reviewed normalization recipe",
+    )
+    require(
+        0 < len(raw) <= package.MAX_PACKAGE, "Backend notice inventory exceeds bounds"
+    )
+    inventory = fields(
+        read_json(raw), {"inputs", "modules"}, "backend notice inventory"
+    )
+    require(
+        inventory["inputs"]
+        == {
+            name: sha256(locks["backend/" + name])[7:] for name in ("go.mod", "go.sum")
+        },
+        "Backend upstream notice lock fingerprints differ",
+    )
+    rows = inventory["modules"]
+    require(
+        isinstance(rows, list) and 0 < len(rows) <= package.MAX_MEMBERS,
+        "Backend upstream notice module inventory is missing",
+    )
+    modules = {}
+    for row in rows:
+        fields(row, {"module", "version", "notices"}, "backend upstream notice module")
+        require(
+            isinstance(row["module"], str)
+            and isinstance(row["version"], str)
+            and row["module"] not in modules
+            and isinstance(row["notices"], list)
+            and 0 < len(row["notices"]) <= package.MAX_MEMBERS,
+            "Invalid or duplicate backend upstream notice module",
+        )
+        modules[row["module"]] = row
+    require(
+        {module: row["version"] for module, row in modules.items()}
+        == go_requirements(locks["backend/go.mod"]),
+        "Backend upstream notice module/version scope differs from committed requirements",
+    )
+    return {
+        "inventory_sha256": sha256(raw),
+        "generator_sha256": sha256(recipe),
+        "modules": modules,
+    }
+
+
+def verify_module_notices(
+    root: Path, commit: str, row: dict, record: dict, legal: dict[str, bytes]
+) -> dict:
+    """Bind every original legal member to the reviewed distributed transformation."""
+    module, version = record["module"], record["version"]
+    require(row["version"] == version, "Backend upstream notice module version differs")
+    require(
+        any(
+            name.lower().startswith(("license", "licence", "copying")) for name in legal
+        ),
+        "Original Go ZIP has no root upstream license",
+    )
+    expected = {}
+    for name, upstream in sorted(legal.items()):
+        try:
+            text = upstream.decode().replace("\r\n", "\n").replace("\r", "\n")
+        except UnicodeError:
+            require(False, "Original Go ZIP notice is not UTF-8 text")
+        content = (
+            "\n".join(line.rstrip(" \t") for line in text.split("\n")).rstrip("\n")
+            + "\n"
+        ).encode()
+        path = f"dependencies/{module}@{version}/{name}"
+        require(
+            git(root, "show", commit + ":backend/licenses/" + path) == content,
+            "Committed backend notice differs from normalized original Go ZIP",
+        )
+        expected[path] = {
+            "path": path,
+            "sha256": sha256(content)[7:],
+            "upstream_sha256": sha256(upstream)[7:],
+        }
+    declared = {}
+    for notice in row["notices"]:
+        fields(notice, {"path", "sha256", "upstream_sha256"}, "backend upstream notice")
+        require(
+            isinstance(notice["path"], str) and notice["path"] not in declared,
+            "Invalid or duplicate backend upstream notice",
+        )
+        declared[notice["path"]] = notice
+    require(
+        declared == expected,
+        "Backend upstream notice member/hash inventory differs from original Go ZIP",
+    )
+    return {**record, "notices": list(expected.values())}
 
 
 def archive_files(raw: bytes) -> dict[str, bytes]:
@@ -472,26 +584,59 @@ def _verify(
         return replay
     # Full independent H1 replay above checked each original ZIP/info. Reuse
     # those bytes; do not reread the offering or write a module cache again.
+    notices = notice_inventory(repository_root, context.commit, originals)
+    notice_rows = notices.pop("modules")
+    verified_notices = {}
     records = {row["module"]: row for row in replay["go_module_inputs"]}
     sources = {}
     for row in replayed:
         module, version = row["module"], row["version"]
-        if module not in requested_modules:
+        if module not in requested_modules and module not in notice_rows:
             continue
         raw = files[row["inputs"]["zip"]["file"]]
         prefix = module + "@" + version + "/"
+        members, legal = {}, {}
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-            members = {
-                entry.filename.removeprefix(prefix): archive.read(entry)
-                for entry in archive.infolist()
-                if not entry.is_dir()
-            }
+            for entry in archive.infolist():
+                if entry.is_dir():
+                    continue
+                name = entry.filename.removeprefix(prefix)
+                is_legal = "/" not in name and name.lower().startswith(LEGAL_PREFIXES)
+                if module in requested_modules or is_legal:
+                    body = archive.read(entry)
+                    if module in requested_modules:
+                        members[name] = body
+                    if is_legal:
+                        legal[name] = body
+        if module in notice_rows:
+            verified_notices[module] = verify_module_notices(
+                repository_root,
+                context.commit,
+                notice_rows[module],
+                records[module],
+                legal,
+            )
+        if module not in requested_modules:
+            continue
         info = read_json(files[row["inputs"]["info"]["file"]])
         sources[module] = {
             "record": records[module],
             "files": members,
             "origin": info.get("Origin"),
         }
+    require(
+        set(verified_notices) == set(notice_rows),
+        "Backend upstream notice module missing from H1-replayed Go ZIPs",
+    )
+    replay.update(
+        backend_notice_sources_verified=True,
+        backend_notice_sources={
+            **notices,
+            "modules": [
+                verified_notices[module] for module in sorted(verified_notices)
+            ],
+        },
+    )
     return replay, sources
 
 
@@ -512,7 +657,7 @@ def verify_module_source_files(
     *,
     modules: frozenset[str],
 ) -> tuple[dict, dict]:
-    """Expose selected H1-replayed original module members for preferred source review.
+    """Expose preferred members and bind committed notices to H1-replayed ZIPs.
 
     This does not authenticate scanner records or establish source completeness.
     The consumer must bind the replay to authenticated native/publication inputs.

@@ -6,6 +6,7 @@ import io
 from pathlib import Path
 import tarfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 from generate_release_gate_reports import NativeSourceContext
@@ -87,7 +88,78 @@ class DependencyReplay(unittest.TestCase):
         self.fixture = fixtures.DependencyInputs()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        self.upstream_notices = {
+            "LICENSE": b"Original upstream license \t\r\nCopyright fixture\r\n\r\n",
+            "NOTICE": b"Required upstream attribution\r\n",
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(self.fixture.zip)) as original:
+            with zipfile.ZipFile(buffer, "w") as archive:
+                for entry in original.infolist():
+                    archive.writestr(entry.filename, original.read(entry))
+                for name, body in self.upstream_notices.items():
+                    archive.writestr(
+                        self.fixture.module + "@" + self.fixture.version + "/" + name,
+                        body,
+                    )
+        self.fixture.zip = buffer.getvalue()
+        self.fixture.zip_sum = package.module_zip_sum(
+            self.fixture.zip, self.fixture.module, self.fixture.version
+        )
+        self.fixture.records[0]["Sum"] = self.fixture.zip_sum
+        self.fixture.sum = (
+            f"{self.fixture.module} {self.fixture.version} {self.fixture.zip_sum}\n"
+            f"{self.fixture.module} {self.fixture.version}/go.mod {self.fixture.mod_sum}\n"
+        ).encode()
+        (self.fixture.cache / "input.zip").write_bytes(self.fixture.zip)
         self.root, commit = self.fixture.repository()
+        module_file = self.root / "backend/go.mod"
+        module_file.write_bytes(
+            module_file.read_bytes()
+            + f"\nrequire (\n\t{self.fixture.module} {self.fixture.version}\n)\n".encode()
+        )
+        scripts = self.root / "backend/scripts"
+        scripts.mkdir()
+        (scripts / "generate-third-party-notices.py").write_bytes(
+            (Path(__file__).resolve().parents[1] / replay.NOTICE_GENERATOR).read_bytes()
+        )
+        self.notice_rows = []
+        for name, upstream in self.upstream_notices.items():
+            text = upstream.decode().replace("\r\n", "\n").replace("\r", "\n")
+            content = (
+                "\n".join(line.rstrip(" \t") for line in text.split("\n")).rstrip("\n")
+                + "\n"
+            ).encode()
+            path = f"dependencies/{self.fixture.module}@{self.fixture.version}/{name}"
+            destination = self.root / "backend/licenses" / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
+            self.notice_rows.append(
+                {
+                    "path": path,
+                    "sha256": sha256(content)[7:],
+                    "upstream_sha256": sha256(upstream)[7:],
+                }
+            )
+        self.notice_inventory = {
+            "inputs": {
+                name: sha256((self.root / "backend" / name).read_bytes())[7:]
+                for name in ("go.mod", "go.sum")
+            },
+            "modules": [
+                {
+                    "module": self.fixture.module,
+                    "version": self.fixture.version,
+                    "notices": self.notice_rows,
+                }
+            ],
+        }
+        (self.root / replay.NOTICE_INVENTORY).write_bytes(
+            json_bytes(self.notice_inventory)
+        )
+        git(self.root, "add", ".")
+        git(self.root, "commit", "-qm", "Original notice replay fixture")
+        commit = git(self.root, "rev-parse", "HEAD").decode().strip()
         self.context = NativeSourceContext(
             "endorses/psst.zip", "v1.2.3", commit, "linux/amd64"
         )
@@ -169,6 +241,7 @@ class DependencyReplay(unittest.TestCase):
             {
                 "go.mod": self.fixture.mod,
                 "source.go": b"package dependency\n",
+                **self.upstream_notices,
             },
         )
         self.assertEqual(
@@ -191,6 +264,17 @@ class DependencyReplay(unittest.TestCase):
         self.assertFalse(result["publication_authorized"])
         self.assertFalse(result["corresponding_source_completeness_verified"])
         self.assertEqual(result["archive_sha256"], sha256(self.archive.read_bytes()))
+        self.assertTrue(result["backend_notice_sources_verified"])
+        self.assertEqual(
+            result["backend_notice_sources"],
+            {
+                "inventory_sha256": sha256(json_bytes(self.notice_inventory)),
+                "generator_sha256": replay.NOTICE_GENERATOR_SHA256,
+                "modules": [
+                    {**result["go_module_inputs"][0], "notices": self.notice_rows}
+                ],
+            },
+        )
         self.assertEqual(
             result["go_module_inputs"],
             [
@@ -203,6 +287,80 @@ class DependencyReplay(unittest.TestCase):
             ],
         )
         self.assertEqual(set(Path("/tmp").glob("psst-dependency-replay-*")), before)
+
+    def test_upstream_notice_hash_omission_version_recipe_and_local_text_drift_fail(
+        self,
+    ):
+        locks = {
+            name: git(self.root, "show", self.context.commit + ":" + name)
+            for name in replay.LOCKS
+        }
+        inventory = replay.notice_inventory(self.root, self.context.commit, locks)
+        module = self.fixture.module
+        record = {
+            "module": module,
+            "version": self.fixture.version,
+            "sum": self.fixture.zip_sum,
+            "zip_sha256": sha256(self.fixture.zip),
+        }
+        row = inventory["modules"][module]
+        for change in ("upstream-hash", "local-hash", "omitted-attribution", "version"):
+            changed = copy.deepcopy(row)
+            if change == "upstream-hash":
+                changed["notices"][0]["upstream_sha256"] = "0" * 64
+            elif change == "local-hash":
+                changed["notices"][0]["sha256"] = "0" * 64
+            elif change == "omitted-attribution":
+                changed["notices"].pop()
+            else:
+                changed["version"] = "v9.0.0"
+            with self.subTest(change=change), self.assertRaises(InvalidRelease):
+                replay.verify_module_notices(
+                    self.root,
+                    self.context.commit,
+                    changed,
+                    record,
+                    self.upstream_notices,
+                )
+
+        original_git = replay.git
+        for change in ("recipe", "scope", "local-text"):
+
+            def changed_git(root, *args):
+                if (
+                    args
+                    == ("show", self.context.commit + ":" + replay.NOTICE_GENERATOR)
+                    and change == "recipe"
+                ):
+                    return b"def normalize(content): return content\n"
+                if (
+                    args
+                    == ("show", self.context.commit + ":" + replay.NOTICE_INVENTORY)
+                    and change == "scope"
+                ):
+                    altered = copy.deepcopy(self.notice_inventory)
+                    altered["modules"][0]["version"] = "v9.0.0"
+                    return json_bytes(altered)
+                if (
+                    args
+                    == (
+                        "show",
+                        self.context.commit
+                        + ":backend/licenses/"
+                        + self.notice_rows[0]["path"],
+                    )
+                    and change == "local-text"
+                ):
+                    return b"Changed distributed legal text\n"
+                return original_git(root, *args)
+
+            with self.subTest(change=change), patch.object(
+                replay, "git", side_effect=changed_git
+            ), self.assertRaises(InvalidRelease):
+                replay.notice_inventory(self.root, self.context.commit, locks)
+                replay.verify_module_notices(
+                    self.root, self.context.commit, row, record, self.upstream_notices
+                )
 
     def test_archive_hash_collection_identity_platform_name_and_origin_drift_fail(self):
         original = copy.deepcopy(self.result)

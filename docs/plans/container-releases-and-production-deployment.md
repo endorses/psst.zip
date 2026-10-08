@@ -1645,8 +1645,10 @@ and missing or mismatched external lock inputs. Actual replay of the retained
 seconds. The complete release/notice suite passed 400 tests in 24.3 seconds
 (one existing opt-in Docker skip); the two new cases took 0.001 and 0.034 seconds.
 Vite virtual helpers and Kit generated application outputs are now associated
-with retained preferred generator sources. Full backend generator relationships
-and the combined corresponding-source gate remain pending.
+with retained preferred generator sources. Backend generator relationships were
+subsequently implemented below. The combined corresponding-source producer is
+implemented; authenticated execution for the final current two-platform
+candidate remains pending.
 These facts do not establish offline or byte-identical dependency regeneration,
 complete corresponding-source coverage or publication authority.
 
@@ -1715,8 +1717,10 @@ authenticated final-image checks for the current commit on both architectures.
       committed catalog, reusing existing original archives.
 - [x] Encode and independently replay the sibling vendoring transformation
       against both generated Linux outputs; keep byte regeneration separate.
-- [ ] Finish the complete corresponding-source producer and authenticate the
-      final current candidate inputs on both native architectures.
+- [x] Finish the complete corresponding-source producer, including final image
+      notices and independent original dependency notice associations.
+- [ ] Authenticate and run the final current candidate source inputs on both
+      native architectures, retaining and signing the complete gate evidence.
 
 Actual offline replay used the retained nineteen-original `8bed82d` offering and
 SHA-bound `4ae5954` dependency asset. Five selected module ZIPs passed independent
@@ -1779,9 +1783,61 @@ structural hashes. The two Go regressions passed in 0.004 seconds (warm-cache
 command wall time 0.044 seconds); CI runs these tiny fixtures explicitly. The
 Python protocol fixture checks reuse, source/receipt substitutions, timeouts and
 cleanup without another compilation. Neither upstream C translation nor the
-original GC-based vendoring tool was executed; native final-image authentication
-for the current candidate and the complete corresponding-source gate stay
-pending.
+original GC-based vendoring tool was executed. Native final-image authentication
+and execution of the complete corresponding-source producer for the current
+candidate remain pending.
+
+### Complete corresponding-source report composition
+
+- [x] Compose the substantive committed application archive, backend module and
+      browser preferred/compiler/generator replays. Require all four final image
+      identities and every offered source asset; derive canonical category
+      evidence hashes instead of accepting caller-provided completion flags.
+- [x] Authenticate both existing runtime-source completeness records and bind
+      their exact source asset, pack, native smoke, final image and Go/Caddy
+      coverage to the complete publication binding. Reuse these retained original
+      source replays without repeating collectors, image builds or signature tools.
+- [x] Project the complete final backend `/app/licenses` tree with OCI layer and
+      whiteout semantics. Check committed application/dependency notices, locks,
+      the generated source locator, original Go license and runtime overlays.
+      Derive web notice inventory hashes from the existing independent final
+      static-tree replay, including copied backend and runtime notices.
+- [x] Bind every committed backend dependency notice to the already H1-verified
+      original Go ZIP bytes, checking the reviewed normalization recipe and exact
+      original/local hashes. Reuse the existing ZIP pass and include these facts
+      in the backend category evidence.
+- [ ] Wire the complete producer and retained evidence into hosted authentication
+      and signing for both current native architectures. A locally tested producer
+      does not establish an authenticated current-candidate release gate.
+
+The complete producer returns a `corresponding-source` report plus retained
+canonical coverage evidence. Individual source helpers retain their partial
+completeness/publication flags. The joined report establishes only corresponding
+source coverage; protected distribution approval and source delivery/readback
+remain separate gates. The selected committed policy, all original source assets,
+measurements, runtime pack metadata and final image archives are rechecked before
+returning the report.
+
+The four new small regression methods cover substituted or missing runtime/source
+evidence, incomplete categories, changed final notice bytes and OCI removals or
+links. Together they took approximately 0.05 seconds. They use local bytes and
+tiny layers, with no image builds, downloads or arbitrary sleeps. The notice
+helper also replayed the retained `4ae5954` AMD64 backend archive in 0.23 seconds:
+44 final notice files and 22 dependency notices, inventory digest
+`sha256:8413cd8478ee12ad88d3acaa3828c13b49d2416262d048e668214bc6bfb85494`.
+That earlier archive is development evidence, not authentication of the current
+candidate or publication approval.
+
+The dependency notice comparison also passed against the retained `4ae5954`
+originals in 0.54 seconds: all fifteen declared modules and twenty-two legal
+members match the exact committed inventory and local bytes. Only OTP `NOTICE`
+and memory `LICENSE-MMAP-GO` require the reviewed whitespace normalization;
+SQLite `SQLITE-LICENSE` is an original ZIP member. The reviewed generator has
+SHA256 `1c670e2f028fd422cf5948887946e3da26db7e43f5a49e55695035eb546317ca`;
+a changed recipe requires review rather than executing selected-source Python.
+The same streaming read rechecked the retained source asset and selected original
+ZIP hashes without another H1 replay, extraction or cache. Its private receipt
+remains separate from authenticated current-candidate release evidence.
 
 ## Verification and completion criteria
 
@@ -1793,11 +1849,11 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 406 tests in 27.1 seconds
+combined local release/notice regression suite passed 411 tests in 27.0 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 1.17 seconds. The three new backend source
+and cleanup; the slowest case took 1.37 seconds. The three backend source
 regressions took 0.020 seconds; they reject substituted project origins/members,
 wrong C source identities, changed generator pins and missing platform/tool inputs.
 The six focused browser-source

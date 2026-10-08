@@ -605,6 +605,7 @@ class GateReports(unittest.TestCase):
                 "npm_archives": {},
                 "source_associations": {"unresolved_javascript": []},
                 "git_inputs": {},
+                "final_static_files": {},
             }
             measurement = self.root / ("browser-" + platform.split("/")[1] + ".json")
             measurement.write_bytes(

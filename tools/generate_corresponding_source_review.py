@@ -1,8 +1,9 @@
-"""Replay corresponding-source inputs; partial facts never grant release approval.
+"""Combine independently verified source inputs for exact final release images.
 
-The application archive check establishes the exact retained Git source tree and
-release packaging recipe. It does not establish dependency, runtime, generator,
-or preferred-form source completeness, and cannot produce a passed source gate.
+Individual application/backend/browser replays remain partial facts. The complete
+producer also requires both authenticated runtime-source replays, every offered
+asset, final notices and the committed policy. Publication still needs separate
+distribution approval and delivery gates.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import measure_browser_source_inventory as browser_inventory
 import measure_native_browser_inputs as browser_inputs
 import package_upstream_application_sources as upstream_inputs
 import sqlite_vendoring
+import final_image_notice_inventory as final_notices
+from generate_distribution_review import committed_policy
 
 from aggregate_release_image_scans import checked_graph, load_authenticated, load_raw
 from generate_release_gate_reports import (
@@ -26,9 +29,16 @@ from generate_release_gate_reports import (
     aggregate_native_reports,
     checked_binding,
     runtime_inputs,
+    source_asset_measurements,
+    timestamp,
 )
 import verify_application_dependency_inputs as dependency_inputs
-from publish_container_release import Binding, sha256, source_digest
+from publish_container_release import (
+    Binding,
+    sha256,
+    source_digest,
+    source_review_details,
+)
 from release_artifacts import (
     COMMIT,
     DIGEST,
@@ -46,6 +56,391 @@ from release_artifacts import (
 
 # Same bound as the native source scanner's Git snapshot. No extraction is needed.
 MAX_APPLICATION_SOURCE_BYTES = 256 * 1024**2
+
+
+def verify_runtime_source_records(
+    binding: Binding,
+    *,
+    records: dict[str, Path],
+    native: dict,
+    runtime_packs: dict[str, Path],
+    authenticator: MeasurementAuthenticator,
+) -> tuple[dict, dict]:
+    """Reuse authenticated substantive runtime replays, never caller approvals.
+
+    The trusted native producer has already replayed original APK/Caddy/Go source
+    and final OCI files. Bind those exact completed observations to the current
+    source assets, pack, smoke execution and final images, without rerunning the
+    source collector, signature tool or image build.
+    """
+    fields(records, set(PLATFORMS), "both authenticated runtime-source records")
+    fields(runtime_packs, set(PLATFORMS), "both complete runtime packs")
+    result, snapshots = {}, {}
+    for platform in PLATFORMS:
+        record, digest = load_authenticated(records[platform], binding, authenticator)
+        fields(
+            record,
+            {
+                "schema_version",
+                "kind",
+                "verified_at",
+                "repository",
+                "version",
+                "revision",
+                "platform",
+                "runtime_source_asset_sha256",
+                "runtime_pack_sha256",
+                "native_smoke_report_sha256",
+                "images",
+                "coverage",
+                "caddy_signature_verification",
+                "runtime_source_inputs_verified",
+                "application_source_verified",
+                "apk_binary_signatures_verified",
+                "source_publication_verified",
+                "distribution_authorized",
+            },
+            "completed runtime-source replay",
+        )
+        context = NativeSourceContext(
+            binding.repository, binding.version, binding.commit, platform
+        )
+        _, runtime = runtime_inputs(context, runtime_packs[platform])
+        measurement = native[platform]
+        require(
+            type(record["schema_version"]) is int
+            and record["schema_version"] == 1
+            and record["kind"] == "runtime-source-completeness"
+            and record["repository"] == binding.repository
+            and record["version"] == binding.version
+            and record["revision"] == binding.commit
+            and record["platform"] == platform
+            and runtime == measurement["runtime"]
+            and record["runtime_source_asset_sha256"]
+            == runtime["source_asset"]["digest"]
+            and record["runtime_pack_sha256"] == runtime["runtime_pack_sha256"]
+            and record["native_smoke_report_sha256"]
+            == sha256(json_bytes(measurement["smoke"]))
+            and record["images"] == measurement["images"],
+            "Runtime-source replay differs from exact authenticated native inputs",
+        )
+        require(
+            record["runtime_source_inputs_verified"] is True
+            and all(
+                record[key] is False
+                for key in (
+                    "application_source_verified",
+                    "apk_binary_signatures_verified",
+                    "source_publication_verified",
+                    "distribution_authorized",
+                )
+            ),
+            "Runtime-source replay is incomplete or claims unrelated approval",
+        )
+        timestamp(record["verified_at"])
+        coverage = fields(
+            record["coverage"],
+            {
+                "backend_origins",
+                "web_origins",
+                "retained_package_versions",
+                "go_runtime",
+            },
+            "completed runtime source coverage",
+        )
+        require(
+            all(
+                type(coverage[key]) is int and coverage[key] > 0
+                for key in (
+                    "backend_origins",
+                    "web_origins",
+                    "retained_package_versions",
+                )
+            ),
+            "Runtime source/package coverage is missing",
+        )
+        go = fields(
+            coverage["go_runtime"],
+            {"version", "commit", "archive_sha256", "executables"},
+            "retained original Go runtime",
+        )
+        matches(go["commit"], COMMIT, "Original Go source revision missing")
+        matches(go["archive_sha256"], DIGEST, "Original Go archive digest missing")
+        require(
+            isinstance(go["version"], str)
+            and go["version"].startswith("go")
+            and go["executables"]
+            == {component: go["version"] for component in ("backend", "web")}
+            and isinstance(record["caddy_signature_verification"], dict)
+            and record["caddy_signature_verification"].get(
+                "legacy_sigstore_signatures_verified"
+            )
+            is True,
+            "Runtime replay lacks exact executable/source or Caddy signature coverage",
+        )
+        result[platform] = {"measurement_sha256": digest, "replay": record}
+        snapshots[records[platform]] = digest
+        snapshots[runtime_packs[platform] / "runtime-pack.json"] = runtime[
+            "runtime_pack_sha256"
+        ]
+    return result, snapshots
+
+
+def corresponding_source_report(
+    binding: Binding,
+    *,
+    root: Path,
+    source_assets: dict[str, Path],
+    native_measurements: dict[str, Path],
+    runtime_packs: dict[str, Path],
+    runtime_source_records: dict[str, Path],
+    dependency_collections: dict[str, Path],
+    source_scans: dict[str, Path],
+    compiler_graphs: dict[str, Path],
+    upstream_collection: Path,
+    browser_measurements: dict[str, Path],
+    captures: dict[str, Path],
+    archives: dict[str, dict[str, Path]],
+    authenticator: MeasurementAuthenticator,
+) -> tuple[dict, dict]:
+    """Return complete gate bytes and replay evidence; perform no publication.
+
+    Invoke the substantive replays here rather than accepting caller-supplied
+    completion flags. Keep canonical evidence behind each coverage digest for
+    hosted retention/attestation. Runtime records come from the existing trusted
+    original-source replay producer; both architectures remain mandatory.
+    """
+    subjects = checked_binding(binding)
+    fields(archives, set(PLATFORMS), "both final native image archives")
+    for pair in archives.values():
+        fields(pair, {"backend", "web"}, "complete final native image pair")
+    assets = source_asset_measurements(binding, source_assets)
+    _, policy = committed_policy(root, binding)
+    native = aggregate_native_reports(binding, native_measurements, authenticator)[
+        "final-image-smoke"
+    ]["details"]["native_measurements"]
+    runtime, snapshots = verify_runtime_source_records(
+        binding,
+        records=runtime_source_records,
+        native=native,
+        runtime_packs=runtime_packs,
+        authenticator=authenticator,
+    )
+    for values in (source_scans, compiler_graphs, browser_measurements):
+        snapshots.update({path: source_digest(path) for path in values.values()})
+    snapshots[upstream_collection / upstream_inputs.RECORD] = source_digest(
+        upstream_collection / upstream_inputs.RECORD
+    )
+    snapshots.update(
+        {
+            collection
+            / "dependency-collection.json": source_digest(
+                collection / "dependency-collection.json"
+            )
+            for collection in dependency_collections.values()
+        }
+    )
+    application_name = f"psst.zip-source-{binding.version}.tar.gz"
+    require(
+        application_name in source_assets, "Committed application source asset missing"
+    )
+    application = verify_application_source_archive(
+        binding, root=root, source=source_assets[application_name]
+    )
+    backend = verify_backend_source_inputs(
+        binding,
+        root=root,
+        native_measurements=native_measurements,
+        runtime_packs=runtime_packs,
+        dependency_collections=dependency_collections,
+        source_scans=source_scans,
+        compiler_graphs=compiler_graphs,
+        upstream_collection=upstream_collection,
+        authenticator=authenticator,
+    )
+    browser = verify_browser_source_inputs(
+        binding,
+        root=root,
+        native_measurements=native_measurements,
+        runtime_packs=runtime_packs,
+        browser_measurements=browser_measurements,
+        captures=captures,
+        web_archives={p: pair["web"] for p, pair in archives.items()},
+        upstream_collection=upstream_collection,
+        authenticator=authenticator,
+    )
+    require(
+        backend["binding_digest"] == browser["binding_digest"] == binding.digest
+        and backend["upstream_inputs"] == browser["upstream_inputs"],
+        "Backend/browser source offerings differ",
+    )
+    fields(
+        backend["images"],
+        {"backend-amd64", "backend-arm64"},
+        "both backend source replays",
+    )
+    fields(browser["images"], {"web-amd64", "web-arm64"}, "both browser source replays")
+    covered = {application_name, backend["upstream_inputs"]["asset"]["name"]}
+    evidence, coverage, images = {}, {}, {}
+
+    def retain(name, value):
+        evidence[name] = value
+        return {"status": "complete", "evidence_digest": sha256(json_bytes(value))}
+
+    app_coverage = retain("application", application)
+    for platform in PLATFORMS:
+        arch = platform.split("/")[1]
+        pack, runtime_input = runtime_inputs(
+            NativeSourceContext(
+                binding.repository, binding.version, binding.commit, platform
+            ),
+            runtime_packs[platform],
+        )
+        require(
+            runtime_input == native[platform]["runtime"],
+            "Runtime pack changed during complete source replay",
+        )
+        covered.add(runtime_input["source_asset"]["name"])
+        runtime_coverage = retain("runtime-" + arch, runtime[platform])
+        for component, partial in (("backend", backend), ("web", browser)):
+            target = component + "-" + arch
+            row = partial["images"][target]
+            require(
+                row["subject"] == subjects[target]
+                and row["image"] == native[platform]["images"][component],
+                "Source replay covers another final image",
+            )
+            coverage[target] = {
+                "application": app_coverage,
+                "runtime": runtime_coverage,
+            }
+            if component == "backend":
+                covered.add(row["dependency_asset"]["name"])
+                snapshots[
+                    dependency_collections[platform] / "dependency-collection.json"
+                ] = row["dependency_replay"]["collection_sha256"]
+                coverage[target]["backend-modules"] = retain(target + "-modules", row)
+                notices = final_notices.verify_backend_notices(
+                    NativeSourceContext(
+                        binding.repository, binding.version, binding.commit, platform
+                    ),
+                    archives[platform]["backend"],
+                    image=row["image"],
+                    pack=pack,
+                    root=root,
+                )
+                require(
+                    notices["files"]["dependency-inventory.json"]["sha256"]
+                    == row["dependency_replay"]["backend_notice_sources"][
+                        "inventory_sha256"
+                    ],
+                    "Final dependency notices differ from independently verified upstream notice sources",
+                )
+            else:
+                coverage[target]["browser-packages"] = retain(
+                    target + "-packages",
+                    {
+                        key: row[key]
+                        for key in (
+                            "subject",
+                            "image",
+                            "browser_measurement_sha256",
+                            "browser_inputs_sha256",
+                            "preferred_sources",
+                            "source_associations",
+                        )
+                    },
+                )
+                coverage[target]["browser-generators"] = retain(
+                    target + "-generators",
+                    {
+                        key: row[key]
+                        for key in (
+                            "subject",
+                            "image",
+                            "compiler_sources",
+                            "generator_sources",
+                        )
+                    },
+                )
+                files = row["notice_files"]
+                require(
+                    isinstance(files, dict)
+                    and {
+                        "AGPL-3.0-only.txt",
+                        "THIRD_PARTY_NOTICES.txt",
+                        "dependency-inventory.json",
+                        "release.json",
+                        "backend/AGPL-3.0-only.txt",
+                        "runtime/THIRD_PARTY_NOTICES.txt",
+                        "runtime/SOURCE.txt",
+                        "runtime/runtime-inventory.json",
+                    }
+                    <= set(files),
+                    "Final web notice inventory is incomplete",
+                )
+                notices = {
+                    "files": files,
+                    "notice_inventory_digest": sha256(json_bytes(files)),
+                }
+                snapshots[captures[platform]] = row["browser_inputs_sha256"]
+            evidence[target + "-notices"] = notices
+            images[target] = {
+                "subject": subjects[target],
+                "notice_inventory_digest": notices["notice_inventory_digest"],
+            }
+            snapshots[archives[platform][component]] = row["image"]["archive_digest"]
+        snapshots[native_measurements[platform]] = native[platform][
+            "measurement_digest"
+        ]
+    require(
+        covered == set(source_assets),
+        "An offered source asset lacks substantive source coverage",
+    )
+    require(
+        source_digest(upstream_collection / upstream_inputs.RECORD)
+        == backend["upstream_inputs"]["collection_sha256"],
+        "Upstream offering record changed during complete source replay",
+    )
+    require(
+        source_asset_measurements(binding, source_assets) == assets,
+        "Source assets changed during complete replay",
+    )
+    require(
+        committed_policy(root, binding)[1] == policy,
+        "Committed distribution policy changed during replay",
+    )
+    for path, digest in snapshots.items():
+        require(
+            source_digest(path) == digest,
+            "Complete source evidence changed during replay",
+        )
+    details = {
+        "schema_version": 1,
+        "source_subjects": {
+            key: value for key, value in subjects.items() if key.startswith("source:")
+        },
+        "images": images,
+        "policy": policy,
+        "coverage": coverage,
+    }
+    source_review_details(details, binding, distribution=False)
+    return {
+        "schema_version": 1,
+        "gate": "corresponding-source",
+        "binding_digest": binding.digest,
+        "passed": True,
+        "details": details,
+    }, {
+        "schema_version": 1,
+        "kind": "complete-corresponding-source-replay-evidence",
+        "binding_digest": binding.digest,
+        "source_assets": assets,
+        "coverage_evidence": evidence,
+        "distribution_review_required": True,
+        "byte_reproduction_verified": False,
+        "publication_authorized": False,
+    }
 
 
 def verify_backend_source_inputs(
@@ -158,9 +553,21 @@ def verify_backend_source_inputs(
             require(
                 replay.get("source") == context.checked()
                 and replay.get("package_inputs_replayed") is True
+                and replay.get("backend_notice_sources_verified") is True
                 and replay.get("source_measurement_sha256") == source_digest_value,
                 "Dependency inputs differ from authenticated native source scan",
             )
+            notice_sources = fields(
+                replay.get("backend_notice_sources"),
+                {"inventory_sha256", "generator_sha256", "modules"},
+                "independently replayed upstream module notices",
+            )
+            for key in ("inventory_sha256", "generator_sha256"):
+                matches(
+                    notice_sources[key],
+                    DIGEST,
+                    "Upstream notice evidence digest missing",
+                )
             asset_name = f"psst.zip-dependency-inputs-{binding.version}-{platform.split('/')[1]}.tar.gz"
             archive_digest = matches(
                 replay.get("archive_sha256"), DIGEST, "Dependency asset digest missing"
@@ -426,6 +833,11 @@ def verify_browser_source_inputs(
             "compiler_sources": compiler,
             "generator_sources": generators,
             "source_associations": replayed["source_associations"],
+            "notice_files": {
+                path.removeprefix("licenses/"): fact
+                for path, fact in replayed["final_static_files"].items()
+                if path.startswith("licenses/")
+            },
         }
         snapshots.extend(
             [
