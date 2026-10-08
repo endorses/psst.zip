@@ -1,0 +1,393 @@
+"""Tiny CLI fixtures check typed binding/path/output boundaries without rereplays."""
+
+from __future__ import annotations
+
+import argparse
+from contextlib import ExitStack
+import copy
+import io
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import generate_corresponding_source_review as command
+from publish_container_release import (
+    Binding,
+    PublicationInputs,
+    SOURCE_COVERAGE,
+    SOURCE_REVIEW_POLICY,
+    VerifiedEvidence,
+)
+from release_artifacts import InvalidRelease, json_bytes, read_json
+
+
+class CorrespondingSourceCommand(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="psst-source-command-test-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        prepared = root / "prepared"
+        prepared.mkdir()
+        for name in ("amd64", "arm64", "upstream"):
+            (root / name).mkdir()
+        self.args = argparse.Namespace(
+            root=root,
+            prepared=prepared,
+            amd64_inputs=root / "amd64",
+            arm64_inputs=root / "arm64",
+            upstream=root / "upstream",
+            repository="endorses/psst.zip",
+            version="v0.1.0",
+            commit="a" * 40,
+            run_id=1234,
+            run_attempt=2,
+            output=root / "source-reports",
+        )
+        bundle = "psst.zip-deployment-v0.1.0.tar.gz"
+        self.source = "psst.zip-source-v0.1.0.tar.gz"
+        assets = {
+            "release-manifest.json": json_bytes({"bundle": {"name": bundle}}),
+            bundle: b"small mocked bundle",
+            self.source: b"small mocked source",
+        }
+        for name, raw in assets.items():
+            (prepared / name).write_bytes(raw)
+        for name in ("oci-correspondence.json", "backend-index.json", "web-index.json"):
+            (prepared / name).write_bytes(json_bytes({"tiny": name}))
+        subjects = {
+            "manifest": "file:release-manifest.json@"
+            + command.sha256(assets["release-manifest.json"]),
+            "bundle": "file:" + bundle + "@" + command.sha256(assets[bundle]),
+            "source:"
+            + self.source: "file:"
+            + self.source
+            + "@"
+            + command.sha256(assets[self.source]),
+        }
+        self.binding = Binding(
+            self.args.repository,
+            self.args.version,
+            self.args.commit,
+            tuple(sorted(subjects.items())),
+        )
+        self.inputs = PublicationInputs(
+            self.binding,
+            {"bundle": {"name": bundle}},
+            command.sha256(assets["release-manifest.json"]),
+            (),
+            tuple(sorted((name, command.sha256(raw)) for name, raw in assets.items())),
+        )
+        self.record = {
+            "schema_version": 1,
+            "kind": "prepared-release-inputs",
+            "source_kind": "version-tag",
+            "tagged_source_ci_gate_verified": False,
+            "signer_identity_verified": False,
+            "repository": self.args.repository,
+            "version": self.args.version,
+            "source_commit": self.args.commit,
+            "binding_sha256": self.binding.digest,
+            "assets": dict(self.inputs.assets),
+            "subjects": dict(self.binding.subjects),
+            "dependency_replays": {
+                platform: {"fixture": True} for platform in command.PLATFORMS
+            },
+            "upstream_replay": {"fixture": True},
+            "publication_authorized": False,
+            "measurement_authentication_required": True,
+        }
+        self.write_record()
+        subjects.update(
+            {
+                name: "oci://fixture/" + name + "@sha256:" + "d" * 64
+                for name in ("backend-index", "web-index", *SOURCE_COVERAGE)
+            }
+        )
+        self.binding = Binding(
+            self.args.repository,
+            self.args.version,
+            self.args.commit,
+            tuple(sorted(subjects.items())),
+        )
+        self.inputs = PublicationInputs(
+            self.binding,
+            self.inputs.manifest,
+            self.inputs.manifest_record_digest,
+            (),
+            self.inputs.assets,
+        )
+        self.record.update(
+            binding_sha256=self.binding.digest, subjects=dict(self.binding.subjects)
+        )
+        self.write_record()
+        retained = {}
+        coverage, images = {}, {}
+        for target, categories in SOURCE_COVERAGE.items():
+            coverage[target] = {}
+            for category in categories:
+                key = target + "-" + category
+                retained[key] = {"fixture": key}
+                coverage[target][category] = {
+                    "status": "complete",
+                    "evidence_digest": command.sha256(json_bytes(retained[key])),
+                }
+            files = {"LICENSE": {"sha256": "sha256:" + "e" * 64, "size": 10}}
+            retained[target + "-notices"] = {
+                "files": files,
+                "notice_inventory_digest": command.sha256(json_bytes(files)),
+            }
+            images[target] = {
+                "subject": subjects[target],
+                "notice_inventory_digest": command.sha256(json_bytes(files)),
+            }
+        self.report = {
+            "schema_version": 1,
+            "gate": "corresponding-source",
+            "binding_digest": self.binding.digest,
+            "passed": True,
+            "details": {
+                "schema_version": 1,
+                "source_subjects": {
+                    "source:" + self.source: subjects["source:" + self.source]
+                },
+                "images": images,
+                "policy": {
+                    "path": SOURCE_REVIEW_POLICY,
+                    "source_commit": self.args.commit,
+                    "record_digest": "sha256:" + "f" * 64,
+                    "git_blob": "c" * 40,
+                },
+                "coverage": coverage,
+            },
+        }
+        self.evidence = {
+            "schema_version": 1,
+            "kind": "complete-corresponding-source-replay-evidence",
+            "binding_digest": self.binding.digest,
+            "source_assets": {
+                "schema_version": 1,
+                "kind": "release-source-asset-measurements",
+                "binding_digest": self.binding.digest,
+                "assets": {
+                    self.source: {
+                        "digest": command.sha256(assets[self.source]),
+                        "size": len(assets[self.source]),
+                    }
+                },
+                "corresponding_source_completeness_verified": False,
+                "distribution_review_required": True,
+                "publication_authorized": False,
+            },
+            "coverage_evidence": retained,
+            "distribution_review_required": True,
+            "byte_reproduction_verified": False,
+            "publication_authorized": False,
+        }
+
+    def write_record(self, record=None):
+        (self.args.prepared / "release-inputs.json").write_bytes(
+            json_bytes(self.record if record is None else record)
+        )
+
+    def mocks(self, *, side_effect=None):
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        prepared = stack.enter_context(
+            patch.object(command, "prepare_inputs", return_value=self.inputs)
+        )
+        auth = stack.enter_context(patch.object(command, "GhEvidenceVerifier"))
+        producer = stack.enter_context(
+            patch.object(
+                command,
+                "corresponding_source_report",
+                return_value=(self.report, self.evidence),
+                side_effect=side_effect,
+            )
+        )
+        stack.enter_context(
+            patch.dict(command.os.environ, {"GH_TOKEN": "fixture-token"})
+        )
+        return prepared, auth, producer
+
+    def test_typed_tag_binding_native_paths_current_attempt_and_exclusive_outputs(self):
+        prepared, auth, producer = self.mocks()
+        command.main(
+            [
+                "--" + key.replace("_", "-") + "=" + str(value)
+                for key, value in vars(self.args).items()
+            ]
+        )
+        auth.assert_called_once_with(token="fixture-token", run_id=1234, run_attempt=2)
+        measured = prepared.call_args.kwargs
+        self.assertEqual(measured["ref"], "refs/tags/v0.1.0")
+        self.assertEqual(measured["event_sha"], measured["reviewed_commit"])
+        self.assertEqual(
+            measured["source_assets"], {self.source: self.args.prepared / self.source}
+        )
+        replay = producer.call_args.kwargs
+        self.assertIs(producer.call_args.args[0], self.binding)
+        self.assertIs(replay["authenticator"], auth.return_value)
+        self.assertEqual(
+            set(replay["compiler_graphs"]),
+            # verify_backend_source_inputs accepts exactly these two graphs;
+            # browser source evidence has its separate observation interface.
+            {"backend-amd64", "backend-arm64"},
+        )
+        for platform, tree in (
+            ("linux/amd64", self.args.amd64_inputs),
+            ("linux/arm64", self.args.arm64_inputs),
+        ):
+            arch = platform.split("/")[1]
+            for key, relative in {
+                "native_measurements": "native/native-measurement.json",
+                "runtime_packs": "native/pack",
+                "runtime_source_records": "native/source-completeness-verification.json",
+                "dependency_collections": "application-dependencies",
+                "source_scans": "source-scans/source-scan-measurement.json",
+                "browser_measurements": "native/browser/browser-verification.json",
+                "captures": "native/browser/browser-inputs.tar",
+            }.items():
+                self.assertEqual(replay[key][platform], tree / relative)
+            for component in ("backend", "web"):
+                self.assertEqual(
+                    replay["archives"][platform][component],
+                    tree / f"native/export/{component}-{arch}.oci.tar",
+                )
+            self.assertEqual(
+                replay["compiler_graphs"]["backend-" + arch],
+                tree / "compiler-backend/compiler-graph-measurement.json",
+            )
+        self.assertEqual(
+            {p.name for p in self.args.output.iterdir()},
+            {"corresponding-source.json", "corresponding-source-evidence.json"},
+        )
+        self.assertEqual(
+            read_json((self.args.output / "corresponding-source.json").read_bytes()),
+            self.report,
+        )
+        self.assertEqual(
+            read_json(
+                (self.args.output / "corresponding-source-evidence.json").read_bytes()
+            ),
+            self.evidence,
+        )
+        with self.assertRaises(InvalidRelease):
+            command.run_command(self.args)
+        self.assertEqual(producer.call_count, 1)
+        self.args.verify_only = True
+        auth.return_value.verify.return_value = VerifiedEvidence(
+            "corresponding-source",
+            self.binding.digest,
+            command.sha256(
+                (self.args.output / "corresponding-source.json").read_bytes()
+            ),
+            True,
+            self.report["details"],
+        )
+        before = {path.name: path.read_bytes() for path in self.args.output.iterdir()}
+        command.run_command(self.args)
+        self.assertEqual(producer.call_count, 1)
+        auth.return_value.verify.assert_called_once_with(
+            "corresponding-source",
+            self.args.output / "corresponding-source.json",
+            self.binding,
+        )
+        auth.return_value.authenticate.assert_called_once_with(
+            before["corresponding-source-evidence.json"], self.binding
+        )
+        self.assertEqual(
+            before,
+            {path.name: path.read_bytes() for path in self.args.output.iterdir()},
+        )
+        for mutation in ("coverage", "notices", "publication"):
+            bad = copy.deepcopy(self.evidence)
+            if mutation == "coverage":
+                for key, value in bad["coverage_evidence"].items():
+                    if not key.endswith("-notices"):
+                        value["substitution"] = True
+            elif mutation == "notices":
+                bad["coverage_evidence"]["web-arm64-notices"]["files"]["LICENSE"][
+                    "size"
+                ] += 1
+            else:
+                bad["publication_authorized"] = True
+            (self.args.output / "corresponding-source-evidence.json").write_bytes(
+                json_bytes(bad)
+            )
+            with self.subTest(mutation=mutation), self.assertRaises(InvalidRelease):
+                command.run_command(self.args)
+            self.assertEqual(producer.call_count, 1)
+        (self.args.output / "corresponding-source-evidence.json").write_bytes(
+            before["corresponding-source-evidence.json"]
+        )
+
+        def change_after_authentication(raw, binding):
+            (self.args.output / "corresponding-source-evidence.json").write_bytes(
+                raw + b" "
+            )
+
+        auth.return_value.authenticate.side_effect = change_after_authentication
+        with self.assertRaisesRegex(InvalidRelease, "changed during authentication"):
+            command.run_command(self.args)
+        self.assertEqual(producer.call_count, 1)
+        auth.return_value.authenticate.side_effect = None
+
+    def test_unbound_planned_changed_and_partial_inputs_fail_without_output(self):
+        prepared, auth, producer = self.mocks()
+        for key, value in (
+            ("source_kind", "planned-main-dispatch"),
+            ("kind", "planned-candidate-inputs"),
+            ("binding_sha256", "sha256:" + "b" * 64),
+            ("subjects", {}),
+            ("assets", {**self.record["assets"], self.source: "sha256:" + "b" * 64}),
+            ("source_commit", "b" * 40),
+            ("measurement_authentication_required", False),
+        ):
+            with self.subTest(key=key):
+                changed = copy.deepcopy(self.record)
+                changed[key] = value
+                self.write_record(changed)
+                with self.assertRaises(InvalidRelease):
+                    command.run_command(self.args)
+                self.assertFalse(self.args.output.exists())
+        self.write_record()
+        (self.args.prepared / "unexpected.json").write_bytes(b"{}")
+        with self.assertRaises(InvalidRelease):
+            command.run_command(self.args)
+        (self.args.prepared / "unexpected.json").unlink()
+        producer.assert_not_called()
+
+        def changed_metadata(*args, **kwargs):
+            self.write_record({**self.record, "binding_sha256": "sha256:" + "b" * 64})
+            return self.report, self.evidence
+
+        producer.side_effect = changed_metadata
+        with self.assertRaisesRegex(InvalidRelease, "changed during source replay"):
+            command.run_command(self.args)
+        self.assertFalse(self.args.output.exists())
+        self.write_record()
+        producer.side_effect = None
+        producer.return_value = (self.report, {"oversized": "x" * 1024})
+        with patch.object(command, "MAX_COMMAND_OUTPUT", 256), self.assertRaises(
+            InvalidRelease
+        ):
+            command.run_command(self.args)
+        self.assertFalse(self.args.output.exists())
+        producer.side_effect = OSError("a sensitive network diagnostic fixture-token")
+        with patch.object(
+            command, "run_command", side_effect=producer.side_effect
+        ), patch("sys.stderr", new_callable=io.StringIO) as error:
+            with self.assertRaises(SystemExit) as rejected:
+                command.main(
+                    [
+                        "--" + key.replace("_", "-") + "=" + str(value)
+                        for key, value in vars(self.args).items()
+                    ]
+                )
+            self.assertEqual(rejected.exception.code, 1)
+            self.assertNotIn("fixture-token", error.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

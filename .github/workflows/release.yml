@@ -1,5 +1,6 @@
-# Candidate verification only. This workflow cannot publish packages or releases,
-# attest artifacts, access production, or advertise a deployment-ready bundle.
+# Native release verification. Version-tag runs attest completed measurements
+# and source review; planned main dispatches remain unsigned candidates.
+# This workflow cannot publish packages/releases or access production.
 name: Release candidate verification
 
 on:
@@ -148,6 +149,10 @@ jobs:
             runner: ubuntu-24.04-arm
             cosign_sha256: 426193b4c5da4d4d643e822f48fe0cc8a476ca1782a272704831f5a0cef716d7
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     # Source collection and exact-image compiler graphs are release preparation;
     # ordinary source CI keeps its existing, separate budgets.
     timeout-minutes: 60
@@ -384,11 +389,11 @@ jobs:
               --image-archive "$private/native/export/$component-$ARCH.oci.tar" \
               --tested-config "$config" --output "$private/compiler-$component" "${extras[@]}"
           done
-      - name: Record completed unsigned native preparation status
+      - name: Record completed native preparation status
         run: |
           printf '%s\n' \
             'Native candidate measurements completed; no registry or release was published.' \
-            'Reports are unsigned candidate evidence, not authenticated provenance or deployment approval.' \
+            'Tagged runs attest completed measurements after transfer verification; planned main dispatches remain unsigned.' \
             'Image and source scans retain every finding; finding disposition, distribution review, public source retrieval, authenticated release gates and production rollout remain pending.' \
             >> "$GITHUB_STEP_SUMMARY"
       - name: Stage verified native payloads and complete raw measurement inputs
@@ -399,6 +404,33 @@ jobs:
             --commit "$SOURCE_COMMIT" --platform "$PLATFORM" --source-kind "$SOURCE_KIND" \
             --private "$RUNNER_TEMP/psst-native-private-$ARCH" \
             --output "$RUNNER_TEMP/candidate-transfer/$ARCH"
+      - name: Attest exact native measurements for the version-tag attempt
+        id: native-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # reviewed official action; native Node24
+        with:
+          # Explicit small records. Their authenticated hashes bind all raw
+          # graphs/source/capture/image bytes; no second build or archive signing.
+          subject-path: |
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/native-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/source-completeness-verification.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/browser/browser-verification.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/source-scans/source-scan-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/compiler-backend/compiler-graph-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/compiler-web/compiler-graph-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/image-scan-backend/measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/image-scan-web/measurement.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-native-attestation-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Keep bundles outside the strictly allowlisted transfer trees.
+          path: ${{ steps.native-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: candidate-native-inputs-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -516,6 +548,10 @@ jobs:
     needs: [validate-tag, ci, resolve-bases, upstream-inputs, build-and-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
       SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
@@ -542,6 +578,10 @@ jobs:
         with:
           name: candidate-upstream-inputs-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-assembly/upstream
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.8"
+          cache: false
       - name: Verify exact retained trees and assemble unsigned candidate inputs
         run: |
           python3 - <<'PY'
@@ -579,8 +619,59 @@ jobs:
           require({p.name for p in (inputs / 'prepared').iterdir()} == expected, 'Unexpected prepared candidate files')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write('Both native inputs and all retained source assets assembled without creating a tag.\n')
-              summary.write('Inputs remain unsigned; source completeness, distribution review, authenticated gates and publication remain pending.\n')
+              summary.write('Version-tag runs now independently authenticate and review these exact source subjects; main dispatches remain unsigned.\n')
+              summary.write('Distribution approval, scanner disposition, public delivery and publication remain separate pending gates.\n')
           PY
+      - name: Authenticate current native evidence and produce complete source report
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/generate_corresponding_source_review.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/candidate-assembly/prepared" \
+            --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
+            --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
+            --output "$RUNNER_TEMP/candidate-source-review"
+      - name: Attest the completed source report and canonical coverage evidence
+        id: source-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: |
+            ${{ runner.temp }}/candidate-source-review/corresponding-source.json
+            ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - name: Independently verify the signed source report without repeating its replay
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/generate_corresponding_source_review.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/candidate-assembly/prepared" \
+            --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
+            --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
+            --output "$RUNNER_TEMP/candidate-source-review" --verify-only
+          printf '%s\n' 'Corresponding-source report verified for this exact version-tag run and attempt; publication still requires separate gates.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-source-review/corresponding-source.json
+            ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+            ${{ steps.source-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
@@ -591,7 +682,7 @@ jobs:
       - name: Remove only owned assembly input and output trees
         if: always()
         run: |
-          rm -rf -- "$RUNNER_TEMP/candidate-assembly"
+          rm -rf -- "$RUNNER_TEMP/candidate-assembly" "$RUNNER_TEMP/candidate-source-review"
 
   recovery-candidate:
     name: Native candidate recovery (${{ matrix.arch }})

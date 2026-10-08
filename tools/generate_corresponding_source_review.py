@@ -8,8 +8,10 @@ distribution approval and delivery gates.
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import io
+import os
 from pathlib import Path
 import tempfile
 
@@ -21,6 +23,7 @@ import package_upstream_application_sources as upstream_inputs
 import sqlite_vendoring
 import final_image_notice_inventory as final_notices
 from generate_distribution_review import committed_policy
+from github_release_evidence import GhEvidenceVerifier
 
 from aggregate_release_image_scans import checked_graph, load_authenticated, load_raw
 from generate_release_gate_reports import (
@@ -35,12 +38,17 @@ from generate_release_gate_reports import (
 import verify_application_dependency_inputs as dependency_inputs
 from publish_container_release import (
     Binding,
+    SOURCE_NAME,
+    SOURCE_COVERAGE,
+    prepare_inputs,
     sha256,
     source_digest,
     source_review_details,
 )
 from release_artifacts import (
     COMMIT,
+    InvalidRelease,
+    create_output,
     DIGEST,
     PLATFORMS,
     VERSION,
@@ -947,3 +955,432 @@ def verify_application_source_archive(
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,
     }
+
+
+PREPARED_RECORD_FIELDS = {
+    "schema_version",
+    "kind",
+    "source_kind",
+    "tagged_source_ci_gate_verified",
+    "signer_identity_verified",
+    "repository",
+    "version",
+    "source_commit",
+    "binding_sha256",
+    "assets",
+    "subjects",
+    "dependency_replays",
+    "upstream_replay",
+    "publication_authorized",
+    "measurement_authentication_required",
+}
+MAX_COMMAND_OUTPUT = 16 * 1024**2
+
+
+def command_inputs(
+    *, root: Path, prepared: Path, repository: str, version: str, commit: str
+):
+    """Bind only tagged, exact prepared files; preparation flags confer no trust."""
+    browser_inventory.root_directory(root)
+    browser_inventory.root_directory(prepared)
+    record_path = prepared / "release-inputs.json"
+    record_raw = read_bounded_file(record_path)
+    record = fields(
+        read_json(record_raw), PREPARED_RECORD_FIELDS, "prepared release record"
+    )
+    require(
+        type(record["schema_version"]) is int
+        and record["schema_version"] == 1
+        and record["kind"] == "prepared-release-inputs"
+        and record["source_kind"] == "version-tag"
+        and record["repository"] == repository
+        and record["version"] == version
+        and record["source_commit"] == commit
+        and record["tagged_source_ci_gate_verified"] is False
+        and record["signer_identity_verified"] is False
+        and record["publication_authorized"] is False
+        and record["measurement_authentication_required"] is True
+        and isinstance(record["dependency_replays"], dict)
+        and set(record["dependency_replays"]) == set(PLATFORMS)
+        and isinstance(record["upstream_replay"], dict),
+        "Source command requires exact tagged release preparation",
+    )
+    manifest_path = prepared / "release-manifest.json"
+    manifest_raw = read_bounded_file(manifest_path)
+    manifest = read_json(manifest_raw)
+    require(
+        isinstance(manifest, dict) and isinstance(manifest.get("bundle"), dict),
+        "Prepared manifest bundle is missing",
+    )
+    bundle_name = matches(
+        manifest["bundle"].get("name"), SOURCE_NAME, "Invalid prepared bundle name"
+    )
+    assets = record["assets"]
+    require(
+        isinstance(assets, dict) and 2 < len(assets) <= 64,
+        "Prepared source assets are missing or oversized",
+    )
+    for name, checksum in assets.items():
+        matches(name, SOURCE_NAME, "Unsafe prepared asset name")
+        matches(checksum, DIGEST, "Invalid prepared asset hash")
+    require(
+        {"release-manifest.json", bundle_name} <= assets.keys(),
+        "Prepared manifest or bundle asset is missing",
+    )
+    expected_names = set(assets) | {
+        "release-inputs.json",
+        "oci-correspondence.json",
+        "backend-index.json",
+        "web-index.json",
+    }
+    actual_names = set()
+    for path in prepared.iterdir():
+        require(
+            path.is_file() and not path.is_symlink(),
+            "Prepared release contains a linked or nested input",
+        )
+        actual_names.add(path.name)
+        require(len(actual_names) <= 68, "Prepared release directory exceeds bounds")
+    require(
+        actual_names == expected_names, "Prepared release file set differs from record"
+    )
+    sources = {
+        name: prepared / name
+        for name in assets
+        if name not in {"release-manifest.json", bundle_name}
+    }
+    indexes = {
+        component: prepared / (component + "-index.json")
+        for component in ("backend", "web")
+    }
+    inputs = prepare_inputs(
+        root=root,
+        repository=repository,
+        ref="refs/tags/" + version,
+        event_sha=commit,
+        reviewed_commit=commit,
+        manifest_path=manifest_path,
+        bundle=prepared / bundle_name,
+        indexes=indexes,
+        source_assets=sources,
+    )
+    require(
+        inputs.binding.repository == repository
+        and inputs.binding.version == version
+        and inputs.binding.commit == commit
+        and record["binding_sha256"] == inputs.binding.digest
+        and record["subjects"] == dict(inputs.binding.subjects)
+        and assets == dict(inputs.assets),
+        "Prepared record differs from measured tagged release binding",
+    )
+    # Large source payloads are rechecked by the substantive producer. Retain
+    # only small assembly metadata/bundle snapshots here, avoiding another full
+    # dependency/source archive hash pass after its independent replay.
+    snapshots = {
+        path: source_digest(path)
+        for path in (
+            manifest_path,
+            prepared / bundle_name,
+            *indexes.values(),
+            prepared / "oci-correspondence.json",
+        )
+    }
+    require(
+        read_bounded_file(manifest_path) == manifest_raw
+        and read_bounded_file(record_path) == record_raw,
+        "Prepared metadata changed during binding",
+    )
+    return inputs.binding, sources, record_raw, expected_names, snapshots
+
+
+def verify_command_output(
+    output: Path,
+    binding: Binding,
+    authenticator: GhEvidenceVerifier,
+    sources: dict[str, Path],
+) -> tuple[dict, dict]:
+    """Authenticate already produced bytes without repeating substantive replays."""
+    browser_inventory.root_directory(output)
+    names = {"corresponding-source.json", "corresponding-source-evidence.json"}
+    require(
+        {path.name for path in output.iterdir()} == names
+        and all(path.is_file() and not path.is_symlink() for path in output.iterdir()),
+        "Source verification requires exactly two regular output files",
+    )
+    report_path, evidence_path = (
+        output / "corresponding-source.json",
+        output / "corresponding-source-evidence.json",
+    )
+    report_raw, evidence_raw = read_bounded_file(report_path), read_bounded_file(
+        evidence_path
+    )
+    require(
+        0 < len(report_raw) + len(evidence_raw) <= MAX_COMMAND_OUTPUT,
+        "Source verification output exceeds bounds",
+    )
+    receipt = authenticator.verify("corresponding-source", report_path, binding)
+    require(
+        receipt.gate == "corresponding-source"
+        and receipt.binding_digest == binding.digest
+        and receipt.report_digest == sha256(report_raw)
+        and receipt.passed is True,
+        "Authenticated source report receipt differs",
+    )
+    report = fields(
+        read_json(report_raw),
+        {"schema_version", "gate", "binding_digest", "passed", "details"},
+        "authenticated source command report",
+    )
+    require(
+        type(report["schema_version"]) is int
+        and report["schema_version"] == 1
+        and report["gate"] == receipt.gate
+        and report["binding_digest"] == receipt.binding_digest
+        and report["passed"] is True
+        and report["details"] == receipt.details,
+        "Source report content differs from authenticated receipt",
+    )
+    source_review_details(receipt.details, binding, distribution=False)
+    authenticator.authenticate(evidence_raw, binding)
+    evidence = fields(
+        read_json(evidence_raw),
+        {
+            "schema_version",
+            "kind",
+            "binding_digest",
+            "source_assets",
+            "coverage_evidence",
+            "distribution_review_required",
+            "byte_reproduction_verified",
+            "publication_authorized",
+        },
+        "authenticated corresponding-source replay evidence",
+    )
+    require(
+        type(evidence["schema_version"]) is int
+        and evidence["schema_version"] == 1
+        and evidence["kind"] == "complete-corresponding-source-replay-evidence"
+        and evidence["binding_digest"] == binding.digest
+        and evidence["distribution_review_required"] is True
+        and evidence["byte_reproduction_verified"] is False
+        and evidence["publication_authorized"] is False,
+        "Source replay evidence identity or approval boundary differs",
+    )
+    assets = fields(
+        evidence["source_assets"],
+        {
+            "schema_version",
+            "kind",
+            "binding_digest",
+            "assets",
+            "corresponding_source_completeness_verified",
+            "distribution_review_required",
+            "publication_authorized",
+        },
+        "source evidence asset inventory",
+    )
+    require(
+        type(assets["schema_version"]) is int
+        and assets["schema_version"] == 1
+        and assets["kind"] == "release-source-asset-measurements"
+        and assets["binding_digest"] == binding.digest
+        and assets["corresponding_source_completeness_verified"] is False
+        and assets["distribution_review_required"] is True
+        and assets["publication_authorized"] is False,
+        "Source evidence asset boundary differs",
+    )
+    rows = fields(assets["assets"], set(sources), "all source evidence assets")
+    subjects = dict(binding.subjects)
+    for name, row in rows.items():
+        fields(row, {"digest", "size"}, "source evidence asset")
+        require(
+            type(row["size"]) is int
+            and row["size"] > 0
+            and row["size"] == sources[name].stat().st_size
+            and subjects.get("source:" + name)
+            == "file:" + name + "@" + str(row["digest"]),
+            "Source replay evidence asset differs from tagged binding",
+        )
+    retained = evidence["coverage_evidence"]
+    require(
+        isinstance(retained, dict)
+        and 0 < len(retained) <= 32
+        and all(
+            isinstance(name, str) and isinstance(value, dict)
+            for name, value in retained.items()
+        ),
+        "Source coverage evidence is missing or oversized",
+    )
+    hashes = {sha256(json_bytes(value)) for value in retained.values()}
+    for target in SOURCE_COVERAGE:
+        for row in receipt.details["coverage"][target].values():
+            require(
+                row["evidence_digest"] in hashes,
+                "Authenticated report coverage lacks exact retained evidence",
+            )
+        notices = retained.get(target + "-notices")
+        require(
+            isinstance(notices, dict)
+            and isinstance(notices.get("files"), dict)
+            and bool(notices["files"])
+            and notices.get("notice_inventory_digest")
+            == sha256(json_bytes(notices["files"]))
+            == receipt.details["images"][target]["notice_inventory_digest"],
+            "Authenticated report notices lack exact retained inventory",
+        )
+    require(
+        report_raw == json_bytes(report) and evidence_raw == json_bytes(evidence),
+        "Source command outputs must retain canonical producer bytes",
+    )
+    require(
+        read_bounded_file(report_path) == report_raw
+        and read_bounded_file(evidence_path) == evidence_raw
+        and {path.name for path in output.iterdir()} == names,
+        "Source outputs changed during authentication",
+    )
+    return report, evidence
+
+
+def run_command(args) -> tuple[dict, dict]:
+    """Produce new local gate/evidence files; never sign, publish or rebuild."""
+    repository_name(args.repository)
+    matches(args.version, VERSION, "Invalid source command version")
+    matches(args.commit, COMMIT, "Invalid source command commit")
+    require(
+        type(args.run_id) is int
+        and args.run_id > 0
+        and type(args.run_attempt) is int
+        and args.run_attempt > 0,
+        "Source command requires a positive workflow run ID and attempt",
+    )
+    browser_inventory.root_directory(args.output.parent)
+    verify_only = getattr(args, "verify_only", False)
+    require(type(verify_only) is bool, "Invalid source command mode")
+    if not verify_only:
+        require(
+            not args.output.exists() and not args.output.is_symlink(),
+            "Source command output must be a new directory",
+        )
+    binding, sources, record_raw, expected_names, snapshots = command_inputs(
+        root=args.root,
+        prepared=args.prepared,
+        repository=args.repository,
+        version=args.version,
+        commit=args.commit,
+    )
+    trees = {"linux/amd64": args.amd64_inputs, "linux/arm64": args.arm64_inputs}
+    for tree in (*trees.values(), args.upstream):
+        browser_inventory.root_directory(tree)
+    authenticator = GhEvidenceVerifier(
+        token=os.environ.get("GH_TOKEN"),
+        run_id=args.run_id,
+        run_attempt=args.run_attempt,
+    )
+    if verify_only:
+        report, evidence = verify_command_output(
+            args.output, binding, authenticator, sources
+        )
+        require(
+            read_bounded_file(args.prepared / "release-inputs.json") == record_raw
+            and {path.name for path in args.prepared.iterdir()} == expected_names
+            and all(
+                source_digest(path) == checksum for path, checksum in snapshots.items()
+            ),
+            "Prepared release changed during source authentication",
+        )
+        return report, evidence
+    report, evidence = corresponding_source_report(
+        binding,
+        root=args.root,
+        source_assets=sources,
+        native_measurements={
+            p: t / "native/native-measurement.json" for p, t in trees.items()
+        },
+        runtime_packs={p: t / "native/pack" for p, t in trees.items()},
+        runtime_source_records={
+            p: t / "native/source-completeness-verification.json"
+            for p, t in trees.items()
+        },
+        dependency_collections={
+            p: t / "application-dependencies" for p, t in trees.items()
+        },
+        source_scans={
+            p: t / "source-scans/source-scan-measurement.json" for p, t in trees.items()
+        },
+        compiler_graphs={
+            "backend-"
+            + p.split("/")[1]: t / "compiler-backend/compiler-graph-measurement.json"
+            for p, t in trees.items()
+        },
+        upstream_collection=args.upstream,
+        browser_measurements={
+            p: t / "native/browser/browser-verification.json" for p, t in trees.items()
+        },
+        captures={p: t / "native/browser/browser-inputs.tar" for p, t in trees.items()},
+        archives={
+            p: {
+                component: t
+                / ("native/export/" + component + "-" + p.split("/")[1] + ".oci.tar")
+                for component in ("backend", "web")
+            }
+            for p, t in trees.items()
+        },
+        authenticator=authenticator,
+    )
+    require(
+        read_bounded_file(args.prepared / "release-inputs.json") == record_raw
+        and {path.name for path in args.prepared.iterdir()} == expected_names,
+        "Prepared release record/tree changed during source replay",
+    )
+    require(
+        all(source_digest(path) == checksum for path, checksum in snapshots.items()),
+        "Prepared release bytes changed during source replay",
+    )
+    payloads = {
+        "corresponding-source.json": json_bytes(report),
+        "corresponding-source-evidence.json": json_bytes(evidence),
+    }
+    require(
+        all(0 < len(raw) <= MAX_COMMAND_OUTPUT for raw in payloads.values())
+        and sum(map(len, payloads.values())) <= MAX_COMMAND_OUTPUT,
+        "Source command evidence exceeds bounds",
+    )
+    # Create only after all substantive checks/rechecks finish. Existing or
+    # partially written output is never reused or overwritten on a retry.
+    browser_inventory.root_directory(args.output.parent)
+    args.output.mkdir(mode=0o700)
+    for name, raw in payloads.items():
+        create_output(args.output / name, raw)
+    return report, evidence
+
+
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in (
+        "root",
+        "prepared",
+        "amd64-inputs",
+        "arm64-inputs",
+        "upstream",
+        "output",
+    ):
+        parser.add_argument("--" + name, type=Path, required=True)
+    for name in ("repository", "version", "commit"):
+        parser.add_argument("--" + name, required=True)
+    for name in ("run-id", "run-attempt"):
+        parser.add_argument("--" + name, type=int, required=True)
+    parser.add_argument("--verify-only", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        run_command(args)
+    except (InvalidRelease, OSError, ValueError, RecursionError):
+        # Network/tool errors may contain credentials or large diagnostics. The
+        # trusted verifier supplies the precise policy boundary internally.
+        parser.exit(
+            1,
+            "Corresponding-source command failed; publication remains unauthorized.\n",
+        )
+
+
+if __name__ == "__main__":
+    main()

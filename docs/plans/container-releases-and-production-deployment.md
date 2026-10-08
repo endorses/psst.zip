@@ -1806,9 +1806,12 @@ candidate remain pending.
       original Go ZIP bytes, checking the reviewed normalization recipe and exact
       original/local hashes. Reuse the existing ZIP pass and include these facts
       in the backend category evidence.
-- [ ] Wire the complete producer and retained evidence into hosted authentication
-      and signing for both current native architectures. A locally tested producer
-      does not establish an authenticated current-candidate release gate.
+- [x] Wire the complete producer and retained evidence into version-tag native
+      authentication and signing. Bind verification to the exact workflow run and
+      attempt; planned main dispatches remain unsigned.
+- [ ] Execute this wiring on both hosted native architectures for the current
+      selected source. Local verification does not establish an authenticated
+      current-candidate release gate.
 
 The complete producer returns a `corresponding-source` report plus retained
 canonical coverage evidence. Individual source helpers retain their partial
@@ -1839,6 +1842,29 @@ The same streaming read rechecked the retained source asset and selected origina
 ZIP hashes without another H1 replay, extraction or cache. Its private receipt
 remains separate from authenticated current-candidate release evidence.
 
+Tagged native jobs attest eight explicit small measurement files after transfer
+verification. Assembly authenticates these records, runs the complete source
+producer and attests its two canonical output files. The official action is pinned
+to `1e69f48acb82d1966a394da916b4c1698aa569d6`; its reviewed distribution uses
+the exact run and attempt invocation identity required by the verifier. Signing
+permissions do not grant registry publication, release writes or production access.
+
+The source command consumes the prepared release directory, both retained native
+transfer directories and the upstream input directory, with explicit repository,
+version, commit, run ID and attempt. Its `--verify-only` mode independently
+authenticates the generated report and retained evidence without repeating source
+replay or image builds. Successful small-record authentication is cached only
+within one verifier, keyed by binding, content hash and invocation, with a
+64-entry bound; failed or changed records are never reused. Later publication
+must independently rebind the selected assets.
+
+Two tiny command fixtures cover exact paths/output binding, stale or partial
+outputs and substituted report evidence. A focused authentication fixture checks
+attempt substitution and safe cache reuse. These extend existing substantive
+replay tests instead of repeating large source fixtures. Workflow YAML parsed,
+all 22 shell steps passed `bash -n` and five inline Python blocks parsed; actual
+hosted signing and execution remain pending.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -1849,11 +1875,11 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 411 tests in 27.0 seconds
+combined local release/notice regression suite ran 414 tests in 26.7 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 1.37 seconds. The three backend source
+and cleanup; the slowest case took 0.80 seconds. The three backend source
 regressions took 0.020 seconds; they reject substituted project origins/members,
 wrong C source identities, changed generator pins and missing platform/tool inputs.
 The six focused browser-source
