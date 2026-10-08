@@ -3,9 +3,10 @@
 `tools/publish_container_release.py` implements publication preparation and
 reservation/readiness boundaries. `tools/github_release_transport.py` provides
 the GitHub/GHCR transport, and `tools/github_release_evidence.py` authenticates gate
-reports. The release workflow still verifies candidates only; these libraries
-have not published a release. They do not change package visibility, sign
-attestations or deploy production.
+reports. The release workflow includes an explicitly enabled version-tag
+publishing job; publication remains disabled until its prerequisites are configured.
+No real release has been published through these adapters. Package visibility
+setup and production deployment remain separate operations.
 
 ## Reviewed identity and exact artifacts
 
@@ -576,10 +577,76 @@ credential remain prerequisites. The [official API](https://docs.github.com/en/r
 documents the setting and required permissions.
 
 Runner-local fsync and retained snapshots do not survive removal of a hosted
-runner. External retention must persist the input packet before mutation and
-the journal intent before each subsequent remote mutation; a final artifact
-upload alone cannot cover a runner that disappears mid-operation. The publishing
-job remains disabled while that storage and its credentials are unresolved.
+runner. `tools/publication_retention.py` now persists the complete input packet
+before mutation, and each journal intent before its corresponding remote write.
+It also retains completions, uncertainty records and the terminal publication
+receipt. The publishing job remains disabled while live storage and credentials
+are unresolved.
+
+### Guarded publishing job and external recovery records
+
+The `publish` job requires a version-tag push, successful source assembly, native
+recovery and distribution review, and repository variable
+`CONTAINER_RELEASE_PUBLICATION_ENABLED=true`. Its `container-release` environment
+provides a separate final publishing approval and the protected credentials.
+Candidate dispatches never publish. The literal repository-wide concurrency group
+is `container-release-publication`, with cancellation disabled. Contents/package
+write permissions are confined to this publishing job; it has no production SSH
+credentials. It downloads completed payloads and signed gates, rather than
+repeating image builds, scanners, source replay or recovery experiments.
+
+The initial external adapter uses installed AWS CLI v2 and explicit configuration:
+
+| Protected environment setting                                                                        | Purpose                                                                              |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Variables `PSST_PUBLICATION_S3_ENDPOINT`, `PSST_PUBLICATION_S3_BUCKET`, `PSST_PUBLICATION_S3_REGION` | Fixed HTTPS storage origin, private bucket and signing region                        |
+| Secrets `PSST_PUBLICATION_S3_ACCESS_KEY_ID`, `PSST_PUBLICATION_S3_SECRET_ACCESS_KEY`                 | Separate publication-storage credential                                              |
+| Optional secret `PSST_PUBLICATION_S3_SESSION_TOKEN`                                                  | Temporary credential session token                                                   |
+| Secret `PSST_IMMUTABLE_INSPECTION_TOKEN`                                                             | Separate repository Administration-read credential; not the package publishing token |
+
+The storage credential needs `s3:PutObject` and `s3:GetObject` restricted to
+`publication/endorses/psst.zip/*`, plus bucket-level
+`s3:GetBucketPublicAccessBlock` and `s3:GetBucketPolicyStatus`. It needs no delete,
+bucket-policy write or repository permission. Bucket policy and all four public
+access blocks must return authenticated nonpublic status. Missing, unsupported or
+denied privacy APIs stop the command. Provider provisioning, retention duration
+and independent restore verification remain operator setup tasks.
+
+Each attempt has its own
+`publication/<repository>/<version>/run-<id>/attempt-<n>/` prefix. Inputs are
+individual objects with the snapshot's already measured SHA256; no extra large
+archive or hash pass is needed. Conditional `PutObject` prevents replacing an
+existing key, and a separate checksum-enabled `HeadObject` must confirm size,
+SHA256 and AES256 server-side encryption. The adapter does not retry failed writes.
+[AWS conditional upload API](https://docs.aws.amazon.com/cli/latest/reference/s3api/put-object.html),
+[checksum readback API](https://docs.aws.amazon.com/cli/latest/reference/s3api/head-object.html).
+
+The packet includes the preparation binding, all exact source/bundle/manifest
+files, indexes, four final OCI archives and eight gate reports. The inventory is
+written only after its objects; journal records start only after packet readback
+and privacy checks pass. Every cumulative journal snapshot is a new numbered
+object. Local fsync precedes its external checkpoint, and successful external
+checkpoint readback precedes the application mutation. Storage failures preserve
+local inputs and stop further writes. The final receipt must match the last
+stored journal digest. Conditional writes do not establish Object Lock or prevent
+administrator deletion; configure and exercise the site's retention policy.
+
+Credentials exist only in cleaned private temporary CLI files, outside retained
+state. The pinned official signing action uses a separate disposable cache outside
+the input packet; its existing byte and runtime verification still apply.
+Ambient profiles, proxies and metadata authentication are excluded. Private
+journals and snapshots are never uploaded as public workflow artifacts. Successful
+publication cleans the runner state only after the durable receipt and anonymous
+public readbacks pass; failed state remains locally inspectable for the remaining
+runner lifetime. Original remote records allow later manual reconciliation, not
+automatic resume or overwrite.
+
+Three small adapter fixtures passed in 0.006 seconds. Thirteen command fixtures
+passed in 1.58 seconds, including the driver-to-adapter packet integration and
+storage failure before release creation. Seventeen existing transport fixtures
+passed in 1.77 seconds, and sixteen signer fixtures in 0.097 seconds. These checks
+use local tiny payloads and injected commands;
+they do not prove a live bucket, OIDC signing or published-release recovery.
 
 Ten fixture checks exercise the actual transport lifecycle, snapshot durability, ordering, absent
 gates, substituted native configurations/archives/reports, first-package policy,

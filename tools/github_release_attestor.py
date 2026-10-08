@@ -365,6 +365,7 @@ class WorkflowAttestor:
         environment: dict[str, str],
         verifier: GhEvidenceVerifier,
         private_output: Path,
+        private_action_cache: Path | None = None,
     ):
         WorkflowContext.from_environment(SimpleNamespace(binding=binding), environment)
         require(
@@ -441,7 +442,13 @@ class WorkflowAttestor:
         self.event = event
         self.node, self.node_version = hosted_node()
         self.node_digest = source_digest(self.node)
-        self.action = checked_action(self.root / "official-attestor")
+        action_cache = private_action_cache or self.root / "official-attestor"
+        require(
+            action_cache.is_absolute()
+            and not any(c in str(action_cache) for c in "*?[]\r\n\0"),
+            "Official action cache must be an absolute literal path",
+        )
+        self.action = checked_action(action_cache)
 
     def _attest(self, name: str, digest: str, path: Path | None = None) -> str:
         matches(digest, DIGEST, "Invalid signing digest")

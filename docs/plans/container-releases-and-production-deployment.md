@@ -524,10 +524,11 @@ checkbox does not assert a working mirror or a published primary release.
 
 ### Read-only release candidate checkpoint
 
-The release workflow currently verifies candidates; it does not publish images,
-releases, attestations or deployment bundles. It has `contents: read` permissions
-and no registry, production or signing credentials. All Actions in CI and the
-candidate workflow are pinned to verified upstream commits, and checkouts disable
+At this initial checkpoint, the release workflow verified candidates without
+publishing images, releases, attestations or deployment bundles. It had
+`contents: read` permissions and no registry, production or signing credentials.
+All Actions in CI and the candidate workflow were pinned to verified upstream
+commits, and checkouts disabled
 persisted credentials. All five source CI jobs and their commands were preserved.
 
 Strict tag/event/ancestry checks precede reusable CI. The two native build jobs
@@ -1359,8 +1360,9 @@ remain pending, as do the separate public/provider/mobile checks.
 
 The transport requires the literal repository-wide workflow concurrency group
 `container-release-publication`, `cancel-in-progress: false`, and publishing job
-`publish`, plus a local held lock. The current candidate-only workflow has not
-been changed to publish. Immutable policy inspection may require a separate
+`publish`, plus a local held lock. At this checkpoint the candidate-only workflow
+had not been changed to publish; subsequent guarded integration is recorded below.
+Immutable policy inspection may require a separate
 Administration-read credential; the package/content publishing token must not
 silently gain repository administration permission. Errors are not absence.
 The [publication guide](../security/container-publication.md) describes the
@@ -2045,9 +2047,60 @@ mapping fixtures and the five existing source-command cases passed in 0.036
 seconds, including a check that mapping never opens large source/bundle/OCI
 payloads. The dependent distribution and recovery command fixtures passed in
 0.018 and 0.481 seconds after the shared metadata refactor.
-The current workflow still grants no registry or release publication permission.
-The external recovery-record storage choice is pending; runner-local journal
-retention is implemented, but durable external retention is not yet established.
+At this checkpoint, the workflow granted no registry or release publication
+permission. External recovery-record storage was still pending; the subsequent
+guarded integration below implements an adapter without claiming live retention.
+
+### Guarded publication and external journal integration
+
+- [x] Wire the exact `publish` job after assembled source, signed native recovery
+      and authorized distribution review. Keep planned dispatches read-only and
+      require explicit publication enablement plus the protected environment.
+- [x] Serialize the whole release workflow using the literal
+      `container-release-publication` group, with cancellation disabled. Confine
+      Contents/package write scopes to the publishing job.
+- [x] Retain the complete immutable input packet, each pre-write journal intent,
+      subsequent completion/uncertainty and terminal receipt through a private
+      conditional-write S3 adapter. Reuse snapshot hashes and require independent
+      checksum/size/encryption readback before acknowledging persistence.
+- [x] Exercise adapter-to-driver integration and interrupted storage boundaries
+      using small offline fixtures; verify workflow YAML, shell and Python blocks.
+- [ ] Select and configure a capable private storage provider, check its privacy
+      and retention policy, recover stored inputs/journals independently, and
+      verify a live interruption before enabling publication.
+- [ ] Configure public repository-linked packages, least-privilege inspection and
+      storage credentials, branch/tag protection and the explicit enablement
+      variable; verify hosted OIDC, real reviewer decisions and public publication.
+
+`tools/publication_retention.py` uses installed AWS CLI v2 with separate temporary
+credential files and no ambient AWS profiles/proxy/metadata authentication. The
+selected endpoint must support conditional uploads, SHA256 checksum readback,
+AES256 server-side encryption and authenticated public-access-block/bucket-policy
+status APIs. Unsupported provider capabilities stop publication. The storage
+choice remains pending; S3 support is prepared as the default, with no live bucket
+or credential provisioned. It does not assert Object Lock, independent restore or
+protection from administrator deletion.
+
+The opt-in publishing job checks configuration before downloading large inputs,
+uses the existing exact artifact layout, and invokes the shared publication
+command. It performs no additional build, source replay, scanner or recovery run.
+Its 30-minute deadline bounds real publication transfers and readback, separately
+from routine CI tests. No private journal is exposed through public artifacts.
+The default remains disabled until `CONTAINER_RELEASE_PUBLICATION_ENABLED=true`.
+The protected environment requires final publishing approval after distribution
+review; setting the variable alone cannot satisfy missing authenticated gates.
+
+Three adapter cases passed in 0.006 seconds; thirteen driver cases passed in 1.58
+seconds, seventeen transport cases in 1.77 seconds and sixteen signer cases in
+0.097 seconds. The two new driver cases
+catch external-retention failure before a release write and ensure the actual
+four-archive/eight-gate packet and terminal receipt are accepted by the real
+adapter. The integration also exercises the default signing adapter's separate
+disposable action cache, preserving an exact retained input inventory and cleanup.
+Fixtures use injected AWS/API commands and tiny local files, with no
+network calls, Docker builds or sleeps. Workflow YAML, all 35 shell steps and seven
+inline Python blocks parsed; formatting and diff checks passed. New hosted
+execution, provider retention and production rollout remain pending.
 
 ## Verification and completion criteria
 

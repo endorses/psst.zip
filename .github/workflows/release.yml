@@ -1,7 +1,9 @@
-# Native release verification. Version-tag runs attest completed measurements
-# and source review; planned main dispatches remain unsigned candidates.
-# This workflow cannot publish packages/releases or access production.
-name: Release candidate verification
+# Native release verification and explicitly enabled container publication.
+# Planned main dispatches remain unsigned, read-only candidates. Exact version-tag
+# attempts can publish only after signed gates and protected distribution review;
+# registry/release writes are disabled until the repository opt-in is configured.
+# This workflow has no production access.
+name: Container release verification and publication
 
 on:
   push:
@@ -18,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-candidate-${{ github.ref }}
+  group: container-release-publication
   cancel-in-progress: false
 
 jobs:
@@ -1018,3 +1020,138 @@ jobs:
         if: always()
         run: |
           rm -rf -- "$RUNNER_TEMP/distribution-review"
+
+  publish:
+    name: Publish verified immutable container release
+    needs:
+      [
+        validate-tag,
+        assemble-candidate,
+        aggregate-recovery,
+        distribution-review,
+      ]
+    if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag' && vars.CONTAINER_RELEASE_PUBLICATION_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    # Publication reuses completed native payloads and all eight signed gates.
+    # Its network transfer budget is separate from ordinary source CI.
+    timeout-minutes: 30
+    environment:
+      name: container-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+      actions: read
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check explicit private retention configuration before downloading payloads
+        env:
+          PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
+          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
+          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
+          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
+          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
+          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
+          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
+        run: |
+          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
+            unset PSST_PUBLICATION_S3_SESSION_TOKEN
+          fi
+          python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from publication_retention import validate_configuration
+          from release_artifacts import require
+          validate_configuration(os.environ)
+          require(bool(os.environ.get('PSST_IMMUTABLE_INSPECTION_TOKEN')), 'Missing immutable-release inspection credential')
+          PY
+      - name: Require trusted hosted transfer and attestation tools
+        run: |
+          command -v aws gh >/dev/null
+          aws --version | python3 -c 'import re, sys; assert re.match(r"aws-cli/2\.[0-9]+\.[0-9]+(?:\s|$)", sys.stdin.read()), "AWS CLI v2 required"'
+          gh attestation verify --help >/dev/null
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'tools')
+          from github_release_attestor import hosted_node
+          hosted_node()
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends skopeo
+          skopeo --version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-upgrade-recovery-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/recovery
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-distribution-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/distribution
+      - name: Map the exact retained payloads and signed gate files
+        run: |
+          python3 tools/prepare_publication_inputs.py \
+            --inputs-root "$RUNNER_TEMP/publication-inputs" \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --output "$RUNNER_TEMP/publication-inputs.json"
+      - name: Publish after authenticating gates and persisting private recovery state
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
+          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
+          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
+          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
+          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
+          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
+          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
+        run: |
+          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
+            unset PSST_PUBLICATION_S3_SESSION_TOKEN
+          fi
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/publication-state"
+          python3 tools/publish_verified_release.py \
+            --inputs "$RUNNER_TEMP/publication-inputs.json" \
+            --root "$GITHUB_WORKSPACE" --reviewed-commit "$SOURCE_COMMIT" \
+            --state "$RUNNER_TEMP/publication-state"
+      - name: Remove local state only after verified publication and durable receipt
+        if: success() && steps.publication.outcome == 'success'
+        run: |
+          test -f "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
+          test ! -L "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
+          # The successful driver already verified remote recovery storage and
+          # anonymous release/image readbacks; do not upload private state here.
+          rm -rf -- "$RUNNER_TEMP/publication-state"
+          printf '%s\n' "Immutable container release $CANDIDATE_VERSION published with verified anonymous readback and a private durable recovery receipt." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove only owned downloaded publication inputs and path map
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/publication-inputs"
+          rm -f -- "$RUNNER_TEMP/publication-inputs.json"
+          # On failure, preserve local publication-state for inspection. Its
+          # checkpoints remain in private storage when durable writes succeeded.

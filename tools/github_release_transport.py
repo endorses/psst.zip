@@ -290,27 +290,39 @@ def sync_directory(path: Path) -> None:
 class Journal:
     """Exclusive durable transaction. Interrupted intents are never replayed."""
 
-    def __init__(self, path: Path, plan: PublicationPlan, context: WorkflowContext):
+    def __init__(
+        self,
+        path: Path,
+        plan: PublicationPlan,
+        context: WorkflowContext,
+        *,
+        checkpoint: Callable | None = None,
+    ):
         self.path = path
         self.binding = plan.binding.digest
         self.sequence = 0
         self.operations = set()
+        self.checkpoint = checkpoint
         descriptor = os.open(
             path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
         )
         self.stream = os.fdopen(descriptor, "wb")
-        self.append(
-            "begin",
-            "transaction",
-            {
-                "repository": plan.binding.repository,
-                "version": plan.binding.version,
-                "commit": plan.binding.commit,
-                "run_id": context.run_id,
-                "attempt": context.attempt,
-            },
-        )
-        sync_directory(path.parent)
+        try:
+            self.append(
+                "begin",
+                "transaction",
+                {
+                    "repository": plan.binding.repository,
+                    "version": plan.binding.version,
+                    "commit": plan.binding.commit,
+                    "run_id": context.run_id,
+                    "attempt": context.attempt,
+                },
+            )
+            sync_directory(path.parent)
+        except BaseException:
+            self.close()
+            raise
 
     def append(self, phase: str, operation: str, details: dict) -> None:
         self.sequence += 1
@@ -328,6 +340,8 @@ class Journal:
         )
         self.stream.flush()
         os.fsync(self.stream.fileno())
+        if self.checkpoint is not None:
+            self.checkpoint(self.path, self.sequence)
 
     def mutate(self, operation: str, details: dict, action: Callable):
         require(
@@ -361,6 +375,7 @@ class GitHubReleaseTransport:
         actor: str,
         http: HTTPS | None = None,
         execute: Callable = command,
+        journal_checkpoint: Callable | None = None,
     ):
         validate_plan(plan)
         validate_manifest(plan.manifest, plan.binding.repository)
@@ -394,6 +409,7 @@ class GitHubReleaseTransport:
             actor,
         )
         self.http, self.execute = http or HTTPS(), execute
+        self.journal_checkpoint = journal_checkpoint
         self.base = "https://api.github.com/repos/" + plan.binding.repository
         self.held = False
         self.journal = None
@@ -566,6 +582,7 @@ class GitHubReleaseTransport:
                 self.state_dir / (self.plan.binding.version + ".jsonl"),
                 self.plan,
                 self.context,
+                checkpoint=self.journal_checkpoint,
             )
             self.temporary = tempfile.TemporaryDirectory(
                 prefix="transport-", dir=self.state_dir
