@@ -276,13 +276,24 @@ jobs:
         with:
           cache-provider: basic
       - name: Prepare build tools
+        id: build-tools
         if: steps.scope.outputs.run == 'true'
         run: |
           brew install xcodegen
           android --no-metrics --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-35
-          xcodebuild -version
+          xcode_version=$(xcodebuild -version)
+          printf '%s\n' "$xcode_version"
+          xcode_key=$(printf '%s\n' "$xcode_version" | shasum -a 256)
+          printf 'xcode=%s\n' "${xcode_key%% *}" >> "$GITHUB_OUTPUT"
           xcodegen --version
           java -version
+      - name: Cache Kotlin Native compiler and dependencies
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          # Never restore compiler caches from another toolchain or architecture.
+          key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.build-tools.outputs.xcode }}-${{ hashFiles('shared/gradle/libs.versions.toml', 'shared/gradle.properties', 'shared/gradle/wrapper/gradle-wrapper.properties', 'android/gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts', 'shared/settings.gradle.kts') }}
       - name: Check sources and generate project
         if: steps.scope.outputs.run == 'true'
         run: |
@@ -316,6 +327,7 @@ jobs:
         run: |
           xcodebuild -project Psst.xcodeproj -scheme Psst \
             -sdk iphonesimulator -configuration Debug \
+            -showBuildTimingSummary \
             -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build-for-testing

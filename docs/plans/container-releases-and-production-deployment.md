@@ -2566,6 +2566,42 @@ runner, not a claim that the later failed native-container preparation passed.
       Do not restart the terminal failed attempt or claim fixture results prove
       a complete image/source pair.
 
+- [x] Inspect planned candidate `37747004338` from integrated commit
+      `8485eb41cdfa7cd7102b0faf44d20285b88aa02c`. All five source-CI jobs
+      passed with no annotations; Android/shared took 2m45s and native iOS
+      14m56s. iOS built in 11m53s and passed all 176 cases with 76.115s of
+      case execution. Both native container jobs built the original backend,
+      web and web-builder images, then failed at authentic metadata recording
+      with `Missing built image config digest`. Complete source replay,
+      recovery, signing and publication did not execute.
+- [x] Identify the image-store compatibility failure using official Buildx
+      0.37.2 source and disposable Docker 29.8.2/BuildKit 0.34.0 AMD64 scratch
+      builds. Containerd-backed `--load` omits `containerimage.config.digest`;
+      explicit archive export preserves it but the engine's image ID remains a
+      manifest digest, and lookup by config digest fails. The same current
+      stable versions with the classic overlay2 store preserve the required
+      build metadata, archive-config hash and engine config identity contract.
+      This proves the scratch contract on AMD64, not hosted application replay
+      on either architecture. Keep the strict consumer checks intact.
+- [x] Configure disposable native build/recovery measurement daemons with stable
+      Docker 29.8.2 and explicit classic overlay2 storage using pinned Node 24
+      `docker/setup-docker-action` 5.5.0. Check the exact daemon socket, version,
+      driver and architecture before use, preserving original `--load` metadata
+      and helper image identity. Production's updater uses its engine's opaque
+      image identity and registry manifest references; this CI setting does not
+      change the VPS daemon or establish a production storage-driver prerequisite.
+- [ ] Verify the configured measurement daemon on both hosted architectures and
+      complete original-pair metadata, source replay and recovery in a new
+      planned candidate after the repaired source is integrated.
+- [x] Address the measured missing Kotlin/Native input cache in routine iOS CI.
+      Preserve `~/.konan` with an immutable stable Node 24 cache action and
+      exact host/toolchain inputs; enable Gradle's local build cache for shared.
+      All existing tests and time budgets remain. See
+      [the build-performance checkpoint](maintained-build-toolchains.md#native-ci-build-performance)
+      for timing evidence and unresolved Xcode setup time.
+- [ ] Verify cold cache save and warm restore on hosted macOS, including cache
+      transfer overhead. Do not claim a timing improvement before measuring it.
+
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
 - [ ] Exercise fresh installation and a repeatable upgrade in disposable stacks

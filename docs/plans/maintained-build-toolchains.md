@@ -40,8 +40,10 @@ Version discovery is separate from successful build validation. GitHub's preview
       web and Android/shared with no check annotations. Security's job log records
       Ubuntu 26.04.1 image `20260927.149.1`, whose pinned software manifest lists
       default Python 3.14.4; all 371 release regressions passed in 34.855s.
-      Native iOS also passed all 176 XCTest cases with no annotations; the
-      Arm64 release job remains unrun.
+      Native iOS also passed all 176 XCTest cases with no annotations. Subsequent
+      candidate `37747004338` built the original images on both x64 and Arm64,
+      but failed while recording image-config metadata; complete Arm64 source
+      and recovery validation remains pending.
 - [x] Replace Ubuntu's prerelease Skopeo package in the publishing job with
       the upstream stable 1.24.1 native build. Verify its pinned source, version,
       required containers configuration and digest-preserving OCI copy locally.
@@ -211,3 +213,44 @@ and the validation image were removed. Hosted publishing remains pending.
 [Ubuntu package](https://packages.ubuntu.com/resolute/skopeo),
 [Skopeo release](https://github.com/podman-container-tools/skopeo/releases/tag/v1.24.1),
 [upstream build instructions](https://github.com/podman-container-tools/skopeo/blob/v1.24.1/install.md).
+
+## Native CI build performance
+
+- [x] Profile actual native CI before changing test coverage. Candidate source-CI
+      run `37747004338`, commit `8485eb41cdfa7cd7102b0faf44d20285b88aa02c`,
+      passed Android/shared in 2m45s and iOS in 14m56s. iOS compilation took
+      11m53s, simulator readiness two seconds and the XCTest step 1m54s. All
+      176 cases passed with 76.115s of case execution. These jobs had no check
+      annotations.
+- [x] Preserve Kotlin/Native's `~/.konan` directory across successful hosted
+      builds using stable `actions/cache` 6.1.0, pinned to its Node 24 commit.
+      Scope the key to host OS/architecture, actual Xcode version/build and the shared build,
+      dependency catalog and Gradle wrapper inputs, with no cross-toolchain
+      fallback. Keep the existing Gradle cache separate and enable Gradle's
+      local build cache for the standalone shared project.
+- [ ] Measure the cache's cold save and subsequent hosted restore, including
+      transfer time, before claiming a build-time reduction. Preserve all
+      meaningful XCTest cases and current build/readiness/test budgets.
+- [ ] Resolve the roughly 4m45s before the first Kotlin build phase. The current
+      buffered Xcode log does not establish its cause; do not attribute it to
+      duplicate framework compilation or simulator boot without evidence.
+      The existing build now requests Xcode's task timing summary; it performs
+      no extra compilation. The same runner image previously had a 6m29s gap,
+      with delays distributed across different tool probes. Hosted image setup
+      already runs Xcode first-launch preparation, so repeating it is not an
+      evidence-based fix.
+
+The shared module's Android CI runs JVM host tests and does not build the Apple
+framework or exercise its Darwin/CryptoKit implementation and Swift interfaces.
+The first native Gradle invocation took 5m23s and downloaded LLVM/libffi into
+`~/.konan` despite a 679MB Gradle cache hit. A second app/extension invocation
+took only 18s, with Kotlin compilation already up to date. Approximately 2m16s
+remained after the first invocation for Swift compilation, packaging and that
+second invocation. The buffered log cannot precisely divide the first invocation
+between download, Kotlin compilation and linking. The cache addresses a measured
+missing input cache, not an established 5m23s saving. Kotlin explicitly recommends
+preserving this directory, enabling Gradle's build cache and measuring at least
+two builds. No experimental compiler flags or new test suites were added.
+[Kotlin compilation guidance](https://kotlinlang.org/docs/native-improving-compilation-time.html),
+[GitHub cache scope](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching),
+[pinned cache action](https://github.com/actions/cache/tree/55cc8345863c7cc4c66a329aec7e433d2d1c52a9).
