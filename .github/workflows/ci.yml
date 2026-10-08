@@ -8,9 +8,13 @@ on:
   workflow_call:
     inputs:
       full_validation:
-        description: Run every application check for a reusable release caller
+        description: Run application checks regardless of changed paths
         type: boolean
         default: true
+      container_release:
+        description: Validate server containers without running mobile application jobs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -204,6 +208,7 @@ jobs:
 
   android:
     name: Android and shared module
+    if: ${{ !inputs.container_release }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
@@ -245,6 +250,7 @@ jobs:
 
   ios:
     name: Native iOS app, extension and XCTest
+    if: ${{ !inputs.container_release }}
     runs-on: xcode-27
     timeout-minutes: 25
     env:
@@ -325,7 +331,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: ios
         run: |
-          xcodebuild -project Psst.xcodeproj -scheme Psst \
+          python3 scripts/diagnose_build.py xcodebuild -project Psst.xcodeproj -scheme Psst \
             -sdk iphonesimulator -configuration Debug \
             -showBuildTimingSummary \
             -destination "platform=iOS Simulator,id=$PSST_IOS_SIMULATOR_ID" \

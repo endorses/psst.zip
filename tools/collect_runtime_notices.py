@@ -39,6 +39,15 @@ LIMIT = 512 * 1024 * 1024
 EXPANDED_LIMIT = 2 * 1024 * 1024 * 1024
 RECIPE_LIMIT = 8 * 1024 * 1024
 API_ROOT = "https://api.github.com/repos/alpinelinux/aports/contents/"
+DISTFILES_MIRROR = re.compile(
+    r"https://distfiles\.alpinelinux\.org/distfiles/v[1-9][0-9]*\.[0-9]+\Z"
+)
+
+
+def alpine_distfiles_mirror(release: bytes) -> str:
+    branch = re.fullmatch(rb"([1-9][0-9]*\.[0-9]+)\.[0-9]+\n?", release)
+    require(branch is not None, "Helper Alpine release is not a stable numeric version")
+    return "https://distfiles.alpinelinux.org/distfiles/v" + branch[1].decode("ascii")
 
 
 def command(
@@ -348,8 +357,14 @@ def recipe(origin: str, commit: str, output: Path) -> str:
 
 
 def source_package(
-    helper: str, package: dict, recipe_dir: Path, output: Path
+    helper: str,
+    package: dict,
+    recipe_dir: Path,
+    output: Path,
+    *,
+    distfiles_mirror: str,
 ) -> tuple[Path, dict]:
+    matches(distfiles_mirror, DISTFILES_MIRROR, "Unsafe source distfiles mirror")
     output.mkdir(mode=0o700)
     uid, gid = os.getuid(), os.getgid()
     # Only this collector's fresh output directory is mounted writable. APKBUILD
@@ -393,6 +408,10 @@ abuild -C /work/recipe -s /work/distfiles -P /output fetch srcpkg
             "HOME=/work/user",
             "--env",
             "ABUILD_USERDIR=/work/user/.abuild",
+            # abuild uses the distribution's mirror before the original URL and
+            # still checks original APKBUILD sums; recipes are never rewritten.
+            "--env",
+            f"DISTFILES_MIRROR={distfiles_mirror}",
             "--mount",
             f"type=bind,src={recipe_dir},dst=/input,readonly",
             "--mount",
@@ -615,6 +634,23 @@ def collect(image: str, helper: str, output: Path) -> dict:
     info = image_info(image)
     helper_info = image_info(helper)
     image, helper = info["Id"], helper_info["Id"]
+    distfiles_mirror = alpine_distfiles_mirror(
+        command(
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--entrypoint",
+            "cat",
+            helper,
+            "/etc/alpine-release",
+            operation="helper-alpine-release",
+        )
+    )
     helper_database = command(
         "docker",
         "run",
@@ -687,7 +723,11 @@ def collect(image: str, helper: str, output: Path) -> dict:
                 package["origin"], package["aports_commit"], folder / "recipe"
             )
             source, metadata = source_package(
-                helper, package, folder / "recipe", folder / "collected"
+                helper,
+                package,
+                folder / "recipe",
+                folder / "collected",
+                distfiles_mirror=distfiles_mirror,
             )
             non_archives = []
             texts = source_notices(source, non_archives=non_archives)

@@ -79,8 +79,7 @@ class FixtureVerifier:
         details = {}
         if gate == "source-ci":
             details["jobs"] = {
-                name: "success"
-                for name in ("security", "backend", "web", "android", "ios")
+                name: "success" for name in ("security", "backend", "web")
             }
         elif gate in {"source-scanners", "final-image-scanners"}:
             subjects = dict(binding.subjects)
@@ -662,7 +661,7 @@ class PublicationChecks(unittest.TestCase):
                 self.verifier,
             )
 
-    def test_smoke_requires_both_architectures_and_ci_requires_ios(self):
+    def test_smoke_requires_both_architectures_and_ci_requires_server_checks(self):
         for gate, details in (
             ("final-image-smoke", {"execution": {"linux/amd64": "native"}}),
             (
@@ -678,6 +677,18 @@ class PublicationChecks(unittest.TestCase):
             self.verifier.details = {gate: details}
             with self.subTest(gate=gate), self.assertRaises(release.InvalidRelease):
                 self.prepare()
+        for job in ("security", "backend", "web"):
+            for conclusion in (None, "failure", "skipped", "in_progress"):
+                jobs = {name: "success" for name in ("security", "backend", "web")}
+                if conclusion is None:
+                    jobs.pop(job)
+                else:
+                    jobs[job] = conclusion
+                self.verifier.details = {"source-ci": {"jobs": jobs}}
+                with self.subTest(job=job, conclusion=conclusion), self.assertRaises(
+                    release.InvalidRelease
+                ):
+                    self.prepare()
 
     def test_actual_index_bytes_and_pair_platforms_are_checked(self):
         record = self.manifest["images"]["backend"]

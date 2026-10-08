@@ -264,6 +264,16 @@ and the validation image were removed. Hosted publishing remains pending.
       these sums are not the critical path. No heap/GC-pressure, OOM or daemon
       expiration warning was logged. Existing upstream Gradle and Kotlin/SKIE
       diagnostics and source warnings remain; no new cache error occurred.
+- [x] Add bounded resource diagnostics to the existing build. Local smoke checks
+      verify restricted macOS counter parsing, streamed child output, failing
+      exit status, signal preservation and forced cancellation cleanup in 5s.
+      Formatting, shell syntax and existing iOS source gates passed; these checks
+      do not claim a macOS build or resource measurement.
+- [ ] Verify bounded resource diagnostics during the next normal hosted native
+      build. Sample process names, state, cumulative CPU time, average CPU,
+      resident memory, host load and VM/swap counters during the existing build;
+      preserve its arguments, exit status, cancellation and output. Keep all
+      tests and time budgets unchanged. Do not start a separate benchmark run.
 
 The shared module's Android CI runs JVM host tests and does not build the Apple
 framework or exercise its Darwin/CryptoKit implementation and Swift interfaces.
@@ -306,6 +316,23 @@ passed with zero annotations. This further demonstrates timing variability and
 successful cache reuse; no additional benchmark or test suite was run. The later
 container source-fetch failure does not invalidate those source-CI results or
 prove complete release preparation.
+
+Candidate `37765615690`, source `8bb347f`, took 17m30s with the same native
+cache and unchanged mobile sources/build wiring. Its build took 13m38s versus
+11m01s in candidate `37761829904`; first/second Gradle invocations actually
+fell to 3m37s/five seconds. All 176 cases passed in 82.117s, less than the
+earlier 105.337s. The first emitted Xcode command appeared 5m29s after step
+start versus 4m01s, a further 88s of initial silence. Accumulated Swift compile,
+asset catalog, storyboard and asset-symbol task times grew by approximately
+33s, 31s, 34s and 34s respectively; those parallel task sums are not wall time.
+These logs establish build variability, not its CPU/memory or simulator cause.
+PR #12's completed iOS job `113277780267` subsequently took 14m44s: build
+10m14s, first/second Gradle 2m43s/eight seconds, cache restore 26s, and all 176
+cases passing in 101.967s. Its initial emitted-command gap remained 4m59s;
+asset and storyboard task times were much lower. The diagnostics therefore
+target the existing build's initial gap and resource usage rather than changing
+test coverage or compiler settings. Linux validation of the helper cannot
+establish macOS resource behavior or an elapsed-time improvement.
 
 The four-threads/three-processors warning comes from Kotlin/Native compilation,
 not application garbage collection. Kotlin 2.4.20 defaults native parallelism to

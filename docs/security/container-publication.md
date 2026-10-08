@@ -52,7 +52,7 @@ use a separate test adapter.
 
 | Required gate        | Required evidence                                                   |
 | -------------------- | ------------------------------------------------------------------- |
-| Source CI            | All five jobs passed for the selected reviewed source               |
+| Source CI            | Security, backend and web passed for the selected reviewed source   |
 | Source scanners      | Backend/web source, scanner versions, DB/date, findings/disposition |
 | Final-image scanners | All four exact children, completed scans and findings/disposition   |
 | Final-image smoke    | Selected pair on both architectures, recording native/emulated      |
@@ -142,10 +142,11 @@ check; `PublicationInputs` has no verified gates or publishing authorization.
 `tools/generate_release_gate_reports.py` is a library of bounded producers, with
 no generic success-report constructor. `source_ci_report` queries the selected
 version-tag release-run attempt using an explicit Actions read credential. It
-requires the exact source SHA, repository, workflow, version tag and all five
-completed successful reusable CI jobs, retaining job IDs/completion times. It
+requires the exact source SHA, repository, workflow, version tag and completed
+successful security/backend/web CI jobs, retaining job IDs/completion times. It
 checks every job page and rechecks the run identity; API failures, changed counts,
-unexpected CI jobs and unfinished/skipped/failed jobs produce no success report.
+unexpected CI jobs and unfinished/skipped/failed required jobs produce no success
+report. Known mobile jobs are separate from this server validation evidence.
 A prior successful main CI run cannot satisfy this producer.
 [GitHub workflow-job attempt API](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
 
