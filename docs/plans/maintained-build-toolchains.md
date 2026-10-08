@@ -298,6 +298,15 @@ this verifies native toolchain/compiler-state reuse, not a cached project
 framework. Native scripts and Swift compilation are now comparable contributors.
 The evidence does not justify another cache mechanism or speculative heap change.
 
+A later warm candidate, `37761829904` at source `36a9c48`, passed native iOS in
+15m19s: build 11m01s, XCTest step 2m31s, with all 176 cases passing in 105.337s.
+The same 409,819,828-byte cache restored in 24s and saving was skipped. First and
+second Gradle invocations took 3m52s and six seconds. All five source-CI checks
+passed with zero annotations. This further demonstrates timing variability and
+successful cache reuse; no additional benchmark or test suite was run. The later
+container source-fetch failure does not invalidate those source-CI results or
+prove complete release preparation.
+
 The four-threads/three-processors warning comes from Kotlin/Native compilation,
 not application garbage collection. Kotlin 2.4.20 defaults native parallelism to
 four and supports `kotlin.native.parallelThreads=0` for automatic processor-count

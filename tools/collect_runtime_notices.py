@@ -42,29 +42,83 @@ API_ROOT = "https://api.github.com/repos/alpinelinux/aports/contents/"
 
 
 def command(
-    *args: str, timeout: int = 300, operation: str = "runtime-command"
+    *args: str,
+    timeout: int = 300,
+    operation: str = "runtime-command",
+    source_identity: tuple[str, str, str] | None = None,
 ) -> bytes:
-    # Only a named operation and exit status cross the public diagnostic boundary.
+    # Only fixed diagnostics and validated package identity cross into public logs.
     # Commands, environment and captured output can contain private paths or tokens.
     require(
         re.fullmatch(r"[a-z][a-z0-9-]{0,95}", operation) is not None,
         "Invalid runtime operation label",
     )
+    context = ""
+    if source_identity is not None:
+        require(
+            operation == "apk-source-package-fetch"
+            and isinstance(source_identity, tuple)
+            and len(source_identity) == 3,
+            "Invalid runtime source diagnostic identity",
+        )
+        origin, version, commit = source_identity
+        matches(origin, NAME, "Unsafe source diagnostic origin")
+        matches(version, NAME, "Unsafe source diagnostic version")
+        matches(commit, COMMIT, "Unsafe source diagnostic commit")
+        context = f" [origin={origin} version={version} aports_commit={commit}]"
     try:
         result = subprocess.run(args, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise InvalidRelease(
-            f"Runtime collection command timed out: {operation}"
+            f"Runtime collection command timed out: {operation}{context}"
         ) from None
     except OSError:
         raise InvalidRelease(
-            f"Runtime collection command could not start: {operation}"
+            f"Runtime collection command could not start: {operation}{context}"
         ) from None
+    if source_identity is not None and result.returncode != 0:
+        context += f" [category={source_fetch_failure_category(result.stderr)}]"
     require(
         result.returncode == 0,
-        f"Runtime collection command failed: {operation} (exit {result.returncode})",
+        f"Runtime collection command failed: {operation} (exit {result.returncode}){context}",
     )
     return result.stdout
+
+
+def source_fetch_failure_category(stderr: bytes) -> str:
+    # Categories indicate observed error text, not a proven underlying cause.
+    # External recipe/tool output never reaches logs.
+    value = stderr[-65536:].lower()
+    for category, pattern in (
+        (
+            "checksum",
+            rb"checksum (?:mismatch|failed)|sha512 sum mismatch|computed checksums did not match",
+        ),
+        (
+            "permission",
+            rb"permission denied|operation not permitted|read-only file system",
+        ),
+        (
+            "dns",
+            rb"bad address|could not resolve host|failure in name resolution|name or service not known",
+        ),
+        (
+            "tls",
+            rb"certificate verify failed|ssl certificate problem|tls handshake|ssl routines",
+        ),
+        (
+            "network",
+            rb"network is unreachable|connection (?:refused|timed out)|failed to connect",
+        ),
+    ):
+        if re.search(pattern, value):
+            return category
+    if re.search(
+        rb"(?:http/[\d.]+\s+|requested url returned error:\s*|http error\s*)[45]\d\d\b",
+        value,
+    ):
+        return "http"
+    return "unclassified"
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -350,6 +404,11 @@ abuild -C /work/recipe -s /work/distfiles -P /output fetch srcpkg
             script,
             timeout=900,
             operation="apk-source-package-fetch",
+            source_identity=(
+                package["origin"],
+                package["version"],
+                package["aports_commit"],
+            ),
         )
     finally:
         # A subprocess timeout does not stop a detached Docker workload by itself.

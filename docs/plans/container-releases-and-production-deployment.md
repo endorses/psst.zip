@@ -2623,6 +2623,27 @@ runner, not a claim that the later failed native-container preparation passed.
       and the first retained `alpine-baselayout` source fetch with checksum
       verification. It stopped there and cleaned its image and temporary files;
       this is not complete source replay or evidence of the hosted failure cause.
+- [x] Inspect the next planned candidate's exact-source CI and bounded runtime
+      diagnostic. Run `37761829904`, source
+      `36a9c48e1f985733281cef90c22fea98e410e802`, passed all five full source-CI
+      jobs with zero annotations. Both native jobs then failed with
+      `apk-source-package-fetch (exit 1)` after original builds and metadata,
+      isolating the failed command stage without exposing private output.
+      The run is terminal; source replay, assembly, recovery and publication did
+      not complete. Both measurement daemons were explicitly rootful, so an
+      automatic rootless/user-namespace ownership explanation is unsupported.
+- [x] Narrow the failed source fetch without publishing arbitrary subprocess
+      output. Validate and report its installed origin, version and packaging
+      commit plus a fixed checksum/permission/DNS/network/TLS/HTTP/unclassified
+      diagnostic category. The category is a diagnostic hint, not authenticated
+      completion evidence or permission to bypass a guard. Existing timeout and
+      launch privacy remains; commands, environment, URLs and raw output stay
+      private. Injected category and unsafe-identity subcases reuse the existing
+      regression: 18 runtime cases passed in 0.010s and native preparation had
+      13 passes with one existing opt-in skip in 0.064s. An exact first-origin
+      local fetch also passed under UID/GID 1001 with protected output ownership
+      and unchanged SHA512 verification. No hosted cause-specific repair is yet
+      established, and no checksum was regenerated or ignored.
 - [x] Address the measured missing Kotlin/Native input cache in routine iOS CI.
       Preserve `~/.konan` with an immutable stable Node 24 cache action and
       exact host/toolchain inputs; enable Gradle's local build cache for shared.

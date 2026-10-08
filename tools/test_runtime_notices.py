@@ -69,6 +69,48 @@ class RuntimeBoundaries(unittest.TestCase):
         result.returncode = 0
         with patch.object(runtime.subprocess, "run", return_value=result):
             self.assertEqual(runtime.command("docker", "version"), result.stdout)
+        identity = ("alpine-baselayout", "3.7.2-r1", "a" * 40)
+        result.returncode = 1
+        for category, stderr in (
+            ("checksum", b"checksum failed for private source"),
+            ("permission", b"Permission denied: private path"),
+            ("dns", b"Could not resolve host: private hostname"),
+            ("network", b"Failed to connect to private address"),
+            ("tls", b"SSL certificate problem: private details"),
+            ("http", b"server returned error: HTTP/1.1 403 Forbidden"),
+            ("unclassified", b"private stderr https://private.example/input"),
+        ):
+            result.stderr = stderr
+            with self.subTest(category=category), patch.object(
+                runtime.subprocess, "run", return_value=result
+            ):
+                with self.assertRaises(InvalidRelease) as rejected:
+                    runtime.command(
+                        "docker",
+                        "private command argument",
+                        operation="apk-source-package-fetch",
+                        source_identity=identity,
+                    )
+                self.assertEqual(
+                    str(rejected.exception),
+                    "Runtime collection command failed: apk-source-package-fetch (exit 1)"
+                    f" [origin={identity[0]} version={identity[1]} aports_commit={identity[2]}]"
+                    f" [category={category}]",
+                )
+        for field in range(3):
+            unsafe = list(identity)
+            unsafe[field] = "private\n::warning::unsafe identity"
+            with self.subTest(field=field), patch.object(
+                runtime.subprocess, "run"
+            ) as execute:
+                with self.assertRaises(InvalidRelease) as rejected:
+                    runtime.command(
+                        "docker",
+                        operation="apk-source-package-fetch",
+                        source_identity=tuple(unsafe),
+                    )
+                self.assertNotIn("private", str(rejected.exception))
+                execute.assert_not_called()
         for error, expected in (
             (
                 subprocess.TimeoutExpired(
