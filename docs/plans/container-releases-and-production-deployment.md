@@ -1457,9 +1457,19 @@ reviews remain pending; this source result does not approve publication.
       Confirm byte equality and absence of imported custom policy; select the
       bundled file for eventual adoption while retaining the old protected file
       for recovery. Live adoption remains pending.
-- [ ] Inspect the live installation's actual volume mappings and settings before
+- [x] Inspect the live installation's actual volume mappings and settings before
       migration. Preserve `/opt/psst.zip`, project name `psst-zip`, and the original
       local images/configuration as the first migration recovery baseline.
+      Read-only SSH inspection on 2026-10-08 used the existing maintenance key
+      and strict known-host verification. Both local image IDs, Compose service
+      labels, mount mappings and non-secret database/storage/public-URL settings
+      were read. The backend's original volume and database basename differ from
+      fresh-install defaults: carry their explicit `BACKEND_DATA_VOLUME` and
+      `DB_PATH` overrides into migration. Caddy's existing data/config volumes
+      and read-only host Caddyfile mount remain in place. Configuration hashes
+      were inspected without printing `.env`; it is root-owned with mode 0600.
+      No server files, containers or data were changed; final stopped-backup and
+      migration-time reinspection remain pending.
 - [ ] Configure and verify protected encrypted off-host backups, including a
       restore exercise, before enabling production deployment automation.
 - [ ] Publish and test the first release, perform a manual migration using the
@@ -2124,6 +2134,14 @@ and formatting/diff checks passed. The old S3-only adapter and fixtures were
 retired; no additional application build, sleeps or large OCI copies were added.
 Actual hosted artifact retention and first publication remain unverified.
 
+Exact-head run
+[`37737075656`](https://github.com/endorses/psst.zip/actions/runs/37737075656)
+passed all five checks at `8e7a6e61ff8ce4b4b4357223a9e4fc8237c077ae` with
+no GitHub annotations. Protected PR #4 merged the bucket-free publisher as
+`a3280162390f0a3ea9c679160a05ef2986d17ccd`. This verifies integrated CI;
+it does not claim that publishing, new diagnostic artifact uploads or
+production migration have run.
+
 ### Live repository and production environment protections
 
 - [x] Configure and independently verify the active main ruleset using the five
@@ -2458,14 +2476,15 @@ independently verifying the completed destination. Intermediate consistency
 checks compare retained file hashes rather than repeating OCI/Git/npm parsing.
 After this optimization, the ten transfer regressions passed in 1.6 seconds.
 
-The last passing hosted CI run `37669775085` took approximately 1 minute for
-repository security, 4.2 minutes for backend, 8 minutes for web and 14 minutes for
-native iOS. Routine job limits are now 10, 15, 15 and 25 minutes respectively;
-the Go test package limit is 10 minutes with race checking preserved. These catch
-hangs rather than establish faster execution. Confirm the new limits on the next
-hosted run. Full release verification includes additional collection and recovery
-work and has separate budgets; these measurements do not promise a sub-30-minute
-release pipeline.
+The latest passing full hosted CI run `37734917348` took 1m36s for repository
+security, 7m24s for backend, 7m36s for web, 4m11s for Android/shared and 16m16s
+for native iOS. Native compilation accounted for 13m34s; the XCTest step took
+1m50s, with 77.677 seconds of case execution. Routine job limits are 10, 15, 15,
+15 and 25 minutes respectively. The Go package limit remains 10 minutes with
+race checking preserved. All existing limits held; they catch hangs rather than
+establish faster execution. Full release verification includes additional
+collection and recovery work with separate budgets; these measurements do not
+promise a sub-30-minute release pipeline.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
