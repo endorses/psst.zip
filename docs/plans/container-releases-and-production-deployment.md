@@ -3271,7 +3271,57 @@ archives were not downloaded for this review.
       was rejected. Black, Prettier, actionlint, embedded Python parsing and diff
       checks passed. A bounded independent review found no blockers. These are
       offline checks, not signing, image rebuilds or hosted publication evidence.
-- [ ] Commit code and this plan through normal protected review.
+- [x] Commit code and this plan as `96100a88bd52a7e35b63f116d4749cc135215f72`
+      and merge through protected PR #23. All five CI contexts and GitGuardian
+      passed for that exact head. Merge `0321a422d597420acfd5c39c35c5f650b03b7a62`
+      matches its tested tree, and main CI `37834020723` passed for the merge.
 - [ ] Verify the corrected contract and actual publication against a fresh unused
       patch version. Preserve earlier immutable tags and use new attempt-bound
       reviews; completed local tests do not establish hosted publication.
+
+### Expanded-commit v0.1.4 candidate
+
+- [x] Verify `v0.1.4` is unused, create its annotated tag at the tested merge
+      `0321a422d597420acfd5c39c35c5f650b03b7a62` and push only that new tag.
+      Run `37834311383`, attempt 1, is the necessary corrected publication
+      candidate. Preserve all previous tags and their authenticated subjects.
+- [x] Pass the new early expanded-commit push validation in source-identity job
+      `113507326984` on the actual hosted tag event, before costly downstream
+      preparation. This verifies the current event contract; it does not identify
+      the original v0.1.3 constructor's precise rejecting guard.
+- [x] Complete exact tagged server CI, both native image preparations and signed
+      source/scan/smoke/notice assembly for this source and attempt. Security took
+      1m12s, backend 6m26s and web 7m22s; separate mobile jobs were skipped.
+      Native preparation took 10m20s on AMD64 and 9m30s on ARM64. Assembly job
+      `113512094069` passed in 4m18s, including source signing and independent
+      verification. All six reports passed with binding
+      `sha256:8137ab2f6a547483d930898e2e44520c2efae81aaa5efc1611d44b4ea0fb28e2`.
+      The complete source report covers four images and six archives; its SHA256
+      is `577cb31c86b34d00171e9f402e65ca5dae9c672e5e644019e6148dfbda60eb39`.
+- [x] Authenticate both real native recovery measurements and their signed
+      aggregate. AMD64 job `113513923881` passed in 7m07s and ARM64 job
+      `113513923774` in 8m09s. Aggregate job `113517512542` authenticated,
+      signed and independently verified both completed experiments in 38s.
+      The recovery report SHA256 is
+      `cc28774a7b29f1b5e7d6aac777a1e70613e54f0da7cc1c7a85ef08964a47e867`.
+      Automated preparation reached the review gate in 24m36s. This proves
+      disposable native recovery; independent off-host provider, public provenance
+      and browser/mobile-flow checks remain explicitly false.
+- [x] Inspect `candidate-distribution-presentation-37834311383-1` against the
+      retained source and recovery reports. Repository, version, source commit,
+      run/attempt, source-report hash, binding, all fourteen subjects and complete
+      four-image/six-archive coverage match the committed reviewer policy.
+- [x] Inspect the actual v0.1.4 distribution decision and terminal workflow result.
+      Reviewer `endorses` approved the environment, but GitHub recorded the earlier
+      v0.1.3 comment naming run `37815441912` and its previous artifact hashes.
+      Distribution job `113517829627` rejected that mismatched decision;
+      publisher `113519214077` was skipped. All automated preparation and recovery
+      gates passed. No publication was attempted. Preserve the v0.1.4 tag.
+- [ ] Obtain fresh attempt-bound human distribution and publication reviews before
+      publication. Earlier comments and approvals do not authorize different run
+      subjects or attempts. Do not automatically start another full preparation
+      run after this approval mismatch.
+- [ ] Complete actual hosted attestor initialization and independently verify
+      the immutable public release, paired repository-linked packages and fresh
+      anonymous delivery. Remove first-package initialization only after success;
+      production migration and independent off-host recovery remain deferred.
