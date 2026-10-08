@@ -248,6 +248,11 @@ and the validation image were removed. Hosted publishing remains pending.
 - [ ] Resolve the roughly 4m45s before the first Kotlin build phase. The current
       buffered Xcode log does not establish its cause; do not attribute it to
       duplicate framework compilation or simulator boot without evidence.
+      Same-image intervals varied from roughly 4m22s to 7m06s. If further
+      investigation is needed, collect bounded process/CPU and memory-pressure
+      snapshots during the existing build to distinguish active tool work from
+      an idle build-service wait. Do not add another compilation or test suite
+      merely to gather these diagnostics.
       The existing build now requests Xcode's task timing summary; it performs
       no extra compilation. The same runner image previously had a 6m29s gap,
       with delays distributed across different tool probes. Hosted image setup

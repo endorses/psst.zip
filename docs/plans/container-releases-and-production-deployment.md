@@ -2602,6 +2602,17 @@ runner, not a claim that the later failed native-container preparation passed.
       application dependency collection passed; final overlays, complete source
       replay, assembly and recovery did not. Diagnose the retained failure before
       dispatching a repaired source; do not restart this terminal attempt.
+- [x] Make runtime collection failures identify their operation and exit status
+      without exposing command arguments, environment, or captured output. The
+      earlier generic Docker failure does not establish a root cause. Add labels
+      for image inspection/save, helper/runtime APK inventories and source
+      fetching; preserve all collection and checksum checks. One focused
+      regression checks that sensitive details stay hidden and successful output
+      is preserved; all 18 existing runtime-boundary cases passed in 0.008s.
+- [ ] Establish the hosted runtime-collection failure from these bounded
+      diagnostics before making a cause-specific repair. A local helper-only
+      probe passed inventory/save and multiple source-fetch operations, which
+      does not prove the complete application inventory on either hosted runner.
 - [x] Address the measured missing Kotlin/Native input cache in routine iOS CI.
       Preserve `~/.konan` with an immutable stable Node 24 cache action and
       exact host/toolchain inputs; enable Gradle's local build cache for shared.
