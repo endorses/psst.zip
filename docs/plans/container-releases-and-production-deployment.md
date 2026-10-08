@@ -1711,7 +1711,7 @@ authenticated final-image checks for the current commit on both architectures.
       project at its immutable official Go/GitLab origin. Restrict its auxiliary
       association to the locked SQLite module and its acquisition to the exact
       full-commit canonical GitLab route.
-- [ ] Collect and independently replay the twenty-original offering from the
+- [x] Collect and independently replay the twenty-original offering from the
       committed catalog, reusing existing original archives.
 - [ ] Encode and independently replay the sibling vendoring transformation
       against both generated Linux outputs; keep byte regeneration separate.
@@ -1742,6 +1742,16 @@ The sibling's translator pins are CC/CCGo v4.25.2 and fileutil v1.3.0, distinct
 from libc's retained v4.26.0/v1.3.1 tools. Their declared recipes/locks are retained;
 independent regeneration would require its old tool environment and is not
 claimed by these source associations.
+
+The twenty-original offering from committed source
+`06b1425a4f5f0c1b8c552a51fcf56df5a2b00833` contains 43,801 original members.
+Collection took 9.5 seconds and independent replay 10.0 seconds, reusing the
+nineteen previous archive bytes and the pinned sibling archive without further
+network requests. Its 243,327,758-byte asset fits the unchanged 256 MiB aggregate
+bound and has SHA256
+`0550c863f7c3dcc460402f4c64fa2d381de635c8ccbcf9b767f29451ee3b8197`.
+Private collection/replay receipts are retained; full source-gate approval,
+current native final-image checks and publication remain pending.
 
 ## Verification and completion criteria
 
