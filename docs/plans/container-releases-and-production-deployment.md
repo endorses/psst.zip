@@ -2706,7 +2706,8 @@ runner, not a claim that the later failed native-container preparation passed.
       selector-policy change itself must still complete all hosted app checks.
 - [ ] Verify the selector-policy change on hosted CI and confirm that a later
       release-workflow-only PR skips application steps while planned/tagged
-      release validation still executes all five source-CI jobs.
+      release validation still executes every required source-CI job
+      (security/backend/web for containers under the superseding scope below).
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
@@ -2751,9 +2752,12 @@ shared protocol compatibility while adding server image publication/deployment.
       Actionlint. The corresponding-source command's five existing checks also
       passed in 0.028s after updating its fixture to the server-only contract.
       No new test methods or full local application rerun were added.
-- [ ] Verify the integrated planned candidate executes all three server/security
+- [x] Verify the integrated planned candidate executes all three server/security
       checks, skips mobile compilation and overlaps native container preparation.
-      Actual publication and production migration remain separate pending gates.
+      Candidate `37771648745` at `f211717009c7cb4dd426cde3d8d5c3c3a621b16d`
+      passed security/backend/web, skipped both mobile jobs and began both native
+      image preparations while server tests were still active. Actual publication
+      and production migration remain separate pending gates.
 
 Candidate `37765615690` passed all five checks under the previous contract, then
 both native container jobs failed while fetching `apk-tools` `3.0.8-r0` sources
@@ -2778,8 +2782,24 @@ status code or a general runner-network outage.
       fetched from the mirror and passed its original SHA512 independently;
       18 runtime regressions passed in 0.009s and native preparation had 13
       passes with one existing opt-in skip in 0.064s. Temporary probes were removed.
-- [ ] Verify the mirror repair in both native hosted jobs and complete source
-      replay, candidate assembly and disposable recovery before publication.
+- [x] Verify the mirror repair in both native hosted jobs. On candidate
+      `37771648745`, AMD64 job `113292675879` completed native source preparation
+      in 4m25s and ARM64 job `113292675915` in 4m10s, passing the previously failing
+      collection and downstream overlay/image measurements with unchanged
+      checksum guards. Private fetch URLs remain suppressed; this is a verified
+      successful preparation, not a claim to have observed individual network
+      traces. Subsequent compiler/scanner steps remained active at this checkpoint.
+- [ ] Complete source replay, candidate assembly and disposable recovery before
+      publication. A successful source-preparation step alone does not close these.
+
+The server-scope/source-fetch PR #13 completed all five ordinary protected checks
+and GitGuardian with zero annotations at
+`fc17542bf796a226ac1934723fbcf6e5c8a5dd9d`, and merged through protection as
+`f211717009c7cb4dd426cde3d8d5c3c3a621b16d`. The merged tree equals the checked
+head. The planned candidate uses that exact merged commit; publication remained
+disabled at dispatch, no version tag was created, and no production state changed.
+The delegated iOS investigation continues independently on a local diagnostic
+branch; its follow-up changes do not gate this container candidate.
 
 The scheduling PR #12 completed all five required checks with zero annotations
 at `b023bddd0669f88bcebbd050db104c9caeeae7ac` and merged through protection as
