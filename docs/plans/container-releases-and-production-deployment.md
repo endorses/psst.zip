@@ -3077,3 +3077,31 @@ The exact exception is absent from the log; diagnosis remains pending. Preserve
 The boundary review confirms that publisher mutations start after journal
 initialization. This attempt stopped before that transaction began; the lost
 exception prevents identifying the exact preparation boundary from its log.
+
+### Diagnostic v0.1.2 candidate
+
+- [x] Merge the reviewed preparation diagnostics through protected PR #19 as
+      `57c64eafba191a0621f9ca452c79557507c7389b`. Its tree matches the checked
+      head `070c163839491785720942f0c409ac4054376907`; all five contexts and
+      GitGuardian passed with zero annotations. Main CI `37798366161` also
+      passed for the exact merged source. Unrelated application steps were
+      correctly selected out for these release-tooling changes.
+- [x] Verify the three pinned public signing-action source files independently
+      in 2.629 seconds, with automatic temporary-directory cleanup. This checks
+      the actual source hashes, not the unavailable original hosted signing
+      context, credentials or full attestor initialization. The bounded event
+      contract check found no supported schema mismatch; no speculative event
+      validation change was made.
+- [x] Confirm `v0.1.2` is unused, create it at the verified merged source above,
+      and push only that new tag. Run `37799619020`, attempt 1, is in progress.
+      Preserve `v0.0.0`, `v0.1.0` and `v0.1.1`; the new tag neither publishes a
+      release nor updates the VPS.
+- [ ] Complete this attempt's exact server CI, native preparation, authenticated
+      source/scan/smoke/notice reports and native recovery gate.
+- [ ] Present its fresh review packet, obtain its configured human approvals and
+      observe the publisher's real preparation stages. Earlier approvals cannot
+      authorize these changed source subjects. The original failure's exact cause
+      remains unresolved.
+- [ ] Publish and independently verify the immutable public release, paired
+      packages and anonymous delivery; remove first-package initialization only
+      after success. Production migration and off-host recovery remain deferred.

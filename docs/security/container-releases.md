@@ -78,8 +78,9 @@ guides.
 
 ## Maintainer path to a ready release
 
-The current first-publication candidate is `v0.1.1`. Preserve both `v0.0.0` and
-the failed `v0.1.0` tag. A main push runs source CI. The guarded publication
+Choose an unused patch version for each changed publication candidate. Preserve
+`v0.0.0` and the failed `v0.1.0` and `v0.1.1` tags. A main push runs source CI.
+The guarded publication
 transport and signing bridge are enabled in the tag workflow; each candidate
 still needs its exact signed gates and the configured human approvals.
 
