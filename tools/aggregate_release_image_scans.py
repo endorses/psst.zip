@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from collect_caddy_sources import go_source_policy
 from generate_release_gate_reports import (
     MeasurementAuthenticator,
     NativeSourceContext,
@@ -415,10 +416,20 @@ def checked_graph(
     info = binary["build_info"]
     require(
         isinstance(info, dict)
-        and info.get("GoVersion") == GO_VERSION
+        and isinstance(info.get("GoVersion"), str)
+        and info["GoVersion"]
+        == pack.get("bindings", {}).get(component, {}).get("go_version")
         and isinstance(info.get("Settings"), list),
         "Compiler toolchain metadata missing/different",
     )
+    if component == "backend":
+        require(
+            info["GoVersion"] == GO_VERSION,
+            "Backend compiler differs from pinned producer",
+        )
+    else:
+        # Caddy keeps its original compiler, bound to this exact runtime binary.
+        go_source_policy(info["GoVersion"])
     settings = {}
     for setting in info["Settings"]:
         require(

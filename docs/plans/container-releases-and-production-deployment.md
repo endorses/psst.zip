@@ -2154,6 +2154,10 @@ production migration have run.
       installing SSH credentials, configuring a host or dispatching deployment.
 - [x] Track the applied non-secret ruleset/environment payloads and operator
       guidance, preserving separate pending live publication and VPS checks.
+- [x] Document the independent immutable-release inspection credential setup:
+      a fine-grained token scoped to this repository with Administration read,
+      stored directly in the protected `container-release` environment. Record
+      expiration/renewal and keep candidate checks independent of this token.
 - [ ] Configure the remaining environment variables, independent inspection
       credentials, public package namespaces and restricted deployment
       identity; verify hosted release and production behavior against them.
@@ -2452,8 +2456,17 @@ the first published release/VPS migration remain separate incomplete tasks.
       remains pending. Final run `37734917348` passed all five jobs with no
       GitHub annotations, including those fixture and backend timeout repairs.
       Protected PR #3 merged as `c4f7eaf1e3e0f0102bcb053548a973072e6f466b`.
-      Candidate preparation will use the verified bucket-free publication
-      workflow after its separate integration.
+      Planned `v0.1.0` candidate
+      [run `37739559953`](https://github.com/endorses/psst.zip/actions/runs/37739559953)
+      now uses integrated commit `d59ca65ae172e01e98258842c2a7b50cd7d44ba8`,
+      including the bucket-free publication workflow. It was dispatched on
+      2026-10-08 without creating a tag or enabling publication. All five CI jobs
+      passed with no annotations, including all 176 XCTest cases. Common upstream
+      retention, immutable base resolution, original image builds and dependency
+      collection passed on both architectures. Both native preparation jobs then
+      rejected the stale Go 1.26.8/Node 22 validation guard. Final overlays,
+      corresponding-source verification and recovery remain pending; this failed
+      run is not a release candidate success.
 
 Application compiler, build tool and base-image upgrades are tracked separately
 in [the maintained toolchain plan](maintained-build-toolchains.md). The action
@@ -2476,7 +2489,7 @@ independently verifying the completed destination. Intermediate consistency
 checks compare retained file hashes rather than repeating OCI/Git/npm parsing.
 After this optimization, the ten transfer regressions passed in 1.6 seconds.
 
-The latest passing full hosted CI run `37734917348` took 1m36s for repository
+The pre-candidate full hosted CI baseline `37734917348` took 1m36s for repository
 security, 7m24s for backend, 7m36s for web, 4m11s for Android/shared and 16m16s
 for native iOS. Native compilation accounted for 13m34s; the XCTest step took
 1m50s, with 77.677 seconds of case execution. Routine job limits are 10, 15, 15,
@@ -2485,6 +2498,48 @@ race checking preserved. All existing limits held; they catch hangs rather than
 establish faster execution. Full release verification includes additional
 collection and recovery work with separate budgets; these measurements do not
 promise a sub-30-minute release pipeline.
+
+The completed source-CI checkpoint inside candidate run `37739559953` took
+1m33s for security, 7m27s for backend, 7m15s for web, 2m36s for Android/shared
+and 23m05s for iOS. Native compilation took 18m42s, readiness five seconds,
+and the XCTest step 2m53s; all 176 cases passed with 113.325 seconds of case
+execution. The existing limits held. These are actual timings on the selected
+runner, not a claim that the later failed native-container preparation passed.
+
+- [x] Replace the runtime-dependent real CLI parser fixture after documentation
+      PR run `37741423347` exceeded its five-second timeout. Use an unsupported
+      test hostname that the real CLI rejects after identity-flag validation and
+      before trust initialization or attestation retrieval. An incompatible
+      signer-workflow subcase proves this sentinel does not mask argument errors.
+      Retain production identity policy, the five-second fixture deadline and
+      all authenticated publication gates.
+- [x] Verify the focused fixture against installed `gh` 2.101.0 and the
+      checksum-verified official 2.102.0 used by the failed runner image. All ten
+      evidence tests passed in 0.154s and 0.152s respectively; the existing 370
+      release tests passed locally in 25.045s. The timeout's historical cause
+      remains unproven. No application builds or additional slow tests were added.
+- [x] Align original-pair Go/Node record validation with the trusted application
+      base tags rather than obsolete literals. Require the exact selected
+      versions and native platform; retain immutable base maps, archive/config
+      hashes and separate Caddy compiler correspondence. Fourteen focused native
+      preparation tests completed in 0.062s: thirteen passed and the existing
+      opt-in live Docker test was explicitly skipped. Recovery fixtures now use
+      these selected producer versions; all eleven recovery checks passed in
+      2.035s after the stricter guard exposed their obsolete positive records.
+- [x] Preserve component-specific compiler validation in final image-scan
+      aggregation. Require the graph's Go version to equal its exact runtime
+      binary binding, then require the backend's selected Go version or Caddy's
+      committed original-runtime source policy. Ten focused gate checks passed
+      in 1.041s, including altered/rebound version refusal. This does not waive
+      authenticated graph, binary/source hash, compiler-setting or native-platform
+      checks. A bounded review of these changes found no blocking issue.
+- [x] Run the combined lightweight release regressions after those corrections.
+      All 371 cases passed on Python 3.14.7 in 25.653s. This does not repeat
+      application builds or prove complete hosted container/recovery execution.
+- [ ] Verify these repairs and the latest stable Linux runners on hosted CI,
+      then run a new planned native candidate through complete source and recovery
+      checks. Do not restart the terminal failed attempt or claim fixture results
+      prove a complete image/source pair.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.

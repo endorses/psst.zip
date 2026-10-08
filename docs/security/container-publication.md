@@ -121,10 +121,15 @@ source report without repeating source replay or querying mutable review history
 Tagged candidate inputs and the review packet are retained for seven days. Expired
 inputs require a fresh controlled run; approval cannot transfer across attempts.
 
-This local wiring has not been pushed or exercised on hosted artifacts. Actual
-signed reports, real reviewer approval/rejection and hosted publication remain
-pending. Fixture
-checks exercise authorization and substitution failures, not live approval.
+This wiring is merged into `main` at `d59ca65`. The `v0.1.0` candidate
+[run 37739559953](https://github.com/endorses/psst.zip/actions/runs/37739559953)
+completed on 2026-10-08 with all five CI jobs passing. Both native container jobs
+then failed at an obsolete Go/Node record-validation guard after original image
+builds and dependency collection passed. Its complete candidate source and
+recovery checks remain unverified. Signed version-tag reports, real reviewer
+approval/rejection and hosted publication are separate pending checks; the
+planned candidate cannot authorize publication. Fixture checks exercise
+authorization and substitution failures, not live approval.
 
 ## Reports from completed checks
 
@@ -631,11 +636,26 @@ credentials. It downloads completed payloads and signed gates, rather than
 repeating image builds, scanners, source replay or recovery experiments.
 
 The protected environment requires `PSST_IMMUTABLE_INSPECTION_TOKEN`, a separate
-repository Administration-read credential. The optional variable
+repository Administration-read credential. Create a fine-grained personal access
+token in GitHub **Settings → Developer settings → Personal access tokens →
+Fine-grained tokens**, choose resource owner `endorses`, and select only the
+`endorses/psst.zip` repository. Set the repository permission **Administration**
+to **Read-only**; **Metadata** read access is included automatically. Choose an
+expiration and renew the token before it expires, replacing the environment
+secret with the renewed value. [GitHub token setup](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+
+Add the token directly under repository **Settings → Environments →
+container-release → Environment secrets**, named
+`PSST_IMMUTABLE_INSPECTION_TOKEN`. Never paste it into chat or commit it to the
+repository. Environment secrets are available to the job only after its
+environment protection rules pass. [GitHub environment secrets](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments#environment-secrets).
+
+Candidate runs do not require this token; live publication does. Publication
+enablement remains disabled. The optional variable
 `PSST_INITIALIZE_GHCR_PACKAGES=true` permits creation of both missing packages
 from the exact reviewed images in that held run. The workflow's publishing token
-remains separate from the inspection credential. No AWS CLI or S3 settings are
-required.
+is the built-in `GITHUB_TOKEN`, separate from the inspection credential. No AWS
+CLI or S3 settings are required.
 
 ### First GHCR package creation
 

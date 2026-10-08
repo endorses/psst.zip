@@ -30,6 +30,17 @@ Version discovery is separate from successful build validation. GitHub's preview
 - [x] Inspect hosted check annotations as well as conclusions. Verify that the
       Node action deprecation, moving Ubuntu runner and outdated Gradle notices
       are removed; investigate any new warnings without extending test budgets.
+- [x] Verify that Ubuntu 26.04 and its Arm64 runner are generally available;
+      explicitly select the latest stable labels rather than the current
+      Ubuntu 24.04 mapping behind `ubuntu-latest`.
+- [x] Update all 16 Linux workflow runner labels, preserving native architectures
+      and existing job limits. Verify actionlint using documented hosted labels.
+- [ ] Verify actual hosted execution with the Ubuntu 26.04 Python 3.14 runtime.
+- [x] Replace Ubuntu's prerelease Skopeo package in the publishing job with
+      the upstream stable 1.24.1 native build. Verify its pinned source, version,
+      required containers configuration and digest-preserving OCI copy locally.
+- [ ] Exercise that native tool installation and registry transport in the
+      protected publishing job after the independent release gates succeed.
 - [x] Commit verified changes and plan checkpoints; keep store research drafts
       uncommitted. Do not publish a release or update production while its
       candidate checks remain incomplete.
@@ -165,3 +176,32 @@ readiness took one second and the XCTest step 1m50s. All 176 cases passed
 unchanged. Protected PR #3 merged as
 `c4f7eaf1e3e0f0102bcb053548a973072e6f466b` after those checks. Full native
 container source/recovery and first publication remain pending.
+
+Ubuntu 26.04 x64 and Arm64 became generally available on 2026-09-17, with
+labels `ubuntu-26.04` and `ubuntu-26.04-arm`. The initial Ubuntu 24.04 pins
+were too conservative for the latest-stable requirement. `ubuntu-latest`
+remains 24.04 until its rollout beginning October 19 and ending November 19;
+use the explicit stable labels. The 26.04 manifests select Python 3.14 by
+default. Local release regressions already passed on Python 3.14.7, while
+actual hosted execution on the updated image remains pending.
+[GA announcement](https://github.com/actions/runner-images/issues/14747),
+[migration announcement](https://github.com/actions/runner-images/issues/14748).
+
+Ubuntu 26.04's Skopeo package is `1.21.0~pre1-2build1`; the image's
+`1.21.0-dev` label reflects prerelease sources. Upstream stable Skopeo 1.24.1
+is commit `77f3d92f861271c7cb9175afcf876017bcae9202`. Its supported native
+source build retains CGO and upstream containers configuration, using the
+selected Go 1.27.1; it does not require a container wrapper for transport.
+Local Ubuntu 26.04 AMD64 verification passed with Go 1.27.1. Skopeo reported
+exactly `skopeo version 1.24.1 commit: 77f3d92f861271c7cb9175afcf876017bcae9202`.
+The native CGO build linked GPGME, libassuan and libc. Upstream installation
+retained its policy, registries configuration and sigstore directory. A small
+OCI-to-archive copy with `--all --preserve-digests` preserved the inspected
+manifest hash; it made no registry writes. Dependency installation took 75.6s,
+and source fetch/build/install/checks took 32.4s, including about 27s of native
+compile/install. This work runs only in publication, not routine test jobs.
+Actionlint, formatting and shell syntax checks passed; owned temporary files
+and the validation image were removed. Hosted publishing remains pending.
+[Ubuntu package](https://packages.ubuntu.com/resolute/skopeo),
+[Skopeo release](https://github.com/podman-container-tools/skopeo/releases/tag/v1.24.1),
+[upstream build instructions](https://github.com/podman-container-tools/skopeo/blob/v1.24.1/install.md).

@@ -377,31 +377,47 @@ class EvidenceChecks(unittest.TestCase):
     @unittest.skipUnless(
         shutil.which("gh"), "Install GitHub CLI for argument compatibility"
     )
-    def test_real_cli_accepts_identity_policy_before_local_trust_failure(self):
-        # Missing local trust material fails before network verification. Exercise
-        # the real parser; this test-only override never enters production policy.
+    def test_real_cli_accepts_identity_policy_before_unsupported_host_failure(self):
+        # Cobra validates flag combinations before RunE rejects unsupported hosts,
+        # ahead of trust initialization or attestation retrieval. Keep all identity
+        # policy flags, changing only the test host to reach this offline sentinel.
+        # https://github.com/cli/cli/blob/v2.102.0/pkg/cmd/attestation/verify/verify.go
         args = evidence.verification_arguments(
             Path(shutil.which("gh")), self.path, self.binding
         )
+        args[args.index("--hostname") + 1] = "offline.invalid"
+        # --bundle bypasses authentication checks without reading a real bundle.
         args += ["--bundle", str(self.root / "missing-attestation.json")]
-        args += ["--custom-trusted-root", str(self.root / "missing-trusted-root.jsonl")]
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            timeout=5,
-            env={
-                "PATH": os.defpath,
-                "HOME": str(self.root),
-                "GH_CONFIG_DIR": str(self.root / "gh-config"),
-                "GH_PROMPT_DISABLED": "1",
-                "GH_TOKEN": "fixture-token",
-            },
-        )
-        self.assertNotEqual(result.returncode, 0)
-        diagnostic = result.stderr.decode()
-        self.assertIn("missing-trusted-root.jsonl", diagnostic)
-        self.assertNotIn("cannot be used together", diagnostic)
-        self.assertNotIn("mutually exclusive", diagnostic)
+        environment = {
+            "PATH": os.defpath,
+            "HOME": str(self.root),
+            "GH_CONFIG_DIR": str(self.root / "gh-config"),
+            "GH_PROMPT_DISABLED": "1",
+            "GH_NO_UPDATE_NOTIFIER": "1",
+            "GH_TELEMETRY": "0",
+        }
+        for extra in (
+            [],
+            ["--signer-workflow", self.binding.repository + "/" + evidence.WORKFLOW],
+        ):
+            with self.subTest(extra=extra):
+                result = subprocess.run(
+                    args + extra,
+                    capture_output=True,
+                    timeout=5,
+                    env=environment,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                diagnostic = result.stderr.decode()
+                if extra:
+                    # Prove the sentinel cannot mask conflicting identity flags.
+                    self.assertIn("[cert-identity signer-workflow]", diagnostic)
+                    self.assertNotIn("unsupported host", diagnostic)
+                else:
+                    self.assertIn("An unsupported host was detected", diagnostic)
+                    self.assertNotIn("cannot be used together", diagnostic)
+                    self.assertNotIn("mutually exclusive", diagnostic)
+                    self.assertNotIn("none of the others can be", diagnostic)
 
 
 if __name__ == "__main__":
