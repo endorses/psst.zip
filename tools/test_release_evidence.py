@@ -65,6 +65,7 @@ class EvidenceChecks(unittest.TestCase):
             evidence, "bounded_verify", return_value=json_bytes(self.output())
         ) as runner:
             self.assertIsNone(self.verifier.authenticate(content, self.binding))
+            self.assertIsNone(self.verifier.authenticate(content, self.binding))
             runner.assert_called_once()
         for value in (b"", "not-bytes", b"x" * (evidence.MAX_BUNDLE_BYTES + 1)):
             with self.subTest(value_type=type(value)):
@@ -72,6 +73,163 @@ class EvidenceChecks(unittest.TestCase):
                     with self.assertRaises(InvalidRelease):
                         self.verifier.authenticate(value, self.binding)
                     runner.assert_not_called()
+
+    def test_exact_attempt_provenance_and_same_result_subject_scope_are_cached(self):
+        for run_id, run_attempt in ((1, None), (None, 1), (0, 1), (1, True)):
+            with self.subTest(scope=(run_id, run_attempt)), self.assertRaises(
+                InvalidRelease
+            ):
+                evidence.GhEvidenceVerifier(
+                    gh=Path(sys.executable), run_id=run_id, run_attempt=run_attempt
+                )
+        verifier = evidence.GhEvidenceVerifier(
+            gh=Path(sys.executable), run_id=123, run_attempt=2
+        )
+        valid = self.output()
+        statement = valid[0]["verificationResult"]["statement"]
+        statement["_type"] = "https://in-toto.io/Statement/v1"
+        repository = "https://github.com/" + self.binding.repository
+        ref = "refs/tags/" + self.binding.version
+        statement["predicate"] = {
+            "buildDefinition": {
+                "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+                "externalParameters": {
+                    "workflow": {
+                        "repository": repository,
+                        "ref": ref,
+                        "path": evidence.WORKFLOW,
+                    }
+                },
+                "resolvedDependencies": [
+                    {
+                        "uri": "git+" + repository + "@" + ref,
+                        "digest": {"gitCommit": self.binding.commit},
+                    }
+                ],
+                "internalParameters": {
+                    "github": {
+                        "event_name": "push",
+                        "runner_environment": "github-hosted",
+                    }
+                },
+            },
+            "runDetails": {
+                "builder": {"id": repository + "/" + evidence.WORKFLOW + "@" + ref},
+                "metadata": {
+                    "invocationId": repository + "/actions/runs/123/attempts/2"
+                },
+            },
+        }
+        content = self.path.read_bytes()
+        mutations = (
+            (
+                ("runDetails", "metadata", "invocationId"),
+                repository + "/actions/runs/123/attempts/1",
+            ),
+            (
+                ("runDetails", "metadata", "invocationId"),
+                repository + "/actions/runs/999/attempts/2",
+            ),
+            (
+                ("buildDefinition", "externalParameters", "workflow", "repository"),
+                "https://github.com/other/project",
+            ),
+            (
+                ("buildDefinition", "externalParameters", "workflow", "ref"),
+                "refs/tags/v9.0.0",
+            ),
+            (
+                ("buildDefinition", "externalParameters", "workflow", "path"),
+                ".github/workflows/ci.yml",
+            ),
+            (
+                ("buildDefinition", "resolvedDependencies"),
+                [
+                    {
+                        "uri": "git+" + repository + "@" + ref,
+                        "digest": {"gitCommit": "b" * 40},
+                    }
+                ],
+            ),
+            (
+                ("buildDefinition", "internalParameters", "github", "event_name"),
+                "workflow_dispatch",
+            ),
+            (
+                (
+                    "buildDefinition",
+                    "internalParameters",
+                    "github",
+                    "runner_environment",
+                ),
+                "self-hosted",
+            ),
+            (
+                ("runDetails", "builder", "id"),
+                repository + "/.github/workflows/ci.yml@" + ref,
+            ),
+        )
+        stale = None
+        for keys, value in mutations:
+            changed = copy.deepcopy(valid)
+            destination = changed[0]["verificationResult"]["statement"]["predicate"]
+            for key in keys[:-1]:
+                destination = destination[key]
+            destination[keys[-1]] = value
+            if stale is None:
+                stale = changed
+            with self.subTest(path=keys, value=value), patch.object(
+                evidence, "bounded_verify", return_value=json_bytes(changed)
+            ) as runner:
+                with self.assertRaises(InvalidRelease):
+                    verifier.authenticate(content, self.binding)
+                # A failed verification must not poison or populate the cache.
+                with self.assertRaises(InvalidRelease):
+                    verifier.authenticate(content, self.binding)
+                self.assertEqual(runner.call_count, 2)
+        wrong_subject = copy.deepcopy(valid)
+        wrong_subject[0]["verificationResult"]["statement"]["subject"][0]["digest"][
+            "sha256"
+        ] = ("0" * 64)
+        with patch.object(
+            evidence, "bounded_verify", return_value=json_bytes(stale + wrong_subject)
+        ):
+            with self.assertRaises(InvalidRelease):
+                verifier.authenticate(content, self.binding)
+        with patch.object(
+            evidence, "bounded_verify", return_value=json_bytes(stale + valid)
+        ) as runner:
+            verifier.authenticate(content, self.binding)
+            verifier.authenticate(content, self.binding)
+            runner.assert_called_once()
+            changed_binding = Binding(
+                self.binding.repository,
+                self.binding.version,
+                self.binding.commit,
+                (("manifest", "file:different-subject@x"),),
+            )
+            verifier.authenticate(content, changed_binding)
+            self.assertEqual(runner.call_count, 2)
+            with self.assertRaises(InvalidRelease):
+                verifier.authenticate(content + b"\n", self.binding)
+            self.assertEqual(runner.call_count, 3)
+            other_attempt = evidence.GhEvidenceVerifier(
+                gh=Path(sys.executable), run_id=123, run_attempt=3
+            )
+            with self.assertRaises(InvalidRelease):
+                other_attempt.authenticate(content, self.binding)
+            self.assertEqual(runner.call_count, 4)
+        with patch.object(evidence, "MAX_AUTHENTICATION_CACHE", 1), patch.object(
+            evidence, "bounded_verify", return_value=json_bytes(valid)
+        ) as runner:
+            fresh = evidence.GhEvidenceVerifier(
+                gh=Path(sys.executable), run_id=123, run_attempt=2
+            )
+            fresh.authenticate(content, self.binding)
+            fresh.authenticate(content, changed_binding)
+            fresh.authenticate(content, self.binding)
+            self.assertEqual(runner.call_count, 3)
+            self.assertEqual(len(fresh._authenticated), 1)
 
     def test_exact_policy_flags_and_snapshot_environment(self):
         snapshots = []

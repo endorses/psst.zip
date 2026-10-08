@@ -3,17 +3,19 @@
 `tools/publish_container_release.py` implements publication preparation and
 reservation/readiness boundaries. `tools/github_release_transport.py` provides
 the GitHub/GHCR transport, and `tools/github_release_evidence.py` authenticates gate
-reports. The release workflow still verifies candidates only; these libraries
-have not published a release. They do not change package visibility, sign
-attestations or deploy production.
+reports. The release workflow includes an explicitly enabled version-tag
+publishing job; publication remains disabled until its prerequisites are configured.
+No real release has been published through these adapters. Package visibility
+setup and production deployment remain separate operations.
 
 ## Reviewed identity and exact artifacts
 
 `prepare_publication` requires a strict `vMAJOR.MINOR.PATCH` tag, the event SHA,
 the separately reviewed full commit, a checkout at that commit, an exact trusted
 GitHub origin and ancestry from `origin/main`. Tracked checkout changes fail.
-Remote protected-branch/tag settings and review authentication remain the future
-trusted workflow's responsibility; local ancestry alone does not establish them.
+The repository's active branch/tag rules are recorded below. Review authentication
+and exact hosted workflow execution remain separate requirements; local ancestry
+alone does not establish those settings or approvals.
 
 The detached manifest and deployment-ready bundle pass the existing bounded
 artifact parser. The actual bytes of each registry index must hash to its
@@ -73,6 +75,57 @@ inspection record with `publication_authorized: false`. It cannot read success
 JSON and unlock publication. Full preparation is a library boundary requiring
 the trusted verifier implementation.
 
+## Exact source coverage and authorized distribution review
+
+The publication verifier now rejects a signed source or distribution report with
+empty, partial, stale or substituted detail records. The corresponding-source
+record must cover every exact source asset and all four final child images, with
+notice-inventory hashes and complete application, runtime and component-specific
+module/generator coverage. Each coverage item retains its evidence hash. The
+committed distribution policy is identified by source commit, Git blob and byte
+hash. Distribution review must match that source record's policy, image notices,
+source subjects, complete coverage hash and report hash. Structural validation
+alone cannot establish that a source review was performed.
+
+`tools/generate_distribution_review.py` implements the authorized-review producer.
+It first authenticates the complete corresponding-source report and validates its
+policy against the exact committed `tools/container-distribution-policy.json`.
+The current policy selects the `container-release` environment and reviewer
+`endorses`; it grants no approval by itself. The producer reads GitHub's selected
+version-tag workflow attempt, environment required reviewers and review history.
+It requires an approved decision from the configured authorized user, with the
+same GitHub user ID, environment ID and exact approval comment:
+
+```text
+psst.zip distribution review: <binding SHA256>; run <run ID>; attempt <attempt>; source report <source-report SHA256>
+```
+
+The workflow must present the final image/source/notice records for review and
+provide this exact comment before waiting on the environment. The comment binds
+all final subjects and the source report to the selected attempt. Earlier review
+comments cannot approve different artifacts or a rerun. Missing approvals,
+rejections, ambiguous decisions, different required reviewers, incomplete API
+responses and changes during verification fail. Only GET requests are used.
+The producer returns a gate report plus the retained API evidence; the trusted
+workflow must attest both. It does not sign, publish or infer source completeness.
+See GitHub's [review-history API](https://docs.github.com/en/rest/actions/workflow-runs#get-the-review-history-for-a-workflow-run)
+and [environment API](https://docs.github.com/en/rest/deployments/environments#get-an-environment).
+
+The `container-release` environment was provisioned and read back on 2026-10-08:
+required reviewer `endorses`, self-review allowed for this personal project, and
+only `v*` tag deployment policies. The local workflow now presents exact candidate
+artifact names and the attempt-bound comment before the protected job waits.
+`generate_distribution_review.py --mode produce` creates the report and retained
+review evidence; `--mode verify` authenticates both against the unchanged complete
+source report without repeating source replay or querying mutable review history.
+Tagged candidate inputs and the review packet are retained for seven days. Expired
+inputs require a fresh controlled run; approval cannot transfer across attempts.
+
+This local wiring has not been pushed or exercised on hosted artifacts. Actual
+signed reports, real reviewer approval/rejection and hosted publication remain
+pending. Fixture
+checks exercise authorization and substitution failures, not live approval.
+
 ## Reports from completed checks
 
 `prepare_inputs` shares the publication core's exact source/tag, bundle, manifest,
@@ -92,18 +145,25 @@ A prior successful main CI run cannot satisfy this producer.
 [GitHub workflow-job attempt API](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run-attempt).
 
 `collect_native_measurement` runs the actual final-image smoke harness with the
-runtime pack and image configuration IDs. It requires all application, runtime
+matrix-local `NativeSourceContext(repository, version, commit, platform)`, runtime
+pack and image configuration IDs. It requires all application, runtime
 offer, authentication/restart and cleanup checks. Before and after the harness,
-it validates the OCI exports against the selected child/configuration identities
-and verifies immutable pack/source-asset bytes. The typed result is a measurement
-with `publication_authorized: false`; candidate smoke without a runtime pack
-cannot produce it.
+it validates the actual local OCI exports against the tested configuration IDs
+and verifies immutable pack/source-asset bytes and intended release URLs. The
+schema 2 typed result contains checked source identity and local facts, with
+`publication_authorized: false`. It needs no other architecture, deployment bundle
+or global binding, so matrix jobs can finish before post-matrix assembly. Candidate
+smoke without a runtime pack and emulated execution cannot produce this record.
 
 `aggregate_native_reports` first authenticates both architecture measurements
 with `GhEvidenceVerifier.authenticate`, preserving the same signer/source/ref,
 snapshot and process policies as gate-report verification. Only then does it
 generate complete `final-image-smoke` and `runtime-notices` gate objects bound to
-all release subjects. The smoke report records native/emulated execution and all
+all release subjects. Aggregation requires the complete binding from
+`prepare_inputs`, matching both source contexts, actual child/configuration maps
+and native source assets to the final subjects. Another repository, source,
+architecture, source archive or child fails even when the record is signed. The
+smoke report records native execution and all
 four tested configuration digests for transport. Runtime evidence retains notice
 hashes, source-asset identity and the requirement for distribution review. The
 trusted workflow must sign the exact emitted report bytes before preparation;
@@ -114,6 +174,203 @@ bound digest and records sizes. It explicitly leaves source completeness
 unverified and creates no `corresponding-source` success gate. Hash equality and
 source-pack preparation flags cannot establish complete corresponding sources or
 replace the independent distribution review.
+
+`tools/generate_corresponding_source_review.py` now independently replays the
+application archive against the selected Git commit and the release packaging
+recipe. It verifies the publication-bound digest and canonical archived paths,
+modes and contents without using working-tree edits or extracting files. This
+produces an application-source fact, not a passed corresponding-source gate.
+
+The committed upstream catalog also retains two original backend source trees
+omitted from the Go module ZIPs: SQLite C 3.49.1 for `modernc.org/sqlite v1.37.0`
+and musl for `modernc.org/libc v1.65.0`. SQLite's official mirror commit
+`3cd92ce875fd4e5601e535c35fef33494a6684e3` contains `manifest.uuid`
+`873d4e274b4988d260ba8354a9718324a1c26187a4ab4c1cc0227c03d0f10e70`,
+matching the generated Go source identity. Musl is retained from its canonical
+commit `7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0`, as named by the libc
+generator. Both complete archives, build files and original notices are kept
+unchanged. SQLite endorses its [official Git mirror](https://www2.sqlite.org/download.html);
+musl's [canonical commit page](https://git.musl-libc.org/cgit/musl/commit/?id=7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0)
+links the exact snapshot.
+
+Go associations require exact committed `backend/go.mod` versions, forbid
+associated module replacements, and retain both backend lock files and hashes.
+Musl acquisition accepts only its fixed canonical HTTPS snapshot route; existing
+GitHub inputs retain their full-commit codeload routes. Redirects, alternate hosts,
+changed source bytes, missing inspected inputs and substituted locks fail. This
+retention closes the identified missing-original inputs; exact generated-source
+relationships, remaining generator inputs and full completeness still require
+verification before publication. Collection and replay do not grant approval.
+
+`verify_backend_source_inputs` now authenticates both native backend compiler
+measurements and reuses their existing final-image reproduction checks. It
+compares the compiler's application snapshot against one independently read Git
+archive, then independently replays dependency originals once per platform. Each
+compiled dependency must match a retained module's path, version, H1 checksum and
+original ZIP digest. Additional verified build-only modules may remain in the
+offering. Source/runtime/image subjects and retained bytes are checked again
+before returning. This adds no compiler execution or scanner pass and still
+produces partial source facts, not a passed completeness gate.
+
+The runtime collection now retains the complete Go source tree selected by
+`tools/go-runtime-sources.json`. The current Go 1.26.8 original is pinned to commit
+`c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e`, archive SHA256
+`061b4e784db7ce97cd9ae99ea71a857a2ff8455c6400495e5d1a98b8accd2542`.
+The collector checks the resolved official tag against that committed pin and
+retains original runtime, standard-library, compiler and build sources. Go test
+archives remain untouched source-tree fixtures; they are not recursively parsed
+as distributed libraries. The bounded reader preserves all 38 original notice
+files found in this tree.
+
+Packaging reads actual backend and Caddy executable metadata without executing
+either program, requires both `GoVersion` values to match the retained tree, and
+adds the original Go notices to the backend overlay as well as the web overlay.
+Independent runtime replay checks the archived policy against the trusted selected
+source, the full original archive and VERSION, and both final executable versions.
+These Go sources are separately pinned; Caddy's signatures do not authenticate
+the Go archive. The existing AMD64 executable pair was checked against this
+original in three seconds. An updated final AMD64 pair from
+`4ae5954223e6ec93f191a6578722551f60fdb54f` passed actual image smoke checks and
+independent runtime/browser replay in 348.6 seconds. Its runtime offering retains
+the complete Go tree and both final notice overlays. ARM64 execution, full
+application-source completeness and hosted authentication remain pending.
+
+The browser builder capture also retains the reviewed installed Svelte 5.57.1
+compiler inputs and vite-plugin-svelte 5.1.1 JavaScript sources. Its finite catalog
+includes the 227 compiler JavaScript files, six external relative inputs, the
+CommonJS compiler entrypoints and all 21 plugin JavaScript files. The capture and
+replay require the package identities and entrypoints, bound each recipe to 512
+members, and reuse locked npm integrity/member checks. The ESM compiler resolves
+to `src/compiler/index.js`; retaining the CommonJS bundle does not establish that
+it executed. Retained helpers likewise do not imply every helper executed or that
+outputs reproduce. A real capture from
+`7d0f42a8ffb2b44a38ae25c635c4ddefe4eaf1df` verified all 256 inputs against their
+locked npm originals and all 233 Svelte source files against the pinned upstream
+tree. Build/capture/replay took 21.4/0.7/1.9 seconds. The prior AMD64 final-image
+receipt predates this additional capture; complete final-image and preferred-source
+coverage remain pending.
+
+`tools/browser_preferred_source_relationships.py` maps already authenticated
+capture/npm facts and verified pinned originals into per-file source/build-recipe
+relationships. It covers every actually rendered package module, checks Lucide
+icon objects against original SVG/metadata and checks QR scanner's embedded
+source-map contents against decoder/worker originals. Unknown inputs or changed
+bytes fail. Captured compiler/plugin sources are a separate mapping. The helper
+neither authenticates its caller's evidence nor creates a completeness gate.
+External Noble build configuration is recorded with its exact locked identity,
+not asserted to be retained or independently reproduced.
+
+The upstream offering additionally retains full `cznic/sqlite` and `cznic/libc`
+project trees from the Go module origin commits, including generator modules
+excluded from proxy ZIPs. Only their canonical GitLab full-commit archive paths
+are accepted. Exact H1-replayed proxy bytes match all 1,323 SQLite and 4,153 libc
+files in those source trees. These project originals complement the original
+SQLite C and musl trees; remaining complete generator relationships and both
+authenticated final-image source reviews still precede publication.
+
+### Native image scanner measurements
+
+`tools/measure_release_image_scans.py` validates the actual OCI archive graph,
+release/source labels, platform and layer/configuration correspondence before
+running tools. It copies the checked layout into private temporary storage;
+Trivy receives an OCI directory, rather than the OCI tar archive. Layout bytes,
+original archive, scanner executable and frozen vulnerability database must remain
+unchanged through completion. `Metadata.ImageID` must equal the actual smoke-tested
+configuration digest; both Alpine package and application Go-binary inventories
+must appear in the result.
+
+The producer snapshots hash-pinned native Cosign 2.6.5 and Trivy 0.75.0 assets.
+Before extracting or executing Trivy, it verifies the official Sigstore bundle
+online with exact reusable-release workflow/tag identity, GitHub OIDC issuer,
+repository, source commit, event and workflow name, requiring SCT and Rekor checks.
+AMD64 and ARM64 use separate official archive/bundle pins; an ARM64 executable
+checksum is derived only from successfully authenticated release bytes, with ELF
+architecture checked before execution. The command environment excludes inherited
+credentials, trust/proxy overrides and Trivy configuration. Explicit empty
+configuration and ignore policy, all severities, unfixed findings and suppressed
+finding detection prevent ambient filtering. Commands have a 16 MiB output bound,
+55-second verification/version deadline and 660-second scan deadline with process
+group cleanup. [Official Trivy signature verification](https://github.com/aquasecurity/trivy/blob/v0.75.0/docs/getting-started/signature-verification.md).
+
+`measure_image_scan` accepts the same matrix-local source context and returns a
+typed measurement plus the full raw JSON bytes. It records exact OCI/configuration
+identity, tool/source/signature/verifier hashes, database/schema/metadata hashes,
+update/download/scan times and every OS/module finding with a canonical finding
+hash. `Status: fixed` describes available remediation; it is not an approved
+disposition. Unknown severity and missing fixes remain findings.
+
+The producer cannot emit a `final-image-scanners` success report, even when it
+finds no vulnerabilities. Measurements explicitly leave publication unauthorized
+and review pending. The final gate still needs authenticated measurements for
+both architectures, authenticated finding dispositions bound to exact
+image/binary/source/advisory hashes.
+Caller-supplied `not-applicable` JSON cannot satisfy those requirements.
+
+By default the authenticated scanner downloads its own database into the private
+cache from the fixed official `ghcr.io/aquasecurity/trivy-db:2` repository. The
+download has a 330-second process-group deadline; the measurement retains its
+tool/repository, start/completion times, database bytes hash and metadata hash.
+The subsequent scan freezes those bytes and disables updates. Supplying
+`--database` instead records a retained unapproved snapshot; supplied metadata
+cannot create acquisition evidence. The final gate accepts the authenticated
+owned-download measurement, and rejects a retained snapshot without trusted
+acquisition. [Official Trivy database flags](https://github.com/aquasecurity/trivy/blob/v0.75.0/pkg/flag/db_flags.go).
+
+The CLI accepts `--repository`, `--version`, `--commit`, `--platform`,
+`--component`, `--archive`, `--tested-config`, `--tool-archive`, `--tool-bundle`,
+`--cosign` and `--output`, with optional `--database`. A supplied database is a
+retained directory containing `trivy.db` and `metadata.json`; output must not
+already exist. Only after completed
+measurement does the CLI reserve a private directory and atomically write
+`scan.json`, then `measurement.json`, without overwriting either file. Scanner or
+write failures produce no usable completed output directory.
+
+On 2026-10-07, the actual private AMD64 pair at source `750f440` completed this
+producer with the pinned official Trivy signature verified again and database
+`sha256:5f4b978a55284b1997dc31e9f2fc3f4f1abae80829f51451ade221d5675a69b9`.
+It retained zero OS findings, 21 backend module findings and one Caddy module
+finding; no finding dispositions or publication approval were inferred. The owned
+download CLI subsequently repeated both AMD64 scans with the same database bytes
+and retained independent acquisition metadata. Twelve
+focused fixtures passed, including the ARM64 asset/signature path. Native ARM64
+execution and live signed scanner measurements remain pending.
+
+### Deriving the image scanner gate
+
+`tools/aggregate_release_image_scans.py` authenticates both completed native
+smoke/runtime measurements and all four scanner measurements before deriving a
+`final-image-scanners` report. It matches every child/configuration/source subject
+to the final binding and checks the full raw scanner report against its measured
+hash, retaining all findings. It requires the pinned scanner/signature profile and
+owned official database acquisition; missing architecture coverage, modified raw
+reports, snapshot-only acquisition and OS/non-application/non-Go findings fail.
+
+For Go findings, the aggregator authenticates the typed actual native compiler
+measurement and reads its hashed raw dependency graph and official Go advisory
+bytes. Binary/configuration identity, toolchain, module versions/h1 checksums,
+build settings, native platform and runtime source asset must correspond exactly.
+The backend proof requires byte-identical reproduction using the actual release
+builder and Dockerfile layout. The upstream Caddy proof instead requires the
+fresh official source/checksum signatures, signed source/executable archive
+bindings, actual executable member hash and original vendor/module/build settings;
+an identical Caddy rebuild is not required.
+
+The only implemented dismissal is that **every** affected Go import path listed
+by the official advisory is absent from that exact compiler graph. It unions paths
+across all advisory ranges conservatively rather than approximating version or
+symbol reachability. Missing imports, uncertain aliases/withdrawal, changed
+module versions or any present affected package prevent a success report.
+The derived finding retains its original content/hash, source inputs, binary,
+graph and advisory hashes, affected paths and explanation. A caller's disposition
+or review flag cannot authorize a finding. [Public Go vulnerability database and OSV format](https://go.dev/doc/security/vuln/database).
+
+Eight fixture checks passed for this aggregation boundary. On the private AMD64
+`750f440` pair, the actual 236-package backend graph reproduced its executable
+byte-for-byte and supported structural derivation for all 21 module findings;
+the 970-package Caddy graph matched 147 module identities and the signed upstream
+source/executable evidence, supporting the one remaining finding. Those local
+facts produced no signed, complete release gate. Native ARM64 measurements,
+trusted workflow signing and full-binding live aggregation remain pending.
 
 - [ ] Add completed source/image scanner producers with exact targets, tool/database/date and reviewed finding dispositions.
 - [ ] Add full corresponding-source completeness evidence and authenticated distribution review.
@@ -235,6 +492,41 @@ There is no unattended delete-and-reupload or overwrite path.
 
 ## Remaining integration
 
+### Active repository protections
+
+On 2026-10-08, `endorses/psst.zip` had no active rulesets or legacy branch
+protection. The planned rulesets were applied and independently read back:
+
+| Ruleset                       | Target            | Active behavior                                                                          |
+| ----------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| `main-ci`, ID `24694051`      | `refs/heads/main` | Pull request, latest-base CI, resolved review threads; deletion and force pushes blocked |
+| `version-tags`, ID `24694056` | `refs/tags/v*`    | New tags allowed; existing tags cannot be updated or deleted                             |
+
+The main policy requires the current successful contexts `Repository security`,
+`Backend`, `Web`, `Android and shared module`, and
+`Native iOS app, extension and XCTest`, each from GitHub Actions integration
+`15368`. They were matched against the checks on remote main
+`b697119ba81c3aaf18725f38869b778f2e59df9d`. No bypass actors are configured.
+Required reviewer count is zero for this personal repository; code-owner,
+last-push and extra unattributed-change approval requirements are explicitly
+disabled. You can merge your own PR after its checks pass. Subsequent code pushes
+must use a branch and PR; direct pushes to main are rejected. The release workflow
+continues to validate stable tag syntax and ancestry.
+
+The applied policy payloads are tracked in
+[main.json](../../.github/rulesets/main.json) and
+[version-tags.json](../../.github/rulesets/version-tags.json).
+The effective branch-rules API confirmed all four main rules, and separate
+ruleset reads matched the tracked configuration. No force-push/delete probe was
+performed. The existing `v0.0.0` tag still points to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`.
+[GitHub ruleset API](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset).
+
+The `container-release` environment still has no variables or secrets configured.
+Its required reviewer and `v*` tag policy remain in place. Protected policies do
+not establish hosted evidence, package visibility, private provider retention or
+successful publication; those live prerequisites remain pending.
+
 - [x] Implement bounded authenticated gate verification and test its exact identity/snapshot policies.
 - [x] Implement GitHub/GHCR transport, durable mutation receipts and read-only interruption reconciliation with fixtures.
 - [ ] Validate signed live workflow reports and authorized source/legal review approval policy.
@@ -261,3 +553,176 @@ pull/download boundaries and durable interruption receipts. The transport's
 17 tests passed locally. At the report-producer checkpoint, 13 producer fixtures
 and the combined `test_release_*.py` suite passed 139 checks in 7.79 seconds; Ruff
 and Prettier checks passed. Live publication and recovery remain pending.
+
+### Publication command
+
+`tools/publish_verified_release.py` drives the real transport and official signing
+bridge. It accepts an absolute-path JSON input map with exactly `manifest`,
+`bundle`, `indexes` (`backend`/`web`), `archives` (all four component/architecture
+targets), `source_assets` (asset name to path), and `reports` (all eight
+pre-publication gates). The command also requires `--root`, `--reviewed-commit`
+and an absolute private `--state` directory. Repository, tag, source SHA, active
+hosted workflow/job identity and run attempt come from the workflow environment.
+No configuration identity, signer command or approval boolean can be supplied.
+
+`tools/prepare_publication_inputs.py` constructs this JSON from downloaded
+artifacts under an absolute `--inputs-root`. Its directories are `prepared`,
+`amd64`, `arm64`, `source`, `recovery` and `distribution`, matching the candidate
+artifact roots. It requires `--repository`, `--version`, `--commit` and an
+exclusive absolute `--output` outside that tree. It checks bounded prepared
+metadata, the declared manifest/subject inventory, regular archive paths and
+all eight gate names and bindings. It does not read large source or OCI payloads,
+perform builds, verify signatures or grant publication authority. The driver
+performs the actual immutable snapshot and authenticated verification once.
+
+The command snapshots inputs privately and verifies the full release binding and
+authenticated gates. Its default verifier requires the current hosted run ID
+and attempt, so signed evidence from an earlier attempt cannot authorize a new
+publication. Invalid identifiers fail before snapshots or remote API calls.
+It derives the four tested configurations from the signed
+native smoke report and validates all four actual OCI exports before publication
+transport operations. The production adapters check the exact current workflow and,
+by default, existing public, repository-linked GHCR packages before draft
+reservation. First-package initialization requires the explicit protected
+environment option described below. An existing private or unlinked package
+still stops the command before a release version is reserved; the command never
+changes package visibility.
+
+Under the held repository lease, it pushes the reviewed children and indexes,
+checks registry contents and actual anonymous pulls, signs and independently
+verifies all updater/source subjects, uploads sources/bundle/manifest, measures
+downloaded assets, signs and verifies the actual readback reports, then creates
+the version tag pair and publishes the immutable draft. A receipt is written
+only after anonymous release/image/asset checks complete. Convenience tags are
+not advanced by this command.
+
+Subject signing and every readback signature have durable intent, completion or
+uncertainty records alongside transport mutations. After the publication lease
+is entered, any failure preserves exact private input snapshots and their
+binding record. Snapshot files and all containing directories are synced before
+the first remote mutation. An existing version journal blocks a subsequent invocation;
+there is no automatic retry, resume, draft replacement or remote cleanup. The
+CLI retains only explicit credentials and checked workflow/OIDC inputs for the
+official signing adapter, and prints no tokens, API payloads or tool diagnostics.
+
+The repository's immutable-release setting was enabled and independently read
+back on 2026-10-08 (`enabled: true`, `enforced_by_owner: false`). Both expected
+GHCR package lookups returned HTTP 404, and there were no existing releases.
+This setting change created no release, package or tag. Package visibility and
+linking, branch/tag protection and the separate Administration-read inspection
+credential remain prerequisites. The [official API](https://docs.github.com/en/rest/repos/repos#enable-immutable-releases)
+documents the setting and required permissions.
+
+Runner-local fsync and retained snapshots do not survive removal of a hosted
+runner. `tools/publication_retention.py` now persists the complete input packet
+before mutation, and each journal intent before its corresponding remote write.
+It also retains completions, uncertainty records and the terminal publication
+receipt. The publishing job remains disabled while live storage and credentials
+are unresolved.
+
+### Guarded publishing job and external recovery records
+
+The `publish` job requires a version-tag push, successful source assembly, native
+recovery and distribution review, and repository variable
+`CONTAINER_RELEASE_PUBLICATION_ENABLED=true`. Its `container-release` environment
+provides a separate final publishing approval and the protected credentials.
+Candidate dispatches never publish. The literal repository-wide concurrency group
+is `container-release-publication`, with cancellation disabled. Contents/package
+write permissions are confined to this publishing job; it has no production SSH
+credentials. It downloads completed payloads and signed gates, rather than
+repeating image builds, scanners, source replay or recovery experiments.
+
+The initial external adapter uses installed AWS CLI v2 and explicit configuration:
+
+| Protected environment setting                                                                        | Purpose                                                                              |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Variables `PSST_PUBLICATION_S3_ENDPOINT`, `PSST_PUBLICATION_S3_BUCKET`, `PSST_PUBLICATION_S3_REGION` | Fixed HTTPS storage origin, private bucket and signing region                        |
+| Secrets `PSST_PUBLICATION_S3_ACCESS_KEY_ID`, `PSST_PUBLICATION_S3_SECRET_ACCESS_KEY`                 | Separate publication-storage credential                                              |
+| Optional secret `PSST_PUBLICATION_S3_SESSION_TOKEN`                                                  | Temporary credential session token                                                   |
+| Secret `PSST_IMMUTABLE_INSPECTION_TOKEN`                                                             | Separate repository Administration-read credential; not the package publishing token |
+| Optional variable `PSST_INITIALIZE_GHCR_PACKAGES=true`                                               | Permit creation of both missing packages from the exact reviewed images in this run  |
+
+### First GHCR package creation
+
+GitHub creates a container package when an image is first published, with private
+visibility by default. Publishing through the repository's `GITHUB_TOKEN` links
+it to that repository. Making it public is a separate package-settings action.
+[GitHub container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+For the first release only, set `PSST_INITIALIZE_GHCR_PACKAGES=true` in the protected
+`container-release` environment and be available during the publishing job.
+The default is strict existing-public-package verification. Initialization
+accepts both package lookups missing; it rejects mixed missing/existing state,
+existing private/unlinked packages, and permission/server failures. It does not
+bypass the eight authenticated gates, exact run/attempt checks, final reviewer
+approval, private input retention or mutation journaling.
+
+In the same held run, the command reserves the draft and pushes the four reviewed
+children and two indexes by digest. It reuses the prepared archives without
+building images or seeding dummy content. It then prints the package settings
+URLs and waits at most ten minutes for the owner to make both newly created,
+repository-linked packages public. No registry version/convenience tags or public
+release are created during this wait. Incorrect package identity/linkage and API
+errors fail immediately; only correctly linked private packages may wait.
+Independent public metadata checks and the normal anonymous digest pulls must
+pass before the existing signing, asset and ready-release checks continue.
+
+Remove the initialization variable after setup. A timeout or any other failure
+preserves the draft, exact stored inputs and journal for explicit reconciliation;
+it does not retry writes, adopt prior seeded images, resume a previous journal,
+delete the draft or overwrite a version. The normal new-reviewed-version recovery
+policy remains unchanged. This path still needs live GHCR validation before the
+first release is treated as ready.
+
+### Storage permissions and retention
+
+The storage credential needs `s3:PutObject` and `s3:GetObject` restricted to
+`publication/endorses/psst.zip/*`, plus bucket-level
+`s3:GetBucketPublicAccessBlock` and `s3:GetBucketPolicyStatus`. It needs no delete,
+bucket-policy write or repository permission. Bucket policy and all four public
+access blocks must return authenticated nonpublic status. Missing, unsupported or
+denied privacy APIs stop the command. Provider provisioning, retention duration
+and independent restore verification remain operator setup tasks.
+
+Each attempt has its own
+`publication/<repository>/<version>/run-<id>/attempt-<n>/` prefix. Inputs are
+individual objects with the snapshot's already measured SHA256; no extra large
+archive or hash pass is needed. Conditional `PutObject` prevents replacing an
+existing key, and a separate checksum-enabled `HeadObject` must confirm size,
+SHA256 and AES256 server-side encryption. The adapter does not retry failed writes.
+[AWS conditional upload API](https://docs.aws.amazon.com/cli/latest/reference/s3api/put-object.html),
+[checksum readback API](https://docs.aws.amazon.com/cli/latest/reference/s3api/head-object.html).
+
+The packet includes the preparation binding, all exact source/bundle/manifest
+files, indexes, four final OCI archives and eight gate reports. The inventory is
+written only after its objects; journal records start only after packet readback
+and privacy checks pass. Every cumulative journal snapshot is a new numbered
+object. Local fsync precedes its external checkpoint, and successful external
+checkpoint readback precedes the application mutation. Storage failures preserve
+local inputs and stop further writes. The final receipt must match the last
+stored journal digest. Conditional writes do not establish Object Lock or prevent
+administrator deletion; configure and exercise the site's retention policy.
+
+Credentials exist only in cleaned private temporary CLI files, outside retained
+state. The pinned official signing action uses a separate disposable cache outside
+the input packet; its existing byte and runtime verification still apply.
+Ambient profiles, proxies and metadata authentication are excluded. Private
+journals and snapshots are never uploaded as public workflow artifacts. Successful
+publication cleans the runner state only after the durable receipt and anonymous
+public readbacks pass; failed state remains locally inspectable for the remaining
+runner lifetime. Original remote records allow later manual reconciliation, not
+automatic resume or overwrite.
+
+Three small adapter fixtures passed in 0.006 seconds. Thirteen command fixtures
+passed in 1.58 seconds, including the driver-to-adapter packet integration and
+storage failure before release creation. Seventeen existing transport fixtures
+passed in 1.77 seconds, and sixteen signer fixtures in 0.097 seconds. These checks
+use local tiny payloads and injected commands;
+they do not prove a live bucket, OIDC signing or published-release recovery.
+
+Ten fixture checks exercise the actual transport lifecycle, snapshot durability, ordering, absent
+gates, substituted native configurations/archives/reports, first-package policy,
+interrupted pushes/signing, retained inputs and the no-retry boundary. They use
+explicit fixture signers/verifiers and confer no publication authority. Official
+hosted signing, live package policy/readbacks and workflow integration remain
+unverified; the candidate workflow continues to create no releases.

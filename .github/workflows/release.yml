@@ -1,43 +1,69 @@
-# Candidate verification only. This workflow cannot publish packages or releases,
-# attest artifacts, access production, or advertise a deployment-ready bundle.
-name: Release candidate verification
+# Native release verification and explicitly enabled container publication.
+# Planned main dispatches remain unsigned, read-only candidates. Exact version-tag
+# attempts can publish only after signed gates and protected distribution review;
+# registry/release writes are disabled until the repository opt-in is configured.
+# This workflow has no production access.
+name: Container release verification and publication
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      planned_version:
+        description: Unused planned version for a main-only candidate; does not create a release tag
+        required: true
+        default: v0.1.0
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-candidate-${{ github.ref }}
+  group: container-release-publication
   cancel-in-progress: false
 
 jobs:
   validate-tag:
-    name: Validate version tag and main ancestry
+    name: Validate source identity and main ancestry
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.tag.outputs.version }}
       commit: ${{ steps.tag.outputs.commit }}
+      source_kind: ${{ steps.tag.outputs.source_kind }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Require an exact version tag reachable from main
+      - name: Require an exact version tag or unused planned version from main
         id: tag
+        env:
+          PLANNED_VERSION: ${{ inputs.planned_version }}
         run: |
-          python3 tools/prepare_release_candidate.py validate-tag \
-            --root . --ref "$GITHUB_REF" --event-sha "$GITHUB_SHA" \
-            --github-output "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            python3 tools/prepare_release_candidate.py validate-source \
+              --root . --ref "$GITHUB_REF" --event-sha "$GITHUB_SHA" \
+              --planned-version "$PLANNED_VERSION" --github-output "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            python3 tools/prepare_release_candidate.py validate-tag \
+              --root . --ref "$GITHUB_REF" --event-sha "$GITHUB_SHA" \
+              --github-output "$GITHUB_OUTPUT"
+            printf '%s\n' 'source_kind=version-tag' >> "$GITHUB_OUTPUT"
+          else
+            printf '%s\n' 'Unsupported candidate trigger' >&2
+            exit 1
+          fi
 
   ci:
     name: Exact tagged commit CI
     needs: validate-tag
-    # A same-repository reusable workflow comes from the caller's tagged commit.
-    # All five existing jobs must succeed; an old successful main run is insufficient.
+    # The reusable workflow comes from the exact caller commit. A main dispatch
+    # can exercise native preparation but cannot satisfy tagged source-CI gates.
+    # All five jobs must succeed; an old successful run is insufficient.
     uses: ./.github/workflows/ci.yml
+    with:
+      full_validation: true
     permissions:
       contents: read
 
@@ -45,6 +71,10 @@ jobs:
     name: Resolve official multi-platform base indexes
     needs: [validate-tag, ci]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     outputs:
       golang_image: ${{ steps.bases.outputs.golang_image }}
       alpine_image: ${{ steps.bases.outputs.alpine_image }}
@@ -69,6 +99,22 @@ jobs:
             --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
             --output "$RUNNER_TEMP/candidate-bases.json" \
             --github-output "$GITHUB_OUTPUT"
+      - name: Attest the exact immutable base resolution for this tag attempt
+        id: bases-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: ${{ runner.temp }}/candidate-bases.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-bases-attestation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.bases-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
@@ -76,9 +122,629 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  upstream-inputs:
+    name: Retain common upstream source inputs
+    needs: [validate-tag, ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          persist-credentials: false
+      - name: Collect immutable originals against the exact catalog and web lock
+        env:
+          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+        run: |
+          python3 tools/package_upstream_application_sources.py --mode collect \
+            --root . --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --output "$RUNNER_TEMP/candidate-upstream"
+          python3 tools/package_upstream_application_sources.py --mode verify \
+            --root . --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --collection "$RUNNER_TEMP/candidate-upstream" \
+            --output "$RUNNER_TEMP/candidate-upstream-replay.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-upstream-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-upstream/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Remove only owned upstream collection and replay files
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-upstream"
+          rm -f -- "$RUNNER_TEMP/candidate-upstream-replay.json"
+
   build-and-smoke:
     name: Native candidate pair (${{ matrix.arch }})
     needs: [validate-tag, ci, resolve-bases]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+            cosign_sha256: c3b4f5410e608af03a5eb0aaac84a4313d8da131248e08ff1759ac70c79d1644
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            cosign_sha256: 426193b4c5da4d4d643e822f48fe0cc8a476ca1782a272704831f5a0cef716d7
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    # Source collection and exact-image compiler graphs are release preparation;
+    # ordinary source CI keeps its existing, separate budgets.
+    timeout-minutes: 60
+    env:
+      PLATFORM: ${{ matrix.platform }}
+      ARCH: ${{ matrix.arch }}
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      SOURCE_KIND: ${{ needs.validate-tag.outputs.source_kind }}
+      GO_IMAGE: ${{ needs.resolve-bases.outputs.golang_image }}
+      RUNTIME_IMAGE: ${{ needs.resolve-bases.outputs.alpine_image }}
+      NODE_IMAGE: ${{ needs.resolve-bases.outputs.node_image }}
+      CADDY_IMAGE: ${{ needs.resolve-bases.outputs.caddy_image }}
+      COSIGN_SHA256: ${{ matrix.cosign_sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-inputs
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # verified upstream v4
+        with:
+          version: v0.37.1
+          driver-opts: image=${{ needs.resolve-bases.outputs.buildkit_image }}
+      - name: Build original native pair using the shared immutable bases
+        env:
+          BUILDX_METADATA_PROVENANCE: max
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          install -d -m 700 "$private" "$private/tools"
+          # Local builds retain metadata, not registry attestations or release provenance.
+          docker buildx build --platform "$PLATFORM" --load --provenance=false --sbom=false \
+            --metadata-file "$private/backend-build.json" \
+            --tag "psst-candidate-backend:$ARCH" \
+            --build-arg "GO_IMAGE=$GO_IMAGE" --build-arg "RUNTIME_IMAGE=$RUNTIME_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file backend/Dockerfile backend
+          docker buildx build --platform "$PLATFORM" --load --provenance=false --sbom=false \
+            --metadata-file "$private/web-build.json" \
+            --tag "psst-candidate-web:$ARCH" \
+            --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file web/Dockerfile .
+          # Retain the same cached web-build stage for its observed inputs. The
+          # native verifier independently compares its outputs with final OCI
+          # bytes; a matching revision label alone never establishes this link.
+          docker buildx build --platform "$PLATFORM" --load --target web-build \
+            --provenance=false --sbom=false \
+            --metadata-file "$private/web-builder-build.json" \
+            --tag "psst-candidate-web-builder:$ARCH" \
+            --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
+            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
+            --file web/Dockerfile .
+      - name: Prepare native source helper and verified official Cosign
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          # The selected container builder cannot resolve daemon-local image
+          # aliases. Source helper and later overlays explicitly use default.
+          docker buildx build --builder default --platform "$PLATFORM" --load \
+            --provenance=false --sbom=false \
+            --tag "psst-candidate-source-helper:$ARCH" --iidfile "$private/helper.id" \
+            --build-arg "ALPINE_IMAGE=$RUNTIME_IMAGE" \
+            --file tools/runtime-sources.Dockerfile tools
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --max-time 300 --max-filesize 268435456 \
+            --output "$private/tools/cosign" \
+            "https://github.com/sigstore/cosign/releases/download/v2.6.5/cosign-linux-$ARCH"
+          printf '%s  %s\n' "$COSIGN_SHA256" "$private/tools/cosign" | sha256sum --check --strict
+          chmod 700 "$private/tools/cosign"
+          # A helper additionally verifies Cosign's exact release/commit/native
+          # architecture before any upstream signature verification is trusted.
+          cat > "$private/diagnose.py" <<'PY'
+          import os, re, sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          with path.open('rb') as stream:
+              stream.seek(max(0, path.stat().st_size - 65536))
+              value = stream.read(65536).decode('utf-8', errors='replace')
+          for name in ['GH_TOKEN', 'GITHUB_TOKEN', 'RUNNER_TEMP', 'GITHUB_WORKSPACE', 'HOME']:
+              if os.environ.get(name):
+                  value = value.replace(os.environ[name], '<' + name + '>')
+          value = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '?', value)
+          # Prefix every line so external diagnostics cannot issue Actions commands.
+          for line in value.splitlines():
+              print('diagnostic: ' + line)
+          PY
+          cat > "$private/run-checked.sh" <<'SH'
+          psst_checked() {
+            local label="$1"
+            shift
+            if "$@" > "$private/$label.stdout" 2> "$private/$label.stderr"; then
+              return 0
+            else
+              local status=$?
+              python3 "$private/diagnose.py" "$private/$label.stderr"
+              return "$status"
+            fi
+          }
+          SH
+      - name: Record authentic build metadata and original paired save
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          docker image save --output "$private/candidate-pair.tar" \
+            "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH"
+          python3 tools/prepare_release_candidate.py record-build \
+            --candidate "$RUNNER_TEMP/candidate-inputs/candidate-bases.json" \
+            --platform "$PLATFORM" \
+            --backend-metadata "$private/backend-build.json" \
+            --web-metadata "$private/web-build.json" \
+            --archive "$private/candidate-pair.tar" \
+            --output "$private/candidate-result.json"
+      - name: Collect exact application dependency inputs privately
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          # Collection needs only the exact Git locks and immutable Go builder;
+          # its full scanner replay remains a later assembly prerequisite.
+          psst_checked dependency-inputs python3 tools/package_application_dependencies.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --platform "$PLATFORM" --go-image "$GO_IMAGE" \
+            --output "$private/application-dependencies"
+      - name: Prepare final native overlays, OCI exports and source/image measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          psst_checked native-preparation python3 tools/prepare_native_release.py \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --platform "$PLATFORM" \
+            --build-record "$private/candidate-result.json" \
+            --original-archive "$private/candidate-pair.tar" \
+            --helper-config "$(cat "$private/helper.id")" \
+            --web-builder-config "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerimage.config.digest"])' "$private/web-builder-build.json")" \
+            --source-root "$GITHUB_WORKSPACE" \
+            --dependency-collection "$private/application-dependencies" \
+            --cosign "$private/tools/cosign" --output "$private/native"
+      - name: Measure exact committed Go and browser source vulnerabilities
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          psst_checked source-scans python3 tools/measure_release_source_scans.py \
+            --mode source-scans --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --revision "$SOURCE_COMMIT" \
+            --platform "$PLATFORM" --repository-root "$GITHUB_WORKSPACE" \
+            --go-image "$GO_IMAGE" --node-image "$NODE_IMAGE" \
+            --output "$private/source-scans"
+      - name: Authenticate native Trivy and measure every final-image finding
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          case "$ARCH" in
+            amd64) trivy_asset=trivy_0.75.0_Linux-64bit.tar.gz ;;
+            arm64) trivy_asset=trivy_0.75.0_Linux-ARM64.tar.gz ;;
+            *) exit 1 ;;
+          esac
+          for suffix in '' .sigstore.json; do
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+              --max-time 300 --max-filesize 536870912 \
+              "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/$trivy_asset$suffix" \
+              --output "$private/tools/$trivy_asset$suffix"
+          done
+          # Hashes are centralized in the reviewed producer, which additionally
+          # checks the exact upstream workflow certificate, SCT/Rekor and binary
+          # identity before execution. No installed system scanner is used.
+          for component in backend web; do
+            config=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tested_configs"][sys.argv[2]])' \
+              "$private/native/native-artifacts.json" "$component")
+            psst_checked "image-scan-$component" python3 tools/measure_release_image_scans.py \
+              --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+              --commit "$SOURCE_COMMIT" --platform "$PLATFORM" --component "$component" \
+              --tested-config "$config" --archive "$private/native/export/$component-$ARCH.oci.tar" \
+              --tool-archive "$private/tools/$trivy_asset" \
+              --tool-bundle "$private/tools/$trivy_asset.sigstore.json" \
+              --cosign "$private/tools/cosign" --output "$private/image-scan-$component"
+          done
+      - name: Measure compiler correspondence for final backend and Caddy executables
+        run: |
+          private="$RUNNER_TEMP/psst-native-private-$ARCH"
+          source "$private/run-checked.sh"
+          source_sha256=$(python3 -c 'import json,sys; print("sha256:" + json.load(open(sys.argv[1]))["source_asset"]["sha256"])' \
+            "$private/native/pack/runtime-pack.json")
+          for component in backend web; do
+            config=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tested_configs"][sys.argv[2]])' \
+              "$private/native/native-artifacts.json" "$component")
+            # Gather actual Go advisory identifiers and aliases from every native
+            # finding plus the source scan. This is evidence collection, not a
+            # suppression policy: unmatched CVEs/OS/uncertain findings still fail
+            # the later independent authenticated finding-disposition gate.
+            python3 - "$private" "$component" <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          root, component = Path(sys.argv[1]), sys.argv[2]
+          image = json.loads((root / ('image-scan-' + component) / 'measurement.json').read_bytes())
+          identifiers = set()
+          def collect(value):
+              if isinstance(value, str):
+                  identifiers.update(re.findall(r'(?<![A-Z0-9-])GO-[0-9]{4}-[0-9]+(?![0-9])', value))
+              elif isinstance(value, dict):
+                  for item in value.values():
+                      collect(item)
+              elif isinstance(value, list):
+                  for item in value:
+                      collect(item)
+          collect(image['findings'])
+          if component == 'backend':
+              sources = json.loads((root / 'source-scans/source-scan-measurement.json').read_bytes())
+              for scan in sources['scans']:
+                  if scan['target'] == 'backend-source':
+                      collect(scan['findings'])
+          else:
+              # Retain the known unmaintained OpenPGP advisory even when the
+              # scanner lists its CVE alias without a Go ID. Never ignore it.
+              identifiers.add('GO-2026-5932')
+          (root / ('compiler-advisories-' + component + '.txt')).write_text(''.join(item + '\n' for item in sorted(identifiers)))
+          PY
+            extras=()
+            while IFS= read -r advisory; do
+              extras+=(--advisory-id "$advisory")
+            done < "$private/compiler-advisories-$component.txt"
+            if [ "$component" = web ]; then
+              extras+=(--cosign "$private/tools/cosign")
+            fi
+            psst_checked "compiler-$component" python3 tools/measure_release_source_scans.py \
+              --mode compiler-graph --repository "$GITHUB_REPOSITORY" \
+              --version "$CANDIDATE_VERSION" --revision "$SOURCE_COMMIT" \
+              --platform "$PLATFORM" --repository-root "$GITHUB_WORKSPACE" \
+              --go-image "$GO_IMAGE" --component "$component" \
+              --runtime-pack "$private/native/pack" --runtime-source-sha256 "$source_sha256" \
+              --image-archive "$private/native/export/$component-$ARCH.oci.tar" \
+              --tested-config "$config" --output "$private/compiler-$component" "${extras[@]}"
+          done
+      - name: Record completed native preparation status
+        run: |
+          printf '%s\n' \
+            'Native candidate measurements completed; no registry or release was published.' \
+            'Tagged runs attest completed measurements after transfer verification; planned main dispatches remain unsigned.' \
+            'Image and source scans retain every finding; finding disposition, distribution review, public source retrieval, authenticated release gates and production rollout remain pending.' \
+            >> "$GITHUB_STEP_SUMMARY"
+      - name: Stage verified native payloads and complete raw measurement inputs
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/candidate-transfer"
+          python3 tools/prepare_candidate_transfer.py stage \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --platform "$PLATFORM" --source-kind "$SOURCE_KIND" \
+            --private "$RUNNER_TEMP/psst-native-private-$ARCH" \
+            --output "$RUNNER_TEMP/candidate-transfer/$ARCH"
+      - name: Attest exact native measurements for the version-tag attempt
+        id: native-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # reviewed official action; native Node24
+        with:
+          # Explicit small records. Their authenticated hashes bind all raw
+          # graphs/source/capture/image bytes; no second build or archive signing.
+          subject-path: |
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/native-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/source-completeness-verification.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/browser/browser-verification.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/source-scans/source-scan-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/compiler-backend/compiler-graph-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/compiler-web/compiler-graph-measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/image-scan-backend/measurement.json
+            ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/image-scan-web/measurement.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-native-attestation-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Keep bundles outside the strictly allowlisted transfer trees.
+          path: ${{ steps.native-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-native-inputs-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-native-descriptor-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-transfer/${{ matrix.arch }}/native/native-artifacts.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve bounded public records, excluding source/image payloads and diagnostics
+        if: always()
+        env:
+          # Compare report contents with the actual read-only token before upload.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          private = temporary / ('psst-native-private-' + os.environ['ARCH'])
+          public = temporary / 'candidate-records'
+          public.mkdir(exist_ok=True)
+          limit = 4 * 1024 * 1024
+          def require(condition, message):
+              if not condition:
+                  raise ValueError(message)
+          def content(path, maximum=limit):
+              require(path.is_file() and not path.is_symlink() and 0 < path.stat().st_size <= maximum, 'Invalid/oversized candidate record')
+              return path.read_bytes()
+          def checked_public(raw):
+              json.loads(raw)
+              for name in ['GH_TOKEN', 'GITHUB_TOKEN', 'RUNNER_TEMP', 'GITHUB_WORKSPACE', 'HOME']:
+                  require(not os.environ.get(name) or os.environ[name].encode() not in raw, 'Record contains protected runner data')
+              return raw
+          def write(name, value):
+              raw = json.dumps(value, sort_keys=True, indent=2).encode() + b'\n'
+              require(len(raw) <= limit, 'Public candidate summary exceeds bound')
+              (public / name).write_bytes(checked_public(raw))
+          write('candidate-context.json', {
+              'schema_version': 1, 'kind': 'read-only-candidate-context',
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'version': os.environ['CANDIDATE_VERSION'], 'commit': os.environ['SOURCE_COMMIT'],
+              'event': os.environ['GITHUB_EVENT_NAME'], 'ref': os.environ['GITHUB_REF'],
+              'source_kind': os.environ['SOURCE_KIND'],
+              'planned_candidate_only': os.environ['SOURCE_KIND'] == 'planned-main-dispatch',
+              'tagged_source_ci_gate_verified': False, 'publication_authorized': False,
+          })
+          # Explicit file allowlist: never upload entire native/private trees.
+          allowed = {
+              'candidate-bases.json': temporary / 'candidate-inputs/candidate-bases.json',
+              'native-artifacts.json': private / 'native/native-artifacts.json',
+              'native-measurement.json': private / 'native/native-measurement.json',
+              'smoke-report.json': private / 'native/smoke-report.json',
+              'source-scan-measurement.json': private / 'source-scans/source-scan-measurement.json',
+              'dependency-collection.json': private / 'application-dependencies/dependency-collection.json',
+          }
+          for name, path in allowed.items():
+              if path.exists():
+                  (public / name).write_bytes(checked_public(content(path)))
+          for component in ['backend', 'web']:
+              for name in ['measurement.json', 'scan.json']:
+                  path = private / ('image-scan-' + component) / name
+                  if path.exists():
+                      # Same bound as the producer's complete scanner JSON.
+                      # Copy exact bytes, including every reported finding.
+                      (public / ('image-' + component + '-' + name)).write_bytes(checked_public(content(path, 16 * 1024 * 1024)))
+          original = private / 'candidate-result.json'
+          if original.exists():
+              raw = content(original)
+              value = json.loads(raw)
+              write('build-summary.json', {
+                  'schema_version': 1, 'kind': 'candidate-build-summary',
+                  'original_record_sha256': 'sha256:' + hashlib.sha256(raw).hexdigest(),
+                  'version': value['version'], 'source_commit': value['source_commit'],
+                  'platform': value['checked_platform'], 'native_execution': value['native_execution'],
+                  'base_images': value['base_images'], 'image_archive': value['image_archive'],
+                  'build_metadata': {name: {key: record[key] for key in ['containerimage.config.digest', 'containerimage.digest']} for name, record in value['build_metadata'].items()},
+                  'toolchain_output': {key: value['toolchain_output'][key] for key in ['go', 'node', 'docker', 'compose', 'buildx']},
+                  'publication_authorized': False,
+              })
+          for component in ['backend', 'web']:
+              path = private / ('compiler-' + component) / 'compiler-graph-measurement.json'
+              if not path.exists():
+                  continue
+              raw = content(path)
+              value = json.loads(raw)
+              # Distinct summary kind: full raw receipts/graphs remain private;
+              # this partial artifact cannot replay a later authenticated gate.
+              summary = {key: value[key] for key in ['schema_version', 'source', 'execution', 'component', 'executable_target', 'builder', 'image', 'binary', 'source_graph', 'source_inputs', 'advisories', 'status', 'exit_code', 'completed_at', 'publication_authorized', 'finding_dispositions_authorized']}
+              summary['kind'] = 'candidate-compiler-graph-summary'
+              summary['original_measurement_sha256'] = 'sha256:' + hashlib.sha256(raw).hexdigest()
+              proof = value['signature_verification']
+              if proof:
+                  summary['signature_verification'] = {key: item for key, item in proof.items() if key != 'verifications'}
+                  summary['signature_verification']['checks'] = [{key: item[key] for key in ['artifact', 'sha256', 'certificate_sha256', 'signature_sha256', 'exit_code']} for item in proof['verifications']]
+              write('compiler-' + component + '-summary.json', summary)
+          PY
+      - name: Remove only owned candidate payloads, helper and image aliases
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/psst-native-private-$ARCH" "$RUNNER_TEMP/candidate-inputs" "$RUNNER_TEMP/candidate-transfer/$ARCH"
+          for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH" "psst-candidate-web-builder:$ARCH" "psst-candidate-source-helper:$ARCH"; do
+            if docker image inspect "$image" >/dev/null 2>&1; then
+              docker image rm "$image"
+            fi
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: candidate-records-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-records/*.json
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble-candidate:
+    name: Assemble both native candidate results
+    needs: [validate-tag, ci, resolve-bases, upstream-inputs, build-and-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      SOURCE_KIND: ${{ needs.validate-tag.outputs.source_kind }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/bases
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-upstream-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/upstream
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.26.8"
+          cache: false
+      - name: Verify exact retained trees and assemble unsigned candidate inputs
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from generate_release_gate_reports import NativeSourceContext
+          from prepare_candidate_transfer import verify_native
+          from prepare_release_inputs import prepare
+          from release_artifacts import PLATFORMS, require
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          inputs = Path(os.environ['RUNNER_TEMP']) / 'candidate-assembly'
+          version, commit, kind = [os.environ[key] for key in ['CANDIDATE_VERSION', 'SOURCE_COMMIT', 'SOURCE_KIND']]
+          trees = {platform: inputs / platform.split('/')[1] for platform in PLATFORMS}
+          for platform, tree in trees.items():
+              verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), tree, kind)
+          result = prepare(
+              root=root, repository=os.environ['GITHUB_REPOSITORY'],
+              ref=os.environ['GITHUB_REF'], event_sha=os.environ['GITHUB_SHA'], reviewed_commit=commit,
+              candidate=inputs / 'bases/candidate-bases.json',
+              builds={p: t / 'native/build-record.json' for p, t in trees.items()},
+              measurements={p: t / 'native/native-measurement.json' for p, t in trees.items()},
+              packs={p: t / 'native/pack' for p, t in trees.items()},
+              archives={c + '-' + p.split('/')[1]: t / ('native/export/' + c + '-' + p.split('/')[1] + '.oci.tar') for p, t in trees.items() for c in ['backend', 'web']},
+              dependency_collections={p: t / 'application-dependencies' for p, t in trees.items()},
+              source_scans={p: t / 'source-scans/source-scan-measurement.json' for p, t in trees.items()},
+              upstream_collection=inputs / 'upstream', output=inputs / 'prepared',
+              migration_notes='Stopped checkpoint required; preserve existing administrator and storage.',
+              rollback_notes='Restore the matching checkpoint into isolated storage before activation.',
+              planned_version=version if kind == 'planned-main-dispatch' else None,
+              event_name=os.environ['GITHUB_EVENT_NAME'],
+          )
+          require(result['publication_authorized'] is False, 'Candidate cannot authorize publication')
+          expected = set(result['assets']) | {'release-inputs.json', 'oci-correspondence.json', 'backend-index.json', 'web-index.json'}
+          require({p.name for p in (inputs / 'prepared').iterdir()} == expected, 'Unexpected prepared candidate files')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Both native inputs and all retained source assets assembled without creating a tag.\n')
+              summary.write('Version-tag runs now independently authenticate and review these exact source subjects; main dispatches remain unsigned.\n')
+              summary.write('Distribution approval, scanner disposition, public delivery and publication remain separate pending gates.\n')
+          PY
+      - name: Authenticate current native evidence and produce complete source report
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/generate_corresponding_source_review.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/candidate-assembly/prepared" \
+            --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
+            --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
+            --output "$RUNNER_TEMP/candidate-source-review" \
+            --resolved-bases "$RUNNER_TEMP/candidate-assembly/bases/candidate-bases.json" \
+            --checks-output "$RUNNER_TEMP/candidate-check-reports"
+      - name: Attest completed source and native check reports
+        id: source-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: |
+            ${{ runner.temp }}/candidate-source-review/corresponding-source.json
+            ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+            ${{ runner.temp }}/candidate-check-reports/source-ci.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
+            ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
+            ${{ runner.temp }}/candidate-check-reports/source-scanners.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-scanners.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - name: Independently verify the signed source report without repeating its replay
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/generate_corresponding_source_review.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/candidate-assembly/prepared" \
+            --amd64-inputs "$RUNNER_TEMP/candidate-assembly/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/candidate-assembly/arm64" \
+            --upstream "$RUNNER_TEMP/candidate-assembly/upstream" \
+            --output "$RUNNER_TEMP/candidate-source-review" \
+            --resolved-bases "$RUNNER_TEMP/candidate-assembly/bases/candidate-bases.json" \
+            --checks-output "$RUNNER_TEMP/candidate-check-reports" --verify-only
+          printf '%s\n' 'Corresponding source, all five source CI jobs, native smoke, runtime notices and source/final-image scanner gates verified for this exact version-tag run and attempt; publication still requires distribution approval and delivery gates.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/candidate-source-review/corresponding-source.json
+            ${{ runner.temp }}/candidate-source-review/corresponding-source-evidence.json
+            ${{ runner.temp }}/candidate-check-reports/source-ci.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-smoke.json
+            ${{ runner.temp }}/candidate-check-reports/runtime-notices.json
+            ${{ runner.temp }}/candidate-check-reports/source-scanners.json
+            ${{ runner.temp }}/candidate-check-reports/final-image-scanners.json
+            ${{ steps.source-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-assembly/prepared/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ needs.validate-tag.outputs.source_kind == 'version-tag' && 7 || 1 }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        with:
+          name: candidate-recovery-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          # Aggregation authenticates source subjects through the completed
+          # source gate; it does not download image/source payloads again.
+          path: |
+            ${{ runner.temp }}/candidate-assembly/prepared/release-inputs.json
+            ${{ runner.temp }}/candidate-assembly/prepared/release-manifest.json
+            ${{ runner.temp }}/candidate-assembly/prepared/psst.zip-deployment-${{ needs.validate-tag.outputs.version }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only owned assembly input and output trees
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-assembly" "$RUNNER_TEMP/candidate-source-review" "$RUNNER_TEMP/candidate-check-reports"
+
+  recovery-candidate:
+    name: Native candidate recovery (${{ matrix.arch }})
+    needs: [validate-tag, assemble-candidate]
     strategy:
       fail-fast: false
       matrix:
@@ -91,93 +757,407 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      SOURCE_KIND: ${{ needs.validate-tag.outputs.source_kind }}
+      PLATFORM: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: candidate-bases-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/candidate-records
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # verified upstream v4
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          version: v0.37.1
-          driver-opts: image=${{ needs.resolve-bases.outputs.buildkit_image }}
-      - name: Build locally using the shared immutable bases
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
-          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
-          GO_IMAGE: ${{ needs.resolve-bases.outputs.golang_image }}
-          RUNTIME_IMAGE: ${{ needs.resolve-bases.outputs.alpine_image }}
-          NODE_IMAGE: ${{ needs.resolve-bases.outputs.node_image }}
-          CADDY_IMAGE: ${{ needs.resolve-bases.outputs.caddy_image }}
-          BUILDX_METADATA_PROVENANCE: max
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/prepared
+      - name: Verify downloaded trees and measure real native update and recovery
         run: |
-          # Docker --load cannot retain registry attestations. These are local
-          # candidate builds with metadata, not authenticated release provenance.
-          docker buildx build --platform "$PLATFORM" --load --provenance=false \
-            --metadata-file "$RUNNER_TEMP/candidate-records/backend-build.json" \
-            --tag "psst-candidate-backend:$ARCH" \
-            --build-arg "GO_IMAGE=$GO_IMAGE" --build-arg "RUNTIME_IMAGE=$RUNTIME_IMAGE" \
-            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
-            --file backend/Dockerfile backend
-          docker buildx build --platform "$PLATFORM" --load --provenance=false \
-            --metadata-file "$RUNNER_TEMP/candidate-records/web-build.json" \
-            --tag "psst-candidate-web:$ARCH" \
-            --build-arg "NODE_IMAGE=$NODE_IMAGE" --build-arg "CADDY_IMAGE=$CADDY_IMAGE" \
-            --build-arg "VERSION=$CANDIDATE_VERSION" --build-arg "REVISION=$SOURCE_COMMIT" \
-            --file web/Dockerfile .
-      - name: Verify the native pair in a disposable stack
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-          CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
-          SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
-        run: |
-          python3 tools/verify_release_images.py \
-            --backend-image "psst-candidate-backend:$ARCH" \
-            --web-image "psst-candidate-web:$ARCH" \
-            --platform "$PLATFORM" --version "$CANDIDATE_VERSION" \
-            --revision "$SOURCE_COMMIT" \
-            --report "$RUNNER_TEMP/candidate-records/image-smoke.json"
-      - name: Record actual toolchains and tested image pair
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          docker image save --output "$RUNNER_TEMP/candidate-pair.tar" \
-            "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH"
-          python3 tools/prepare_release_candidate.py record-build \
-            --candidate "$RUNNER_TEMP/candidate-records/candidate-bases.json" \
-            --platform "$PLATFORM" \
-            --backend-metadata "$RUNNER_TEMP/candidate-records/backend-build.json" \
-            --web-metadata "$RUNNER_TEMP/candidate-records/web-build.json" \
-            --archive "$RUNNER_TEMP/candidate-pair.tar" \
-            --output "$RUNNER_TEMP/candidate-records/candidate-result.json"
-          # Images stay local. Metadata records the tested pair; no unreviewed
-          # candidate image archive is distributed before runtime license review.
-          printf '%s\n' \
-            'Native candidate smoke passed. No registry or release was published.' \
-            'Metadata is not authenticated provenance or deployment approval.' \
-            'Updater, vulnerability approval, runtime licenses and hosted source links remain release gates.' \
-            >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove only local candidate image artifacts
-        if: always()
-        env:
-          ARCH: ${{ matrix.arch }}
-        run: |
-          rm -f -- "$RUNNER_TEMP/candidate-pair.tar"
-          for image in "psst-candidate-backend:$ARCH" "psst-candidate-web:$ARCH"; do
-            if docker image inspect "$image" >/dev/null 2>&1; then
-              docker image rm "$image"
-            fi
-          done
+          python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('tools').resolve()))
+          from generate_release_gate_reports import NativeSourceContext
+          from measure_release_recovery import measure_recovery
+          from prepare_candidate_transfer import verify_native
+          from release_artifacts import PLATFORMS, read_bounded_file, read_json, require
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          inputs = Path(os.environ['RUNNER_TEMP']) / 'candidate-recovery'
+          version, commit, kind = [os.environ[key] for key in ['CANDIDATE_VERSION', 'SOURCE_COMMIT', 'SOURCE_KIND']]
+          for platform in PLATFORMS:
+              verify_native(NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, platform), inputs / platform.split('/')[1], kind)
+          prepared = inputs / 'prepared'
+          manifest = read_json(read_bounded_file(prepared / 'release-manifest.json'))
+          result = measure_recovery(
+              context=NativeSourceContext(os.environ['GITHUB_REPOSITORY'], version, commit, os.environ['PLATFORM']),
+              natives={p: inputs / p.split('/')[1] / 'native/native-artifacts.json' for p in PLATFORMS},
+              manifest=prepared / 'release-manifest.json', bundle=prepared / manifest['bundle']['name'],
+              previous_source='2ed02af8a062bb3cc21a80a1503d31775dd6e5d8',
+              output=inputs / 'recovery-measurement.json', root=root,
+          )
+          require(result['publication_authorized'] is False and result['upgrade_recovery_gate_pending'] is True, 'Recovery measurement cannot authorize release')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Native upgrade, same-version reapply, pause preservation and isolated recovery completed.\n')
+              summary.write('Public provenance, independent off-host provider recovery, browser/mobile flows and authenticated release gates remain pending.\n')
+          PY
+      - name: Attest completed native recovery for the version-tag attempt
+        id: recovery-attestation
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: ${{ runner.temp }}/candidate-recovery/recovery-measurement.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
         with:
-          name: candidate-records-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/candidate-records
+          name: candidate-recovery-attestation-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.recovery-attestation.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-recovery-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-recovery/recovery-measurement.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove only owned recovery input and terminal measurement files
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/candidate-recovery"
+
+  aggregate-recovery:
+    name: Authenticate completed native recovery
+    needs: [validate-tag, assemble-candidate, recovery-candidate]
+    if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-recovery-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-descriptor-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/amd64/native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-descriptor-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/arm64/native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-recovery-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/amd64/recovery
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-recovery-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/arm64/recovery
+      - name: Derive the gate from both authenticated terminal experiments
+        run: |
+          python3 tools/aggregate_release_recovery.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/recovery-gate/prepared" \
+            --source-report "$RUNNER_TEMP/recovery-gate/source/candidate-source-review/corresponding-source.json" \
+            --amd64-inputs "$RUNNER_TEMP/recovery-gate/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/recovery-gate/arm64" \
+            --amd64-measurement "$RUNNER_TEMP/recovery-gate/amd64/recovery/recovery-measurement.json" \
+            --arm64-measurement "$RUNNER_TEMP/recovery-gate/arm64/recovery/recovery-measurement.json" \
+            --output "$RUNNER_TEMP/recovery-gate/upgrade-recovery.json"
+      - name: Attest the completed two-platform recovery report
+        id: gate-attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: ${{ runner.temp }}/recovery-gate/upgrade-recovery.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - name: Independently verify the signed gate without another experiment
+        run: |
+          python3 tools/aggregate_release_recovery.py \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/recovery-gate/prepared" \
+            --source-report "$RUNNER_TEMP/recovery-gate/source/candidate-source-review/corresponding-source.json" \
+            --amd64-inputs "$RUNNER_TEMP/recovery-gate/amd64" \
+            --arm64-inputs "$RUNNER_TEMP/recovery-gate/arm64" \
+            --amd64-measurement "$RUNNER_TEMP/recovery-gate/amd64/recovery/recovery-measurement.json" \
+            --arm64-measurement "$RUNNER_TEMP/recovery-gate/arm64/recovery/recovery-measurement.json" \
+            --output "$RUNNER_TEMP/recovery-gate/upgrade-recovery.json" --verify-only
+          printf '%s\n' 'Both native recovery measurements and the completed gate verified for this exact tag attempt. Public delivery, independent backup-provider recovery and production rollout remain pending.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-upgrade-recovery-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/recovery-gate/upgrade-recovery.json
+            ${{ steps.gate-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Present exact distribution artifacts before protected review
+        run: |
+          python3 tools/generate_distribution_review.py --mode present \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/recovery-gate/prepared" \
+            --source-report "$RUNNER_TEMP/recovery-gate/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/recovery-gate/review-presentation"
+          cat "$RUNNER_TEMP/recovery-gate/review-presentation/review.md" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-distribution-presentation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-gate/review-presentation/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only owned recovery gate inputs and report
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/recovery-gate"
+
+  distribution-review:
+    name: Verify authorized distribution review
+    needs: [validate-tag, assemble-candidate, aggregate-recovery]
+    if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: container-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-recovery-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution-review/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distribution-review/source
+      - name: Derive distribution evidence from the exact GitHub reviewer decision
+        run: |
+          python3 tools/generate_distribution_review.py --mode produce \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/distribution-review/prepared" \
+            --source-report "$RUNNER_TEMP/distribution-review/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/distribution-review/reports"
+      - name: Attest the authorized gate and retained reviewer evidence
+        id: distribution-attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # same reviewed official action
+        with:
+          subject-path: |
+            ${{ runner.temp }}/distribution-review/reports/distribution-review.json
+            ${{ runner.temp }}/distribution-review/reports/distribution-review-evidence.json
+          push-to-registry: false
+          create-storage-record: false
+          show-summary: false
+      - name: Independently verify approved evidence without another mutable API replay
+        run: |
+          python3 tools/generate_distribution_review.py --mode verify \
+            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
+            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --prepared "$RUNNER_TEMP/distribution-review/prepared" \
+            --source-report "$RUNNER_TEMP/distribution-review/source/candidate-source-review/corresponding-source.json" \
+            --output "$RUNNER_TEMP/distribution-review/reports"
+          printf '%s\n' 'Authorized distribution review verified against the exact complete source report, release binding and run attempt. Registry publication and production rollout remain pending.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-distribution-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/distribution-review/reports/distribution-review.json
+            ${{ runner.temp }}/distribution-review/reports/distribution-review-evidence.json
+            ${{ steps.distribution-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only owned distribution-review input and output trees
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/distribution-review"
+
+  publish:
+    name: Publish verified immutable container release
+    needs:
+      [
+        validate-tag,
+        assemble-candidate,
+        aggregate-recovery,
+        distribution-review,
+      ]
+    if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag' && vars.CONTAINER_RELEASE_PUBLICATION_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    # Publication reuses completed native payloads and all eight signed gates.
+    # Its network transfer budget is separate from ordinary source CI.
+    timeout-minutes: 30
+    environment:
+      name: container-release
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+      actions: read
+    env:
+      CANDIDATE_VERSION: ${{ needs.validate-tag.outputs.version }}
+      SOURCE_COMMIT: ${{ needs.validate-tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.validate-tag.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check explicit private retention configuration before downloading payloads
+        env:
+          PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
+          PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
+          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
+          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
+          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
+          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
+          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
+          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
+        run: |
+          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
+            unset PSST_PUBLICATION_S3_SESSION_TOKEN
+          fi
+          python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          from publication_retention import validate_configuration
+          from publish_verified_release import package_initialization_enabled
+          from release_artifacts import require
+          validate_configuration(os.environ)
+          package_initialization_enabled(os.environ)
+          require(bool(os.environ.get('PSST_IMMUTABLE_INSPECTION_TOKEN')), 'Missing immutable-release inspection credential')
+          PY
+      - name: Require trusted hosted transfer and attestation tools
+        run: |
+          command -v aws gh >/dev/null
+          aws --version | python3 -c 'import re, sys; assert re.match(r"aws-cli/2\.[0-9]+\.[0-9]+(?:\s|$)", sys.stdin.read()), "AWS CLI v2 required"'
+          gh attestation verify --help >/dev/null
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'tools')
+          from github_release_attestor import hosted_node
+          hosted_node()
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends skopeo
+          skopeo --version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/prepared
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-native-inputs-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/arm64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-source-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-upgrade-recovery-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/recovery
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-distribution-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-inputs/distribution
+      - name: Map the exact retained payloads and signed gate files
+        run: |
+          python3 tools/prepare_publication_inputs.py \
+            --inputs-root "$RUNNER_TEMP/publication-inputs" \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --output "$RUNNER_TEMP/publication-inputs.json"
+      - name: Publish after authenticating gates and persisting private recovery state
+        id: publication
+        env:
+          PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
+          GH_TOKEN: ${{ github.token }}
+          PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
+          PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
+          PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
+          PSST_PUBLICATION_S3_REGION: ${{ vars.PSST_PUBLICATION_S3_REGION }}
+          PSST_PUBLICATION_S3_ACCESS_KEY_ID: ${{ secrets.PSST_PUBLICATION_S3_ACCESS_KEY_ID }}
+          PSST_PUBLICATION_S3_SECRET_ACCESS_KEY: ${{ secrets.PSST_PUBLICATION_S3_SECRET_ACCESS_KEY }}
+          PSST_PUBLICATION_S3_SESSION_TOKEN: ${{ secrets.PSST_PUBLICATION_S3_SESSION_TOKEN }}
+        run: |
+          if [ -z "${PSST_PUBLICATION_S3_SESSION_TOKEN:-}" ]; then
+            unset PSST_PUBLICATION_S3_SESSION_TOKEN
+          fi
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/publication-state"
+          python3 tools/publish_verified_release.py \
+            --inputs "$RUNNER_TEMP/publication-inputs.json" \
+            --root "$GITHUB_WORKSPACE" --reviewed-commit "$SOURCE_COMMIT" \
+            --state "$RUNNER_TEMP/publication-state"
+      - name: Remove local state only after verified publication and durable receipt
+        if: success() && steps.publication.outcome == 'success'
+        run: |
+          test -f "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
+          test ! -L "$RUNNER_TEMP/publication-state/$CANDIDATE_VERSION-publication-receipt.json"
+          # The successful driver already verified remote recovery storage and
+          # anonymous release/image readbacks; do not upload private state here.
+          rm -rf -- "$RUNNER_TEMP/publication-state"
+          printf '%s\n' "Immutable container release $CANDIDATE_VERSION published with verified anonymous readback and a private durable recovery receipt." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove only owned downloaded publication inputs and path map
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/publication-inputs"
+          rm -f -- "$RUNNER_TEMP/publication-inputs.json"
+          # On failure, preserve local publication-state for inspection. Its
+          # checkpoints remain in private storage when durable writes succeeded.

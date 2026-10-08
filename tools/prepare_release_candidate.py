@@ -77,6 +77,60 @@ def validated_tag(root: Path, ref: str, event_sha: str) -> tuple[str, str]:
     return version, commit
 
 
+def validated_source(
+    root: Path, ref: str, event_sha: str, planned_version: str
+) -> tuple[str, str]:
+    """Validate a main dispatch candidate without creating or borrowing a tag.
+
+    This does not establish tagged source CI, signer identity or release approval.
+    The workflow must separately check its event is workflow_dispatch and retain
+    that planned-candidate distinction in its evidence records.
+    """
+    require(ref == "refs/heads/main", "Planned candidates require main branch dispatch")
+    version = matches(planned_version, VERSION, "Invalid planned candidate version")
+    matches(event_sha, COMMIT, "Invalid dispatch source SHA")
+    head = git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    matches(head, COMMIT, "Invalid checked out source commit")
+    require(event_sha == head, "Dispatch source SHA and checked out HEAD differ")
+    resolved = (
+        git(root, "rev-parse", "--verify", f"{event_sha}^{{commit}}").decode().strip()
+    )
+    require(resolved == head, "Dispatch SHA does not resolve to HEAD")
+    ancestry = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "merge-base",
+            "--is-ancestor",
+            head,
+            "refs/remotes/origin/main",
+        ],
+        capture_output=True,
+    )
+    require(
+        ancestry.returncode == 0, "Dispatch source is not reachable from origin/main"
+    )
+    tag = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/tags/" + version,
+        ],
+        capture_output=True,
+    )
+    require(
+        tag.returncode != 0,
+        "Planned version already has a tag; choose an unused version",
+    )
+    require(tag.returncode == 1, "Cannot establish planned version tag absence")
+    return version, head
+
+
 def index_record(value: object) -> tuple[str, dict[str, str]]:
     require(isinstance(value, dict), "Base index must be an object")
     require(
@@ -324,6 +378,12 @@ def main() -> None:
     tag.add_argument("--ref", required=True)
     tag.add_argument("--event-sha", required=True)
     tag.add_argument("--github-output", type=Path)
+    source = commands.add_parser("validate-source")
+    source.add_argument("--root", type=Path, required=True)
+    source.add_argument("--ref", required=True)
+    source.add_argument("--event-sha", required=True)
+    source.add_argument("--planned-version", required=True)
+    source.add_argument("--github-output", type=Path)
     bases = commands.add_parser("resolve-bases")
     bases.add_argument("--version", required=True)
     bases.add_argument("--commit", required=True)
@@ -344,6 +404,30 @@ def main() -> None:
             print(
                 json.dumps(
                     {"version": version, "commit": commit, "candidate_only": True}
+                )
+            )
+        elif args.command == "validate-source":
+            version, commit = validated_source(
+                args.root, args.ref, args.event_sha, args.planned_version
+            )
+            github_output(
+                args.github_output,
+                {
+                    "version": version,
+                    "commit": commit,
+                    "source_kind": "planned-main-dispatch",
+                },
+            )
+            print(
+                json.dumps(
+                    {
+                        "version": version,
+                        "commit": commit,
+                        "candidate_only": True,
+                        "planned_candidate_only": True,
+                        "tagged_source_ci_verified": False,
+                        "publication_authorized": False,
+                    }
                 )
             )
         elif args.command == "resolve-bases":

@@ -3,6 +3,8 @@
 
 Run from any directory: python3 tools/test_external_proxy.py
 Requires Docker Compose >=2.24.4, OpenSSL, and Docker build/pull access.
+Supply --backend-image and --web-image with already-loaded immutable identities
+to exercise the release Compose files without building or pulling that pair.
 Only uniquely named test resources are changed. No repository .env is read.
 TLS uses a disposable CA passed explicitly to clients, never global trust.
 --certificate-state exercises managed internal-CA storage backup/restore;
@@ -17,6 +19,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -48,6 +51,17 @@ def unused_port() -> int:
         return listener.getsockname()[1]
 
 
+IMMUTABLE_IMAGE = re.compile(r"(?:[a-z0-9][a-z0-9._:/-]*@)?sha256:[0-9a-f]{64}")
+
+
+def immutable_image(value: str) -> str:
+    if not IMMUTABLE_IMAGE.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            "use a full sha256 image ID or a repository@sha256 digest reference"
+        )
+    return value
+
+
 # The helper receives only test data on stdin. Its output contains status codes,
 # never response bodies, cookies, credentials, or request/configuration dumps.
 CLIENT_SCRIPT = r"""
@@ -73,7 +87,19 @@ print(json.dumps({"statuses": statuses, "elapsed": time.monotonic() - started}))
 
 
 class Harness:
-    def __init__(self, client_image: str, certificate_state: bool = False):
+    def __init__(
+        self,
+        client_image: str,
+        certificate_state: bool = False,
+        *,
+        backend_image: str | None = None,
+        web_image: str | None = None,
+    ):
+        check(bool(backend_image) == bool(web_image), "supply both release images")
+        self.release_mode = backend_image is not None
+        if self.release_mode:
+            immutable_image(backend_image)
+            immutable_image(web_image)
         self.root = Path(__file__).resolve().parents[1]
         self.project = "psst-proxy-gate-" + secrets.token_hex(6)
         self.temp = Path(tempfile.mkdtemp(prefix=self.project + "-"))
@@ -82,7 +108,16 @@ class Harness:
         self.certificate_state = certificate_state
         self.helpers: list[str] = []
         self.volumes: list[str] = []
-        self.images = [self.project + "-backend", self.project + "-web"]
+        self.owned_images = (
+            []
+            if self.release_mode
+            else [self.project + "-backend", self.project + "-web"]
+        )
+        self.images = (
+            [backend_image, web_image]
+            if self.release_mode
+            else self.owned_images.copy()
+        )
         self.http_port = unused_port()
         self.port = unused_port()
         while self.port == self.http_port:
@@ -102,8 +137,18 @@ class Harness:
         }
         (self.temp / "docker-config").mkdir()
         self.compose_files = [
-            self.root / "docker-compose.yml",
-            self.root / "deploy/external-proxy.compose.yml",
+            self.root
+            / (
+                "deploy/compose.release.yml"
+                if self.release_mode
+                else "docker-compose.yml"
+            ),
+            self.root
+            / (
+                "deploy/external-proxy.release.compose.yml"
+                if self.release_mode
+                else "deploy/external-proxy.compose.yml"
+            ),
             self.temp / "fixture.compose.yml",
         ]
 
@@ -151,7 +196,24 @@ class Harness:
         ]
         for path in self.compose_files:
             command += ["-f", str(path)]
-        return self.command(command + list(args), timeout=timeout)
+        selected = list(args)
+        if self.release_mode and selected[0] == "up":
+            selected += ["--pull", "never"]
+        return self.command(command + selected, timeout=timeout)
+
+    def select_release_images(self) -> None:
+        # Inspect existing daemon content only. Pin subsequent commands to its
+        # config IDs so even a supplied registry index cannot change the pair.
+        self.images = [self.loaded_image(image) for image in self.images]
+
+    def loaded_image(self, image: str) -> str:
+        metadata = json.loads(self.command(["docker", "image", "inspect", image]))
+        check(
+            len(metadata) == 1
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", metadata[0].get("Id", "")),
+            "image is not already loaded with an immutable identity",
+        )
+        return metadata[0]["Id"]
 
     def certificate(self) -> None:
         tls = self.temp / "tls"
@@ -256,6 +318,8 @@ class Harness:
             "PSST_EXTERNAL_PROXY_IP": self.proxy + ".2",
             "PSST_WEB_PROXY_IP": self.proxy + ".3",
         }
+        if self.release_mode:
+            values.update(BACKEND_IMAGE=self.images[0], WEB_IMAGE=self.images[1])
         env_file = self.temp / "test.env"
         env_file.write_text(
             "".join(f"{key}={value}\n" for key, value in values.items())
@@ -375,6 +439,11 @@ class Harness:
         for service in ("backend", "caddy", "external-proxy"):
             container = self.container(service)
             details = self.inspect(container)
+            if self.release_mode:
+                check(
+                    details["Image"] == self.images[0 if service == "backend" else 1],
+                    f"{service} is not running the selected release image",
+                )
             host = details["HostConfig"]
             check(host["ReadonlyRootfs"], f"{service} root filesystem is writable")
             check("ALL" in host["CapDrop"], f"{service} lacks cap_drop ALL")
@@ -425,6 +494,28 @@ class Harness:
             and settings["PUBLIC_URL"] == self.origin,
             "test auth transport/canonical URL mismatch",
         )
+        if self.release_mode:
+            gateway = (
+                self.temp / "gateway.Caddyfile"
+                if self.certificate_state
+                else self.root / "deploy/external-proxy/Caddyfile"
+            )
+            for service, path, expected in (
+                ("caddy", "/etc/caddy/Caddyfile", self.root / "Caddyfile"),
+                (
+                    "caddy",
+                    "/etc/caddy/proxy-trust/external.caddy",
+                    self.root / "deploy/external-proxy/trusted-proxy.caddy",
+                ),
+                ("external-proxy", "/etc/caddy/Caddyfile", gateway),
+            ):
+                actual = self.command(
+                    ["docker", "exec", self.container(service), "cat", path]
+                )
+                check(
+                    actual == expected.read_text(),
+                    f"{service} release configuration differs from the selected checkout",
+                )
 
     def login(self, username: str, password: str) -> str:
         headers, _ = self.expect(
@@ -680,6 +771,7 @@ class Harness:
             "up", "-d", "--no-build", "--no-deps", "--force-recreate", "backend"
         )
         self.wait_ready()
+        self.check_hardening()
         details = self.inspect(self.container("backend"))
         check(
             next(
@@ -948,6 +1040,7 @@ print(json.dumps(manifest))
         # Keep the original client CA context. Loading a newly generated CA here
         # would hide lost certificate state and a trust-breaking restore.
         self.wait_ready()
+        self.check_hardening()
         restored = self.inspect(self.container("external-proxy"))
         check(restored["Id"] != original_container, "gateway was not recreated")
         for field, path in (("data", "/data"), ("config", "/config")):
@@ -976,6 +1069,7 @@ print(json.dumps(manifest))
         self.expect(200, "GET", "/auth/me")
         self.compose("restart", "external-proxy")
         self.wait_ready()
+        self.check_hardening()
         check(
             self.leaf_fingerprint() == leaf,
             "restart after restore replaced its leaf certificate",
@@ -1142,7 +1236,9 @@ print(json.dumps(manifest))
                 ["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"]
             ).split()
             owned = [
-                name + ":latest" for name in self.images if name + ":latest" in existing
+                name + ":latest"
+                for name in self.owned_images
+                if name + ":latest" in existing
             ]
             if owned:
                 remove(["docker", "image", "rm", *owned])
@@ -1163,12 +1259,20 @@ print(json.dumps(manifest))
         phase(
             "Preparing disposable CA, credentials, isolated networks and loopback ports"
         )
+        if self.release_mode:
+            self.select_release_images()
         self.certificate()
         self.configure()
         self.compose("config", "--quiet")
-        phase("Building current backend and compiled web/Caddy images once")
-        self.compose("build", "backend", "caddy", timeout=1200)
-        self.command(["docker", "pull", self.client_image], timeout=600)
+        if self.release_mode:
+            phase("Using the already-loaded immutable release backend/web image pair")
+        else:
+            phase("Building current backend and compiled web/Caddy images once")
+            self.compose("build", "backend", "caddy", timeout=1200)
+        if IMMUTABLE_IMAGE.fullmatch(self.client_image):
+            self.client_image = self.loaded_image(self.client_image)
+        else:
+            self.command(["docker", "pull", self.client_image], timeout=600)
         self.compose("up", "-d", "--no-build")
         if self.certificate_state:
             self.load_internal_ca()
@@ -1200,7 +1304,17 @@ def main() -> int:
     parser.add_argument(
         "--client-image",
         default="python:3.13-alpine",
-        help="Docker image with python3 and Python SSL stdlib (default: %(default)s)",
+        help="Docker image with python3 and Python SSL stdlib; already-loaded immutable identities are reused without pulling (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--backend-image",
+        type=immutable_image,
+        help="already-loaded backend image ID or repository digest; requires --web-image and selects release mode",
+    )
+    parser.add_argument(
+        "--web-image",
+        type=immutable_image,
+        help="already-loaded web image ID or repository digest, shared by both release proxy hops",
     )
     parser.add_argument(
         "--certificate-state",
@@ -1208,13 +1322,20 @@ def main() -> int:
         help="test managed internal-CA gateway data/config backup and restore instead of the static-certificate proxy flow",
     )
     arguments = parser.parse_args()
+    if bool(arguments.backend_image) != bool(arguments.web_image):
+        parser.error("--backend-image and --web-image must be supplied together")
 
     def interrupted(signum: int, frame: object) -> None:
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGHUP, interrupted)
-    harness = Harness(arguments.client_image, arguments.certificate_state)
+    harness = Harness(
+        arguments.client_image,
+        arguments.certificate_state,
+        backend_image=arguments.backend_image,
+        web_image=arguments.web_image,
+    )
     success = False
     try:
         harness.run()
@@ -1230,7 +1351,9 @@ def main() -> int:
         success = harness.cleanup() and success
     if success:
         phase(
-            "PASS external-proxy integration gate (test CA; public ACME/native flows untested)"
+            "PASS "
+            + ("release " if harness.release_mode else "")
+            + "external-proxy integration gate (test CA; public ACME/native flows untested)"
         )
     return 0 if success else 1
 

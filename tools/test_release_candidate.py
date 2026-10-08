@@ -282,5 +282,114 @@ class TagChecks(unittest.TestCase):
             candidate.validated_tag(self.root, "refs/tags/v1.2.3", self.commit)
 
 
+class DispatchChecks(unittest.TestCase):
+    # Reuse the disposable Git fixture without rerunning unrelated tag cases.
+    setUp = TagChecks.setUp
+    git = TagChecks.git
+
+    def test_main_unused_version_is_planned_only_and_creates_no_tag(self) -> None:
+        self.assertEqual(
+            candidate.validated_source(
+                self.root, "refs/heads/main", self.commit, "v0.1.0"
+            ),
+            ("v0.1.0", self.commit),
+        )
+        self.assertEqual(self.git("tag", "--list", "v0.1.0"), b"")
+        output = self.root / "workflow-output"
+        result = subprocess.run(
+            [
+                os.sys.executable,
+                str(Path(candidate.__file__).resolve()),
+                "validate-source",
+                "--root",
+                str(self.root),
+                "--ref",
+                "refs/heads/main",
+                "--event-sha",
+                self.commit,
+                "--planned-version",
+                "v0.1.0",
+                "--github-output",
+                str(output),
+            ],
+            capture_output=True,
+            check=True,
+            env=self.env,
+        )
+        record = json.loads(result.stdout)
+        self.assertTrue(record["planned_candidate_only"])
+        self.assertFalse(record["tagged_source_ci_verified"])
+        self.assertFalse(record["publication_authorized"])
+        self.assertIn("source_kind=planned-main-dispatch\n", output.read_text())
+        self.assertEqual(self.git("tag", "--list", "v0.1.0"), b"")
+
+    def test_existing_lightweight_annotated_and_public_baseline_tags_cannot_be_borrowed(
+        self,
+    ) -> None:
+        self.git("tag", "-a", "v1.2.4", "-m", "Annotated existing version")
+        self.git("tag", "v0.0.0")
+        for version in ["v1.2.3", "v1.2.4", "v0.0.0"]:
+            with self.subTest(version=version), self.assertRaisesRegex(
+                InvalidRelease, "already has a tag"
+            ):
+                candidate.validated_source(
+                    self.root, "refs/heads/main", self.commit, version
+                )
+        self.assertEqual(
+            self.git("rev-parse", "refs/tags/v0.0.0").decode().strip(), self.commit
+        )
+
+    def test_nonmain_ref_bad_version_and_nonfull_sha_are_rejected_before_git(
+        self,
+    ) -> None:
+        cases = [
+            ("refs/tags/v0.1.0", self.commit, "v0.1.0"),
+            ("refs/heads/feature", self.commit, "v0.1.0"),
+            ("refs/pull/1/merge", self.commit, "v0.1.0"),
+            ("refs/heads/main", self.commit, "v01.2.3"),
+            ("refs/heads/main", self.commit, "v0.1.0-rc1"),
+            ("refs/heads/main", self.commit, "v0.1.0; id"),
+            ("refs/heads/main", self.commit[:8], "v0.1.0"),
+            ("refs/heads/main", "--help", "v0.1.0"),
+        ]
+        for ref, sha, version in cases:
+            with self.subTest(ref=ref, sha=sha, version=version), patch.object(
+                candidate, "git"
+            ) as git:
+                with self.assertRaises(InvalidRelease):
+                    candidate.validated_source(self.root, ref, sha, version)
+                git.assert_not_called()
+
+    def test_annotated_object_and_checked_out_event_mismatch_are_rejected(self) -> None:
+        self.git("tag", "-a", "v1.2.4", "-m", "Tag object is not dispatch SHA")
+        tag_object = self.git("rev-parse", "refs/tags/v1.2.4").decode().strip()
+        with self.assertRaisesRegex(InvalidRelease, "HEAD differ"):
+            candidate.validated_source(
+                self.root, "refs/heads/main", tag_object, "v0.1.0"
+            )
+        (self.root / "fixture").write_text("next main fixture\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "Different HEAD")
+        with self.assertRaisesRegex(InvalidRelease, "HEAD differ"):
+            candidate.validated_source(
+                self.root, "refs/heads/main", self.commit, "v0.1.0"
+            )
+
+    def test_off_main_or_missing_origin_history_fails_closed(self) -> None:
+        self.git("checkout", "-qb", "unreviewed")
+        (self.root / "fixture").write_text("unreviewed fixture\n")
+        self.git("add", ".")
+        self.git("commit", "-qm", "Off main")
+        sha = self.git("rev-parse", "HEAD").decode().strip()
+        with self.assertRaisesRegex(InvalidRelease, "not reachable"):
+            candidate.validated_source(self.root, "refs/heads/main", sha, "v0.1.0")
+        self.git("checkout", "-q", "main")
+        self.git("update-ref", "-d", "refs/remotes/origin/main")
+        with self.assertRaisesRegex(InvalidRelease, "not reachable"):
+            candidate.validated_source(
+                self.root, "refs/heads/main", self.commit, "v0.1.0"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

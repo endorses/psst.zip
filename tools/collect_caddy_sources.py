@@ -19,7 +19,9 @@ import urllib.parse
 import urllib.request
 
 from collect_runtime_notices import (
+    EXPANDED_LIMIT,
     LIMIT,
+    NOTICE_NAME,
     RECIPE_LIMIT,
     command,
     file_hash,
@@ -44,6 +46,8 @@ RECIPE = re.compile(
     r"https://github\.com/caddyserver/caddy-docker\.git#([a-f0-9]{40}):([0-9.]+/alpine)\Z"
 )
 VERSION = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+\Z")
+GO_VERSION = re.compile(r"go[0-9]+\.[0-9]+\.[0-9]+\Z")
+GO_SOURCE_POLICY = Path(__file__).resolve().with_name("go-runtime-sources.json")
 DOWNLOAD_HOSTS = {
     "github.com",
     "codeload.github.com",
@@ -162,6 +166,232 @@ def verify_modules(info: dict, go_sum: bytes, modules: bytes) -> None:
                 f"{path} {version} {dependency['Sum']}" in sums,
                 "Caddy source module checksum differs from binary",
             )
+
+
+def go_source_contents(
+    archive: Path, version: str, commit: str
+) -> tuple[dict[str, bytes], str | None]:
+    """Read the complete original tree, without executing or opening test archives."""
+    matches(version, GO_VERSION, "Unsupported Go runtime source version")
+    matches(commit, COMMIT, "Invalid Go runtime source commit")
+    require(
+        archive.is_file()
+        and not any(path.is_symlink() for path in (archive, *archive.parents))
+        and 0 < archive.stat().st_size <= LIMIT,
+        "Unsafe or oversized Go runtime source archive",
+    )
+    prefix = "go-" + commit
+    required = {
+        "LICENSE",
+        "PATENTS",
+        "src/go.mod",
+        "src/runtime/proc.go",
+        "src/cmd/compile/main.go",
+        "src/make.bash",
+    }
+    seen, originals, total, notice_total, version_digest = set(), {}, 0, 0, None
+    with tarfile.open(archive, "r:gz") as source:
+        for entry in source:
+            name = entry.name.rstrip("/") if entry.isdir() else entry.name
+            path = safe_member(name)
+            require(
+                str(path) == name
+                and path.parts[0] == prefix
+                and name not in seen
+                and len(seen) < 100_000
+                and not any(
+                    ord(character) < 32 or ord(character) == 127 for character in name
+                ),
+                "Unsafe or duplicate Go runtime source member",
+            )
+            seen.add(name)
+            require(
+                (entry.isfile() or entry.isdir())
+                and not entry.sparse
+                and 0 <= entry.size <= LIMIT,
+                "Unsupported Go runtime source member",
+            )
+            total += entry.size
+            require(
+                total <= EXPANDED_LIMIT, "Expanded Go runtime source exceeds bounds"
+            )
+            if not entry.isfile():
+                continue
+            relative = path.relative_to(prefix).as_posix()
+            if relative in required:
+                require(entry.size > 0, "Empty required Go runtime source member")
+                required.remove(relative)
+            if relative == "VERSION" or NOTICE_NAME.fullmatch(path.name):
+                require(
+                    entry.size <= RECIPE_LIMIT,
+                    "Go runtime source notice exceeds bounds",
+                )
+                data = source.extractfile(entry).read()
+                require(len(data) == entry.size, "Truncated Go runtime source member")
+                if relative == "VERSION":
+                    require(
+                        data.splitlines() and data.splitlines()[0] == version.encode(),
+                        "Go runtime source VERSION differs from executable",
+                    )
+                    version_digest = hashlib.sha256(data).hexdigest()
+                else:
+                    notice_total += len(data)
+                    require(
+                        notice_total <= 64 * 1024**2,
+                        "Go runtime source notices exceed bounds",
+                    )
+                    originals[name] = data
+            # Nested archives are unchanged source-tree test fixtures. They are
+            # retained in the original archive, not recursively interpreted as
+            # additional libraries or exempted malformed dependency inputs.
+    require(not required, "Required Go runtime sources are missing")
+    return originals, version_digest
+
+
+def go_source_policy(version: str) -> dict:
+    require(
+        GO_SOURCE_POLICY.is_file()
+        and not GO_SOURCE_POLICY.is_symlink()
+        and 0 < GO_SOURCE_POLICY.stat().st_size <= RECIPE_LIMIT,
+        "Missing bounded committed Go runtime source policy",
+    )
+    policy = json.loads(GO_SOURCE_POLICY.read_bytes())
+    require(
+        isinstance(policy, dict)
+        and set(policy) == {"schema_version", "kind", "sources"}
+        and type(policy["schema_version"]) is int
+        and policy["schema_version"] == 1
+        and policy["kind"] == "pinned-go-runtime-sources"
+        and isinstance(policy["sources"], list)
+        and 0 < len(policy["sources"]) <= 32,
+        "Invalid committed Go runtime source policy",
+    )
+    versions = set()
+    for record in policy["sources"]:
+        require(
+            isinstance(record, dict)
+            and set(record) == {"version", "commit", "file", "url", "sha256", "size"},
+            "Invalid pinned Go runtime source",
+        )
+        selected_version = matches(
+            record["version"], GO_VERSION, "Invalid pinned Go version"
+        )
+        commit = matches(record["commit"], COMMIT, "Invalid pinned Go source commit")
+        require(
+            selected_version not in versions
+            and record["file"] == "go-" + commit + ".tar.gz"
+            and record["url"]
+            == f"https://codeload.github.com/golang/go/tar.gz/{commit}"
+            and isinstance(record["sha256"], str)
+            and type(record["size"]) is int
+            and 0 < record["size"] <= LIMIT,
+            "Invalid pinned Go archive identity",
+        )
+        matches(
+            "sha256:" + record["sha256"], DIGEST, "Invalid pinned Go archive checksum"
+        )
+        versions.add(selected_version)
+    records = [record for record in policy["sources"] if record["version"] == version]
+    require(
+        len(records) == 1, "Executable Go version has no pinned complete runtime source"
+    )
+    return records[0]
+
+
+def verify_go_source(folder: Path, inventory: dict) -> dict[str, bytes]:
+    """Bind the full Go source archive and original legal files to its inventory."""
+    record = inventory.get("go_source")
+    require(
+        isinstance(record, dict)
+        and set(record)
+        == {"file", "sha256", "size", "version", "commit", "version_file_sha256"},
+        "Full Go runtime source inventory is missing or invalid",
+    )
+    version = matches(
+        record["version"], GO_VERSION, "Invalid Go runtime source version"
+    )
+    commit = matches(record["commit"], COMMIT, "Invalid Go runtime source revision")
+    require(
+        version == inventory.get("go_version")
+        and commit == inventory.get("go_source_revision")
+        and record["file"] == "go-" + commit + ".tar.gz"
+        and type(record["size"]) is int
+        and 0 < record["size"] <= LIMIT,
+        "Go runtime source identity differs",
+    )
+    pinned = go_source_policy(version)
+    require(
+        {key: record[key] for key in ("file", "sha256", "size", "version", "commit")}
+        == {
+            key: pinned[key] for key in ("file", "sha256", "size", "version", "commit")
+        },
+        "Go runtime source differs from committed pinned policy",
+    )
+    entries = [
+        entry for entry in inventory["sources"] if entry.get("file") == record["file"]
+    ]
+    require(
+        len(entries) == 1
+        and entries[0].get("sha256") == record["sha256"]
+        and entries[0].get("url") == pinned["url"],
+        "Go runtime archive differs from retained source binding",
+    )
+    matches("sha256:" + record["sha256"], DIGEST, "Invalid Go runtime archive checksum")
+    archive = folder / record["file"]
+    require(
+        archive.is_file()
+        and not archive.is_symlink()
+        and archive.stat().st_size == record["size"]
+        and file_hash(archive) == record["sha256"],
+        "Go runtime source archive differs",
+    )
+    notices, version_digest = go_source_contents(archive, version, commit)
+    require(
+        version_digest == record["version_file_sha256"],
+        "Go runtime VERSION binding differs",
+    )
+    for name in ("LICENSE", "PATENTS"):
+        require(
+            (folder / ("go-" + name)).is_file()
+            and not (folder / ("go-" + name)).is_symlink()
+            and (folder / ("go-" + name)).read_bytes()
+            == notices["go-" + commit + "/" + name],
+            "Go runtime legal files differ from original source tree",
+        )
+    require(
+        file_hash(archive) == record["sha256"],
+        "Go runtime source changed during replay",
+    )
+    return notices
+
+
+def binary_build_info(binary: bytes) -> dict:
+    """Read metadata from retained executable bytes; never execute the program."""
+    require(0 < len(binary) <= LIMIT, "Go executable exceeds metadata-reader bounds")
+    with tempfile.TemporaryDirectory(prefix="psst-go-build-info-") as temporary:
+        executable = Path(temporary) / "program"
+        executable.write_bytes(binary)
+        result = json.loads(command("go", "version", "-m", "-json", str(executable)))
+    require(isinstance(result, dict), "Go executable build metadata is missing")
+    return result
+
+
+def verify_binary_go_source(build: dict, inventory: dict) -> None:
+    version = matches(
+        build.get("GoVersion"), GO_VERSION, "Unsupported executable GoVersion"
+    )
+    require(
+        version
+        == inventory.get("go_version")
+        == inventory.get("go_source", {}).get("version"),
+        "Executable GoVersion differs from retained runtime source",
+    )
+
+
+def go_notice_text(notices: dict[str, bytes]) -> bytes:
+    return b"psst.zip Go runtime notices\n" + b"\n".join(
+        name.encode() + b"\n" + data for name, data in sorted(notices.items())
+    )
 
 
 def collect(image: str, base: str, output: Path) -> dict:
@@ -309,10 +539,9 @@ def collect(image: str, base: str, output: Path) -> dict:
             ).items():
                 notices[item["file"] + "::" + path] = content
     go_version = matches(
-        build.get("GoVersion"),
-        re.compile(r"go[0-9]+\.[0-9]+\.[0-9]+\Z"),
-        "Unsupported Caddy Go toolchain version",
+        build.get("GoVersion"), GO_VERSION, "Unsupported Caddy Go toolchain version"
     )
+    pinned_go = go_source_policy(go_version)
     go_ref = json.loads(
         command("gh", "api", f"repos/golang/go/git/ref/tags/{go_version}")
     )
@@ -330,6 +559,10 @@ def collect(image: str, base: str, output: Path) -> dict:
     require(go_object.get("type") == "commit", "Unbound Go toolchain source")
     go_commit = matches(
         go_object.get("sha"), COMMIT, "Invalid Go toolchain source revision"
+    )
+    require(
+        go_commit == pinned_go["commit"],
+        "Resolved Go tag differs from pinned source policy",
     )
     go_root = json.loads(
         command("gh", "api", f"repos/golang/go/contents?ref={go_commit}")
@@ -364,6 +597,38 @@ def collect(image: str, base: str, output: Path) -> dict:
             {"file": filename, "sha256": hashlib.sha256(data).hexdigest(), "url": url}
         )
         notices[filename] = data
+    go_archive_name = "go-" + go_commit + ".tar.gz"
+    go_archive_url = pinned_go["url"]
+    go_archive = public_download(go_archive_url, pinned_go["size"])
+    require(
+        len(go_archive) == pinned_go["size"]
+        and hashlib.sha256(go_archive).hexdigest() == pinned_go["sha256"],
+        "Downloaded full Go runtime source differs from pinned policy",
+    )
+    (output / go_archive_name).write_bytes(go_archive)
+    go_notices, version_digest = go_source_contents(
+        output / go_archive_name, go_version, go_commit
+    )
+    go_source = {
+        "file": go_archive_name,
+        "sha256": hashlib.sha256(go_archive).hexdigest(),
+        "size": len(go_archive),
+        "version": go_version,
+        "commit": go_commit,
+        "version_file_sha256": version_digest,
+    }
+    retained.append(
+        {"file": go_archive_name, "sha256": go_source["sha256"], "url": go_archive_url}
+    )
+    for name in ("LICENSE", "PATENTS"):
+        require(
+            go_notices["go-" + go_commit + "/" + name]
+            == (output / ("go-" + name)).read_bytes(),
+            "Downloaded Go runtime legal files differ from complete source archive",
+        )
+    notices.update(
+        {go_archive_name + "::" + name: data for name, data in go_notices.items()}
+    )
     require(notices, "Caddy source has no notices")
     (output / "THIRD_PARTY_NOTICES.txt").write_bytes(
         b"psst.zip Caddy runtime notices\n"
@@ -379,6 +644,7 @@ def collect(image: str, base: str, output: Path) -> dict:
         "source_revision": revision,
         "go_version": go_version,
         "go_source_revision": go_commit,
+        "go_source": go_source,
         "docker_recipe_revision": recipe_commit,
         "dist_revision": dist_commit,
         "build_info_sha256": file_hash(output / "build-info.json"),

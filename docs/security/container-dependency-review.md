@@ -347,3 +347,191 @@ This closes the recorded patched AMD64 image scan review for the exact subjects.
 It does not approve public distribution or substitute for ARM64 scans, source
 publication, exact-tag CI, authenticated workflow evidence or live release checks.
 Private review version `v0.0.0` does not move or replace the existing remote tag.
+
+## Native source scanner measurements
+
+`tools/measure_release_source_scans.py` runs source scanners on an exact
+`git archive` snapshot using the immutable official release Go and Node builder
+inputs. It accepts a matrix-local `NativeSourceContext`; it does not authenticate
+that context, create a version tag, attest outputs, approve findings, or publish.
+The release workflow must validate the tag and authenticate the measurements
+before combining both native platforms with the complete release binding.
+Pass the untagged official repository digest references emitted by the candidate
+`resolve_bases` record. The digest resolves the configured Go/Node version tag;
+do not reconstruct a tagged reference or substitute a mutable tag.
+
+```sh
+python3 tools/measure_release_source_scans.py \
+  --repository endorses/psst.zip --version v1.2.3 --revision TAGGED_COMMIT \
+  --platform linux/amd64 --repository-root "$PWD" \
+  --go-image docker.io/library/golang@sha256:RESOLVED_GO_INDEX \
+  --node-image docker.io/library/node@sha256:RESOLVED_NODE_INDEX \
+  --output /private/release-review/source-scans-amd64
+python3 tools/test_release_source_scans.py
+```
+
+Run the equivalent measurement on a native ARM64 runner. The producer checks
+host and actual builder architecture; new executions also reject a Docker daemon
+that would emulate the requested platform. A successful AMD64 absent-package
+assessment does not apply to ARM64 without that platform's actual graph.
+
+Fixtures run unprivileged with a read-only source mount, read-only root
+filesystem, dropped capabilities, bounded memory/processes/tmpfs and private
+output files. They mount no Docker socket and receive no host credentials.
+Owned fixture IDs are recorded so failure/timeout cleanup removes only the
+producer's containers. Disposable caches are removed afterward. The scanner's
+private tmpfs permits execution because its authenticated Go-built binary runs
+there; an initial noexec fixture correctly failed and emitted no successful
+measurement.
+
+The Go fixture uses the actual Go 1.26.8 release compiler with automatic toolchain
+switching disabled. It installs `govulncheck@v1.8.0` only after the downloaded
+module matches `h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U=` through normal
+Go proxy/checksum verification. Actual scanner binary/build metadata, database
+configuration/date, full streaming JSON, verbose conversion, complete root and
+server dependency graphs and resolved module metadata are retained. Repeated
+identical advisory messages are valid streaming output; conflicting versions
+of one advisory fail validation. Scanner errors, partial JSON, missing SBOM
+coverage, module replacements and conversion errors cannot pass.
+
+Every finding stays in the report. A module-only finding can receive a scoped
+structural `not-applicable` measurement only when every affected Go package path
+from its official advisory is absent from both actual all-root and server import
+graphs. Missing advisory paths, imported packages, symbols or uncertain findings
+remain unresolved. This measurement is not an authenticated release disposition.
+The [official scanner documentation](https://pkg.go.dev/golang.org/x/vuln@v1.8.0/cmd/govulncheck)
+explains why JSON exit zero alone cannot establish absence of vulnerabilities.
+
+The web fixture uses Node 22's actual bundled npm, the exact package-lock state,
+`npm ls --package-lock-only --all --json` and a lock-only `npm audit --json` with
+lifecycle scripts disabled. The full audit response, lock graph, dependency
+count, npm/Node versions, timestamps and response hashes are retained. The npm
+service exposes no immutable database snapshot version, so the report records
+that limitation instead of inventing one. Audit API failures/inconsistent
+accounting fail; vulnerability exit one retains all unresolved findings and
+cannot pass the final source-scanners gate. See the
+[official npm audit documentation](https://docs.npmjs.com/cli/v10/commands/npm-audit/).
+
+The private `750f440d143d6766d83b13e1ce789436471ae029` AMD64 measurement completed
+on 2026-10-07 with Go 1.26.8/govulncheck 1.8.0 and Node 22.23.3/npm 10.9.9.
+It retained 21 module-only Go findings, 11 root packages, 240 all-root imported
+packages, 236 server imported packages and 15 scanner SBOM modules. The Go
+vulnerability database's observed last-modified value was
+`2026-10-07T14:10:51Z`. All affected paths were structurally absent in this
+native configuration; package/symbol findings were zero. The Node audit retained
+zero vulnerabilities across 173 locked dependency packages. The unsigned source
+measurement SHA256 is
+`f2d443e5f77dbc910a17d145ef5df354dad99246dd6a0f0395e31d392fedea3e`.
+These exact compiler graphs reflect the release Alpine builder's
+`CGO_ENABLED=0`; they do not reuse the earlier host review's graph count.
+
+## Compiler graphs bound to actual runtime executables
+
+The same module exposes `measure_compiler_graph(...)` for individual backend and
+web native graph measurements. Inputs are the native source context, externally
+bound runtime source asset, actual final OCI archive/config, immutable Go
+builder and official advisory IDs. It outputs full compiler graph JSON and
+raw advisory records with safe filenames/hashes, actual executable/build
+metadata, source/toolchain identities and a typed correspondence proof.
+It preserves all findings elsewhere; it does not accept caller-authored
+applicability or approval flags.
+
+The existing source-scan CLI is unchanged (`--mode source-scans` is its optional
+explicit default). For a compiler graph, use the same native source/builder
+arguments with the exact privately retained runtime inputs:
+
+```sh
+python3 tools/measure_release_source_scans.py --mode compiler-graph \
+  --repository endorses/psst.zip --version v1.2.3 --revision TAGGED_COMMIT \
+  --platform linux/amd64 --repository-root "$PWD" \
+  --go-image docker.io/library/golang@sha256:RESOLVED_GO_INDEX \
+  --component web --runtime-pack /private/release-review/pack \
+  --runtime-source-sha256 sha256:BOUND_RUNTIME_SOURCE_HASH \
+  --image-archive /private/release-review/export/web-amd64.oci.tar \
+  --tested-config sha256:ACTUAL_SMOKE_TESTED_CONFIG \
+  --cosign /private/tools/cosign --advisory-id GO-2026-5932 \
+  --output /private/release-review/caddy-compiler-amd64
+```
+
+For backend graphs, use `--component backend`, its actual OCI/config inputs,
+omit `--cosign`, and repeat `--advisory-id` for the relevant official records.
+The graph report and full raw proof files are written to the new output
+directory. `--node-image` applies only to source scans. Scanner process errors
+fail the producer; a complete source scan with package/symbol or npm findings
+retains those findings as unresolved with the release gate pending. Successful
+measurement exit status therefore never means those findings were approved.
+
+For the backend, the source snapshot is mounted at `/build` and rebuilt using
+the exact release Go builder, `/go/pkg/mod` dependency location and Dockerfile
+build configuration. The resulting executable must byte-match the actual final
+OCI `/app/server`; all graph-selected module versions and `h1` sums must match
+its embedded metadata. The private patched AMD64 executable reproduced exactly
+as SHA256 `03824947e006205dcf592c4cccfa70fae371cb222b5da410a4d83c2f905efd0f`.
+Its typed correspondence is `reproduced-in-release-builder`.
+
+For Caddy, the actual final OCI executable must match the official executable
+archive authenticated by the same freshly verified signed SHA512 list that
+binds the full buildable vendor/wrapper source. Exact release workflow identity,
+commit/ref and public Sigstore transparency checks are required. The native
+compiler resolves that original full wrapper with its actual Go version,
+platform/architecture variant, `CGO_ENABLED=0` and
+`nobadger,nomysql,nopgx` tags; every selected dependency/module checksum matches
+the embedded binary metadata and authenticated vendor declarations.
+Unhandled package-selection flags, compiler modes and nonempty `GOEXPERIMENT`
+fail instead of silently resolving a graph with different defaults.
+The private patched AMD64 graph again selected 970 packages and all 147
+embedded dependencies, with no affected OpenPGP package. Its executable remains
+SHA256 `678ade3bfc088749c81a681adc603333ee0bb023b6a6cfe3c0f58bef8ff854e9`.
+The typed correspondence is `upstream-signed-source-and-binary`, not a claim
+that an independently rebuilt upstream binary is byte-identical. The actual
+signature report is retained as a hash-bound raw proof file.
+The unsigned native Caddy graph measurement SHA256 is
+`5d058e895cbcb3d9abba46ac7890e174ec60c395c3e0db7251a68ae87384098f`.
+
+A later authenticated final-image review must read these full compiler/advisory
+bytes itself, bind the exact executable and source asset to its native image
+scan, and derive absence of all advisory-listed packages. The backend source
+graph cannot justify a Caddy finding. These proofs do not collect complete
+application dependency corresponding sources: preserving Go/npm dependencies
+for redistribution is a separate source-pack gate. They also do not approve
+OS findings, unknown imports, other native platforms or arbitrary custom modules.
+
+## Deriving the authenticated source scanner gate
+
+`tools/aggregate_release_source_scans.py` exposes
+`aggregate_source_scans(binding, native_measurements=..., repository_root=...,
+resolved_bases=..., authenticator=...)`. Both native platform measurements and
+the actual `resolve_bases` record must be authenticated against the complete
+release `Binding`. A candidate record establishes measured immutable build
+inputs; authenticating it does not approve publication. The aggregator verifies
+its version/source/platform map and requires native Go/Node builder references
+to match that record. Actual configuration/layer identities are retained from
+the authenticated native measurements, and daemon emulation is rejected.
+
+The aggregator independently extracts the exact Git commit, compares the source
+archive hash and every backend/web source input (including original Go sums and
+the npm lock), and verifies every safe, bounded raw receipt against authenticated
+checksums. It replays the complete scanner parsers and checks tool identities,
+database/response hashes, native coverage, timestamps, process status and every
+finding against the raw reports. Supplying a `passed` wrapper, dropping a
+finding, altering an existing disposition or omitting raw execution receipts
+cannot substitute for this evidence.
+
+For each platform independently, it derives module-only Go package absence
+from the full official OSV records retained in the pinned scanner's raw database
+response. Selected module versions and imported module `h1` sums must agree with
+the committed source and both compiler graphs. All matching official affected
+import paths across every advisory range must be valid and absent from both the
+all-root and server graph. Withdrawn advisories, incomplete paths, changed module
+versions, package/symbol findings and affected imports fail. npm must retain a
+complete, error-free zero-finding audit for both native executions.
+
+The resulting unsigned report contains exactly `backend-source` and `web-source`
+rows, every Go finding with its independently derived facts and platform,
+both native measurements, original input hashes, resolver hash, all release
+subjects and the full binding digest. The trusted workflow must authenticate and
+sign this gate before publication. Test fixture authentication is not a live
+Sigstore verification; the local real AMD64 replay independently checked all 21
+existing Go module findings, but supplies neither authenticated ARM64 facts nor
+an actual signed passing release gate. Partial candidate report uploads cannot
+replay this gate after their full private raw receipts have been deleted.

@@ -8,10 +8,32 @@ The workflow does not build or publish an image. Commits and tags do not trigger
 this production workflow.
 
 The implementation and local SSH input/response tests are available. The
-production environment, deployment account/key, published ready release and
-end-to-end connection have **not** been provisioned or tested. The
+main-only production environment policy is configured; the deployment account/key,
+host settings, published ready release and end-to-end connection have **not** been
+provisioned or tested. The
 [release update guide](release-update-recovery.md) describes the required host
 configuration, encrypted off-host checkpoint hook and verification gates.
+
+## Active environment policy
+
+On 2026-10-08, the `production` environment was created as ID `23741939516`.
+Its only deployment policy is branch `main`, ID `62320707`, with no tag policy or
+required reviewer. Manual dispatch remains the deliberate operator action for
+this personal instance. The branch itself requires a PR and all five existing
+GitHub Actions checks, with force pushes and deletion blocked.
+
+Separate API reads verified the environment settings and the single allowed
+branch. The environment currently has no secrets or variables. No SSH identity
+was installed, host key trusted or production update dispatched by this setup.
+Keep the broad deployment verification tasks pending until those actions and the
+first published-release connection have actually passed.
+
+The environment request payloads are tracked in
+[production.json](../../.github/environments/production.json) and
+[production-branch-policy.json](../../.github/environments/production-branch-policy.json).
+They can be inspected before applying the same settings to another installation.
+[GitHub environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment),
+[deployment branch-policy API](https://docs.github.com/en/rest/deployments/branch-policies#create-a-deployment-branch-policy).
 
 ## Configure the host after release and recovery verification
 

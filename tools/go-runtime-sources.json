@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "kind": "pinned-go-runtime-sources",
+  "sources": [
+    {
+      "version": "go1.26.8",
+      "commit": "c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e",
+      "file": "go-c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e.tar.gz",
+      "url": "https://codeload.github.com/golang/go/tar.gz/c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e",
+      "sha256": "061b4e784db7ce97cd9ae99ea71a857a2ff8455c6400495e5d1a98b8accd2542",
+      "size": 34443123
+    }
+  ]
+}

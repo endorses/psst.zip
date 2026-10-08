@@ -1,0 +1,755 @@
+"""Map validated browser inputs to offered originals and build recipes.
+
+This library consumes already authenticated capture/npm facts and pinned,
+archive-verified upstream file maps. It does not authenticate an archive, approve
+publication, execute upstream scripts, or claim byte-identical reproduction.
+Upstream maps have {id: {record: catalog_record, files: {relative_path: bytes}}}.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
+
+import measure_browser_source_inventory as browser
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError("Browser preferred sources: " + message)
+
+
+def source_fact(upstreams, identifier, path, package=None):
+    path = browser.safe_path(path)
+    entry = upstreams.get(identifier)
+    require(isinstance(entry, dict), "Missing pinned upstream " + identifier)
+    record = entry["record"]
+    require(record["id"] == identifier, "Upstream identifier differs")
+    if package:
+        require(
+            record.get("packages", {}).get(package["name"]) == package["version"],
+            "Preferred upstream version differs from installed package",
+        )
+    raw = entry["files"].get(path)
+    require(
+        isinstance(raw, bytes) and len(raw) <= browser.MAX_FILE,
+        "Missing or excessive preferred input " + identifier + ":" + path,
+    )
+    return raw, {
+        "upstream": identifier,
+        "commit": record["commit"],
+        "archive_sha256": record["archive"]["sha256"],
+        "path": path,
+        "sha256": browser.digest(raw),
+        "size": len(raw),
+    }
+
+
+def recipe_facts(upstreams, identifier, paths, package):
+    return [source_fact(upstreams, identifier, path, package)[1] for path in paths]
+
+
+def json_input(raw):
+    return browser.json_record(raw)
+
+
+def lucide_icon(raw, upstreams, relative, package):
+    require(
+        re.fullmatch(r"dist/icons/[a-z0-9-]+\.svelte", relative),
+        "Unclassified Lucide icon path",
+    )
+    name = relative.removeprefix("dist/icons/").removesuffix(".svelte")
+    svg, svg_fact = source_fact(upstreams, "lucide", "icons/" + name + ".svg", package)
+    metadata, metadata_fact = source_fact(
+        upstreams, "lucide", "icons/" + name + ".json", package
+    )
+    require(
+        b"<!DOCTYPE" not in svg.upper() and b"<!ENTITY" not in svg.upper(),
+        "Unexpected SVG declarations",
+    )
+    root = ET.fromstring(svg)
+    require(root.tag.split("}")[-1] == "svg", "Invalid original SVG")
+    require(all(len(child) == 0 for child in root), "Nested original icon nodes")
+    expected = {
+        "name": name,
+        "size": 24,
+        "node": [[child.tag.split("}")[-1], child.attrib] for child in root],
+    }
+    aliases = json_input(metadata).get("aliases", [])
+    require(isinstance(aliases, list), "Invalid original aliases")
+    if aliases:
+        expected["aliases"] = [
+            alias if isinstance(alias, str) else alias["name"] for alias in aliases
+        ]
+    matches = re.findall(r"const iconData = (.*?);", raw.decode("utf-8"))
+    require(
+        len(matches) == 1 and json_input(matches[0].encode()) == expected,
+        "Generated icon data differs from pinned SVG/metadata",
+    )
+    return [svg_fact, metadata_fact]
+
+
+def qr_sources(upstreams, package, relative):
+    """Compare source-map originals, never execute/minify the retained code."""
+    map_path = relative + ".map"
+    raw, map_fact = source_fact(upstreams, "qr-scanner", map_path, package)
+    mapping = json_input(raw)
+    names, contents = mapping.get("sources"), mapping.get("sourcesContent")
+    require(
+        isinstance(names, list)
+        and isinstance(contents, list)
+        and len(names) == len(contents)
+        and 0 < len(names) <= 100
+        and len(names) == len(set(names)),
+        "Invalid embedded source map",
+    )
+    facts = [map_fact]
+    for name, content in zip(names, contents, strict=True):
+        require(isinstance(content, str), "Embedded original source is absent")
+        if name.startswith("node_modules/jsqr-es6/src/"):
+            identifier, path = "qr-scanner-decoder", name.removeprefix(
+                "node_modules/jsqr-es6/"
+            )
+        else:
+            require(
+                name in {"src/qr-scanner.ts", "src/worker.ts"},
+                "Unknown embedded QR source",
+            )
+            identifier, path = "qr-scanner", name
+        original, fact = source_fact(upstreams, identifier, path, package)
+        require(
+            original == content.encode("utf-8"),
+            "Embedded QR source differs from pinned original",
+        )
+        facts.append(fact)
+    return facts
+
+
+def relationship(raw, relative, package, upstreams):
+    """Return one explicit relationship for a known integrity-bound npm input."""
+    name = package["name"]
+    if name == "svelte" and relative == "compiler/index.js":
+        return {
+            "relationship": "compiler-bundle-from-preferred-javascript",
+            "inputs": [
+                source_fact(
+                    upstreams,
+                    "svelte",
+                    "packages/svelte/src/compiler/index.js",
+                    package,
+                )[1]
+            ],
+            "recipes": recipe_facts(
+                upstreams,
+                "svelte",
+                [
+                    "package.json",
+                    "pnpm-lock.yaml",
+                    "packages/svelte/package.json",
+                    "packages/svelte/rollup.config.js",
+                    "packages/svelte/scripts/generate-version.js",
+                    "packages/svelte/scripts/process-messages/index.js",
+                ],
+                package,
+            ),
+        }
+    direct = {
+        "svelte": ("svelte", "packages/svelte/"),
+        "@sveltejs/kit": ("sveltekit", "packages/kit/"),
+        "@sveltejs/adapter-static": ("sveltekit", "packages/adapter-static/"),
+        "qrcode": ("qrcode", ""),
+    }
+    if name in direct:
+        identifier, prefix = direct[name]
+        original, fact = source_fact(upstreams, identifier, prefix + relative, package)
+        require(original == raw, "Installed input differs from preferred original")
+        return {
+            "relationship": "byte-identical-original",
+            "inputs": [fact],
+            "recipes": [],
+        }
+    if name in {"dijkstrajs", "esm-env", "@sveltejs/vite-plugin-svelte"}:
+        require(
+            (name == "dijkstrajs" and relative == "dijkstra.js")
+            or (
+                name == "esm-env"
+                and relative
+                in {"true.js", "false.js", "dev-browser.js", "dev-server.js"}
+            )
+            or (
+                name == "@sveltejs/vite-plugin-svelte"
+                and relative.startswith("src/")
+                and relative.endswith(".js")
+            ),
+            "Unclassified original npm input",
+        )
+        return {"relationship": "original-npm-javascript", "inputs": [], "recipes": []}
+    if name == "qr-scanner":
+        require(
+            relative in {"qr-scanner.min.js", "qr-scanner-worker.min.js"},
+            "Unclassified QR scanner input",
+        )
+        original, fact = source_fact(upstreams, "qr-scanner", relative, package)
+        require(original == raw, "QR scanner input differs from pinned original")
+        return {
+            "relationship": "generated-with-embedded-originals",
+            "inputs": [fact, *qr_sources(upstreams, package, relative)],
+            "recipes": recipe_facts(
+                upstreams,
+                "qr-scanner",
+                ["package.json", "rollup.config.js", "tsconfig.json", "yarn.lock"],
+                package,
+            ),
+        }
+    noble = {
+        "@noble/curves": "noble-curves",
+        "@noble/hashes": "noble-hashes",
+        "@noble/ciphers": "noble-ciphers",
+    }
+    if name in noble:
+        require(relative.endswith(".js"), "Unclassified Noble input")
+        identifier = noble[name]
+        preferred = "src/" + relative.removesuffix(".js") + ".ts"
+        _, fact = source_fact(upstreams, identifier, preferred, package)
+        package_raw, _ = source_fact(upstreams, identifier, "package.json", package)
+        config_raw, _ = source_fact(upstreams, identifier, "tsconfig.json", package)
+        config, manifest = json_input(config_raw), json_input(package_raw)
+        require(
+            manifest.get("scripts", {}).get("build") == "tsc"
+            and config.get("compilerOptions", {}).get("rootDir") == "src"
+            and config["compilerOptions"].get("outDir") == "."
+            and config.get("extends") == "@paulmillr/jsbt/tsconfig.json",
+            "Noble source emission recipe changed",
+        )
+        lock_raw, _ = source_fact(upstreams, identifier, "package-lock.json", package)
+        jsbt = (
+            json_input(lock_raw).get("packages", {}).get("node_modules/@paulmillr/jsbt")
+        )
+        require(
+            isinstance(jsbt, dict)
+            and jsbt.get("version") == "0.7.1"
+            and jsbt.get("resolved")
+            == "https://registry.npmjs.org/@paulmillr/jsbt/-/jsbt-0.7.1.tgz"
+            and isinstance(jsbt.get("integrity"), str),
+            "Noble external config lock absent",
+        )
+        external_raw, external_fact = source_fact(upstreams, "jsbt", "tsconfig.json")
+        metadata_raw, metadata_fact = source_fact(upstreams, "jsbt", "package.json")
+        external = json_input(external_raw)
+        metadata = json_input(metadata_raw)
+        external_record = upstreams["jsbt"]["record"].get("relationship", {})
+        require(
+            external_record.get("kind") == "build-configuration"
+            and metadata.get("name") == external_record.get("name") == "@paulmillr/jsbt"
+            and metadata.get("version")
+            == external_record.get("version")
+            == jsbt["version"]
+            and external_record.get("integrity") == jsbt["integrity"]
+            and external_record.get("configuration_sha256") == external_fact["sha256"]
+            and isinstance(external.get("compilerOptions"), dict)
+            and "extends" not in external,
+            "Noble external configuration differs from pinned source/lock",
+        )
+        return {
+            "relationship": "typescript-emission",
+            "inputs": [fact],
+            "recipes": recipe_facts(
+                upstreams,
+                identifier,
+                ["package.json", "tsconfig.json", "package-lock.json"],
+                package,
+            ),
+            "external_configuration": {
+                "name": "@paulmillr/jsbt",
+                "path": "tsconfig.json",
+                **{key: jsbt[key] for key in ("version", "resolved", "integrity")},
+                "retained": True,
+                "source": external_fact,
+                "package_manifest": metadata_fact,
+            },
+        }
+    if name in {"hpke", "@panva/hpke-noble"}:
+        require(relative == "index.js", "Unclassified HPKE input")
+        preferred = "index.ts" if name == "hpke" else "examples/noble-suite/index.ts"
+        _, fact = source_fact(upstreams, "hpke", preferred, package)
+        recipes = [
+            "package.json",
+            "build.cjs",
+            "tools/clean-javascript.cjs",
+            "tsconfig.json",
+            "package-lock.json",
+        ]
+        if name != "hpke":
+            recipes += [
+                "examples/noble-suite/package.json",
+                "examples/noble-suite/tsconfig.json",
+            ]
+        else:
+            original, emitted = source_fact(upstreams, "hpke", "index.js", package)
+            require(
+                original == raw, "HPKE generated input differs from committed original"
+            )
+            return {
+                "relationship": "byte-identical-upstream-emission",
+                "inputs": [fact, emitted],
+                "recipes": recipe_facts(upstreams, "hpke", recipes, package),
+            }
+        return {
+            "relationship": "type-stripping-and-import-rewrite",
+            "inputs": [fact],
+            "recipes": recipe_facts(upstreams, "hpke", recipes, package),
+        }
+    if name == "fflate":
+        require(relative == "esm/browser.js", "Unclassified fflate input")
+        return {
+            "relationship": "typescript-emission-and-browser-worker-rewrite",
+            "inputs": [
+                source_fact(upstreams, "fflate", path, package)[1]
+                for path in ["src/index.ts", "src/worker.ts"]
+            ],
+            "recipes": recipe_facts(
+                upstreams,
+                "fflate",
+                [
+                    "package.json",
+                    "package-lock.json",
+                    "tsconfig.json",
+                    "tsconfig.esm.json",
+                    "scripts/rewriteBuilds.ts",
+                ],
+                package,
+            ),
+        }
+    if name == "clsx":
+        require(relative == "dist/clsx.mjs", "Unclassified clsx input")
+        return {
+            "relationship": "javascript-minification",
+            "inputs": [source_fact(upstreams, "clsx", "src/index.js", package)[1]],
+            "recipes": recipe_facts(
+                upstreams, "clsx", ["package.json", "bin/index.js"], package
+            ),
+        }
+    if name == "@lucide/svelte":
+        recipes = [
+            "packages/svelte/package.json",
+            "packages/svelte/svelte.config.js",
+            "packages/svelte/tsconfig.json",
+            "packages/svelte/scripts/license.mts",
+            "packages/svelte/scripts/appendBlockComments.mts",
+            "pnpm-lock.yaml",
+        ]
+        if relative.startswith("dist/icons/"):
+            facts = lucide_icon(raw, upstreams, relative, package)
+            recipes += [
+                "packages/svelte/scripts/exportTemplate.mts",
+                "tools/build-icons/index.ts",
+                "tools/build-icons/building/generateIconFiles.ts",
+                "tools/build-icons/render/renderIconsObject.ts",
+                "tools/build-icons/utils/getIconMetaData.ts",
+                "tools/build-icons/package.json",
+            ]
+            kind = "svg-and-metadata-icon-generation"
+        else:
+            mapping = {
+                "dist/Icon.svelte": "packages/svelte/src/Icon.svelte",
+                "dist/context.js": "packages/svelte/src/context.ts",
+                "dist/utils/buildLucideIconNode.js": "packages/shared/src/build/buildLucideIconNode.ts",
+                "dist/utils/defaultAttributes.js": "packages/shared/src/build/defaultAttributes.ts",
+                "dist/utils/hasA11yProp.js": "packages/shared/src/utils/hasA11yProp.ts",
+                "dist/utils/mergeClasses.js": "packages/shared/src/utils/mergeClasses.ts",
+            }
+            require(relative in mapping, "Unclassified Lucide input")
+            facts = [source_fact(upstreams, "lucide", mapping[relative], package)[1]]
+            recipes += ["packages/svelte/scripts/patchCopiedUtils.mts"]
+            kind = "svelte-packaging-and-type-stripping"
+        return {
+            "relationship": kind,
+            "inputs": facts,
+            "recipes": recipe_facts(upstreams, "lucide", recipes, package),
+        }
+    require(False, "Unclassified rendered package " + name)
+
+
+def verify_preferred_relationships(inventory, tree: Path, npm_members, upstreams):
+    """Resolve every actually rendered package input using authenticated facts.
+
+    Nonpackage, virtual and excluded rows remain the producer's other categories.
+    npm_members is the unchanged mapping returned by native.npm_members().
+    External build configurations are reported explicitly, not marked retained.
+    """
+    members = {}
+    for archive in npm_members.values():
+        for path, checksum in archive["members"].items():
+            require(path not in members, "Duplicate authenticated npm member")
+            members[path] = (checksum, archive["sha256"])
+    facts = {}
+    for row in inventory["modules"]:
+        package = row.get("package")
+        if package is None:
+            continue
+        path = browser.safe_path(row["module_path"])
+        prefix = browser.safe_path(package["lock_path"]) + "/"
+        require(
+            path.startswith(prefix) and path not in facts,
+            "Rendered package path differs or repeats",
+        )
+        raw = browser.read_file(tree, path)
+        checksum = browser.digest(raw)
+        require(
+            path in members and checksum == members[path][0] == row["source_sha256"],
+            "Rendered input differs from authenticated npm original",
+        )
+        facts[path] = {
+            "sha256": checksum,
+            "npm_archive_sha256": members[path][1],
+            **relationship(raw, path[len(prefix) :], package, upstreams),
+        }
+    return {
+        "kind": "browser-preferred-source-relationships",
+        "modules": facts,
+        "byte_reproduction_verified": False,
+    }
+
+
+def verify_captured_compiler_inputs(tree: Path, npm_members, upstreams, recipes):
+    """Map validated compiler/plugin capture catalog as a separate category.
+
+    Pass the recipes dictionary returned by native.recipe_plan(). Both captures
+    are required. Vite virtual modules and Kit generated application outputs
+    remain separate producer associations.
+    """
+    rows = []
+    authenticated = {
+        path: checksum
+        for archive in npm_members.values()
+        for path, checksum in archive["members"].items()
+    }
+    for key, expected_name in (
+        ("svelte_compiler", "svelte"),
+        ("svelte_plugin", "@sveltejs/vite-plugin-svelte"),
+    ):
+        recipe = recipes.get(key)
+        require(
+            isinstance(recipe, dict) and recipe.get("name") == expected_name,
+            "Compiler/preprocessor recipe capture is absent",
+        )
+        location = browser.safe_path(recipe["lock_path"])
+        require(
+            location == "node_modules/" + expected_name,
+            "Compiler/preprocessor location differs",
+        )
+        require(
+            isinstance(recipe["members"], list)
+            and 0 < len(recipe["members"]) <= 512
+            and len(set(recipe["members"])) == len(recipe["members"]),
+            "Invalid captured compiler members",
+        )
+        for relative in recipe["members"]:
+            path = location + "/" + browser.safe_path(relative)
+            require(
+                path in authenticated, "Compiler input lacks authenticated npm original"
+            )
+            rows.append(
+                {
+                    "package": {
+                        "name": expected_name,
+                        "version": recipe["version"],
+                        "lock_path": location,
+                    },
+                    "module_path": path,
+                    "source_sha256": authenticated[path],
+                }
+            )
+    result = verify_preferred_relationships(
+        {"modules": rows}, tree, npm_members, upstreams
+    )
+    return {
+        "kind": "browser-compiler-preferred-source-relationships",
+        "inputs": result["modules"],
+        "byte_reproduction_verified": False,
+    }
+
+
+def verify_generator_relationships(
+    inventory,
+    tree: Path,
+    npm_members,
+    upstreams,
+    plan,
+    module_relationships,
+    git_inputs,
+):
+    """Map retained generator inputs; this does not regenerate derived JavaScript.
+
+    The caller has independently replayed native recipe_plan, npm and Git facts.
+    Unknown rendered virtual/generated inputs refuse a complete association.
+    """
+    authenticated = {
+        path: checksum
+        for archive in npm_members.values()
+        for path, checksum in archive["members"].items()
+    }
+
+    def captured(path):
+        raw = browser.read_file(tree, path)
+        require(
+            path in authenticated and browser.digest(raw) == authenticated[path],
+            "Generator input differs from authenticated npm original",
+        )
+        return raw
+
+    recipes = plan["recipes"]
+    generators, virtual, generated = {}, {}, {}
+    if "kit" in recipes:
+        kit = recipes["kit"]
+        for member in kit["members"]:
+            path = kit["lock_path"] + "/" + member
+            raw = captured(path)
+            original, fact = source_fact(
+                upstreams, "sveltekit", "packages/kit/" + member, kit
+            )
+            require(raw == original, "Kit generator differs from preferred original")
+            generators[path] = {"sha256": authenticated[path], "preferred_source": fact}
+    if "vite" in recipes:
+        vite = recipes["vite"]
+        path = vite["lock_path"] + "/" + vite["generator"]
+        raw = captured(path)
+        source_paths = [
+            "packages/vite/package.json",
+            "packages/vite/rollup.config.ts",
+            "pnpm-lock.yaml",
+            "packages/vite/src/node/build.ts",
+            "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+        ]
+        commonjs_paths = [
+            "package.json",
+            "pnpm-lock.yaml",
+            "pnpm-workspace.yaml",
+            "packages/commonjs/package.json",
+            "packages/commonjs/rollup.config.mjs",
+            "shared/rollup.config.mjs",
+            "packages/commonjs/src/index.js",
+            "packages/commonjs/src/helpers.js",
+            "packages/commonjs/src/proxies.js",
+            "packages/commonjs/src/utils.js",
+        ]
+        sources = recipe_facts(upstreams, "vite", source_paths, vite)
+        commonjs = recipe_facts(upstreams, "rollup-commonjs", commonjs_paths, vite)
+        lock, _ = source_fact(upstreams, "vite", "pnpm-lock.yaml", vite)
+        # Select the exact Vite importer, never another workspace's first version.
+        importer = re.findall(
+            rb"^  packages/vite:\n(.*?)(?=^  \S|^\S|\Z)", lock, re.M | re.S
+        )
+        require(len(importer) == 1, "Vite source lock importer missing or ambiguous")
+        locked = re.findall(
+            rb"^      '@rollup/plugin-commonjs':\n        specifier: [^\n]+\n        version: ([0-9]+\.[0-9]+\.[0-9]+)(?:\([^\n]*\))?\n",
+            importer[0],
+            re.M,
+        )
+        manifest_raw, _ = source_fact(
+            upstreams, "rollup-commonjs", "packages/commonjs/package.json", vite
+        )
+        manifest = json_input(manifest_raw)
+        require(
+            locked == [b"28.0.3"]
+            and manifest.get("name") == "@rollup/plugin-commonjs"
+            and manifest.get("version") == "28.0.3",
+            "Vite CommonJS generator version differs from preferred source lock",
+        )
+        helper_raw, _ = source_fact(
+            upstreams, "rollup-commonjs", "packages/commonjs/src/helpers.js", vite
+        )
+        helpers = re.findall(
+            rb"(?m)^const HELPERS = `([\s\S]*?)`;\n\nexport function getHelpersModule\(\) \{\n  return HELPERS;\n\}",
+            helper_raw,
+        )
+        require(
+            len(helpers) == 1
+            and helpers[0]
+            and helpers[0] in raw
+            and all(marker not in helpers[0] for marker in (b"`", b"${", b"\\")),
+            "Vite bundled CommonJS helper differs from preferred original",
+        )
+        installed_manifest = json_input(captured(vite["lock_path"] + "/package.json"))
+        source_manifest_raw, _ = source_fact(
+            upstreams, "vite", "packages/vite/package.json", vite
+        )
+        source_manifest = json_input(source_manifest_raw)
+        require(
+            installed_manifest.get("name") == source_manifest.get("name") == "vite"
+            and installed_manifest.get("version")
+            == source_manifest.get("version")
+            == vite["version"]
+            and installed_manifest.get("devDependencies", {}).get(
+                "@rollup/plugin-commonjs"
+            )
+            == source_manifest.get("devDependencies", {}).get("@rollup/plugin-commonjs")
+            == "^28.0.3",
+            "Vite package/generator identity differs from preferred source",
+        )
+        preload, _ = source_fact(
+            upstreams,
+            "vite",
+            "packages/vite/src/node/plugins/importAnalysisBuild.ts",
+            vite,
+        )
+        templates = re.findall(rb"const preloadCode = `([^`]+)`", preload)
+        require(
+            len(templates) == 1, "Preferred Vite preload template missing or ambiguous"
+        )
+        renamed = (
+            templates[0]
+            .replace(b"${scriptRel}", b"${scriptRel2}")
+            .replace(b"${assetsURL}", b"${assetsURL2}")
+        )
+        require(
+            renamed in raw
+            and all(
+                marker in preload and marker in raw
+                for marker in (
+                    b"\\0vite/preload-helper.js",
+                    b"__vitePreload",
+                    b"__VITE_PRELOAD__",
+                )
+            ),
+            "Vite bundled preload template differs from preferred original",
+        )
+        generators[path] = {
+            "sha256": authenticated[path],
+            "preferred_sources": sources + commonjs,
+            "commonjs_helpers_sha256": browser.digest(helpers[0]),
+            "commonjs_helpers_size": len(helpers[0]),
+            "preload_template_sha256": browser.digest(templates[0]),
+            "preload_template_association": "scriptRel/assetsURL renamed to scriptRel2/assetsURL2",
+            "relationship": "vite-bundle-of-pinned-typescript-and-commonjs-generators",
+        }
+    allowed_families = {
+        "vite-commonjs-exports",
+        "vite-commonjs-module",
+        "vite-commonjs-es-import",
+        "vite-commonjs-helper",
+        "vite-preload-helper",
+    }
+    for row in plan["virtual_inputs"]:
+        if not row["rendered_in_client_chunks"]:
+            continue
+        require(
+            row["association"] == "reviewed-generator"
+            and row.get("family") in allowed_families
+            and row.get("generator") in generators,
+            "Unclassified rendered virtual generator",
+        )
+        origin = row.get("module_path")
+        if row["family"] in {
+            "vite-commonjs-exports",
+            "vite-commonjs-module",
+            "vite-commonjs-es-import",
+        }:
+            require(
+                origin in module_relationships["modules"],
+                "Virtual wrapper physical source is not covered",
+            )
+        else:
+            require(
+                origin is None, "Fixed virtual helper has an unexpected physical source"
+            )
+        virtual[row["id"]] = {
+            "family": row["family"],
+            "generator": row["generator"],
+            "physical_source": (
+                None
+                if origin is None
+                else {
+                    "module_path": origin,
+                    "sha256": module_relationships["modules"][origin]["sha256"],
+                }
+            ),
+        }
+    rows = {
+        row["module_path"]: row
+        for row in inventory["modules"] + inventory["excluded_modules"]
+        if row["kind"] == "generated-application"
+    }
+    for row in plan["generated_inputs"]:
+        if (
+            row["association"] != "reviewed-generator"
+            and not row["rendered_in_client_chunks"]
+        ):
+            continue
+        require(
+            row["association"] == "reviewed-generator"
+            and row.get("generator") in generators,
+            "Unclassified rendered application generator",
+        )
+        original = rows.get(row["file"])
+        raw = browser.read_file(tree, row["file"])
+        require(
+            original is not None and original["source_sha256"] == browser.digest(raw),
+            "Generated application input differs from measured source",
+        )
+        generator = captured(row["generator"])
+        require(
+            all(name.encode() in generator for name in row["function"].split("/")),
+            "Generated application function missing from retained recipe",
+        )
+        generated[row["file"]] = {
+            "source_sha256": browser.digest(raw),
+            "generator": row["generator"],
+            "function": row["function"],
+            "invocation": row["invocation"],
+            "rendered_in_client_chunks": row["rendered_in_client_chunks"],
+        }
+    require(
+        set(virtual)
+        == {
+            row["id"]
+            for row in inventory["modules"]
+            if row["kind"] == "virtual" and row["rendered_in"]
+        },
+        "Rendered virtual input missing from generator associations",
+    )
+    require(
+        {path for path, fact in generated.items() if fact["rendered_in_client_chunks"]}
+        == {
+            row["module_path"]
+            for row in inventory["modules"]
+            if row["kind"] == "generated-application" and row["rendered_in"]
+        },
+        "Rendered application input missing from generator associations",
+    )
+    project = {
+        path: fact
+        for path, fact in git_inputs.items()
+        if path.startswith("src/")
+        or path
+        in {
+            "package.json",
+            "package-lock.json",
+            "svelte.config.js",
+            "vite.config.ts",
+            "tsconfig.json",
+            "src/app.html",
+            "Dockerfile",
+            "scripts/browser-module-inventory.mjs",
+        }
+    }
+    require(
+        {
+            "package.json",
+            "package-lock.json",
+            "svelte.config.js",
+            "vite.config.ts",
+            "Dockerfile",
+        }
+        <= set(project),
+        "Git-bound browser project build inputs missing",
+    )
+    return {
+        "kind": "browser-generator-preferred-source-relationships",
+        "generators": generators,
+        "virtual_inputs": virtual,
+        "generated_inputs": generated,
+        "project_build_inputs": project,
+        "byte_reproduction_verified": False,
+    }

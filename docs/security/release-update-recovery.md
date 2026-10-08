@@ -19,9 +19,11 @@ Install the entry point and its parser into a root-owned tree, separate from the
 operator checkout. Install only code from an authenticated reviewed release or
 reviewed administrator-controlled checkout. For future helper updates, first
 verify the detached manifest, bundle and selected source against the existing
-verification policy; then have the local administrator install the authenticated
-helper/parser pair. An application update never silently replaces running
-privileged tooling with bundle code.
+verification policy; then have the local administrator review and install the
+authenticated helper/parser pair. A changed certificate/commit verification policy
+requires that separate trusted installation step; updating this repository does
+not upgrade an already installed helper. An application update never silently
+replaces running privileged tooling with bundle code.
 
 For example, after verifying the source tree locally, run as root:
 
@@ -151,8 +153,14 @@ only `deployment-ready`, non-draft, non-prerelease assets from the fixed reposit
 Checksums establish consistency. Cryptographic verification uses
 `gh attestation verify` for the detached manifest, deployment bundle, both image
 indexes and their four platform-specific children. Every subject must match the
-configured repository, exact release workflow, source digest, version-tag source
-ref and GitHub-hosted runner identity. The updater then checks the actual index's
+configured repository on explicit `github.com`, the exact certificate SAN
+`https://github.com/OWNER/REPO/.github/workflows/release.yml@refs/tags/VERSION`,
+both signer and source commit digests, the version-tag source ref, GitHub OIDC
+issuer, the SLSA provenance-v1 predicate and GitHub-hosted runner identity. The
+helper uses `--cert-identity` rather than combining it with the CLI's mutually
+exclusive `--signer-workflow` selector. Workflow configuration is restricted to
+that repository's reviewed `.github/workflows/release.yml`; version and commit
+bindings are validated before calling the CLI. The updater then checks the actual index's
 AMD64/ARM64 child descriptors against the authenticated manifest. Attestation or
 registry failure stops preparation; no bundle updater is imported or executed.
 
@@ -376,7 +384,7 @@ Run the fast disposable transaction/input suite from the repository:
 PYTHONPATH=tools python3 -m unittest tools.test_release_updater -v
 ```
 
-The fast updater suite includes 35 disposable tests. It covers authenticated
+The fast updater suite includes 37 disposable tests. It covers authenticated
 input rejection, actual mapping/port/account/config and capacity drift,
 stopped-backup corruption, root/path and restricted-SSH boundaries, lock
 contention, durable interruption, before/after-startup faults, absence of old-binary
@@ -384,6 +392,15 @@ automatic rollback, honest pending verification, protected-hook activation,
 private authentication/reconciliation gates, isolated restore, conservative
 traffic reconciliation and protocol-capability versus operator-policy changes.
 SQLite tests use only their own disposable databases and read-only integrity checks.
+The identity-policy regression covers manifest, bundle and image subjects and
+rejects malformed source/ref bindings and weak workflow selectors before invoking
+the CLI. An actual GitHub CLI 2.101.0 parser check accepts the generated identity policy
+for file and OCI subjects, then fails on deliberately missing test-local trust
+material before network verification. Those trust overrides exist only in tests.
+This check validates argument compatibility, not a successful attestation; the
+earlier historical Docker exercises replaced acquisition and do not establish live
+verification under the strengthened policy. Genuine matching release attestations
+still need their separate acceptance gate.
 
 The root/Docker integration gate uses a nested Docker daemon without a host Docker
 socket, host root bind or outer published port. It builds committed application
@@ -452,3 +469,59 @@ ACME, operator-configured external backup restore, installed restricted SSH and
 the current VPS migration remain separate acceptance gates. Passing this fixture
 does not establish them. Use `tools/test_external_proxy.py --certificate-state`
 for additional gateway controls alongside deployment-plan acceptance checks.
+
+## Post-assembly native recovery measurements
+
+`tools/measure_release_recovery.py` measures the actual prepared candidate after
+both native architectures and release-input assembly are available. Supply both
+retained native descriptors, the assembled manifest and deployment bundle, and
+the genuine historical source commit. Only the selected native platform runs the
+isolated Docker experiment; the other platform's input bytes are validated without
+manufacturing an execution result.
+
+```sh
+python3 tools/measure_release_recovery.py \
+  --root . --repository endorses/psst.zip \
+  --version "$PSST_RELEASE_VERSION" --commit "$PSST_SOURCE_COMMIT" \
+  --platform linux/amd64 \
+  --native "linux/amd64=$AMD64_OUTPUT/native-artifacts.json" \
+  --native "linux/arm64=$ARM64_OUTPUT/native-artifacts.json" \
+  --manifest "$PREPARED_OUTPUT/release-manifest.json" \
+  --bundle "$PREPARED_BUNDLE" \
+  --previous-source 2ed02af8a062bb3cc21a80a1503d31775dd6e5d8 \
+  --output "$NEW_RECOVERY_MEASUREMENT"
+```
+
+The producer validates four actual OCI graphs, tested configurations, exact index
+children, build records, saved-layer hashes, source-pack/replay bindings and the
+entire source-owned bundle against the candidate Git tree before privileged
+execution. It also pins every fixture helper to that exact commit. A rehashed
+substituted updater, parser, deployment configuration or notice is rejected.
+
+The experiments cover ordinary upgrade/reapply/isolated restore, the same sequence
+with the original incident pause enabled, and an injected post-migration startup
+failure followed by isolated restore. Reapplication uses the exact same version,
+manifest and candidate bytes, rather than pretending to build a second release.
+Structured durable transaction, authenticated flow, schema, checkpoint, storage
+and certificate observations drive the measurement; printed PASS messages are not
+evidence. Scoped Docker removal and absence checks must complete successfully
+before a result can return. Cleanup failure prevents a terminal measurement.
+
+The historical AMD64 compatibility check of the shared harness ran on candidate
+`c161836caf66631faa1eecdc901029464aa25e93` and the baseline above in 130.8 seconds.
+It preserved the original pause at all three public activations, observed schema
+47 advancing to 48, rejected the historical CLI against the migrated original,
+and completed an isolated restore with schema 48. Authenticated receipts contained
+8/8/11 checks, and the stopped checkpoint retained two images, three volumes and
+five protected configuration records. This legacy harness check uses subsequent
+local fixture versions and does not replace the new producer's same-version,
+final-overlaid, two-architecture exercise.
+
+The producer retains explicit `public_provenance_verified: false`,
+`off_host_provider_verified: false`, `browser_mobile_flows_verified: false` and
+`upgrade_recovery_gate_pending: true`. Local registry acquisition and encrypted
+external-store simulation do not establish public attestations or independent
+remote recovery. Eleven producer/cleanup boundary tests and thirty-seven updater
+tests passed after the source-pinning and cleanup fixes. Genuine prepared inputs
+for both architectures, complete execution, authentication and workflow gate
+aggregation remain pending.

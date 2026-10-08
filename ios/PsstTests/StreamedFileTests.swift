@@ -8,17 +8,24 @@ import XCTest
 final class StreamedFileTests: XCTestCase {
     private let key = Data(repeating: 7, count: 32).toKotlinByteArray()
     private let context = String(repeating: "a", count: 32)
+    // Bridge one nonzero full chunk once, retaining meaningful digest checks
+    // without rebuilding identical plaintext for every authenticated frame.
+    private lazy var fullChunk = Data(repeating: 9, count: StreamedFiles.chunkBytes).toKotlinByteArray()
     private func metadata(_ size: Int64) -> FileMetadata {
         FileMetadata(
             name: "large.bin", size: size, mimeType: "application/octet-stream", blobId: UUID().uuidString,
             encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: context)
     }
 
-    private func frame(total: Int64, index: Int64, byte: UInt8 = 9) throws -> KotlinByteArray {
+    private func frame(total: Int64, index: Int64) throws -> KotlinByteArray {
         let count = try Int(ChunkedFileCrypto.shared.plaintextSize(totalSize: total, index: index))
+        // encrypt copies header + plaintext; it cannot mutate this cached input.
+        let plaintext =
+            count == StreamedFiles.chunkBytes
+            ? fullChunk : Data(repeating: 9, count: count).toKotlinByteArray()
         return try ChunkedFileCrypto.shared.encrypt(
             key: key, id: context, totalSize: total, index: index,
-            plaintext: Data(repeating: byte, count: count).toKotlinByteArray())
+            plaintext: plaintext)
     }
 
     func testMoreThan100MiBWritesFramesWithoutWholeFileBuffer() throws {

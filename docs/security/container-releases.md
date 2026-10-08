@@ -6,35 +6,170 @@ are a separate manual action. The release publishing and updater tooling are
 being implemented; these templates alone do not establish a verified release. No
 tagged container release has been published through this release process yet.
 
+Routine pushes and pull requests retain security/history checks and select
+application steps from their source, build and fixture dependencies. Prose-only
+documentation and reviewed release-tooling changes can omit unrelated app builds.
+The five existing check names remain present; each scope step explains its
+selection. An omitted application suite has not executed. Unknown changes or
+unavailable Git baselines run everything. Manual CI and reusable release calls
+always request the full application suite.
+
 ## Release candidate checks
 
-The current `.github/workflows/release.yml` verifies candidates without publishing
-images or a GitHub Release. It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
+The current `.github/workflows/release.yml` verifies candidates and contains an
+explicitly enabled, protected publication job. Publication is disabled by default.
+It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
 the tag's full source commit to match the triggering event and be reachable from
 `main`, and calls the reusable CI workflow from that same commit. All five CI
 jobs remain required, including native iOS and Android/shared checks.
 
-After CI succeeds, it resolves the application base-image indexes and BuildKit
-builder once and checks their AMD64 and ARM64 coverage. Separate native runners
-build and smoke-test the paired images for each architecture, recording the
-pinned bases and actual toolchains. The smoke harness locks execution to checked
-configuration IDs and records actual checks, native/emulated execution and
-cleanup in `image-smoke.json`. Only candidate metadata is uploaded as
-temporary Actions artifacts. Image archives remain private to each runner and
-are removed after checking. These outputs are not authenticated release manifests
-or installable deployment bundles.
+A main-only manual dispatch accepts an unused planned version, defaulting to
+`v0.1.0`, without creating a tag or release. It can exercise preparation before
+publication is enabled. Its successful checks cannot satisfy the exact-tag
+publication gate.
+
+After CI succeeds, the workflow resolves the application base-image indexes and
+BuildKit builder once and checks their AMD64 and ARM64 coverage. Separate native
+runners build the paired images and retain genuine build records and original
+Docker saves. Each runner then collects runtime sources, verifies signed Caddy
+sources, applies source/notice overlays, smoke-tests the final configurations,
+exports OCI archives without changing tested configuration bytes and independently
+replays runtime source correspondence. It also scans the exact archived
+application sources and final OCI images, measures compiler/dependency graphs,
+and retains selected Go/npm package inputs against committed locks.
+
+The workflow retains unsigned native image/source archives, raw scanner/compiler
+receipts and explicit file/hash inventories as one-day candidate artifacts. A
+separate job independently checks same-run, same-attempt inputs from both native
+runners and the common upstream source collection before preparing the paired
+indexes, detached manifest, deployment bundle and source offerings. Both native
+recovery jobs then exercise those exact prepared inputs. Downloaded artifacts
+still require independent authentication and release gates; neither summaries
+nor successful structural assembly approve publication. Private operator state,
+credentials, disposable recovery stores, tools and caches are excluded. Runner
+cleanup removes only that job's working inputs after artifact retention.
+
+Complete AMD64 preparation and transfer replay were exercised locally. The new
+cross-job assembly/recovery workflow and native ARM64 verification remain unrun.
+These candidate outputs are not authenticated installable releases.
 
 Docker's local `--load` exporter can report a configuration digest in its
 `containerimage.digest` field. Candidate records retain that raw metadata, but
 those values must not be used as registry manifest or index digests. The future
 publisher must resolve and verify the digests actually stored in the registry.
 
-The workflow has read-only repository permissions and no registry publishing,
-attestation or production credentials. Main-branch pushes still run CI only.
-Publication will be added after its provenance, version-reservation, dependency
-review and source/license gates are implemented; production deployment will
-remain a separate manual operation. Tag ancestry checks do not configure branch
-or tag protection; those repository settings are a separate maintainer task.
+The workflow defaults to read-only repository permissions. Tagged evidence jobs
+receive scoped OIDC/attestation permissions; only the guarded publication job can
+write packages or releases after exact signed gates and protected review. Planned
+dispatches remain unsigned, read-only candidates. No release job has production
+access. Main-branch pushes run CI only. Publication remains disabled until private
+recovery storage, dedicated inspection credentials and the first-package procedure
+are configured and verified as described in the
+[publication guide](container-publication.md). Production deployment remains a
+separate manual operation. Tag ancestry checks do not replace branch/tag policy;
+the configured policies for this instance are recorded in the plan and operator
+guides.
+
+## Maintainer path to a ready release
+
+For the first container release, use `v0.1.0` and preserve the existing `v0.0.0`
+tag. A main push runs source CI. The guarded publication transport and signing
+bridge are wired into the tag workflow, but publication remains disabled while
+live prerequisites are incomplete.
+
+- [ ] Review and commit the complete release source and workflow. Push the
+      reviewed checkpoint only with authorization, then verify routine CI on
+      that exact commit. The planned candidate below repeats full source CI,
+      including application suites selected out by routine checks.
+- [ ] Exercise the main-only planned-version candidate. For this repository, the
+      dispatch command is:
+
+      ```sh
+      gh workflow run release.yml --repo endorses/psst.zip --ref main \
+        -f planned_version=v0.1.0
+      gh run list --repo endorses/psst.zip --workflow release.yml --branch main
+      ```
+
+      Record the selected run ID, attempt and full source SHA. Confirm both
+      native preparation jobs, upstream retention, assembly and both recovery
+      jobs succeed. Rerun the complete workflow when needed: retrying only failed
+      jobs can leave same-attempt input artifacts unavailable. This dispatch
+      creates no version tag and does not satisfy tagged publication checks.
+
+- [ ] Complete the [source review](application-package-source-review.md),
+      actual native scanner/smoke/recovery gates and their authentication. Review
+      exact image configurations and all corresponding-source offerings; a green
+      candidate summary alone is insufficient.
+- [ ] Configure reviewed branch/tag protection, immutable-release policy, private
+      recovery storage and narrowly scoped publication credentials. Review the
+      wired publisher and complete its prerequisites in the
+      [publication guide](container-publication.md) before creating a release tag.
+      When both packages are absent, configure its explicit first-package mode;
+      that same publishing attempt creates the reviewed pair and verifies public
+      repository linkage before exposing version tags or a ready release. This
+      instance's branch/tag and immutable-release policies are configured;
+      storage, inspection credentials and actual first-package initialization
+      remain pending.
+- [ ] Once publishing is enabled, create an unused version tag at the reviewed
+      source SHA and push that tag. Its workflow must rerun CI for that exact
+      tagged commit, authenticate the complete image/source/bundle subjects and
+      publish only after every gate passes. Never move an existing release tag
+      or replace a partially published version to hide an interruption.
+- [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
+      both multi-platform image indexes, all four native children, source assets
+      and fresh anonymous retrieval. Follow the publication guide's protected
+      journal recovery if publication is interrupted. Publishing makes a release
+      available; it does not update the VPS.
+
+The detailed [native preparation guide](container-native-preparation.md) records
+the measured inputs, replay commands and remaining hosted gates. These steps
+describe the full maintainer path; they do not establish live publication or a
+first ready release.
+
+## Operator path for updates and recovery
+
+After a ready release and the separately reviewed installed updater are available,
+manual SSH and Actions use the same version-only update command. Complete actual
+volume/configuration adoption, an encrypted off-host checkpoint export and an
+independent restore exercise before the first production migration. The
+[update/recovery guide](release-update-recovery.md) specifies the protected host
+configuration, backup hook and authenticated application checks. The
+[backup runbook](backup-restore.md) covers maintenance copies and security
+reconciliation after restore.
+
+From the existing maintenance SSH connection, run the installed root-owned
+helper as the administrator:
+
+```sh
+/usr/bin/python3 -I /usr/local/lib/psst.zip/deploy/update.py status
+/usr/bin/python3 -I /usr/local/lib/psst.zip/deploy/update.py update v0.1.0
+```
+
+Check the protected transaction, active version and application state. Exit zero
+with phase `completed` confirms activation. Exit 20 means the isolated candidate
+is awaiting local authenticated verification; follow the update guide before
+running its `verify` command. Keep client-held encryption keys available for the
+existing download and new upload checks. Preserve the checkpoint, original data
+and matching images until retention policy permits removal.
+
+For subsequent Actions updates, first provision and validate the dedicated
+restricted SSH key and `production` environment using the
+[Actions deployment guide](actions-production-deployment.md), then select a
+published ready version:
+
+```sh
+gh workflow run deploy.yml --repo endorses/psst.zip --ref main -f version=v0.1.0
+```
+
+Use maintenance access to inspect durable host status after any disconnect,
+timeout or failed workflow. Before migration starts, `recover-safe` can restore
+the checked original state. After the migration/startup boundary, use the update
+guide's explicit isolated `restore` procedure with the matching stopped
+checkpoint; complete security/traffic reconciliation before activation. An image
+tag change alone cannot roll back migrated storage. Rotation, maintenance backup
+and retention commands remain operator actions through the protected helper.
+
+The first manual VPS migration and end-to-end Actions update remain unperformed.
 
 ## Compose requirements and image selection
 
@@ -199,6 +334,35 @@ another listener on the same public ports. A different external proxy requires a
 operator-specific reviewed configuration; this overlay is a complete separate
 Caddy TLS gateway, not a universal proxy integration.
 
+Exercise this release configuration with an already-loaded backend/web image pair
+from the same source checkout. Supply full local `sha256:` image IDs or
+`repository@sha256:` digest references; floating tags are rejected. Resolve the
+prepared images and Python helper to local IDs, then run both existing flows:
+
+```sh
+BACKEND_ID=$(docker image inspect --format '{{.Id}}' "$BACKEND_IMAGE")
+WEB_ID=$(docker image inspect --format '{{.Id}}' "$WEB_IMAGE")
+CLIENT_ID=$(docker image inspect --format '{{.Id}}' python:3.13-alpine)
+python3 tools/test_external_proxy.py \
+  --backend-image "$BACKEND_ID" --web-image "$WEB_ID" --client-image "$CLIENT_ID"
+python3 tools/test_external_proxy.py \
+  --backend-image "$BACKEND_ID" --web-image "$WEB_ID" --client-image "$CLIENT_ID" \
+  --certificate-state
+```
+
+Release mode uses `compose.release.yml` and `external-proxy.release.compose.yml`,
+without building or pulling the application pair. Both proxy hops must run the
+selected web image; the bundled inner Caddyfile and mounted proxy configurations
+must match this checkout, including after restore/restart. The disposable fixture
+adds test credentials, isolated addresses and loopback ports. Caller-supplied
+application/helper images remain intact during cleanup. A tagged Python helper
+argument retains the original pull behavior; use its already-loaded immutable ID
+to avoid that pull. The managed certificate flow retains the original CA trust and
+leaf certificate while restoring gateway data/config into new volumes. These
+flows test local configuration and storage behavior; public ACME, anonymous
+release acquisition, native clients and current-candidate release evidence require
+their separate checks. Keep this expensive harness outside routine CI.
+
 ## Preparing the detached manifest and bundle
 
 `tools/release_artifacts.py` builds a deterministic archive from the current Git
@@ -269,7 +433,9 @@ that the build project classifies as development dependencies.
 
 Source archive locators and application inventories do not by themselves establish
 complete distribution compliance. Hosted source/legal discovery and native
-notices are implemented; actual new iOS packaging awaits macOS CI.
+notices are implemented. [macOS CI run 37669775085](https://github.com/endorses/psst.zip/actions/runs/37669775085)
+passed all 176 XCTest cases on `b697119`, including actual app and embedded share
+extension license, notice, inventory and source-resource packaging assertions.
 Corresponding-source publication and the selected Caddy/Alpine runtime
 distribution's obligations remain release gates. The patched private
 AMD64 source pack, served runtime overlays and final-image scan review have
@@ -283,6 +449,67 @@ the paired container publisher will own GHCR releases. Standalone binary release
 have not been verified by this container work. In particular, the existing
 root-level `go mod tidy` pre-hook must be reviewed before enabling binary
 publication in this multi-module repository.
+
+## Assemble the two native build results
+
+After both native jobs finish, `tools/prepare_release_inputs.py` assembles their
+actual final OCI exports, measurements, source packs and build records. Each job
+can complete its local measurements before the release manifest exists. The
+assembly step checks both native platforms, shared immutable bases, matching
+actual Go/Node versions, exact smoke-tested configurations and OCI bytes, and
+source asset hashes. Both architecture-specific dependency collections are
+independently replayed against committed locks and complete source-scanner
+receipts. Assembly also requires the common upstream source collection, replayed
+against its catalog and lock from the exact Git tree. It copies both runtime,
+both dependency and the common upstream archives into its output, pinning retained
+bytes to the verified hashes. It creates deterministic paired indexes, the
+deployment bundle, detached manifest and an application source archive from the
+exact tagged Git tree: eight release assets and fourteen bound subjects in total. Untracked operator files and research are excluded by
+`git archive`. Package integrity does not establish that every upstream package
+contains complete preferred-form source; that review remains required.
+
+Use a new private output directory and the actual selected version/commit:
+
+```sh
+python3 tools/prepare_release_inputs.py \
+  --root . --repository endorses/psst.zip \
+  --ref "refs/tags/$PSST_RELEASE_VERSION" --event-sha "$PSST_SOURCE_COMMIT" \
+  --reviewed-commit "$PSST_SOURCE_COMMIT" \
+  --candidate "$REVIEW_DIR/candidate-bases.json" \
+  --build "linux/amd64=$REVIEW_DIR/amd64/build-record.json" \
+  --build "linux/arm64=$REVIEW_DIR/arm64/build-record.json" \
+  --measurement "linux/amd64=$REVIEW_DIR/amd64/native-measurement.json" \
+  --measurement "linux/arm64=$REVIEW_DIR/arm64/native-measurement.json" \
+  --pack "linux/amd64=$REVIEW_DIR/amd64/pack" \
+  --pack "linux/arm64=$REVIEW_DIR/arm64/pack" \
+  --archive "backend-amd64=$REVIEW_DIR/amd64/export/backend-amd64.oci.tar" \
+  --archive "web-amd64=$REVIEW_DIR/amd64/export/web-amd64.oci.tar" \
+  --archive "backend-arm64=$REVIEW_DIR/arm64/export/backend-arm64.oci.tar" \
+  --archive "web-arm64=$REVIEW_DIR/arm64/export/web-arm64.oci.tar" \
+  --dependencies "linux/amd64=$REVIEW_DIR/amd64/application-dependencies" \
+  --dependencies "linux/arm64=$REVIEW_DIR/arm64/application-dependencies" \
+  --source-scan "linux/amd64=$REVIEW_DIR/amd64/source-scans/source-scan-measurement.json" \
+  --source-scan "linux/arm64=$REVIEW_DIR/arm64/source-scans/source-scan-measurement.json" \
+  --upstream "$REVIEW_DIR/upstream-sources" \
+  --migration-notes "$PSST_MIGRATION_NOTES" --rollback-notes "$PSST_ROLLBACK_NOTES" \
+  --output "$REVIEW_DIR/prepared"
+```
+
+For a read-only planned main candidate, use the actual main ref/event SHA and add
+`--planned-version "$PSST_RELEASE_VERSION" --event-name workflow_dispatch`.
+The planned version must be unused. This mode creates no tag and writes
+`planned-candidate-inputs`; it cannot satisfy tagged source CI or signer identity.
+The actual publishing entry point still requires a reviewed tag. The hosted
+candidate workflow now assembles both native results and runs native recovery;
+see [retained inputs across jobs](container-native-preparation.md).
+
+`release-inputs.json` records every image/file/source subject for subsequent
+authenticated aggregation. Its `publication_authorized` remains false and
+`measurement_authentication_required` remains true. The `deployment-ready`
+payload profile means the bundle contains the updater; publication still requires
+the authenticated completed checks and reviews in the
+[publication guide](container-publication.md). A failed partial preparation is
+kept for inspection and cannot be resumed by overwriting the directory.
 
 ## Disposable final-image smoke check
 
@@ -298,13 +525,16 @@ python3 tools/verify_release_images.py \
 
 Repeat for `linux/arm64` with that platform's images loaded and either a native
 runner or explicitly configured emulation. The tool reports native versus emulated
-execution. It uses a randomly named disposable project, an unused private subnet,
+execution. Publication requires native execution on both architectures; an
+emulated local operator check cannot satisfy that gate.
+
+The tool uses a randomly named disposable project, an unused private subnet,
 a generated administrator password, loopback-only HTTP and dedicated volumes.
 It checks metadata, hardening, built HTML/JavaScript, licenses/source metadata,
 API/config, authentication, and account/session persistence after removing
 bootstrap credentials and recreating the backend. Captured command output is
 withheld to protect generated credentials. Cleanup removes only that tool-owned
-project's resources and temporary files.
+project’s resources and temporary files.
 
 The tool uses locally available images and does not pull them itself. It verifies
 an HTTP fixture, not public ACME or a production TLS/account/storage flow. Passing

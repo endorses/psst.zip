@@ -524,19 +524,23 @@ checkbox does not assert a working mirror or a published primary release.
 
 ### Read-only release candidate checkpoint
 
-The release workflow currently verifies candidates; it does not publish images,
-releases, attestations or deployment bundles. It has `contents: read` permissions
-and no registry, production or signing credentials. All Actions in CI and the
-candidate workflow are pinned to verified upstream commits, and checkouts disable
+At this initial checkpoint, the release workflow verified candidates without
+publishing images, releases, attestations or deployment bundles. It had
+`contents: read` permissions and no registry, production or signing credentials.
+All Actions in CI and the candidate workflow were pinned to verified upstream
+commits, and checkouts disabled
 persisted credentials. All five source CI jobs and their commands were preserved.
 
 Strict tag/event/ancestry checks precede reusable CI. The two native build jobs
 are gated on all CI jobs and share resolved index digests for Go, Alpine, Node,
 Caddy and BuildKit. Build records include actual toolchain output and local image
 metadata, explicitly separated from future registry manifest/index digests.
-Candidate metadata has one-day artifact retention; image archives remain local
-and are removed together with candidate tags. No candidate is advertised as
-deployment-ready. Branch/tag protection remains an unperformed repository setup.
+At this initial checkpoint, candidate metadata had one-day artifact retention
+and image archives stayed on the runner. The subsequent local cross-job assembly
+implementation retains explicitly inventoried native image/source inputs for one
+day, bound to the same run and attempt; its complete hosted execution is still
+pending. No candidate is advertised as deployment-ready. Branch/tag protection
+remains an unperformed repository setup.
 
 Verification: eight candidate boundary regressions passed. Real resolution of all
 five official multi-platform indexes passed, including immutable reinspection and
@@ -557,8 +561,14 @@ the native candidate matrix, publication and production deployment remain pendin
 - [x] Verify web source metadata boundaries and browser discovery, Android build,
       focused JVM tests and packaged APK assets, portable Swift metadata tests,
       localization/source checks and resolved native notice freshness locally.
-- [ ] Verify the new iOS UI and actual app/share-extension legal resource packaging
-      assertions in the next macOS CI run. Earlier green runs predate these changes.
+- [x] Verify the new iOS views compile and actual app/share-extension legal
+      resource packaging assertions pass on macOS CI. Run
+      [37669775085](https://github.com/endorses/psst.zip/actions/runs/37669775085)
+      passed all five jobs on `b697119ba81c3aaf18725f38869b778f2e59df9d`.
+      All 176 native XCTest cases passed in 132.951 seconds, including the
+      real app and embedded extension license/notices/inventory/source-resource
+      test and source metadata boundaries. This does not establish physical-device
+      navigation, App Store signing or store distribution approval.
 - [x] Implement isolated APK source collection bound to exact installed origin,
       version and aports commit, including lower-layer package versions, original
       source checksum verification and local helper copyright notices.
@@ -747,7 +757,8 @@ boundaries. Adding this core does not complete the publishing tasks above.
 - [ ] Integrate actual check/report generation and signing into the reviewed
       release workflow, then exercise the verifier against its authenticated
       reports. Source/legal review approval policy and live publication remain
-      pending; the candidate workflow still has no signing/publishing permission.
+      pending. Tagged runs now have narrowly scoped attestation permissions;
+      package/release publishing and production access remain unavailable.
 
 The verifier follows the documented [GitHub CLI attestation policy
 flags](https://cli.github.com/manual/gh_attestation_verify). Its isolated process
@@ -756,6 +767,21 @@ explicitly, never through command arguments; caller CLI configuration and trust
 overrides are not inherited. An attestation authenticates the reviewed workflow's
 report, so that workflow must derive reports from actual completed checks before
 signing them. The adapter alone does not establish distribution readiness.
+
+### Installed updater verification policy
+
+- [x] Require the exact release workflow certificate identity and version-tag
+      ref, matching signer and source commit, GitHub Actions issuer, hosted
+      runner, and SLSA provenance-v1 predicate for every updater subject. Reject
+      weak workflow selectors or malformed bindings before invoking GitHub CLI.
+- [x] Check generated arguments with GitHub CLI 2.101.0 using a deliberately
+      missing test-local trust root, and run all 37 updater tests and the complete
+      141-test release suite. The offline CLI check proves parser compatibility;
+      it does not prove a valid live release attestation.
+- [ ] Review and install the strengthened helper through the separate trusted
+      administrator path, and verify matching live release attestations before
+      adopting a production release. Updating the checkout does not upgrade an
+      already installed privileged helper.
 
 ### Patched runtime inputs
 
@@ -797,8 +823,9 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       and five served-offer/measurement regressions passed.
 - [ ] Authenticate both native matrix measurement records and aggregate the full
       release smoke/notices evidence against the exact OCI child descriptors.
-      The candidate workflow records measurements without signing or publishing;
-      a missing runtime pack cannot satisfy the final publication gate.
+      Tagged native measurements are now signed; actual two-platform hosted
+      aggregation remains unverified. A missing runtime pack cannot satisfy
+      the final publication gate.
 
 ### Completed-check report producers
 
@@ -818,13 +845,496 @@ native build. Repeatable package bytes additionally require retained APK inputs.
       not satisfy publication. These producers cannot sign or publish.
 - [x] Verify the report producers and shared input boundary with thirteen focused
       regressions; the complete release suite passed 139 checks in 8.120 seconds.
-- [ ] Wire the producers and signed native records into the reviewed workflow
-      and validate actual two-platform aggregation. The current candidate-only
-      workflow emits unsigned smoke measurements.
+- [x] Require substantive exact source/distribution records in publication
+      verification, even for authenticated reports. Reject empty or incomplete
+      source coverage, source/image/notice/policy substitutions and distribution
+      approval detached from its corresponding-source report. The focused
+      publication group passed 23 checks in 2.9 seconds.
+- [x] Implement authorized distribution-review production from exact committed
+      policy, an authenticated complete source report and read-only GitHub review
+      history. Require the configured protected-environment reviewer and exact
+      artifact/source/attempt comment, retain raw API evidence, and recheck for
+      changes. Fixture verification passed in 1.7 seconds; no live reviewer
+      approval or signing is claimed.
+- [x] Provision the `container-release` review environment and wire the strict
+      distribution producer into the final trusted workflow after complete source
+      production. Present concrete final artifacts before approval; attest both
+      the gate and retained review evidence.
+- [ ] Verify a real approval and rejection against completed hosted artifacts
+      and the exact attempt. Environment provisioning alone is not distribution
+      approval or hosted execution verification.
+- [ ] Validate the wired producers and signed native records against actual
+      two-platform hosted aggregation. Planned main dispatches still emit
+      unsigned measurements and cannot satisfy a tagged publication gate.
 - [ ] Implement actual source/final scanner, corresponding-source completeness,
       authorized distribution review, upgrade/recovery and readback/provenance
       producers. Source-asset hash measurements explicitly leave completeness
       and review pending; they cannot mint a corresponding-source approval.
+
+### Post-matrix release input assembly
+
+- [x] Remove the native-job/full-binding dependency cycle. Native producers use
+      validated repository/version/commit/platform context and schema-2 local
+      measurements; authenticated aggregation binds their image configurations,
+      OCI children and source hashes after both jobs finish. Emulated smoke cannot
+      satisfy native release evidence. Fourteen producer regressions passed.
+- [x] Enforce native execution in the final publication verifier as well as the
+      producer, and reject an authenticated record substituting an emulated ARM64
+      check. The publication boundary regression suite passed.
+
+- [x] Add a concrete preparation command consuming both native build records,
+      measurements, source packs and all four OCI exports. Verify shared resolved
+      bases, actual Go/Node versions, exact local image/source facts, and native
+      execution before assembling indexes, bundle, manifest and application
+      source archive from the selected tagged Git tree.
+- [x] Verify assembly with real disposable Git repositories and OCI graphs,
+      including platform omissions, stale/emulated/substituted measurements,
+      changed bases/toolchains/source bytes, dirty tracked inputs, untracked
+      exclusion and output overwrite rejection. Five focused tests passed.
+- [ ] Run this command against real final AMD64 and ARM64 artifacts, authenticate
+      native measurements after the complete binding exists, and integrate the
+      command in the release workflow. Preparation does not approve publication.
+
+### Runtime source replay
+
+- [x] Implement a verifier that replays an externally hash-bound runtime source
+      archive against final native OCI exports and smoke evidence. Verify source
+      SHA512 tables, retained recipe/helper inputs, every origin revision,
+      reconstructed lower-layer and installed package graphs, exact executable
+      and notice bytes, and fresh Caddy source signatures/module correspondence.
+      Rehash archive, pack, smoke and OCI inputs before returning measurements.
+- [x] Exercise the unchanged patched AMD64 asset and both final native exports.
+      All 34 origin revisions and 53 retained package versions passed; the final
+      private report SHA256 is
+      `14bd03673034bdeaff0c2178cbfd0ffa691cb7f4efed20dc8221723984fde519`.
+      Eleven new regression tests and 51 related checks passed.
+- [ ] Run the replay for ARM64 in the release workflow and authenticate both
+      outputs against the final binding. Application source, public anonymous
+      source delivery and authorized distribution review remain separate gates;
+      technical runtime replay cannot clear those approvals.
+
+### Native image scanner measurements
+
+- [x] Implement a native scanner command over exact OCI exports and tested image
+      configurations. Authenticate pinned Trivy/Cosign bytes and upstream signing
+      identity before execution; snapshot the scanner database and unchanged OCI
+      layout, record tool/database/date identities, and retain complete findings
+      across every severity and unfixed package without ignores or approval flags.
+- [x] Verify the actual patched AMD64 backend/web pair through this producer.
+      Both installed Alpine graphs have zero findings; all 21 backend and one
+      Caddy module findings remain in the raw JSON. Ten boundary/CLI regressions
+      passed, including native ARM tool authentication fixtures. Those fixtures
+      do not establish ARM64 execution.
+- [ ] Execute final native ARM64 scans, authenticate all four image measurements,
+      and derive each finding's disposition from exact binary/source/package
+      graphs and official advisory evidence. A completed scan remains unapproved
+      until that release gate succeeds.
+
+### Source scanner and compiler graph measurements
+
+- [x] Implement source scanner measurements from exact archived Git source with
+      pinned native Go/Node builders, checksum-authenticated govulncheck 1.8.0,
+      full Go dependency graphs and lock-only npm audit. Preserve all findings,
+      raw report hashes and actual tool/database identities; measurement
+      completion does not authorize a scanner gate or publication.
+- [x] Add compiler graph measurements for the exact final OCI executables.
+      Require a byte-identical backend rebuild with matching embedded modules;
+      bind Caddy's graph to freshly verified upstream signed source/checksums
+      and the exact signed executable. Verify seventeen focused producer/CLI
+      tests, including native-daemon and unsupported build-setting rejection.
+      The private `750f440` AMD64 measurements retained 21 Go findings and no npm
+      findings; backend bytes matched and Caddy's 147 embedded module pairs
+      matched its 970-package graph. See the
+      [dependency review](../security/container-dependency-review.md).
+- [ ] Run the final producers against the selected release source on both native
+      runners, authenticate every measurement, and derive scanner gates from
+      exact findings and authoritative advisory evidence. The new daemon guard
+      was exercised in the final Caddy measurement; source/backend runs preceded
+      that final guard and need repetition in the integrated workflow.
+- [x] Repair the resolver-to-scanner builder contract using the exact canonical
+      untagged official repository digest references emitted by `resolve-bases`.
+      Verify a resolver-derived regression and repeat actual source scanning on
+      `c73a5da` with the final native-daemon guard: 21 Go module findings retained,
+      no package/symbol findings, and zero npm findings. Signed scanner gates
+      and native ARM64 measurements remain pending.
+
+### Native preparation orchestration
+
+- [x] Add an individual native preparation command consuming an authentic
+      candidate build record and its exact original Docker save. Retain source
+      collection, overlays, final native smoke, OCI exports and independent
+      runtime source replay in an unsigned, hash-bound artifact descriptor.
+      Write the completion descriptor only after every check passes.
+- [x] Preserve original Docker configuration and layer bytes during OCI export.
+      A real AMD64 scratch-image build/save/export check passed for both
+      components; twelve focused orchestration tests passed with explicitly
+      substituted collection/smoke fixtures. Add these tests and runtime source
+      replay tests to regular CI. See the
+      [native preparation guide](../security/container-native-preparation.md).
+- [ ] Run complete preparation from authentic application build records on
+      both native runners, wire retained outputs into post-matrix assembly,
+      authenticate the measurements, and complete publication gates. The scratch
+      export check does not verify the complete application pipeline.
+- [x] Run the complete individual AMD64 command on exact committed source
+      `c73a5da`, genuine Buildx records and its original saved application pair.
+      Collection, signed Caddy sources, overlays, all ten actual native smoke
+      checks, byte-preserving OCI exports and independent runtime source replay
+      passed. Retain the private descriptor and measured artifacts; the planned
+      `v0.1.0` version has not been tagged or published.
+
+### Authenticated scanner inputs and typed finding aggregation
+
+- [x] Acquire the final-image scanner's fresh official database using the
+      authenticated native Trivy executable in an empty private configuration
+      and cache. Record acquisition, database and metadata hashes; retained
+      snapshots remain measurement-only. Actual patched AMD64 backend/web CLI
+      runs retained all 21/one Go module findings and found zero OS findings.
+- [x] Implement typed aggregation of authenticated native/image measurements,
+      exact raw findings and compiler evidence. Require byte reproduction for
+      the backend and distinct upstream signed source/binary correspondence for
+      Caddy. Derive package absence from complete authoritative Go advisories
+      and exact module/import graphs; reject caller approval flags, missing
+      proofs, unhandled findings, source/config substitution and unsupported
+      compiler settings. Twelve scanner and eight gate tests passed with
+      explicit authentication fixtures.
+- [x] Derive the source-scanner gate from both authenticated native reports,
+      exact Git and lock bytes, every hashed raw receipt, canonical resolved
+      builders, complete Go import graphs and official advisory ranges. Retain
+      every finding and reject unsupported dispositions; twelve focused gate
+      tests passed. Actual AMD64 replay retained all 21 module findings; hosted
+      ARM64 and live authentication remain pending.
+- [ ] Run both native architectures, authenticate actual scanner/compiler
+      measurements, and derive the final full-binding gate in the release
+      workflow. Historical compiler measurements using tagged builder names
+      cannot substitute for corrected canonical-reference measurements.
+
+### Integrated read-only native candidate verification
+
+- [x] Wire genuine paired build records and exact saves into native preparation,
+      final image smoke, actual source/image scanning, backend/Caddy compiler
+      correspondence and application dependency retention on both native matrix
+      runners. Keep publication, signing and production permissions absent.
+- [x] Add a main-only pre-tag dispatch for unused planned `v0.1.0`, preserving
+      strict tag-push validation. Verify exact HEAD/main ancestry and reject
+      existing version tags without creating or moving them. Main dispatch
+      records explicitly cannot establish the final tagged source-CI gate.
+- [x] Validate actionlint, embedded shell/Python syntax, thirteen real-Git
+      candidate tests, and bounded report copying against thirteen actual new
+      AMD64 records. Preserve all 21 backend/one Caddy findings; omit image/source
+      payloads and private diagnostics. Correct the Cosign download size bound
+      against its actual pinned 137,225,264-byte executable.
+- [x] Repeat corrected exact-image compiler and fresh official database scan
+      commands on `c73a5da`: backend reproduction matched its 236-package graph,
+      Caddy signed correspondence matched 970 packages/147 module pairs, and both
+      final OS graphs had zero findings with all module findings retained.
+      The complete local release test discovery passed 199 tests in 9.7 seconds.
+- [ ] Push this verified checkpoint with scoped authorization, run the new
+      read-only hosted dispatch on the exact pushed source, and resolve actual
+      ARM64/integration failures. Complete authenticated full gate assembly,
+      corresponding-source/distribution review, registry/release publication
+      and production migration separately. See the
+      [native preparation guide](../security/container-native-preparation.md).
+
+### Cross-job candidate assembly and native recovery
+
+- [x] Retain complete native inputs with an explicit file/hash inventory, preserving
+      descriptor paths and full scanner/compiler receipts. Exclude private
+      diagnostics, tool/cache files and privileged recovery state; revalidate every
+      retained byte and reference after same-run/attempt artifact download. Ten
+      transfer fixtures passed; actual AMD64 stage/relocation replay verified 112
+      files and 939,932,806 bytes without changing original measured inputs.
+- [x] Add a distinct unsigned planned-main assembly path with exact source, origin,
+      tracked-checkout, ancestry, event and unused-version guards. Keep the
+      publisher's reviewed tag boundary mandatory; never create a pretend tag.
+      Fifteen assembly and twenty-one publication boundary tests passed.
+- [x] Wire common upstream collection, both native transfers, post-matrix assembly
+      and two actual native recovery jobs into the read-only candidate workflow.
+      Preserve all five source-CI jobs and upload only terminal recovery facts.
+      Actionlint 1.7.12, Bash syntax, all five embedded Python blocks and the bounded
+      workflow review passed; source permissions remain read-only.
+- [ ] Run the integrated workflow on the exact pushed checkpoint and fix hosted
+      transfer, assembly or native recovery failures. Complete source/distribution
+      review, authenticated gates, publication and production adoption separately.
+
+The combined release-tooling suite passed all 290 tests in 22.9 seconds after
+this integration. The actual hosted two-architecture pipeline remains unrun.
+
+### Application dependency input retention
+
+- [x] Emit a production client module inventory tied to the npm lock and build
+      identity. Verify original input, installed manifest and final static output
+      hashes after the adapter runs, retaining tree-shaken modules separately.
+      Record copied scripts and worker coverage limits without approving complete
+      source coverage or publication; see the
+      [source review](../security/application-package-source-review.md).
+      Ten hook tests and twelve verifier fixtures passed. The local `v0.1.0`
+      working-tree build verified 34 served outputs and 4,380 module records in
+      under one second. Hosted CI and final OCI correspondence remain unrun.
+
+- [x] Include the imported browser inventory script in the restricted Docker
+      context. A real pinned-base native AMD64 web image build passed in 21.6
+      seconds and retained the generated browser inventory and both new legal
+      notices. Remove its owned image/container. This diagnostic working-tree
+      build used `dev`/`main`; it does not establish release source binding.
+- [x] Implement retention of the real web builder's observed source/generated/package inputs and
+      Vite metadata, replay them against each final tested web configuration and
+      exact committed inputs, and preserve this evidence through native transfer.
+      Native preparation, transfer and recovery now require schema-2 evidence.
+      Small real Git/npm/OCI fixtures reject missing inputs and substituted source
+      or final image bytes. A real native builder diagnostic retained 4,401 members
+      and checked 98 Git inputs: build 21.4 seconds, capture/static/Git replay 1.7
+      seconds. Its owned image/container were removed. This diagnostic does not
+      establish the complete final OCI/dependency/transfer path for a release.
+- [ ] Run the complete schema-2 native preparation, transfer and recovery on both
+      hosted architectures for the exact candidate commit. Full browser source
+      closure, measurement authentication and publication remain separate gates.
+- [x] Verify the initial schema-2 path on real local AMD64 images at `f90be19`.
+      Complete preparation passed in 368.9 seconds. Independent replay using the
+      exact committed verifier passed in 13.7 seconds with 98 Git inputs, 16 npm
+      archives and 99 final static files. Retain private measurements and remove
+      owned tool caches/image tags. This predates the expanded recipe profile and
+      does not verify hosted transfer/recovery or native ARM64.
+- [x] Bind copied browser scripts and the application template to exact Git
+      originals. Retain a committed recipe catalog plus Vite/Kit generator bytes
+      and manifests, checked against integrity-bound npm archives. Associate all
+      23 current virtual modules and 11 generated files (five rendered, six
+      excluded) through finite reviewed grammars; keep unfamiliar origins explicit.
+      Five focused regressions passed in 4.0 seconds and actual retained npm
+      replay passed in 1.5 seconds. These are source associations, not generated
+      byte reproduction or complete preferred-source approval.
+- [x] Retain all copied static originals, including brand SVGs, favicons and
+      notices, and compare them to unchanged built copies and the exact Git tree.
+      Include the locked adapter-static 3.0.10 generator and manifest in retained
+      npm replay, with its preferred originals from the pinned Kit tree. Keep
+      fallback/generated outputs distinct from copied originals. Eight focused
+      fixture checks passed in 0.7 seconds after replacing production watchdog
+      polling with direct bounded Git calls in the tiny fixtures.
+- [x] Verify the expanded static/adapter profile on a real Docker web builder
+      at committed `e3a5c83`. The build passed in 20.9 seconds and captured-input
+      replay in 1.8 seconds: 122 Git inputs, 18 integrity-bound npm archives and
+      all 21 copied static originals. The exact generated metadata matched its
+      native identity. Both adapter implementation files matched their preferred
+      Kit originals. Reuse unchanged retained archives; remove the owned image
+      tag/container and temporary replay directory. Retain private capture and
+      receipt; final OCI, ARM64 and complete closure remain separate pending gates.
+- [x] Include the original Vite and bundled Rollup generator license terms in
+      browser notices and serve their exact original license bytes. Check lock,
+      generator and notice hashes and reject stale inputs. Existing focused notice
+      checks passed in 0.123 seconds; type checking reported no errors or warnings.
+- [x] Retain and pin full original Vite 6.4.3 and Rollup CommonJS 28.0.3 source
+      archives and build locks. The exact Vite lock selects the CommonJS version;
+      its 1,337-byte helper template literal matches the installed Vite generator.
+      Preserve ten explicitly reviewed package-self test links as inert archive
+      metadata only; default link restrictions remain in force. Eighteen source
+      retention checks passed in 0.7 seconds.
+- [x] Validate the actual checked-in upstream catalog and lock in a small offline
+      regression as well as synthetic archive fixtures. The first real expanded
+      replay caught an incorrect Rollup archive filename; the corrected name
+      follows its `rollup/plugins` repository. All nineteen affected checks passed
+      in 0.85 seconds, including the actual-catalog check.
+- [x] Package and independently replay the fourteen-original offering against
+      committed catalog `3bd44a3`. Reuse the twelve unchanged hash-bound official
+      archives and two newly retained official originals without downloading them
+      again. Collection passed in 4.1 seconds and replay in 4.3 seconds, covering
+      31,033 members and 102,971,136 original bytes. The 103,751,003-byte offering
+      has SHA256 `56f2addf264c5bc2c918ba17c5027bf911e2e434db1c17f32299508d10c2b88a`.
+      Retain the private receipt; completeness and publication flags remain false.
+- [x] Replay the updated fourteen-original source catalog with the added adapter
+      inspection inputs at `e3a5c83`. Collection passed in 4.1 seconds and replay
+      in 4.2 seconds without downloads. The 103,751,391-byte offering retains the
+      same 31,033 original members and has SHA256
+      `418ececca767da6944f05091713266d865820d8c49e0b9d5f84c69efb4da4967`.
+      Source completeness, authentication and publication remain unapproved.
+- [ ] Verify the new final native recipe/notice profile on both hosted
+      architectures. Complete source/distribution gates and public delivery remain
+      separate requirements.
+
+- [x] Retain every selected Go module ZIP/module/version input and all npm locked
+      archives, including development and optional platforms, without executing
+      package scripts. Independently verify H1/SHA512 integrity, preserve exact
+      committed locks, and distinguish additional authenticated graph sums.
+      A real collection from `2cc2f72` retained 35 Go modules and 173 npm packages;
+      nine focused boundary tests passed. Document the exact asset checksum in
+      the [native preparation guide](../security/container-native-preparation.md).
+- [x] Independently replay retained dependency archives against committed locks
+      and actual source-scanner receipts. Recheck archive boundaries, selected
+      Go module H1 checksums, npm SHA512 integrity and complete payload coverage.
+      The actual `c73a5da` AMD64 archive replay verified 35 Go modules, 173 npm
+      packages and nine additional sums; preferred-source review remains pending.
+- [x] Require both architecture-specific dependency collections in release-input
+      assembly and retain both archives alongside runtime and application source
+      payloads. Bind thirteen subjects and seven assets, pin copied bytes to the
+      verified digests, and reject collection substitution before output. Actual
+      publication and public retrieval remain pending.
+- [x] Update the operator guide's assembly command with both required dependency
+      and source-scanner inputs, and describe the implemented read-only main
+      dispatch. Keep uploaded candidate summaries distinct from the complete
+      retained inputs needed for authenticated assembly.
+- [x] Inspect the actual retained web package inputs for original source and
+      build materials. Record the generated Lucide and fflate input gaps,
+      hpke build-script gap, and embedded QR/tus source-map contents in the
+      [application package inspection](../security/application-package-source-review.md).
+      This ten-package subset does not establish complete source coverage.
+- [x] Retain immutable upstream Lucide, fflate and hpke source archives for
+      the identified missing build inputs. Verify hpke's original TypeScript
+      against the locked npm archive. Record source/archive hashes and Lucide's
+      version-setting discrepancy; complete reproduction, offering assembly and
+      source-completeness review remain pending.
+- [ ] Review package inputs for complete preferred-form upstream source, include
+      all required sources in the final corresponding-source offering, bind the
+      archive to authenticated release inputs, and verify public delivery.
+      Retaining original package distributions alone does not complete this gate.
+
+### Retained upstream application source inputs
+
+- [x] Add a collector and independent replay for immutable full-commit Lucide,
+      fflate and hpke archives, deriving package versions and archive policy from
+      the exact committed catalog and npm lock. Preserve original archives and
+      measured inventories without extraction or package-script execution. Twelve
+      collector/replay tests passed; all three actual retained archives parsed
+      successfully. No correspondence or source-completeness approval is inferred.
+- [x] Require the replayed common upstream archive during release-input assembly,
+      copy only the verified digest, and include it in every release subject and
+      asset binding. Twelve assembly checks passed, including missing/tampered
+      inputs and changes after replay. The signing fixture verifies all fourteen
+      subjects, including the common source asset.
+- [x] Exercise the collector and independent replay through fresh official HTTPS
+      downloads for exact source `2a6d2a5d65ad50b2565aa09624e5681c0976c262` and planned
+      `v0.1.0`: all three original archives and 6,238 members verified in 4.3 seconds.
+      Retain the 7,910,216-byte common offering and private replay evidence. Source
+      completeness, build reproduction, authenticated offering and public delivery
+      remain pending; see the [source review](../security/application-package-source-review.md).
+
+The combined release-tooling suite passed all 272 tests in 19.9 seconds after
+this integration. Formatting, CLI help, Python/shell syntax and the bounded source
+retention review passed.
+
+### Browser source and embedded-license follow-up
+
+- [x] Match all fourteen observed rendered-package manifests against actual
+      retained npm archive hashes/sizes and locked versions/integrity. Inspect
+      original transitive implementations and their concrete missing build inputs.
+- [x] Pin six additional immutable source originals for noble-curves, noble-hashes,
+      clsx, node-qrcode, qr-scanner and its embedded jsQR decoder. Verify all nine
+      original archives: 83,412,855 bytes and 7,513 members. Preserve three internal
+      noble test links as metadata without extraction/following; reject escapes,
+      chains, recursive/dangling targets, hard links and linked outer offerings.
+      Seventeen small collector fixtures passed.
+- [x] Add the decoder's missing full Apache 2.0 license and factual attribution
+      to web notices. Bind the original license, exact parent lock and four
+      scanner/worker file hashes; retain a separate embedded-component inventory.
+      Three focused fixtures and actual 173-package/one-component notice checks
+      passed. No native mobile implementation bundles this JavaScript component.
+- [x] Collect and independently replay the expanded common source offering from
+      exact committed catalog `224d95042349e5cd37421a992810eef1c58ec14d` for
+      planned `v0.1.0`. Fresh official downloads of all nine originals took
+      31.2 seconds; independent replay took 2.4 seconds. The retained offering is
+      83,381,770 bytes. This is an explicit release check, not a routine unit test.
+- [x] Retain three further exact noble-ciphers, SvelteKit and Svelte originals,
+      including omitted TypeScript/framework generators, message inputs and
+      monorepo locks. Compare 541 original source files to retained npm inputs;
+      run both original version generators in disposable directories and verify
+      byte equality. All twelve archives passed existing bounds unchanged.
+- [x] Preserve dijkstrajs's abbreviated upstream notice and add explicitly
+      supplementary full MIT terms from its referenced official page. Bind exact
+      version/integrity and both notice hashes; three tiny failure/preservation
+      fixtures and notice freshness/type checks passed. The complete web suite
+      passed 130 tests in 1.4 seconds, the production build passed in 7.2 seconds,
+      and final served terms/static inventory verification passed.
+- [x] Collect and independently replay the twelve-original offering from exact
+      source `f62d35364fdc2cbb3540176d39899448d5ec4835` for planned `v0.1.0`.
+      Fresh official acquisition/packaging took 37.2 seconds and independent
+      replay took 3.7 seconds. Retain the 91,545,944-byte offering and private
+      replay receipt; final hosted assembly and publication remain pending.
+- [ ] Authenticate the expanded offering and verify final hosted image
+      correspondence and public retrieval before publication.
+- [x] Keep new regressions limited to actual notice/input/archive failures with
+      small local fixtures and no network calls. The complete release-tooling
+      suite passed 307 tests in 23.3 seconds; web passed 127 tests in 1.4 seconds.
+- [ ] Measure the next complete hosted workflow and investigate slow test steps
+      before accepting it. Keep heavyweight native preparation/recovery in the
+      explicit release workflow and do not extend timeouts to conceal slow tests.
+
+### Post-assembly recovery and hosted publication commands
+
+- [x] Add an actual native recovery measurement producer requiring both retained
+      native descriptors and the assembled manifest/bundle. Validate four OCI
+      graphs, saved layers, source/runtime/replay inputs and every source-owned
+      bundle file against the exact candidate Git tree before execution.
+- [x] Measure ordinary and initially paused upgrade/reapply/restore sequences
+      and injected startup failure using structured transaction, API, schema,
+      checkpoint and isolated-storage facts. Require successful bounded cleanup;
+      caller PASS flags do not create evidence. Eleven producer/cleanup boundary
+      tests and thirty-seven updater tests passed. The historical paused AMD64
+      compatibility run passed in 130.8 seconds; full prepared-candidate execution
+      remains pending. See the [recovery guide](../security/release-update-recovery.md).
+- [x] Add the hosted-only signing bridge using exact pinned official GitHub action
+      bytes and the runner's Node24. Sign actual file/image subjects and completed
+      bound reports, verify the freshly generated bundles cryptographically, and
+      independently verify GitHub API retrieval under the exact workflow/tag,
+      signer/source commit and hosted policy. Sixteen offline signing fixtures
+      passed; actual hosted Node24/OIDC execution remains unverified.
+- [x] Add the real publication command around authenticated gates and four exact
+      OCI exports. Require public repository-linked packages before reservation,
+      preserve the lease through digest pushes/signatures/assets/tags/readbacks,
+      and sync all snapshot files/directories before remote mutation. Ten command
+      fixtures passed, including interrupted writes/signing and retained inputs.
+      No local test published a release or changed package visibility.
+- [ ] Execute the recovery producer against both actual native artifact sets,
+      authenticate its measurements, complete source/distribution gates and wire
+      the real signing/publication commands into the reviewed version-tag workflow.
+      Package bootstrap/visibility, immutable policy and hosted OIDC/live API
+      verification remain separate prerequisites; candidate dispatch stays read-only.
+
+The combined release-tooling suite passed all 257 tests in 19.5 seconds after
+these changes. Python formatting, syntax, documented shell commands and Markdown
+formatting passed. This local result does not replace the pending hosted checks.
+
+### Authenticated native recovery aggregation
+
+- [x] Derive an upgrade-recovery gate from both signed terminal native records,
+      checking exact prepared inputs, committed helpers, final configurations and
+      all upgrade/reapply/pause/failure/isolated-restore facts without rerunning
+      experiments or replaying image/source archives.
+- [x] Wire tagged recovery attestation and post-matrix aggregation using small
+      descriptor/binding artifacts. Authenticate the complete source gate before
+      using its full binding without downloading offered source payloads again.
+- [ ] Execute and verify this integrated recovery gate on both actual native
+      hosted architectures. Independent off-host provider recovery, public
+      acquisition/provenance and browser/mobile flows remain separate checks.
+
+The publication consumer now requires complete recovery coverage and both native
+measurement identities; an authenticated report with empty recovery details is
+insufficient. The gate preserves explicit false scope flags for the separate
+public-delivery, provider and browser/mobile checks. Retained experiments are
+validated within their signed measurement interval; immediate experiment
+execution keeps its existing freshness requirement.
+
+`tools/aggregate_release_recovery.py` authenticates both native terminal records
+and validates their structured scenarios, exact manifest/bundle/configurations,
+committed execution helpers, historical ancestry and measurement time interval.
+Its `--source-report` mode requires the current attempt's authenticated complete
+source report before accepting the full binding from the three small retained
+prepared files. It checks exact source-asset metadata coverage and rechecks
+retained small bytes. `--verify-only` authenticates the resulting canonical gate
+without another experiment or archive replay. Host runner and isolated daemon
+tool versions are validated independently, since they can legitimately differ.
+
+The tagged workflow now signs native recovery measurements and the joined gate.
+Small native-descriptor and prepared-binding artifacts avoid downloading all
+images/source payloads in the aggregation job. Planned main dispatches still
+cannot satisfy these authenticated tagged gates. No registry publication or
+production permission was added.
+
+Nine small aggregation/command cases and eleven existing measurement cases
+passed in 2.83 seconds; the final asset-metadata refinement passed all nine
+aggregation cases in 0.49 seconds. Existing publication/command cases, including
+one incomplete-recovery rejection case, passed 34 checks in 3.45 seconds. These
+fixtures use local bytes, Git and mocked experiment results, with no Docker
+execution. Workflow YAML parsed, all 25 shell steps passed `bash -n` and three
+inline Python blocks parsed. The selected historical commit remains an ancestor
+of the current source. Actual hosted execution and artifact-layout validation
+remain pending, as do the separate public/provider/mobile checks.
 
 ### OCI archive and publishing transport checkpoint
 
@@ -850,8 +1360,9 @@ native build. Repeatable package bytes additionally require retained APK inputs.
 
 The transport requires the literal repository-wide workflow concurrency group
 `container-release-publication`, `cancel-in-progress: false`, and publishing job
-`publish`, plus a local held lock. The current candidate-only workflow has not
-been changed to publish. Immutable policy inspection may require a separate
+`publish`, plus a local held lock. At this checkpoint the candidate-only workflow
+had not been changed to publish; subsequent guarded integration is recorded below.
+Immutable policy inspection may require a separate
 Administration-read credential; the package/content publishing token must not
 silently gain repository administration permission. Errors are not absence.
 The [publication guide](../security/container-publication.md) describes the
@@ -894,8 +1405,16 @@ file cleanup, output/timeout bounds and rejection of a mismatched active version
 The workflow passes actionlint v1.7.12. SSH/sudo templates and setup/rotation
 instructions are in
 [the production Actions guide](../security/actions-production-deployment.md).
-Template syntax/effective configuration, host installation, production
-environment protections and the actual SSH/deployment flow remain pending.
+Standalone template syntax and effective Match restrictions passed locally on
+2026-10-08 using OpenSSH 10.5p1 with a disposable host key and isolated config.
+The deployment user received the exact forced command, public-key-only
+authentication, protected key-file path and disabled forwarding/TTY/tunnels;
+the nonmatching maintenance user did not inherit those restrictions. Sudoers
+syntax passed with visudo 1.9.17p2. The local visudo also warned about unrelated
+ownership of `/etc/sudo.conf`; this check did not modify that file or validate
+the local machine's installed sudo policy. All temporary keys/configs were
+removed. Installed VPS Includes, account/PAM policy, sudo grants and actual
+connection/denial behavior remain pending, as do production secrets and rollout.
 
 Source dependency review is recorded in
 [the dependency review](../security/container-dependency-review.md). Pinned
@@ -911,14 +1430,26 @@ reviews remain pending; this source result does not approve publication.
       and removal of both bootstrap credentials from the file and running
       backend after initialization. The guide explicitly requires verified
       published inputs; public installation and production adoption are unrun.
-- [ ] Document the maintainer path from reviewed commit to version tag to ready
+- [x] Document the maintainer path from reviewed commit to version tag to ready
       release, and the operator path for manual SSH updates, Actions deployment,
       maintenance, backup, failure recovery, and rollback.
+      The [operations path](../security/container-releases.md) distinguishes the
+      current read-only candidate workflow from pending tagged publication,
+      same-run/attempt artifact retention, version-only update commands and
+      before/after-migration recovery. Documentation does not establish a ready
+      release or a completed production migration.
 - [x] Choose and publish the GitHub repository `endorses/psst.zip`, following
       reviewed licensing and complete-history secret checks.
 - [ ] Confirm the GHCR package namespace and initial release version, and configure
       branch/tag protection before publication. Review release inputs for
       accidental private deployment state.
+- [x] Select `v0.1.0` as the first container release, as confirmed by the operator.
+      Preserve the existing `v0.0.0` tag; create the new tag only after the reviewed
+      workflow and release inputs are ready.
+- [x] Compare the active VPS Caddyfile with the committed bundled configuration.
+      Confirm byte equality and absence of imported custom policy; select the
+      bundled file for eventual adoption while retaining the old protected file
+      for recovery. Live adoption remains pending.
 - [ ] Inspect the live installation's actual volume mappings and settings before
       migration. Preserve `/opt/psst.zip`, project name `psst-zip`, and the original
       local images/configuration as the first migration recovery baseline.
@@ -937,8 +1468,18 @@ backend/Caddy volumes. The backend still uses its original physical volume and
 database identifiers; adoption must set protected explicit overrides rather than
 select fresh defaults. No legacy identifier is being republished as a new
 project identity. Backend ownership is UID/GID 1000; Caddy is 10001. Both services
-retain resource policies, with no explicit Compose user override. The active host
-Caddyfile mount needs an explicit preserve-or-replace decision.
+retain resource policies, with no explicit Compose user override.
+
+A further read-only comparison found that the active read-only Caddyfile bind is
+byte-identical to the committed file copied into the web image: SHA256
+`86fc3a748f5d9994ffca700953ca357e2c8637d1ca97f94cc978099de57a266d`.
+There are no imported custom proxy policies or operator authentication, manual
+TLS or logging directives. For this installation, adoption should deliberately
+select the bundled Caddyfile with an empty `release_overrides` list and retain the
+old host file in the stopped checkpoint. This preserves the observed proxy,
+headers, static routing and operator-configured domain policy. Actual activation,
+port/storage equivalence and TLS persistence still need verification; no mount
+or host configuration was changed.
 
 The host is AMD64, Docker 29.8.2 and Compose 5.6.0, with approximately 34.6 GB free.
 HTTPS authentication status returned 200 and `setup_required: false`; no nonempty
@@ -949,12 +1490,896 @@ production state or permissions were changed. Baseline image/configuration
 checkpoint retention and operator-setting equivalence still require verification,
 so the complete migration inspection/adoption task remains pending.
 
+### Application archive replay and generated backend originals
+
+- [x] Independently replay the publication-bound application source archive from
+      the selected Git commit and release gzip recipe, ignoring working-tree
+      edits. Keep this partial fact separate from full corresponding-source
+      completeness and publication authorization. A focused real Git fixture
+      covers digest substitution, malformed retained bytes and another commit;
+      it passed in 0.115 seconds.
+- [x] Add exact official SQLite C and musl originals to the common upstream
+      offering for the locked `modernc.org/sqlite v1.37.0` and
+      `modernc.org/libc v1.65.0` modules. Verify actual archive roots, all inspected
+      build/source/notice paths and SQLite's generated-source Fossil identity.
+      Reuse the existing bounded archive parser; do not execute upstream builds.
+- [x] Bind backend associations to exact committed Go requirements and retain
+      `go.mod`/`go.sum` bytes and hashes. Refuse module replacements, missing or
+      substituted locks, alternate hosts and redirects. Two focused regression
+      methods extend the existing upstream suite; all 21 checks passed in
+      0.794 seconds with tiny local inputs and no network calls.
+- [x] Collect and independently replay the expanded sixteen-original offering
+      from the committed source, reusing unchanged hash-bound originals.
+- [ ] Complete final-image compiler binding, all preferred source/generator
+      relationships and both native architecture reviews before producing the
+      passed corresponding-source gate. Original retention and application
+      archive replay alone do not establish those requirements.
+
+Actual collection from source `036d9470f22d0938c3fab8c4e4589ad1037c6b0d` for
+planned `v0.1.0` retained 16 originals and 36,237 archive members. Collection took
+4.7 seconds and independent replay took 5.2 seconds. The 117,942,945-byte offering
+has SHA256 `f4f28bd13622f486fdc9e53a9ba2d49e338e1769f2ad022b7e26b0e55737249f`.
+Both committed backend lock hashes were independently checked. Fourteen unchanged
+originals were reused with their pinned hashes; only the two newly identified
+official source inputs were downloaded, outside routine tests.
+
+The actual application archive from that same source was created and independently
+replayed in a combined 1.1 seconds: 2,650,450 bytes, SHA256
+`c0d13831d63c13af0173ea79fddbba642c1fbf88a3144d0e59a0465edaa69b0c`.
+Private archive/collection/replay receipts are retained. An additional bounded
+comparison against the retained dependency asset confirmed SQLite's source ID in
+both generated Linux architecture files and musl's snapshot commit in both libc
+generator inputs. This establishes those source identities, not full generation
+or final-image completeness. All 53 affected gate, upstream and assembly
+regression checks passed in 5.8 seconds; formatting and staged checks passed.
+
+### Full Go runtime source retention and backend compiler binding
+
+- [x] Retain the complete official Go source tree for the actual current runtime
+      version, Go 1.26.8, pinned to commit
+      `c293dd49cbe25e1fe8d97d94a5cb618e7b6d831e` and original archive checksum in
+      `tools/go-runtime-sources.json`. Preserve runtime, standard-library,
+      compiler, build files and original notices; keep nested test archives
+      unchanged rather than interpreting them as dependency archives.
+- [x] Extend runtime packaging and independent replay to require both actual
+      executables' Go versions to match their retained original. Read metadata
+      without running the programs, retain the exact Go policy in the source
+      pack, and supply the backend's original Go notices as well as the web's.
+- [x] Bind both authenticated backend compiler graphs to the exact committed
+      application snapshot and H1-verified module originals. Require all compiled
+      dependency versions/checksums and publication asset subjects to match;
+      permit additional verified build-only modules. Reuse existing native
+      compiler evidence without adding another build or scanner execution.
+- [x] Verify the actual pinned Go original and both previously tested native
+      AMD64 executable versions, retaining exact archive/configuration/binary
+      identities. This check is separate from preparing a new final runtime pack.
+- [ ] Prepare and verify new final runtime packs and overlaid image pairs on
+      both native architectures, with the complete Go source and notice changes.
+- [ ] Finish remaining preferred-form package/generator relationships and emit
+      the complete corresponding-source gate before hosted authorization and
+      publication. Backend compiler binding and Go originals do not finish all
+      source categories.
+
+The exact original Go archive is 34,443,123 bytes, SHA256
+`061b4e784db7ce97cd9ae99ea71a857a2ff8455c6400495e5d1a98b8accd2542`.
+Its bounded inspection covered 16,693 members and 145,163,055 expanded source
+bytes in 0.9 seconds, finding 38 original notices (70,348 bytes) and an exact
+Go 1.26.8 VERSION file. Download occurred only during explicit source acquisition;
+routine test fixtures are small local archives. Original source/runtime
+inspection against the retained `f90be19b543b31ef7738187a61ceb45aec518680`
+AMD64 pair took 3.0 seconds. Both actual executable versions matched. Private
+receipts remain retained; this does not relabel that older pair as a new build,
+validate ARM64 or approve full corresponding sources.
+
+All 386 affected release, native-preparation, browser-input, runtime source/notice
+and signature regressions passed in 26.4 seconds, with one existing opt-in Docker
+case skipped. The real original-source/executable inspection above ran separately.
+New cases target source substitution, missing preferred inputs, mismatched binary
+versions, module checksum mismatch and authentication refusal; no network calls,
+compiler builds or coverage-only tests were added to the routine suite. The
+updated source-scanner caller was included in those checks after the runtime
+replay API change.
+
+### Native Go source packaging and compiler input capture
+
+- [x] Prepare and independently verify the updated native AMD64 pair from
+      `4ae5954223e6ec93f191a6578722551f60fdb54f`, including complete Go sources,
+      both original executable versions, final notice overlays, OCI exports,
+      actual image smoke checks and the existing browser input replay.
+- [x] Retain the installed Svelte compiler and preprocessor inputs in the
+      browser builder capture: 235 Svelte files and all 21 plugin JavaScript
+      files. Require the reviewed package identities and entrypoints and reuse
+      the existing npm archive integrity checks.
+- [x] Add one small regression for omitted or substituted compiler/preprocessor
+      bytes. Use seven representative files in fixtures; all 34 affected browser
+      and native-preparation checks passed in 1.2 seconds, with one opt-in Docker
+      case skipped. The actual native Docker check above ran separately.
+- [x] Verify the complete new compiler/plugin capture against the actual builder
+      and retained locked npm archives.
+- [ ] Finish preferred-source/generator relationships and the native ARM64
+      preparation before emitting the complete corresponding-source gate.
+
+The AMD64 preparation took 348.6 seconds. Its 190,781,748-byte runtime source
+asset has SHA256
+`cecccf06bc91a10a3377ddc966d4f5306db0312935fdd263e698101d2340aa53`.
+The independently checked final configurations are
+`72268e1334d2eb6aa2e9580aca617072936b86c048d16914d9b801e19f497688`
+(backend) and
+`a348f835af1e0009bda5b8252096b35c13bd006149548b4fced9863f0dd79ce3`
+(web). Private schema-2 artifact and replay receipts are retained. Both executable
+Go versions are 1.26.8 and match the retained original. This establishes the
+runtime packaging check for that exact AMD64 source, not full application-source
+completeness, ARM64 validation or publication approval.
+
+The first attempt stopped before creating output because a prior temporary
+source-helper image was absent. Recreating the helper and restoring the saved
+application images reused completed builds and dependency originals. No image
+was published or deployed. The compiler capture is a subsequent implementation;
+the earlier AMD64 receipt does not validate its additional inputs.
+
+The subsequent real builder capture from
+`7d0f42a8ffb2b44a38ae25c635c4ddefe4eaf1df` verified every new compiler/plugin
+member against its locked npm original. All 233 retained Svelte source files also
+matched their exact paths in the pinned upstream source tree; the two CommonJS
+files remain npm-bound inputs without a reproduction claim. The builder took
+21.4 seconds, capture 0.7 seconds and independent input replay 1.9 seconds.
+The 20,325,888-byte capture has SHA256
+`0088a4019bb088c727c163ee09d3bc60d86a2a389d602c602cbeb3e62aefa3c1`.
+The replay bound 122 Git inputs and 19 npm originals. Its private receipt preserves
+all 233 file hashes and the exact builder, capture and dependency asset identities.
+Temporary extraction caches and disposable containers/image aliases were cleaned.
+This additional check establishes builder input correspondence, not a new final
+OCI pair, complete preferred-source coverage or publication authority.
+
+### Preferred browser relationships and complete modernc project originals
+
+- [x] Encode explicit original-source and build-recipe relationships for every
+      actually rendered package module, including Noble TypeScript, HPKE import
+      rewriting, fflate browser-worker rewriting, clsx minification and Lucide
+      SVG/metadata generation. Unknown packages, missing originals and changed
+      captured bytes refuse correspondence.
+- [x] Compare QR scanner source-map contents against every pinned decoder/worker
+      original and map the captured Svelte compiler/plugin inputs separately.
+      Actual offline replay resolved 168 rendered package modules and 256 captured
+      compiler/plugin inputs in 3.3 seconds from the existing `7d0f42a` evidence.
+      Three tiny regression methods cover substitution, missing originals,
+      unclassified rendered inputs and changed icon data.
+- [x] Acquire and pin the complete official modernc SQLite/libc project archives
+      at the exact retained Go origin commits. Preserve nested generator modules
+      omitted from proxy ZIPs, including SQLite's vendor tool and its module locks.
+- [x] Independently verify all 1,323 SQLite and 4,153 libc proxy files against
+      those complete project trees, with H1 replay and exact origin/version pins.
+      The actual comparison took 3.5 seconds and retained generator input hashes.
+- [x] Restrict acquisition to the two canonical full-commit GitLab archive routes,
+      refusing other hosts/repositories, mismatched paths, tags and redirects.
+      The 25 affected upstream/browser checks passed in 1.0 seconds without
+      network requests or compiler execution.
+- [x] Collect and independently replay the expanded eighteen-original offering
+      from a committed source, reusing unchanged original archive bytes.
+- [x] Implement the browser source producer joining both authenticated native
+      reports to independently replayed Git/npm/final OCI bytes and the exact
+      publication-bound upstream offering. Replay the common offering once
+      and reuse existing native input checks for package, compiler and generator
+      associations.
+- [x] Verify the offering reader against retained real originals and builder
+      capture inputs, and exercise authentication, image/replay substitution,
+      missing architecture, publication binding and post-replay mutation refusal
+      with two small regression methods.
+- [x] Pin and retain the complete JSBT 0.7.1 project at its exact npm Git origin;
+      verify that its TypeScript configuration is byte-identical to the original
+      npm member whose SHA512 integrity is present in all three Noble locks.
+- [x] Bind Noble's external configuration to the offered source, package identity,
+      configuration hash and upstream lock integrity. Reject missing or changed
+      inputs and unsupported additional configuration inheritance.
+- [x] Collect and independently replay the nineteen-original source offering
+      from the updated committed catalog before hosted release preparation.
+- [x] Bind rendered Vite virtual helpers and SvelteKit generated application
+      inputs to retained preferred generator sources, exact npm bytes and project
+      Git inputs. Reject unknown rendered inputs, changed helper templates, wrong
+      workspace lock selections and unattributed final JavaScript.
+- [ ] Complete remaining generator/configuration relationships and authenticate
+      the exact final-image inputs on both native architectures before producing
+      the corresponding-source gate and requesting distribution review.
+
+The SQLite module origin is `dc8212054b608339e80d7e986e530fa24bc5e369`
+in `cznic/sqlite`; its full 39,232,665-byte archive has SHA256
+`492752855dd34e06c4798019c6708e1f89e7b9444ef80ddd9e94c54a1322e167`.
+The libc origin is `d6b3f0f238e49c751b8ace5b5595ccc93db8b536`
+in `cznic/libc`; its 15,742,379-byte archive has SHA256
+`8bfc54fb0cd88402f0fcd902a3117e785cf30de3574216fe95ba22685f67e81f`.
+Both entire source trees are retained unchanged. The SQLite tree expands to
+244,731,639 bytes, so the bounded expanded-source limit is now 512 MiB and the
+combined offering limit is 256 MiB. Per-original archive and member-count limits
+remain bounded; routine fixtures remain small.
+
+The browser relationship helper consumes already verified archive/capture/npm
+facts; it does not authenticate or authorize publication itself. Noble's upstream
+locks identify `@paulmillr/jsbt@0.7.1`; its full original project is now pinned at
+`c138efca67d90dce86a7cc22c01d6b66d193ea7a`. The 224,261-byte source archive has
+SHA256 `0c0f435d7945837d6473279d73da94582bea474fcc80edc127997a8d9172c94b`.
+The configuration is byte-identical to the integrity-checked npm member, SHA256
+`be47d0e8938ae5896bbd69348b22fc5e756e5a820480229035d3ac06861875ac`.
+The source relationship now requires that retained configuration and its exact
+locked integrity. Two tiny regressions cover configuration/identity substitution
+and missing or mismatched external lock inputs. Actual replay of the retained
+`7d0f42a` capture verified all 15 Noble external-configuration inputs in 0.03
+seconds. The complete release/notice suite passed 400 tests in 24.3 seconds
+(one existing opt-in Docker skip); the two new cases took 0.001 and 0.034 seconds.
+Vite virtual helpers and Kit generated application outputs are now associated
+with retained preferred generator sources. Backend generator relationships were
+subsequently implemented below. The combined corresponding-source producer is
+implemented; authenticated execution for the final current two-platform
+candidate remains pending.
+These facts do not establish offline or byte-identical dependency regeneration,
+complete corresponding-source coverage or publication authority.
+
+Actual collection and replay from `5da2acec232fa10cfaf7ad60cdf362bfa5c7b928`
+retained all 18 originals and 41,908 members. Collection took 7.1 seconds and
+independent replay 7.4 seconds, without repeating downloads. The 172,577,635-byte
+offering has SHA256
+`db40608f19d5d0f7244e3208dde113f9c425560ff4dc27202b4e230bcaa3ff59`.
+Private committed-source collection and replay receipts are retained. The archive
+includes the two full modernc projects alongside the sixteen unchanged originals;
+this does not finish the remaining complete-source producer or authorize release.
+
+The subsequent nineteen-original offering from
+`8bed82dc8d4e198808f8c286ec392f54a09c3a10` includes the pinned JSBT project and
+42,434 original members. Collection took 7.2 seconds and independent replay 8.9
+seconds using retained originals, without additional network requests. Its
+172,822,312-byte asset has SHA256
+`d9562099d25343b2e1c220812f59f6b6e6e0993a41cb3f61b6c7366768ee94f8`.
+The replay also checked the configuration and all three Noble lock integrities;
+private collection/replay receipts are retained. Full source-gate approval and
+hosted final-image verification remain pending.
+
+The browser producer now authenticates both image observations before consuming
+large source inputs and checks their full independent replay results. It reuses
+retained compiler/npm inputs without rebuilding, downloading or rescanning.
+The real offering reader replayed all eighteen originals in 8.5 seconds; fourteen
+browser source maps resolved the retained 168 rendered package inputs and 256
+compiler/plugin inputs in 0.2 seconds. This check combines the exact `5da2ace`
+offering and `7d0f42a` capture identified above; it does not represent authenticated
+final-image execution for a new source commit or either architecture. Temporary
+extraction caches were cleaned and the private receipt retained. The two new
+regression methods took 0.23 and 0.03 seconds, including fixture setup/cleanup;
+the complete routine-suite result is recorded below.
+
+The subsequent generator replay used that nineteen-original offering and the
+retained `7d0f42a` capture. It mapped all 23 rendered virtual inputs, five rendered
+generated application inputs (eleven including excluded modules), seventeen
+generator/recipe inputs and 100 project source/build inputs in 0.011 seconds.
+The exact Vite workspace importer selects Rollup CommonJS 28.0.3; its helper
+body matches the authenticated Vite bundle, and the preload template matches
+with the documented two identifier substitutions. All sixteen captured Kit
+recipe files match the preferred originals. No downloads or rebuilds were
+needed; temporary extraction caches were cleaned and the private replay receipt
+retained. These are source associations, not byte-identical regeneration or
+authenticated final-image checks for the current commit on both architectures.
+
+### Preferred backend project and generator relationships
+
+- [x] Expose selected module members from the existing independent H1 replay,
+      reusing verified original ZIP/info bytes without rereading the large asset
+      or creating another module cache. Keep the original hash-only API intact.
+- [x] Bind both authenticated backend compiler observations to the exact
+      publication-bound upstream offering. Authenticate the complete small
+      observation set before reading large originals, and check offering mutation
+      after the preferred-source comparison.
+- [x] Encode exact SQLite/libc module origin/version and every proxy member's
+      equality to the preferred full project. Associate both Linux SQLite outputs
+      with the original C version and Fossil source ID; use active libc generator
+      recipes, musl archive pins, platform overlays/headers and exact retained
+      CC/CCGo/fileutil source/version/H1 inputs.
+- [x] Pin and boundedly inspect the complete matching sibling libsqlite3 v1.9.0
+      project at its immutable official Go/GitLab origin. Restrict its auxiliary
+      association to the locked SQLite module and its acquisition to the exact
+      full-commit canonical GitLab route.
+- [x] Collect and independently replay the twenty-original offering from the
+      committed catalog, reusing existing original archives.
+- [x] Encode and independently replay the sibling vendoring transformation
+      against both generated Linux outputs; keep byte regeneration separate.
+- [x] Finish the complete corresponding-source producer, including final image
+      notices and independent original dependency notice associations.
+- [ ] Authenticate and run the final current candidate source inputs on both
+      native architectures, retaining and signing the complete gate evidence.
+
+Actual offline replay used the retained nineteen-original `8bed82d` offering and
+SHA-bound `4ae5954` dependency asset. Five selected module ZIPs passed independent
+H1 verification in 1.5 seconds; the offering reader took 9.0 seconds and preferred
+source association 0.44 seconds. All 1,323 SQLite and 4,153 libc proxy members
+match their pinned full projects; 622 libc recipe/overlay/header inputs are mapped.
+This verifies retained source relationships, not authenticated native execution
+for the current commit or a complete corresponding-source gate. Private receipts
+remain retained; no source generators were executed or temporary caches left.
+
+The missing SQLite sibling is `cznic/libsqlite3` commit
+`489e7b6027e7cc723ec60b34a00be46236c94cc7` (`modernc.org/libsqlite3 v1.9.0`).
+Official Go proxy Origin and GitLab tag metadata agree. Its complete
+70,672,238-byte source archive has SHA256
+`2fe319a41b9026fdcf10fa1cc7b40983d6209ac06f816045882e03776987a16f`;
+bounded inspection checked 1,367 members and 399,686,031 member bytes in 1.2
+seconds. The per-original limit is now 80 MiB; aggregate 256 MiB and expanded
+512 MiB limits remain unchanged. Both source outputs match the vendoring recipe
+under comment/whitespace token normalization, package rename, removal of
+`SQLITE_TRANSIENT` and 797 added aliases per platform. This research receipt
+identified the inputs; the standard-library AST verifier now checks the same
+transformation, with semantic syntax and platform constraints preserved.
+The sibling's translator pins are CC/CCGo v4.25.2 and fileutil v1.3.0, distinct
+from libc's retained v4.26.0/v1.3.1 tools. Their declared recipes/locks are retained;
+independent regeneration would require its old tool environment and is not
+claimed by these source associations.
+
+The twenty-original offering from committed source
+`06b1425a4f5f0c1b8c552a51fcf56df5a2b00833` contains 43,801 original members.
+Collection took 9.5 seconds and independent replay 10.0 seconds, reusing the
+nineteen previous archive bytes and the pinned sibling archive without further
+network requests. Its 243,327,758-byte asset fits the unchanged 256 MiB aggregate
+bound and has SHA256
+`0550c863f7c3dcc460402f4c64fa2d381de635c8ccbcf9b767f29451ee3b8197`.
+Private collection/replay receipts are retained; full source-gate approval,
+current native final-image checks and publication remain pending.
+
+The SQLite verifier is bound to the selected application's committed checker
+source and the reviewed original vendoring recipe SHA256
+`619a55071e22cac99a8583858379a2c52f6504c38bec049ccb6f6f138ed8d223`.
+It applies the package/constant/type-alias changes and compares ordered Go AST
+structure. Type aliases, variadic parameters/calls, literal bytes, imports,
+declaration order and significant semicolons remain distinguishable. Exactly
+matching reviewed Linux build constraints are bound into the comparison;
+unsupported executable comment directives refuse verification. Ordinary comments
+and formatting are ignored. Inputs are bounded to 40 MiB, compilation to 60
+seconds and each comparison to 45 seconds, with no package downloads. One checker
+is compiled per backend review; identical independently H1-replayed module ZIP
+and origin facts reuse the preferred source result across architectures. Private
+checker/input directories are removed after the review.
+
+Actual replay used the twenty-original `06b1425` offering and the retained
+`4ae5954` dependency asset, together with the working checker source (SHA256
+`8fca230e66f00994e756e7b15ad6f83b1d5394239e1fd473b49cb68b788a393b`).
+Five module H1 checks took 1.6 seconds, the offering reader 12.6 seconds and
+preferred association including checker compilation and both real platform
+comparisons 4.8 seconds. Each platform requires 797 added aliases and has equal
+expected/target AST hashes. The private receipt records exact raw input and
+structural hashes. The two Go regressions passed in 0.004 seconds (warm-cache
+command wall time 0.044 seconds); CI runs these tiny fixtures explicitly. The
+Python protocol fixture checks reuse, source/receipt substitutions, timeouts and
+cleanup without another compilation. Neither upstream C translation nor the
+original GC-based vendoring tool was executed. Native final-image authentication
+and execution of the complete corresponding-source producer for the current
+candidate remain pending.
+
+### Complete corresponding-source report composition
+
+- [x] Compose the substantive committed application archive, backend module and
+      browser preferred/compiler/generator replays. Require all four final image
+      identities and every offered source asset; derive canonical category
+      evidence hashes instead of accepting caller-provided completion flags.
+- [x] Authenticate both existing runtime-source completeness records and bind
+      their exact source asset, pack, native smoke, final image and Go/Caddy
+      coverage to the complete publication binding. Reuse these retained original
+      source replays without repeating collectors, image builds or signature tools.
+- [x] Project the complete final backend `/app/licenses` tree with OCI layer and
+      whiteout semantics. Check committed application/dependency notices, locks,
+      the generated source locator, original Go license and runtime overlays.
+      Derive web notice inventory hashes from the existing independent final
+      static-tree replay, including copied backend and runtime notices.
+- [x] Bind every committed backend dependency notice to the already H1-verified
+      original Go ZIP bytes, checking the reviewed normalization recipe and exact
+      original/local hashes. Reuse the existing ZIP pass and include these facts
+      in the backend category evidence.
+- [x] Wire the complete producer and retained evidence into version-tag native
+      authentication and signing. Bind verification to the exact workflow run and
+      attempt; planned main dispatches remain unsigned.
+- [ ] Execute this wiring on both hosted native architectures for the current
+      selected source. Local verification does not establish an authenticated
+      current-candidate release gate.
+
+The complete producer returns a `corresponding-source` report plus retained
+canonical coverage evidence. Individual source helpers retain their partial
+completeness/publication flags. The joined report establishes only corresponding
+source coverage; protected distribution approval and source delivery/readback
+remain separate gates. The selected committed policy, all original source assets,
+measurements, runtime pack metadata and final image archives are rechecked before
+returning the report.
+
+- [x] Wire source-CI, final-image-smoke, runtime-notices, source-scanners and
+      final-image-scanners reports into the same
+      tagged assembly and authenticated verification path. Reuse the prepared
+      binding and measurement authenticator without another source archive pass.
+- [ ] Verify these five gates against actual two-platform hosted evidence for
+      the selected tag attempt; local command fixtures do not establish this.
+
+The four new small regression methods cover substituted or missing runtime/source
+evidence, incomplete categories, changed final notice bytes and OCI removals or
+links. Together they took approximately 0.05 seconds. They use local bytes and
+tiny layers, with no image builds, downloads or arbitrary sleeps. The notice
+helper also replayed the retained `4ae5954` AMD64 backend archive in 0.23 seconds:
+44 final notice files and 22 dependency notices, inventory digest
+`sha256:8413cd8478ee12ad88d3acaa3828c13b49d2416262d048e668214bc6bfb85494`.
+That earlier archive is development evidence, not authentication of the current
+candidate or publication approval.
+
+The dependency notice comparison also passed against the retained `4ae5954`
+originals in 0.54 seconds: all fifteen declared modules and twenty-two legal
+members match the exact committed inventory and local bytes. Only OTP `NOTICE`
+and memory `LICENSE-MMAP-GO` require the reviewed whitespace normalization;
+SQLite `SQLITE-LICENSE` is an original ZIP member. The reviewed generator has
+SHA256 `1c670e2f028fd422cf5948887946e3da26db7e43f5a49e55695035eb546317ca`;
+a changed recipe requires review rather than executing selected-source Python.
+The same streaming read rechecked the retained source asset and selected original
+ZIP hashes without another H1 replay, extraction or cache. Its private receipt
+remains separate from authenticated current-candidate release evidence.
+
+Tagged native jobs attest eight explicit small measurement files after transfer
+verification. Assembly authenticates these records, runs the complete source
+producer and attests its two canonical output files. The official action is pinned
+to `1e69f48acb82d1966a394da916b4c1698aa569d6`; its reviewed distribution uses
+the exact run and attempt invocation identity required by the verifier. Signing
+permissions do not grant registry publication, release writes or production access.
+
+The source command consumes the prepared release directory, both retained native
+transfer directories and the upstream input directory, with explicit repository,
+version, commit, run ID and attempt. Its `--verify-only` mode independently
+authenticates the generated report and retained evidence without repeating source
+replay or image builds. Successful small-record authentication is cached only
+within one verifier, keyed by binding, content hash and invocation, with a
+64-entry bound; failed or changed records are never reused. Later publication
+must independently rebind the selected assets.
+
+Two tiny command fixtures cover exact paths/output binding, stale or partial
+outputs and substituted report evidence. A focused authentication fixture checks
+attempt substitution and safe cache reuse. These extend existing substantive
+replay tests instead of repeating large source fixtures. Workflow YAML parsed,
+all 22 shell steps passed `bash -n` and three inline Python blocks parsed; actual
+hosted signing and execution remain pending.
+
+The optional `--checks-output` directory retains exactly the source-CI,
+final-image-smoke, runtime-notices, source-scanners and final-image-scanners reports
+alongside the separate two-file
+source output. It shares the existing binding and verifier, checks current CI
+before expensive source replay, and reuses authenticated small native records.
+Neither generation nor post-attestation verification adds an image build or
+source archive pass. Assembly has explicit Actions read permission for the CI
+API; the two source files and five check reports are attested together and independently verified before
+artifact retention. Planned main dispatches cannot execute this tagged path.
+
+The five command fixtures passed in 0.022 seconds, including three new paired
+output cases. They catch stale/substituted reports, output mutation, partial or
+overlapping directories and failed CI that must leave complete outputs absent.
+The existing eighteen gate-producer fixtures passed in 1.93 seconds and ten
+authentication fixtures in 0.123 seconds. These targeted checks followed the
+26.7-second full-suite baseline below; another broad suite was unnecessary.
+
+Scanner aggregation reuses the retained raw native reports and all four compiler
+graphs. `--resolved-bases` is required with `--checks-output`; exact tagged base
+resolution is now attested and authenticated before the substantive source replay.
+Aggregation independently derives finding dispositions from retained evidence,
+and verification rejects unresolved findings or missing target coverage. It adds
+no collector, scanner, container build or upstream signature execution. The
+source scanner aggregate creates a local committed Git snapshot and reads/hashes
+retained raw reports; image aggregation reuses runtime packs and compiler facts.
+Post-attestation verification authenticates completed reports without invoking
+these producers or reopening bases.
+
+The existing five command fixtures were extended with native-path mapping,
+missing/substituted scanner reports, unresolved findings and early bases
+authentication rejection; they passed in 0.028 seconds. Twelve existing source
+scanner boundary cases passed in 2.03 seconds and nine image scanner cases in
+1.05 seconds. No new test methods, downloads or builds were added to routine CI.
+Existing native compiler collection remains release-only and does perform real
+source extraction, compiler analysis and backend correspondence compilation;
+these small aggregation timings do not promise a faster full release pipeline.
+
+Read-only GitHub inspection on 2026-10-08 confirmed public `endorses/psst.zip`,
+remote main `b697119ba81c3aaf18725f38869b778f2e59df9d` and successful CI run
+`37669775085`. No protected environments, rulesets or published releases were
+configured. The only version tag is preserved `v0.0.0`, pointing to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`; `v0.1.0` has not been created.
+This inspection changed no remote configuration, refs or publication state.
+
+### Protected distribution presentation and signing
+
+- [x] Add `present`, `produce` and `verify` commands around the existing strict
+      distribution-review producer. Share the authenticated small binding and
+      source report; present exact candidate artifact names, final image/notice
+      identities, complete source coverage and attempt-bound approval text.
+- [x] Present the artifact packet after native recovery succeeds and before the
+      protected job waits. Produce and attest the authorized report plus retained
+      GitHub review evidence, then independently verify both without another
+      source replay or mutable review-history query.
+- [x] Provision and independently read back the live `container-release`
+      environment for the committed reviewer policy and `v*` tags only.
+- [ ] Run the protected workflow on the exact pushed source and verify actual
+      reviewer approval/rejection, report signing and artifact layout.
+
+Live provisioning on 2026-10-08 created environment `23740086979`, with exactly
+the required user reviewer `endorses` (`172757685`). Self-review is allowed so
+the sole personal-project maintainer can review their own release. Custom
+deployment policies contain only tag rule `62318446`, pattern `v*`; branches
+cannot enter this environment. Both API readbacks matched the selected policy.
+No environment secrets, publication permission, registry package or release
+were created. A job bypass without an exact authorized recorded review cannot
+satisfy the producer. These settings follow GitHub's
+[environment API](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment)
+and [tag deployment policy API](https://docs.github.com/en/rest/deployments/branch-policies#create-a-deployment-branch-policy).
+
+The review packet and tagged native/prepared/source inputs are retained for
+seven days, so a pending review does not lose its inputs after one day. Planned
+main candidates keep one-day payload retention. Review must finish while its
+exact artifacts are retained; expired artifacts fail closed rather than fetching
+another attempt or recreating an approval. Published release source retention
+and durable interrupted-publication receipts remain separate requirements.
+
+Two tiny CLI fixtures passed in 0.019 seconds, covering presentation references,
+production/verification separation, exact authorization and output substitutions.
+The two existing producer authorization cases passed in 0.257 seconds. These
+tests use local bytes and mocked GitHub evidence; no real approval or publication
+is claimed. Workflow YAML parsed, all 29 shell steps passed `bash -n` and three
+inline Python blocks parsed. The new local workflow remains unpushed; live
+review execution and later publication/VPS rollout are pending.
+
+### Publication attempt identity and first-release prerequisites
+
+- [x] Map the exact downloaded prepared, native and signed-gate artifact paths
+      into the publication command's input JSON without rereading source or OCI
+      payloads. Reuse the source command's bounded metadata inventory contract.
+- [x] Restrict the publication command's default evidence verifier to the exact
+      hosted run ID and attempt, matching the gate producers. Reject absent or
+      malformed identifiers before creating snapshots or contacting remote APIs.
+- [x] Inspect and enable the live repository's immutable-release policy before
+      the first release. Independently verify the setting after the change.
+- [ ] Provision public, repository-linked `psst-zip-backend` and `psst-zip-web`
+      GHCR packages and the separate Administration-read inspection credential.
+- [ ] Persist publication inputs and each mutation journal record beyond the
+      hosted runner's lifetime before enabling the publishing job. A local
+      fsync or final artifact upload alone does not protect against runner loss.
+
+On 2026-10-08, the authenticated repository API reported no existing releases,
+immutable releases disabled, and HTTP 404 for both expected package names.
+The planned immutable-release setting was enabled through the repository API;
+an independent read returned `enabled: true`, `enforced_by_owner: false`.
+No release, package, image or tag was created by this setup. Package provisioning,
+branch/tag protection and the least-privilege workflow inspection credential
+remain pending. The [official repository API](https://docs.github.com/en/rest/repos/repos#enable-immutable-releases)
+documents the setting and its separate Administration permissions.
+
+The eleven publication command fixtures passed in 1.23 seconds. The new case
+checks current-attempt wiring and malformed-identity refusal before snapshots
+or transport calls; existing evidence tests cover cryptographic rejection of
+stale provenance. It adds no network request, Docker build or arbitrary wait.
+`tools/prepare_publication_inputs.py` checks the declared source context, manifest,
+subject inventory, exact eight gate names/binding and four regular final archive
+paths. Its output is a path map, not authenticated approval; the publication
+command still snapshots, hashes and authenticates the selected bytes. Two small
+mapping fixtures and the five existing source-command cases passed in 0.036
+seconds, including a check that mapping never opens large source/bundle/OCI
+payloads. The dependent distribution and recovery command fixtures passed in
+0.018 and 0.481 seconds after the shared metadata refactor.
+At this checkpoint, the workflow granted no registry or release publication
+permission. External recovery-record storage was still pending; the subsequent
+guarded integration below implements an adapter without claiming live retention.
+
+### Guarded publication and external journal integration
+
+- [x] Wire the exact `publish` job after assembled source, signed native recovery
+      and authorized distribution review. Keep planned dispatches read-only and
+      require explicit publication enablement plus the protected environment.
+- [x] Serialize the whole release workflow using the literal
+      `container-release-publication` group, with cancellation disabled. Confine
+      Contents/package write scopes to the publishing job.
+- [x] Retain the complete immutable input packet, each pre-write journal intent,
+      subsequent completion/uncertainty and terminal receipt through a private
+      conditional-write S3 adapter. Reuse snapshot hashes and require independent
+      checksum/size/encryption readback before acknowledging persistence.
+- [x] Exercise adapter-to-driver integration and interrupted storage boundaries
+      using small offline fixtures; verify workflow YAML, shell and Python blocks.
+- [ ] Select and configure a capable private storage provider, check its privacy
+      and retention policy, recover stored inputs/journals independently, and
+      verify a live interruption before enabling publication.
+- [ ] Configure public repository-linked packages, least-privilege inspection and
+      storage credentials, branch/tag protection and the explicit enablement
+      variable; verify hosted OIDC, real reviewer decisions and public publication.
+
+`tools/publication_retention.py` uses installed AWS CLI v2 with separate temporary
+credential files and no ambient AWS profiles/proxy/metadata authentication. The
+selected endpoint must support conditional uploads, SHA256 checksum readback,
+AES256 server-side encryption and authenticated public-access-block/bucket-policy
+status APIs. Unsupported provider capabilities stop publication. The storage
+choice remains pending; S3 support is prepared as the default, with no live bucket
+or credential provisioned. It does not assert Object Lock, independent restore or
+protection from administrator deletion.
+
+The opt-in publishing job checks configuration before downloading large inputs,
+uses the existing exact artifact layout, and invokes the shared publication
+command. It performs no additional build, source replay, scanner or recovery run.
+Its 30-minute deadline bounds real publication transfers and readback, separately
+from routine CI tests. No private journal is exposed through public artifacts.
+The default remains disabled until `CONTAINER_RELEASE_PUBLICATION_ENABLED=true`.
+The protected environment requires final publishing approval after distribution
+review; setting the variable alone cannot satisfy missing authenticated gates.
+
+Three adapter cases passed in 0.006 seconds; thirteen driver cases passed in 1.58
+seconds, seventeen transport cases in 1.77 seconds and sixteen signer cases in
+0.097 seconds. The two new driver cases
+catch external-retention failure before a release write and ensure the actual
+four-archive/eight-gate packet and terminal receipt are accepted by the real
+adapter. The integration also exercises the default signing adapter's separate
+disposable action cache, preserving an exact retained input inventory and cleanup.
+Fixtures use injected AWS/API commands and tiny local files, with no
+network calls, Docker builds or sleeps. Workflow YAML, all 35 shell steps and seven
+inline Python blocks parsed; formatting and diff checks passed. New hosted
+execution, provider retention and production rollout remain pending.
+
+### Live repository and production environment protections
+
+- [x] Configure and independently verify the active main ruleset using the five
+      existing successful GitHub Actions contexts. Require a PR and latest-base
+      checks, block deletion/force pushes, and allow the sole maintainer to merge
+      their own passing PR without another reviewer.
+- [x] Configure and independently read back the `refs/tags/v*` ruleset, allowing
+      new tags while blocking updates/deletion. Verify `v0.0.0` remains unchanged.
+- [x] Create and verify the main-only `production` environment policy without
+      installing SSH credentials, configuring a host or dispatching deployment.
+- [x] Track the applied non-secret ruleset/environment payloads and operator
+      guidance, preserving separate pending live publication and VPS checks.
+- [ ] Configure the remaining environment variables, independent inspection and
+      storage credentials, public package namespaces and restricted deployment
+      identity; verify hosted release and production behavior against them.
+
+On 2026-10-08, live inspection found no rulesets or legacy main protection and no
+production environment. Active `main-ci` ruleset `24694051` now requires exactly
+the five successful contexts from GitHub Actions integration `15368`, matched to
+remote main `b697119ba81c3aaf18725f38869b778f2e59df9d`. It requires latest-base
+checks, PRs and resolved review threads, with no bypass actors. Required reviewer
+count is zero; code-owner, last-push and extra unattributed-change approval are
+explicitly disabled. This permits self-merge after CI and changes subsequent
+publication of code to branch/PR pushes instead of direct pushes to main.
+
+Active `version-tags` ruleset `24694056` covers only `refs/tags/v*`; creation is
+allowed, update/deletion prohibited, and there are no bypass actors. An independent
+read confirmed `v0.0.0` still points to
+`998fd83fb8b2915c576547d70c3a472b4291bd7f`. Stable version syntax remains enforced
+by the existing release workflow. GitHub rejected an optional metadata-name rule
+with HTTP 422; it was removed from the prepared configuration and the unchanged
+active update/delete policy was independently verified. No protected-ref mutation
+probe or new tag was attempted.
+
+The `production` environment is `23741939516`, with custom deployment policies
+and only branch `main` (`62320707`). It has no additional reviewer requirement,
+secrets or variables; manual dispatch remains deliberate deployment authorization
+for this personal instance. Separate reads verified its settings, policy count
+and empty credential/variable lists. The release environment also still has no
+secrets or variables. No VPS account/key, host trust, public registry artifact or
+production transaction was created by this repository setup.
+
+Applied request payloads live under `.github/rulesets/` and
+`.github/environments/`; the publication and production operator guides record
+the effective settings. JSON parsed, formatter/diff checks passed, and independent
+API projections matched the tracked policy; no application tests or builds were
+repeated for these reversible configuration changes. Remaining provider/package
+and real hosted deployment checks remain pending.
+
+### Release-compatible external gateway verification
+
+- [x] Adapt the existing external-proxy harness to accept an already-loaded,
+      immutable backend/web pair and use both release Compose files. Preserve
+      source mode, share the selected web image across both proxy hops, and keep
+      caller images out of cleanup. Reuse a loaded immutable client image too.
+- [x] Verify the existing proxy and managed certificate-state restore flows with
+      the retained local pair. Check selected image/configuration identities at
+      startup and after restoration/restart; perform no new builds or pulls.
+- [ ] Repeat against the final exact tagged candidate and complete public ACME,
+      anonymous release acquisition and production adoption verification.
+
+On 2026-10-08, the release-mode proxy flow passed in 20.250 seconds: verified TLS,
+isolated ingress, hardening, canonical Origin/authentication/cookies, live SSE,
+public revocation, pause/restart/logout persistence, stopped backend restoration
+into a new volume, and spoofed-IP rate limits with independent client peers.
+The managed certificate flow passed in 16.662 seconds: both gateway state volumes
+were copied through backups into new volumes, original/backup contents and key
+permissions were preserved, and the original CA trust and leaf certificate
+survived restore and restart. Both runs checked the exact selected images and
+matching inner/gateway/trusted-proxy configuration and cleaned their disposable
+containers, networks, volumes and private temporary files.
+
+These runs reused source `4ae5954223e6ec93f191a6578722551f60fdb54f`, with backend
+configuration ID `sha256:70ae03fb2348deafc079ddcd24700c144abc908af360becc92ed100fb83ede69`
+and web configuration ID `sha256:e79a61c39d68234e0be066093fd2262c93b99e27d53f280616b9cadc5cc4821e`.
+No backend/web application or proxy configuration source changed between that
+revision and this checkpoint. The pair remained intact after harness cleanup;
+only the diagnostic tags loaded for these checks were subsequently removed.
+Its original saved archive remains retained. This verifies current release
+Compose/harness behavior, not new hosted provenance or final-candidate approval.
+The invocation is documented in the container release guide. No routine CI job
+or new test suite was added; syntax, formatting and diff checks passed.
+
+### First-package publication ordering
+
+- [x] Remove the first-release package-creation circular dependency with an
+      explicit protected-environment initialization option in the existing
+      publication run. Preserve strict existing-public-package behavior by default.
+- [x] Admit only paired missing package lookups for initialization; reject mixed
+      state, existing private/unlinked packages and permission/server failures.
+      Reuse the exact reviewed native archives, held lease and retained journal.
+- [x] Require independent public package readback after the complete digest pair
+      push and before anonymous pulls, registry version tags or ready publication.
+      Bound operator visibility setup to ten minutes without retrying writes,
+      automatically resuming a journal or adopting prior seeded images.
+- [x] Exercise the actual driver-to-transport initialization path and failure
+      boundaries with tiny fake API/clock fixtures; validate malformed settings
+      before snapshots and record the operator setup instructions.
+- [ ] Verify first-package creation, repository linkage, operator visibility
+      changes and anonymous retrieval on the actual GHCR service.
+
+The previous driver required existing public packages before draft reservation,
+while its only image transfer required that draft. Separate seeding would also
+conflict with deliberate existing-child/index refusal. The opt-in
+`PSST_INITIALIZE_GHCR_PACKAGES=true` path instead operates within one authenticated
+tag attempt: verify every existing gate and retention prerequisite, admit both
+missing package lookups, reserve the draft, push the exact reviewed digests, then
+wait for the owner to make the new linked packages public. It changes no package
+visibility itself and creates no registry release tags during the wait. Existing
+public packages proceed without waiting; preexisting private packages remain a
+refusal. Failure preserves the original draft, inputs and journal for explicit
+reconciliation. No namespace marker, extra build, seeding receipt or resume mode
+was added.
+
+Twenty transport checks passed in 2.014 seconds and fourteen publication driver
+checks in 1.564 seconds. Three new transport cases cover strict/default opt-in,
+created-private-to-public transition, identity/API failures and deadline expiry
+using fake time; one driver case covers the same-run complete release path.
+The existing early-refusal case also rejects malformed initialization settings.
+No real sleeps, service calls or application builds occur in these fixtures.
+Workflow YAML, all 35 shell steps and seven embedded Python blocks parsed;
+formatting and diff checks passed. Actual initialization and publication remain
+disabled and unrun.
+
+The reviewed deployment checkpoint `bcc4871a4b8d8f17e4f06db8bbb4301cc2b40aad` was
+pushed to `container-release-deployment` and opened as
+[draft PR #1](https://github.com/endorses/psst.zip/pull/1).
+[CI run 37721962715](https://github.com/endorses/psst.zip/actions/runs/37721962715)
+passed all five jobs: repository security 1m32s (release regression step 38s),
+Android/shared 1m37s, backend 5m23s (race tests 4m54s), web 8m02s (browser tests
+5m59s), and iOS 12m32s (build 7m37s, XCTest 2m33s). This proves that checkpoint,
+not the subsequent package-ordering correction; its exact hosted verification
+remains pending. Main, release tags, enablement and VPS state were unchanged by
+the draft PR.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
 when their work and applicable checks have actually finished. GitHub account
 setup, registry publication, production secrets, and live migration remain
 pending until performed in those environments.
+
+Keep routine checks focused on observable failures rather than coverage totals.
+Use small local fixtures for release parsing, tamper rejection and preservation
+rules; keep full image/source/recovery experiments in release verification. The
+combined local release/notice regression suite ran 437 tests in 26.729 seconds
+on 2026-10-08 after publication wiring, including native preparation, browser input and runtime source
+replay fixtures. One existing opt-in Docker case was skipped; actual container
+builds remain separate release checks. Per-test timing included fixture setup
+and cleanup; the slowest case took 0.753 seconds. All executable cases passed.
+The three backend source
+regressions took 0.020 seconds; they reject substituted project origins/members,
+wrong C source identities, changed generator pins and missing platform/tool inputs.
+The six focused browser-source
+checks, including the two new generator methods, took 0.005 seconds. These catch
+wrong workspace lock selection, substituted helper/configuration bytes and
+unclassified rendered source inputs. The source-archive regression
+exercises recursive-link rejection and the exact metadata-only exception;
+browser fixtures check source and notice substitutions.
+
+For every new test, identify the observable failure it catches and whether an
+existing case already covers that contract. Reuse fixtures and retained inputs;
+do not add redundant assertions merely to increase coverage. Keep routine
+release-tooling fixtures offline, without container builds or arbitrary sleeps.
+Investigate if this combined suite exceeds one minute on a comparable runner or
+if a routine backend/web job approaches its existing 15-minute limit. These are
+investigation thresholds, not reasons to increase timeouts, weaken assertions or
+skip meaningful checks. Measure the next hosted run before claiming CI timing.
+Do not repeat broad suites without changes, failures or unresolved risks that
+justify them.
+
+- [x] Bound native XCTest execution independently of the whole build job. The
+      test step now has a ten-minute limit, and XCTest enforces a maximum
+      two-minute allowance per case. The existing unconditional result-bundle
+      upload remains after the step. These limits fail hangs rather than claim
+      faster successful execution. Run `37721962715` passed all 176 native cases;
+      the slowest large-file streaming case took 52.873 seconds and the oversized
+      inbox case took 27.282 seconds. Both meaningful size-boundary checks remain.
+      The iOS build and tests were unchanged in the subsequent `de0721b` source;
+      its prolonged live XCTest step prompted this bounded-execution change.
+- [x] Verify the native execution limits on macOS/Xcode at `8e18de8`, run
+      `37725494465`. All 176 cases passed in 113.668 seconds. XCTest accepted the
+      enabled two-minute allowances; its step took 4m23s including startup. The
+      downloaded 287,402-byte result artifact matched its recorded SHA256
+      `9314828446b27dde518fe792ce521282175ffe46575e902e4b75abc619f99315`;
+      its 379 entries included result metadata with no external locations.
+      This inspected archive structure and logs, not native xcresulttool decoding.
+- [x] Reduce construction costs in the two measured slow native fixtures without
+      changing their failure contracts. The 101 MiB streaming test now constructs
+      one bridged nonzero full plaintext chunk instead of constructing it for
+      every frame, retaining actual nonce/frame encryption, authentication, file
+      writing and digest verification. Encryption copies header plus plaintext,
+      so the cached input cannot be mutated by its provider. The oversized inbox
+      fixture uses 4,800 paths at the original width instead of 5,000 rows, still asserts
+      the original exceeds 16 MiB, and retains staged-state reopen/resume, late
+      identity, secrets and both JSON/legacy SQLite recovery. The existing
+      portable checkpoint harness passed all 17 cases at the initial 4,200-row
+      checkpoint in 41.768 seconds, with its oversized case taking 21.913 seconds. This validates migration
+      behavior with portable boundaries; it does not prove an iOS timing gain.
+      After retaining the original path width, only the changed migration case
+      was repeated: it passed in 22.982 seconds, with 5.99 seconds of portable
+      compilation. These final refinements still require native verification.
+- [x] Measure the initial fixture checkpoint in complete hosted native XCTest.
+      Run `37725494465` passed all 176 cases: streaming took 45.733 seconds and
+      oversized inbox recovery 33.229 seconds. These different-run measurements
+      do not demonstrate an inbox timing improvement over its earlier 27.282
+      seconds. Keep that limitation explicit instead of claiming faster tests.
+- [ ] Verify and measure the final cached nonzero frame and original-width inbox
+      fixtures with real Kotlin/Apple boundaries in the next hosted native run.
+- [x] Diagnose terminal run `37723307243` before superseding it: backend, web,
+      Android and security passed; iOS exhausted the job budget after its build
+      succeeded. Its completed log contains no XCTest case or suite start, so
+      there is no logged evidence linking the stall to fixture execution. The result upload completed,
+      but the partial bundle alone does not identify the startup cause. Retain
+      overlapping simulator boot and add an explicit `simctl bootstatus -b`
+      readiness check bounded to 120 seconds before XCTest. The step has a
+      three-minute cap; the XCTest step's separate cap also covers app/test launch.
+- [x] Verify simulator readiness and native test startup on exact `8e18de8`:
+      readiness completed in 13 seconds, native build/embedded extension passed,
+      and the full XCTest suite executed successfully. The whole iOS job took
+      15m13s, including an 8m29s build; web took 8m02s and release fixtures 29s.
+      This successful runner check does not prove every future startup stall fixed.
+
+- [x] Scope routine application checks to their actual source/build/fixture
+      dependencies. Keep repository history/security checks unconditional and
+      preserve all five required job names. Select inside existing jobs so release
+      evidence retains its exact five-job contract. Backend changes also run web;
+      shared/native toolchain inputs run both mobile jobs. Protocol/shared fixture
+      or workflow changes and unknown inputs run the full suite. Missing Git
+      baselines or failed classification must never produce a silent skip.
+- [x] Require full validation for reusable release calls and manual CI runs,
+      regardless of routine path selection. Keep release evidence strict about
+      completed successful checks; an unrelated routine green run cannot replace
+      the exact tagged source-CI gate.
+- [x] Verify scope selection with small offline Git fixtures covering prose-only
+      edits versus forced full release checks, dependency crosspaths, renames,
+      deletions, complete push ranges and unavailable/unknown inputs. Do not add
+      repeated application builds or a second large test suite for this selector.
+      Five focused selector cases passed in 1.275 seconds, including subprocess
+      execution and Git fixtures; all temporary repositories/event files were
+      removed. Both workflows passed actionlint 1.7.12, exact five-job/full-release
+      wiring checks, shell parsing and embedded Python syntax checks. No release
+      evidence-parser relaxation or additional reusable job was introduced.
+- [ ] Verify the changed workflow on GitHub before claiming its routine time
+      saving or complete native execution. Application skips mean unaffected
+      source was selected out, not that its tests executed.
+
+- [x] Profile the complete routine release/notice regression suite after the
+      browser source-producer and modernc archive changes; record wall time
+      and slowest cases, including fixture setup and cleanup.
+- [x] Recheck that profile after publication input mapping and external retention
+      wiring. Review their failure contracts and fixture costs: the eighteen
+      affected cases passed in approximately 1.43 seconds, using fake service
+      responses and small local files without application builds or network calls.
+      No material redundancy or slow fixture warranted removing tests or adding
+      another test suite. Hosted timing remains a separate pending check.
+
+Transfer staging performs browser replay once before copying and once when
+independently verifying the completed destination. Intermediate consistency
+checks compare retained file hashes rather than repeating OCI/Git/npm parsing.
+After this optimization, the ten transfer regressions passed in 1.6 seconds.
+
+The last passing hosted CI run `37669775085` took approximately 1 minute for
+repository security, 4.2 minutes for backend, 8 minutes for web and 14 minutes for
+native iOS. Routine job limits are now 10, 15, 15 and 25 minutes respectively;
+the Go test package limit is 10 minutes with race checking preserved. These catch
+hangs rather than establish faster execution. Confirm the new limits on the next
+hosted run. Full release verification includes additional collection and recovery
+work and has separate budgets; these measurements do not promise a sub-30-minute
+release pipeline.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.

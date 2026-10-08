@@ -38,8 +38,36 @@ def raw_index(children: dict[str, str]) -> bytes:
     )
 
 
+def source_review_fixture(binding):
+    """Small completed producer facts; this test adapter supplies trust, not JSON."""
+    subjects = dict(binding.subjects)
+    return {
+        "schema_version": 1,
+        "source_subjects": {
+            key: value for key, value in subjects.items() if key.startswith("source:")
+        },
+        "images": {
+            name: {"subject": subjects[name], "notice_inventory_digest": digest("a")}
+            for name in publication.SOURCE_COVERAGE
+        },
+        "coverage": {
+            name: {
+                category: {"status": "complete", "evidence_digest": digest("e")}
+                for category in categories
+            }
+            for name, categories in publication.SOURCE_COVERAGE.items()
+        },
+        "policy": {
+            "path": publication.SOURCE_REVIEW_POLICY,
+            "source_commit": binding.commit,
+            "record_digest": digest("b"),
+            "git_blob": "a" * 40,
+        },
+    }
+
+
 class FixtureVerifier:
-    """Tests' trusted adapter; production has no verifier implementation yet."""
+    """Tests' trusted adapter; it does not simulate real reviewer authorization."""
 
     def __init__(self):
         self.mutate = lambda receipt: receipt
@@ -64,9 +92,11 @@ class FixtureVerifier:
             details["scans"] = [
                 {
                     "target": target,
-                    "subject": "git:" + binding.repository + "@" + binding.commit
-                    if gate == "source-scanners"
-                    else subjects[target],
+                    "subject": (
+                        "git:" + binding.repository + "@" + binding.commit
+                        if gate == "source-scanners"
+                        else subjects[target]
+                    ),
                     "scanner": "fixture-scanner",
                     "version": "1.0.0",
                     "database": "sha256:fixture-database",
@@ -79,8 +109,48 @@ class FixtureVerifier:
             ]
         elif gate == "final-image-smoke":
             details["execution"] = {name: "native" for name in release.PLATFORMS}
+        elif gate == "upgrade-recovery":
+            subjects = dict(binding.subjects)
+            details = {
+                "schema_version": 1,
+                "execution": {name: "native" for name in release.PLATFORMS},
+                "checks": list(publication.RECOVERY_CHECKS),
+                "native_measurements": {
+                    name: {
+                        "record_digest": digest("e"),
+                        "completed_at": "2026-10-08T00:00:00Z",
+                    }
+                    for name in release.PLATFORMS
+                },
+                "manifest_sha256": subjects["manifest"].split("@")[-1],
+                "bundle_sha256": subjects["bundle"].split("@")[-1],
+                "public_provenance_verified": False,
+                "off_host_provider_verified": False,
+                "browser_mobile_flows_verified": False,
+            }
         elif gate == "provenance":
             details["subjects"] = dict(binding.subjects)
+        elif gate == "corresponding-source":
+            details = source_review_fixture(binding)
+        elif gate == "distribution-review":
+            source = source_review_fixture(binding)
+            details = {key: value for key, value in source.items() if key != "coverage"}
+            details.update(
+                {
+                    "coverage_digest": publication.sha256(
+                        release.json_bytes(source["coverage"])
+                    ),
+                    "review": {
+                        "decision": "approved",
+                        "reviewer": "fixture-reviewer",
+                        "record_digest": digest("c"),
+                        "source_gate_report_digest": publication.sha256(
+                            (path.parent / "corresponding-source.json").read_bytes()
+                        ),
+                        "reviewed_subjects": dict(binding.subjects),
+                    },
+                }
+            )
         details = self.details.get(gate, details)
         return self.mutate(
             publication.VerifiedEvidence(
@@ -242,6 +312,122 @@ class PublicationChecks(unittest.TestCase):
             self.verifier,
         )
 
+    def measure(self, **overrides):
+        args = {
+            "repository": "endorses/psst.zip",
+            "version": "v1.2.3",
+            "commit": self.commit,
+            "manifest_path": self.manifest_path,
+            "bundle": self.bundle,
+            "indexes": self.indexes,
+            "source_assets": {self.source.name: self.source},
+        }
+        args.update(overrides)
+        return publication.measure_prepared_inputs(**args)
+
+    def test_structural_measurement_without_a_tag_cannot_enter_publication(self):
+        self.git("tag", "-d", "v1.2.3")
+        publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        inputs = self.measure()
+        self.assertIsInstance(inputs, publication.PublicationInputs)
+        self.assertNotIsInstance(inputs, publication.PublicationPlan)
+        self.assertFalse(hasattr(inputs, "evidence"))
+        self.assertEqual(len(inputs.updater_subjects), 8)
+        self.assertEqual(
+            dict(inputs.assets)[self.source.name],
+            publication.source_digest(self.source),
+        )
+        with patch.object(
+            self.verifier,
+            "verify",
+            side_effect=AssertionError(
+                "Branch publication must stop before any CI/evidence verifier"
+            ),
+        ) as verifier:
+            with self.assertRaises(release.InvalidRelease):
+                self.prepare(ref="refs/heads/main")
+            with self.assertRaises(release.InvalidRelease):
+                self.prepare()
+            verifier.assert_not_called()
+
+    def test_structural_measurement_matches_tag_bound_preparation_bytes(self):
+        measured = self.measure()
+        prepared = publication.prepare_inputs(
+            root=self.root,
+            repository="endorses/psst.zip",
+            ref="refs/tags/v1.2.3",
+            event_sha=self.commit,
+            reviewed_commit=self.commit,
+            manifest_path=self.manifest_path,
+            bundle=self.bundle,
+            indexes=self.indexes,
+            source_assets={self.source.name: self.source},
+        )
+        self.assertEqual(measured, prepared)
+        self.assertFalse(self.verifier.calls)
+        for overrides in (
+            {"version": "v1.2.4"},
+            {"commit": "b" * 40},
+            {"repository": "attacker/psst.zip"},
+            {"source_assets": {}},
+            {"indexes": {"backend": self.indexes["backend"]}},
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(
+                release.InvalidRelease
+            ):
+                self.measure(**overrides)
+
+    def test_shared_checkout_rejects_origin_and_stale_head(self):
+        self.git(
+            "remote", "set-url", "origin", "https://github.com/attacker/psst.zip.git"
+        )
+        with self.assertRaisesRegex(release.InvalidRelease, "origin differs"):
+            publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        self.git(
+            "remote", "set-url", "origin", "https://github.com/endorses/psst.zip.git"
+        )
+        (self.root / "LICENSE").write_text("new fixture commit\n")
+        self.git("add", "LICENSE")
+        self.git("commit", "-qm", "Later fixture commit")
+        with self.assertRaisesRegex(release.InvalidRelease, "Checkout is not"):
+            publication.checked_checkout(self.root, "endorses/psst.zip", self.commit)
+        with self.assertRaisesRegex(release.InvalidRelease, "Checkout is not"):
+            self.prepare()
+
+    def test_shared_checkout_rejects_staged_and_unstaged_tracked_changes(self):
+        for staged in (False, True):
+            (self.root / "LICENSE").write_text("changed tracked fixture\n")
+            if staged:
+                self.git("add", "LICENSE")
+            with self.subTest(staged=staged), self.assertRaisesRegex(
+                release.InvalidRelease, "Tracked checkout differs"
+            ):
+                publication.checked_checkout(
+                    self.root, "endorses/psst.zip", self.commit
+                )
+            self.git("reset", "--hard", self.commit)
+
+    def test_tag_on_unreviewed_branch_still_requires_main_ancestry(self):
+        self.git("checkout", "-qb", "unreviewed-fixture")
+        (self.root / "LICENSE").write_text("unreviewed branch fixture\n")
+        self.git("add", "LICENSE")
+        self.git("commit", "-qm", "Unreviewed branch fixture")
+        other = self.git("rev-parse", "HEAD").decode().strip()
+        self.git("tag", "v1.2.4")
+        publication.checked_checkout(self.root, "endorses/psst.zip", other)
+        with patch.object(
+            self.verifier,
+            "verify",
+            side_effect=AssertionError(
+                "Main ancestry must be checked before CI/evidence verification"
+            ),
+        ) as verifier:
+            with self.assertRaisesRegex(release.InvalidRelease, "origin/main"):
+                self.prepare(
+                    ref="refs/tags/v1.2.4", event_sha=other, reviewed_commit=other
+                )
+            verifier.assert_not_called()
+
     def test_preparation_enumerates_exact_eight_updater_subjects_and_bound_source(self):
         plan = self.prepare()
         self.assertEqual(len(plan.updater_subjects), 8)
@@ -334,6 +520,25 @@ class PublicationChecks(unittest.TestCase):
         with self.assertRaisesRegex(release.InvalidRelease, "no receipt"):
             self.prepare()
 
+    def test_incomplete_or_substituted_recovery_cannot_approve_publication(self):
+        binding = self.prepare().binding
+        valid = self.verifier.verify(
+            "upgrade-recovery", self.reports["upgrade-recovery"], binding
+        ).details
+        for field, replacement in (
+            ("checks", []),
+            ("execution", {"linux/amd64": "native"}),
+            ("native_measurements", {}),
+            ("manifest_sha256", digest("f")),
+            ("bundle_sha256", digest("f")),
+            ("off_host_provider_verified", True),
+        ):
+            details = copy.deepcopy(valid)
+            details[field] = replacement
+            self.verifier.details = {"upgrade-recovery": details}
+            with self.subTest(field=field), self.assertRaises(release.InvalidRelease):
+                self.prepare()
+
     def test_scanner_errors_missing_targets_unresolved_findings_and_wrong_subject_fail(
         self,
     ):
@@ -357,6 +562,7 @@ class PublicationChecks(unittest.TestCase):
                     self.assertRaises(release.InvalidRelease),
                 ):
                     self.prepare()
+
             details = copy.deepcopy(valid)
             details["scans"].pop()
             self.verifier.details = {gate: details}
@@ -364,9 +570,105 @@ class PublicationChecks(unittest.TestCase):
                 self.prepare()
             self.verifier.details = {}
 
+    def test_source_review_rejects_signed_but_incomplete_or_stale_details(self):
+        binding = self.measure().binding
+        valid = source_review_fixture(binding)
+        mutations = [({}, "empty")]
+        for path, replacement in (
+            (("schema_version",), True),
+            (("source_subjects",), {}),
+            (("images",), {}),
+            (("images", "backend-amd64", "subject"), "wrong"),
+            (("images", "web-arm64", "notice_inventory_digest"), ""),
+            (("coverage", "backend-arm64"), {}),
+            (("coverage", "web-amd64", "browser-generators", "status"), "pending"),
+            (("coverage", "web-arm64", "browser-packages", "evidence_digest"), ""),
+            (("policy", "source_commit"), "f" * 40),
+            (("policy", "path"), "operator-supplied-policy.json"),
+            (("policy", "record_digest"), ""),
+            (("policy", "git_blob"), ""),
+        ):
+            changed = copy.deepcopy(valid)
+            target = changed
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = replacement
+            mutations.append((changed, path))
+        for field in ("images", "source_subjects", "coverage"):
+            changed = copy.deepcopy(valid)
+            changed[field]["extra"] = "unreviewed"
+            mutations.append((changed, field + " extra"))
+        changed = copy.deepcopy(valid)
+        changed["coverage"]["backend-amd64"]["browser-packages"] = {
+            "status": "complete",
+            "evidence_digest": digest("e"),
+        }
+        mutations.append((changed, "wrong category"))
+        reports = {"corresponding-source": self.reports["corresponding-source"]}
+        for details, name in mutations:
+            self.verifier.details = {"corresponding-source": details}
+            with self.subTest(name=name), self.assertRaises(release.InvalidRelease):
+                publication.verify_gates(
+                    reports, frozenset(reports), binding, self.verifier
+                )
+
+    def test_distribution_review_requires_exact_completed_source_policy_and_notices(
+        self,
+    ):
+        binding = self.measure().binding
+        valid = self.verifier.verify(
+            "distribution-review", self.reports["distribution-review"], binding
+        ).details
+        mutations = [({}, "empty")]
+        for path, replacement in (
+            (("review", "decision"), "pending"),
+            (("review", "decision"), True),
+            (("review", "reviewer"), ""),
+            (("review", "record_digest"), ""),
+            (("review", "reviewed_subjects"), dict(binding.subjects[:-1])),
+            (("review", "source_gate_report_digest"), digest("f")),
+            (("coverage_digest",), digest("f")),
+            (("images", "web-amd64", "notice_inventory_digest"), digest("f")),
+            (("policy", "record_digest"), digest("f")),
+            (("policy", "git_blob"), "f" * 40),
+        ):
+            changed = copy.deepcopy(valid)
+            target = changed
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = replacement
+            mutations.append((changed, path))
+        changed = copy.deepcopy(valid)
+        changed["review"]["caller_approved"] = True
+        mutations.append((changed, "bare approval"))
+        reports = {
+            gate: self.reports[gate]
+            for gate in ("corresponding-source", "distribution-review")
+        }
+        for details, name in mutations:
+            self.verifier.details = {"distribution-review": details}
+            with self.subTest(name=name), self.assertRaises(release.InvalidRelease):
+                publication.verify_gates(
+                    reports, frozenset(reports), binding, self.verifier
+                )
+        self.verifier.details = {}
+        with self.assertRaisesRegex(
+            release.InvalidRelease, "verified corresponding-source"
+        ):
+            publication.verify_gates(
+                {"distribution-review": self.reports["distribution-review"]},
+                frozenset({"distribution-review"}),
+                binding,
+                self.verifier,
+            )
+
     def test_smoke_requires_both_architectures_and_ci_requires_ios(self):
         for gate, details in (
             ("final-image-smoke", {"execution": {"linux/amd64": "native"}}),
+            (
+                "final-image-smoke",
+                {"execution": {"linux/amd64": "native", "linux/arm64": "emulated"}},
+            ),
             (
                 "final-image-smoke",
                 {"execution": {platform: "not-run" for platform in release.PLATFORMS}},

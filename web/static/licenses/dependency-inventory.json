@@ -1254,7 +1254,31 @@
           "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2",
           "upstream_sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
         }
-      ]
+      ],
+      "supplementary_license": {
+        "schema_version": 1,
+        "name": "dijkstrajs",
+        "version": "1.0.3",
+        "path": "node_modules/dijkstrajs",
+        "license": "MIT",
+        "integrity": "sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==",
+        "upstream_notice": {
+          "file": "LICENSE.md",
+          "sha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
+        },
+        "supplement": {
+          "file": "licenses/dijkstrajs-1.0.3/MIT-terms.txt",
+          "sha256": "ac1eca5d65fdaafc88db57dffa00c89393630c19d2acffd16347710e8f3e3044"
+        },
+        "source": {
+          "referenced_url": "http://www.opensource.org/licenses/mit-license.php",
+          "resolved_url": "https://opensource.org/license/mit",
+          "retrieved_date": "2026-10-08",
+          "html_sha256": "3e4563265969459431ac476ab2428a1d4812fe343998112c81cbdfa49807592e"
+        },
+        "explanation": "The upstream notice identifies the MIT license and retains the Wyatt Baldwin 2008 copyright and disclaimer, but omits the permission grant. These supplementary full MIT template terms were extracted from the referenced Open Source Initiative page (HTML entities decoded, paragraphs wrapped at 80 columns). The source template placeholders are unchanged; no additional copyright owner or year is asserted. This supplement was not present in the npm upstream notice.",
+        "distributed_sha256": "ac1eca5d65fdaafc88db57dffa00c89393630c19d2acffd16347710e8f3e3044"
+      }
     },
     {
       "path": "node_modules/emoji-regex",
@@ -2491,6 +2515,101 @@
           "file": "LICENSE",
           "sha256": "5fde0201805ca0ffc8884fac6a3447b7f2918a6c22efb68b94019298d16bad9e",
           "upstream_sha256": "5fde0201805ca0ffc8884fac6a3447b7f2918a6c22efb68b94019298d16bad9e"
+        }
+      ]
+    }
+  ],
+  "embedded_components": [
+    {
+      "name": "jsqr-es6",
+      "version": "1.4.0-1",
+      "license": "Apache-2.0",
+      "relationship": "bundled-within",
+      "parent": {
+        "path": "node_modules/qr-scanner",
+        "name": "qr-scanner",
+        "version": "1.4.2",
+        "integrity": "sha512-kV1yQUe2FENvn59tMZW6mOVfpq9mGxGf8l6+EGaXUOd4RBOLg7tRC83OrirM5AtDvZRpdjdlXURsHreAOSPOUw==",
+        "source_repository": "nimiq/qr-scanner",
+        "source_commit": "abcfe1bce2703721408d8ce7ebde94a359998506"
+      },
+      "source_repository": "danimoh/jsQR",
+      "source_commit": "42dbfd55f35db625119e8f33247b6e9d073902ec",
+      "compiled_inputs": {
+        "qr-scanner-worker.min.js": {
+          "sha256": "f4d8445f5a15c4e5f71a8c8c062c6443f09db370b8d3fe1fbdc7fe7889630d14",
+          "size": 43994
+        },
+        "qr-scanner.min.js": {
+          "sha256": "0564e4cf84b94cac80213b4f779bd215bb0876a91c19df28baf97766f4fd5484",
+          "size": 15844
+        },
+        "qr-scanner.legacy.min.js": {
+          "sha256": "2221f18d95b340c6a1dae741b67ac3c6d76bf411621b897979a4fd1f6b01efae",
+          "size": 70155
+        },
+        "qr-scanner.umd.min.js": {
+          "sha256": "40aa3fe4e1083073d7898c0895e98d5aa4d469a5c1aab6f357c0284ef75b413d",
+          "size": 16082
+        }
+      },
+      "license_file": "licenses/jsqr-es6-1.4.0-1/LICENSE",
+      "license_upstream_sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+      "attribution": "QR Scanner describes its basis as Cosmo Wolfe’s JavaScript port of Google’s ZXing library. jsqr-es6 is the danimoh/jsQR ES6 fork of cozmo/jsQR.",
+      "attribution_source": {
+        "file": "README.md",
+        "sha256": "bead4231e3ced1cb8879569625784098c52873a4bc04417644179246bb022c77"
+      },
+      "source_reproduction_verified": false,
+      "publication_authorized": false,
+      "notices": [
+        {
+          "file": "licenses/jsqr-es6-1.4.0-1/LICENSE",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+          "upstream_sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        }
+      ]
+    }
+  ],
+  "derived_components": [
+    {
+      "schema_version": 1,
+      "name": "vite-generated-browser-helpers",
+      "relationship": "generated-from",
+      "parent": {
+        "path": "node_modules/vite",
+        "name": "vite",
+        "version": "6.4.3",
+        "integrity": "sha512-NTKlcQjlAK7MlQoyb6LgaqHc8sso/pVyUJYWMws3jg21uTJw/LddqIFPcPqP6PzpgbIcZyKI85sFE4HBrQDA8A=="
+      },
+      "generator": {
+        "file": "dist/node/chunks/dep-Dm0c1Wj2.js",
+        "sha256": "88f9adf5652dc907fa20c9bf936a91fbe1c1328ca3624c39c649692eccb301e6",
+        "size": 1504267
+      },
+      "notice": {
+        "installed_file": "LICENSE.md",
+        "original_file": "licenses/vite-6.4.3/LICENSE.md",
+        "public_file": "vite-generated-browser-helpers-LICENSE.md",
+        "sha256": "008938a3441801ca3960f8e3ccb4c0738e7996442a53063141d57d3769a7344d"
+      },
+      "helper_families": [
+        "vite-commonjs-exports",
+        "vite-commonjs-module",
+        "vite-commonjs-es-import",
+        "vite-commonjs-helper",
+        "vite-preload-helper"
+      ],
+      "attribution": "Vite generates preload helper code and embeds @rollup/plugin-commonjs generation code. Its original npm LICENSE.md includes the Vite core MIT terms and the full grouped Rollup plugin MIT notice, alongside other bundled-dependency notices. The full original is retained conservatively; this association does not reproduce generated browser bytes or establish complete preferred source.",
+      "source_reproduction_verified": false,
+      "browser_module_closure_verified": false,
+      "publication_authorized": false,
+      "distribution_authorized": false,
+      "notices": [
+        {
+          "file": "vite-generated-browser-helpers-LICENSE.md",
+          "sha256": "008938a3441801ca3960f8e3ccb4c0738e7996442a53063141d57d3769a7344d",
+          "upstream_sha256": "008938a3441801ca3960f8e3ccb4c0738e7996442a53063141d57d3769a7344d"
         }
       ]
     }

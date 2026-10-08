@@ -315,25 +315,30 @@ extension ReceiveCheckpointTests {
                 return file
             }())
         try output.write(contentsOf: Data("[{\"savedFiles\":{".utf8))
+        // Exceed the 16 MiB record cap with fewer rows to stage and promote.
+        // Paths remain below the production 4096-character path limit.
         let suffix = String(repeating: "x", count: 3500)
-        for index in 0..<5000 {
+        for index in 0..<4800 {
             if index > 0 { try output.write(contentsOf: Data([44])) }
-            try output.write(contentsOf: Data("\"child-\(index)/file\":\"Received/\(index)-\(suffix)\"".utf8))
+            try output.write(
+                contentsOf: Data("\"child-\(index)/file\":\"Received/\(index)-\(suffix)\"".utf8))
         }
-        try output.write(contentsOf: Data("},\"savedTransfers\":[\"child-4999\"],".utf8))
+        try output.write(contentsOf: Data("},\"savedTransfers\":[\"child-4799\"],".utf8))
         try output.write(contentsOf: tail)
         try output.write(contentsOf: Data([93]))
         try output.close()
         let bytes = try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber
         XCTAssertGreaterThan(bytes.intValue, HistoryRecordDatabase.maximumRecordBytes)
         try old.saveSecrets(
-            link: "private-link", deletionToken: "delete", receivePrivateKey: Data(repeating: 7, count: 32))
+            link: "private-link", deletionToken: "delete",
+            receivePrivateKey: Data(repeating: 7, count: 32))
         let first = TransferHistoryStore(defaults: defaults, fileURL: file)
         XCTAssertFalse(first.isReady)
         let db = try database(file)
         XCTAssertEqual(try db.migrationProgress(key: "account-history-v2")?.processed, 0)
         XCTAssertNil(try db.read(old.localID))
-        let staged = try db.page(scopes: ["receive-stage|account-history-v2|1"], kinds: ["stage-entry"], limit: 50)
+        let staged = try db.page(
+            scopes: ["receive-stage|account-history-v2|1"], kinds: ["stage-entry"], limit: 50)
         XCTAssertEqual(staged.records.count, 32)
         let resumed = TransferHistoryStore(defaults: defaults, fileURL: file)
         await resumed.finishMigration()
@@ -344,12 +349,14 @@ extension ReceiveCheckpointTests {
         XCTAssertEqual(current.capabilities?.receivePrivateKey, Data(repeating: 7, count: 32))
         XCTAssertNil(current.savedFiles)
         let value = try XCTUnwrap(
-            resumed.receiveCheckpoints(parent: current, transferIDs: ["child-4999"], fileExists: { _, _ in true })[
-                "child-4999"])
-        XCTAssertEqual(value.paths["file"], "Received/4999-" + suffix)
+            resumed.receiveCheckpoints(
+                parent: current, transferIDs: ["child-4799"], fileExists: { _, _ in true })[
+                    "child-4799"])
+        XCTAssertEqual(value.paths["file"], "Received/4799-" + suffix)
         XCTAssertTrue(value.complete)
         XCTAssertEqual(
-            (try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber).intValue, bytes.intValue)
+            (try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber).intValue,
+            bytes.intValue)
         // Installed SQLite histories can already contain an oversized parent.
         // Fixture insertion bypasses only the normal 16 MiB writer cap.
         let (sqliteSource, sqliteDefaults) = try setup()
@@ -372,7 +379,9 @@ extension ReceiveCheckpointTests {
         XCTAssertEqual(sqlite3_bind_text(statement, 1, old.localID, -1, transient), SQLITE_OK)
         XCTAssertEqual(sqlite3_bind_int64(statement, 2, Int64(original.count)), SQLITE_OK)
         original.withUnsafeBytes {
-            XCTAssertEqual(sqlite3_bind_blob(statement, 3, $0.baseAddress, Int32(original.count), transient), SQLITE_OK)
+            XCTAssertEqual(
+                sqlite3_bind_blob(statement, 3, $0.baseAddress, Int32(original.count), transient), SQLITE_OK
+            )
         }
         XCTAssertEqual(sqlite3_step(statement), SQLITE_DONE)
         sqlite3_finalize(statement)
@@ -382,8 +391,9 @@ extension ReceiveCheckpointTests {
         XCTAssertTrue(sqliteStore.isReady, sqliteStore.migrationError ?? "")
         XCTAssertEqual(try sqliteStore.record(old.localID)?.totalSize, old.totalSize)
         let restored = try XCTUnwrap(
-            sqliteStore.receiveCheckpoints(parent: old, transferIDs: ["child-4999"], fileExists: { _, _ in true })[
-                "child-4999"])
+            sqliteStore.receiveCheckpoints(
+                parent: old, transferIDs: ["child-4799"], fileExists: { _, _ in true })[
+                    "child-4799"])
         XCTAssertEqual(restored.paths, value.paths)
         XCTAssertTrue(restored.complete)
     }

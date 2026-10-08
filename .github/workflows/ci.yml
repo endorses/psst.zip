@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      full_validation:
+        description: Run every application check for a reusable release caller
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ jobs:
   repository-security:
     name: Repository security
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -37,10 +43,20 @@ jobs:
         run: python3 tools/check_repository.py history
 
       - name: Repository check regression tests
-        run: python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
+        run: |
+          python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
+          python3 -m unittest discover -s tools -p 'test_ci_change_scope.py' -v
 
       - name: Release artifact and Compose regression tests
-        run: python3 -m unittest discover -s tools -p 'test_release_*.py' -v
+        run: |
+          python3 -m unittest discover -s tools -p 'test_release_*.py' -v
+          python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
+          python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
+          python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
+
+      - name: SQLite vendoring syntax regressions
+        # Two tiny standard-library cases; no dependency downloads or generators.
+        run: GOTOOLCHAIN=local GO111MODULE=off go test ./tools/sqlite_vendoring.go ./tools/sqlite_vendoring_test.go
 
       - name: Check distributed project licenses
         run: |
@@ -60,80 +76,109 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Select affected application checks
+        id: scope
+        env:
+          FULL_VALIDATION: ${{ inputs.full_validation || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: python3 "$GITHUB_WORKSPACE/tools/select_ci_checks.py" --job backend --force-full "$FULL_VALIDATION" --github-output "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        if: steps.scope.outputs.run == 'true'
         with:
           go-version: "1.26.8"
           cache-dependency-path: backend/go.sum
 
       - name: Lint
+        if: steps.scope.outputs.run == 'true'
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.13.0
           working-directory: backend
 
       - name: Check dependency notices
+        if: steps.scope.outputs.run == 'true'
         run: |
           go mod download
           python3 scripts/generate-third-party-notices.py --check
 
       - name: Test
-        # Real SQLite migrations and retention-boundary workloads are expensive
-        # under race instrumentation. Keep all checks and give each package a
-        # bounded budget with less contention between database-heavy packages.
-        run: go test -v -count=1 -race -p 2 -timeout 30m ./...
+        if: steps.scope.outputs.run == 'true'
+        # Bound hangs while preserving race checks. Limit package concurrency
+        # to avoid contention between SQLite-heavy packages.
+        run: go test -v -count=1 -race -p 2 -timeout 10m ./...
 
       - name: Build
+        if: steps.scope.outputs.run == 'true'
         run: go build -o server ./cmd/server
 
   web:
     name: Web
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Select affected application checks
+        id: scope
+        env:
+          FULL_VALIDATION: ${{ inputs.full_validation || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: python3 "$GITHUB_WORKSPACE/tools/select_ci_checks.py" --job web --force-full "$FULL_VALIDATION" --github-output "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.scope.outputs.run == 'true'
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
         run: npm ci
 
       - name: Check dependency notices
+        if: steps.scope.outputs.run == 'true'
         run: node scripts/generate-third-party-notices.mjs --check
 
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        if: steps.scope.outputs.run == 'true'
         with:
           go-version: "1.26.8"
           cache-dependency-path: backend/go.sum
 
       - name: Type check
+        if: steps.scope.outputs.run == 'true'
         run: npm run check
 
       - name: Integration tests
+        if: steps.scope.outputs.run == 'true'
         run: npm test
 
       - name: Install browser
+        if: steps.scope.outputs.run == 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Browser tests
+        if: steps.scope.outputs.run == 'true'
         run: npm run test:browser
 
       - name: Disposable administrator authentication lifecycle
+        if: steps.scope.outputs.run == 'true'
         env:
           # Keep Node's disposable database and state marker under the same root.
           TMPDIR: ${{ runner.temp }}
@@ -143,7 +188,19 @@ jobs:
         run: npm run test:browser -- tests/browser/admin-security-runtime.spec.ts
 
       - name: Build
+        if: steps.scope.outputs.run == 'true'
+        env:
+          REVISION: ${{ github.sha }}
         run: npm run build
+
+      - name: Verify browser build inventory
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          proof_dir=$(mktemp -d "$RUNNER_TEMP/psst-browser-source.XXXXXX")
+          trap 'rm -rf -- "$proof_dir"' EXIT
+          python3 ../tools/measure_browser_source_inventory.py \
+            --root . --output-directory build --version dev \
+            --revision "$GITHUB_SHA" --output "$proof_dir/measurement.json"
 
   android:
     name: Android and shared module
@@ -151,39 +208,62 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Select affected application checks
+        id: scope
+        env:
+          FULL_VALIDATION: ${{ inputs.full_validation || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: python3 "$GITHUB_WORKSPACE/tools/select_ci_checks.py" --job android --force-full "$FULL_VALIDATION" --github-output "$GITHUB_OUTPUT"
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        if: steps.scope.outputs.run == 'true'
         with:
           distribution: temurin
           java-version: "25"
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        if: steps.scope.outputs.run == 'true'
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        if: steps.scope.outputs.run == 'true'
       - name: Assemble and test
+        if: steps.scope.outputs.run == 'true'
         run: ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
       - name: Verify actual resolved native dependency notices
+        if: steps.scope.outputs.run == 'true'
         run: python3 tools/generate_native_notices.py --check
 
   ios:
     name: Native iOS app, extension and XCTest
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Select affected application checks
+        id: scope
+        env:
+          FULL_VALIDATION: ${{ inputs.full_validation || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: python3 "$GITHUB_WORKSPACE/tools/select_ci_checks.py" --job ios --force-full "$FULL_VALIDATION" --github-output "$GITHUB_OUTPUT"
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        if: steps.scope.outputs.run == 'true'
         with:
           distribution: temurin
           java-version: "25"
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        if: steps.scope.outputs.run == 'true'
         with:
           packages: platform-tools
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        if: steps.scope.outputs.run == 'true'
       - name: Prepare build tools
+        if: steps.scope.outputs.run == 'true'
         run: |
           brew install xcodegen
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -191,11 +271,13 @@ jobs:
           xcodegen --version
           java -version
       - name: Check sources and generate project
+        if: steps.scope.outputs.run == 'true'
         run: |
           python3 ios/scripts/check_sources.py
           cd ios
           xcodegen generate
       - name: Select installed iOS simulator
+        if: steps.scope.outputs.run == 'true'
         run: |
           python3 - <<'PY'
           import json, os, subprocess
@@ -215,6 +297,7 @@ jobs:
               output.write(f'PSST_IOS_SIMULATOR_ID={device["udid"]}\n')
           PY
       - name: Build app, embedded extension and XCTest products once
+        if: steps.scope.outputs.run == 'true'
         working-directory: ios
         run: |
           xcodebuild -project Psst.xcodeproj -scheme Psst \
@@ -225,7 +308,22 @@ jobs:
           test -d "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app"
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
+      - name: Wait for selected simulator readiness
+        if: steps.scope.outputs.run == 'true'
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          # First boot overlaps compilation; wait for readiness before XCTest.
+          subprocess.run(
+              ["xcrun", "simctl", "bootstatus", os.environ["PSST_IOS_SIMULATOR_ID"], "-b"],
+              check=True, timeout=120,
+          )
+          PY
       - name: Run native XCTest suite
+        if: steps.scope.outputs.run == 'true'
+        # Leave time to upload diagnostics if simulator startup or a test stalls.
+        timeout-minutes: 10
         working-directory: ios
         run: |
           xcodebuild -project Psst.xcodeproj -scheme Psst \
@@ -234,9 +332,12 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
             -resultBundlePath "$RUNNER_TEMP/psst-ios-tests.xcresult" \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 120 \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual test-without-building
       - name: Preserve native test results
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ios-native-test-results

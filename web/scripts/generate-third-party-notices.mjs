@@ -1,21 +1,83 @@
 // Refresh notices using the exact installed versions in package-lock.json.
 // Run after npm ci. No network requests. --check detects stale notices.
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, lstatSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
-  check = process.argv.includes("--check"),
-  hash = (value) => createHash("sha256").update(value).digest("hex"),
-  lockBytes = readFileSync(path.join(web, "package-lock.json")),
-  lock = JSON.parse(lockBytes),
-  output = path.join(web, "static", "licenses");
+/**
+ * @typedef {{file: string, sha256: string, upstream_sha256: string}} Notice
+ * @typedef {{version: string, license?: string, integrity?: string, dev?: boolean, optional?: boolean}} LockEntry
+ * @typedef {{packages: Record<string, LockEntry>}} PackageLock
+ * @typedef {{name: string, version: string}} InstalledPackage
+ * @typedef {{sha256: string, size: number}} FileDigest
+ * @typedef {{path: string, name: string, version: string, integrity: string, source_repository: string, source_commit: string}} EmbeddedParent
+ * @typedef {object} EmbeddedComponent
+ * @property {string} name
+ * @property {string} version
+ * @property {string} license
+ * @property {string} relationship
+ * @property {EmbeddedParent} parent
+ * @property {string} source_repository
+ * @property {string} source_commit
+ * @property {Record<string, FileDigest>} compiled_inputs
+ * @property {string} license_file
+ * @property {string} license_upstream_sha256
+ * @property {string} attribution
+ * @property {{file: string, sha256: string}} attribution_source
+ * @property {boolean} source_reproduction_verified
+ * @property {boolean} publication_authorized
+ */
+/** @typedef {{schema_version: number, components: EmbeddedComponent[]}} EmbeddedCatalog */
+/**
+ * @typedef {object} DijkstraSupplement
+ * @property {number} schema_version
+ * @property {string} name
+ * @property {string} version
+ * @property {string} path
+ * @property {string} license
+ * @property {string} integrity
+ * @property {{file: string, sha256: string}} upstream_notice
+ * @property {{file: string, sha256: string}} supplement
+ * @property {{referenced_url: string, resolved_url: string, retrieved_date: string, html_sha256: string}} source
+ * @property {string} explanation
+ */
+/**
+ * @typedef {object} GeneratedHelperCatalog
+ * @property {number} schema_version
+ * @property {string} name
+ * @property {string} relationship
+ * @property {{path: string, name: string, version: string, integrity: string}} parent
+ * @property {{file: string, sha256: string, size: number}} generator
+ * @property {{installed_file: string, original_file: string, public_file: string, sha256: string}} notice
+ * @property {string[]} helper_families
+ * @property {string} attribution
+ * @property {boolean} source_reproduction_verified
+ * @property {boolean} browser_module_closure_verified
+ * @property {boolean} publication_authorized
+ * @property {boolean} distribution_authorized
+ */
+/**
+ * @typedef {object} PackageNotice
+ * @property {string} path
+ * @property {string} name
+ * @property {string} version
+ * @property {string | null} license
+ * @property {boolean} development
+ * @property {boolean} optional
+ * @property {string | null} integrity
+ * @property {Notice[]} notices
+ * @property {DijkstraSupplement & {distributed_sha256: string}} [supplementary_license]
+ * @property {string} [omitted_text_reason]
+ */
+
+/** @param {string | Buffer} value */
+const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 // Change only line endings and trailing horizontal whitespace/EOF blank lines.
+/** @param {string | Buffer} content */
 const normalize = (content) =>
-  content
-    .toString("utf8")
+  (typeof content === "string" ? content : content.toString("utf8"))
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => line.replace(/[ \t]+$/g, ""))
@@ -34,8 +96,312 @@ const omitted = new Map([
   ["@polka/url@1.0.0-next.29", "Node-only URL parser used by the development/preview server"],
   ["sirv@3.0.2", "Node-only static file server used for development/preview; releases use Caddy"],
 ]);
-const packages = [],
-  notices = [
+
+// The checked-in catalog is a reviewed input, not a discovery or approval API.
+// Embedded code can be absent from the lockfile while present in a parent bundle.
+/**
+ * @param {string} root
+ * @param {string} relative
+ * @param {number} [maximum]
+ * @returns {Buffer}
+ */
+function regularBytes(root, relative, maximum = 1024 * 1024) {
+  if (
+    typeof relative !== "string" ||
+    !relative ||
+    relative.includes("\\") ||
+    relative.split("/").some((part) => !part || part === "." || part === "..") ||
+    path.isAbsolute(relative)
+  )
+    throw new Error("Unsafe embedded component input path");
+  let current = root;
+  const parts = relative.split("/");
+  for (const [index, part] of parts.entries()) {
+    current = path.join(current, part);
+    const stat = lstatSync(current);
+    if (
+      stat.isSymbolicLink() ||
+      (index === parts.length - 1 ? !stat.isFile() : !stat.isDirectory())
+    )
+      throw new Error("Embedded component input must be a regular file");
+    if (index === parts.length - 1 && stat.size > maximum)
+      throw new Error("Embedded component input exceeds bounds");
+  }
+  const bytes = readFileSync(current);
+  if (bytes.length > maximum) throw new Error("Embedded component input exceeds bounds");
+  return bytes;
+}
+
+/**
+ * @param {string} web
+ * @param {PackageLock} lock
+ * @param {string[]} notices
+ * @returns {(EmbeddedComponent & {notices: Notice[]})[]}
+ */
+function embeddedNotices(web, lock, notices) {
+  /** @type {EmbeddedCatalog} */
+  const catalog = JSON.parse(
+    regularBytes(web, "licenses/embedded-components.json").toString("utf8"),
+  );
+  if (
+    catalog.schema_version !== 1 ||
+    !Array.isArray(catalog.components) ||
+    !catalog.components.length ||
+    catalog.components.length > 32
+  )
+    throw new Error("Invalid embedded component catalog");
+  const identities = new Set();
+  return catalog.components.map((component) => {
+    const { parent } = component,
+      identity = `${component.name}@${component.version}`;
+    if (
+      typeof component.name !== "string" ||
+      !component.name ||
+      typeof component.version !== "string" ||
+      !component.version ||
+      identities.has(identity) ||
+      component.license !== "Apache-2.0" ||
+      component.relationship !== "bundled-within" ||
+      component.source_reproduction_verified !== false ||
+      component.publication_authorized !== false ||
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(component.source_repository) ||
+      !/^[a-f0-9]{40}$/.test(component.source_commit) ||
+      !parent ||
+      parent.path !== `node_modules/${parent.name}` ||
+      typeof component.attribution !== "string" ||
+      !component.attribution ||
+      component.attribution.length > 4096
+    )
+      throw new Error("Invalid reviewed embedded component identity");
+    identities.add(identity);
+    const entry = lock.packages[parent.path];
+    /** @type {InstalledPackage} */
+    const installed = JSON.parse(regularBytes(web, `${parent.path}/package.json`).toString("utf8"));
+    if (
+      !entry ||
+      entry.version !== parent.version ||
+      entry.integrity !== parent.integrity ||
+      !/^sha512-[A-Za-z0-9+/]{86}==$/.test(parent.integrity) ||
+      installed.name !== parent.name ||
+      installed.version !== parent.version
+    )
+      throw new Error(`Embedded component parent differs from reviewed lock: ${identity}`);
+    const inputs = Object.entries(component.compiled_inputs ?? {});
+    if (!inputs.length || inputs.length > 16) throw new Error("Missing embedded compiled inputs");
+    for (const [file, expected] of inputs) {
+      const bytes = regularBytes(web, `${parent.path}/${file}`);
+      if (bytes.length !== expected.size || hash(bytes) !== expected.sha256)
+        throw new Error(`Embedded component compiled input changed: ${identity}/${file}`);
+    }
+    const attribution = component.attribution_source;
+    if (
+      !attribution ||
+      hash(regularBytes(web, `${parent.path}/${attribution.file}`)) !== attribution.sha256
+    )
+      throw new Error(`Embedded component attribution input changed: ${identity}`);
+    const upstream = regularBytes(web, component.license_file),
+      content = normalize(upstream);
+    if (
+      !/^[a-f0-9]{64}$/.test(component.license_upstream_sha256) ||
+      hash(upstream) !== component.license_upstream_sha256
+    )
+      throw new Error(`Embedded component original license changed: ${identity}`);
+    notices.push(
+      `=== ${identity}: embedded within ${parent.name}@${parent.version} (${component.relationship}) ===`,
+      `Source: https://github.com/${component.source_repository}/tree/${component.source_commit}`,
+      component.attribution,
+      `Original license: ${component.license_file}`,
+      content,
+      "",
+    );
+    return {
+      ...component,
+      notices: [
+        { file: component.license_file, sha256: hash(content), upstream_sha256: hash(upstream) },
+      ],
+    };
+  });
+}
+
+// This additive repair applies only to the reviewed dijkstrajs release. Its
+// original notice remains in the output, followed by explicitly separate terms.
+/**
+ * @param {string} web
+ * @param {PackageLock} lock
+ * @param {PackageNotice[]} packages
+ * @param {string[]} notices
+ */
+function dijkstraSupplement(web, lock, packages, notices) {
+  for (const record of packages.filter((item) => item.name === "dijkstrajs")) {
+    /** @type {DijkstraSupplement} */
+    const reviewed = JSON.parse(
+      regularBytes(web, "licenses/dijkstrajs-1.0.3-supplement.json").toString("utf8"),
+    );
+    if (
+      reviewed.schema_version !== 1 ||
+      reviewed.name !== "dijkstrajs" ||
+      reviewed.version !== "1.0.3" ||
+      reviewed.path !== "node_modules/dijkstrajs" ||
+      reviewed.license !== "MIT" ||
+      reviewed.upstream_notice?.file !== "LICENSE.md" ||
+      reviewed.supplement?.file !== "licenses/dijkstrajs-1.0.3/MIT-terms.txt" ||
+      reviewed.source?.referenced_url !== "http://www.opensource.org/licenses/mit-license.php" ||
+      reviewed.source?.resolved_url !== "https://opensource.org/license/mit" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(reviewed.source.retrieved_date) ||
+      !/^[a-f0-9]{64}$/.test(reviewed.source.html_sha256) ||
+      typeof reviewed.explanation !== "string" ||
+      !reviewed.explanation ||
+      reviewed.explanation.length > 4096
+    )
+      throw new Error("Invalid reviewed dijkstrajs supplement");
+    const entry = lock.packages[reviewed.path];
+    /** @type {InstalledPackage} */
+    const installed = JSON.parse(
+      regularBytes(web, `${reviewed.path}/package.json`).toString("utf8"),
+    );
+    if (
+      record.path !== reviewed.path ||
+      record.optional ||
+      !entry ||
+      entry.version !== reviewed.version ||
+      entry.license !== reviewed.license ||
+      entry.integrity !== reviewed.integrity ||
+      !/^sha512-[A-Za-z0-9+/]{86}==$/.test(reviewed.integrity) ||
+      installed.name !== reviewed.name ||
+      installed.version !== reviewed.version
+    )
+      throw new Error("dijkstrajs differs from reviewed supplement lock");
+    const upstream = regularBytes(web, `${reviewed.path}/${reviewed.upstream_notice.file}`);
+    if (
+      !/^[a-f0-9]{64}$/.test(reviewed.upstream_notice.sha256) ||
+      hash(upstream) !== reviewed.upstream_notice.sha256
+    )
+      throw new Error("dijkstrajs upstream notice changed");
+    const supplemental = regularBytes(web, reviewed.supplement.file);
+    if (
+      !/^[a-f0-9]{64}$/.test(reviewed.supplement.sha256) ||
+      hash(supplemental) !== reviewed.supplement.sha256
+    )
+      throw new Error("dijkstrajs supplementary terms changed");
+    const content = normalize(supplemental);
+    record.supplementary_license = { ...reviewed, distributed_sha256: hash(content) };
+    notices.push(
+      `=== dijkstrajs@1.0.3: supplementary full MIT terms ===`,
+      reviewed.explanation,
+      `Referenced source: ${reviewed.source.referenced_url}`,
+      `Resolved source: ${reviewed.source.resolved_url} (retrieved ${reviewed.source.retrieved_date})`,
+      `Supplement: ${reviewed.supplement.file}`,
+      content,
+      "",
+    );
+  }
+}
+// Generated CommonJS/preload helpers can enter the browser even though their
+// producing Vite package is a development dependency. Keep that relationship
+// explicit and retain its original grouped license, without claiming reproduction.
+/**
+ * @param {string} web
+ * @param {PackageLock} lock
+ * @param {string[]} notices
+ * @returns {{component: GeneratedHelperCatalog & {notices: Notice[]}, original: Buffer}|null}
+ */
+function generatedHelperNotices(web, lock, notices) {
+  if (!lock.packages["node_modules/vite"]) return null;
+  /** @type {GeneratedHelperCatalog} */
+  const reviewed = JSON.parse(
+    regularBytes(web, "licenses/vite-6.4.3-generated-helpers.json").toString("utf8"),
+  );
+  if (
+    reviewed.schema_version !== 1 ||
+    reviewed.name !== "vite-generated-browser-helpers" ||
+    reviewed.relationship !== "generated-from" ||
+    reviewed.parent?.path !== "node_modules/vite" ||
+    reviewed.parent.name !== "vite" ||
+    reviewed.parent.version !== "6.4.3" ||
+    !/^sha512-[A-Za-z0-9+/]{86}==$/.test(reviewed.parent.integrity) ||
+    reviewed.generator?.file !== "dist/node/chunks/dep-Dm0c1Wj2.js" ||
+    !/^[a-f0-9]{64}$/.test(reviewed.generator.sha256) ||
+    !Number.isSafeInteger(reviewed.generator.size) ||
+    reviewed.generator.size <= 0 ||
+    reviewed.generator.size > 4 * 1024 * 1024 ||
+    reviewed.notice?.installed_file !== "LICENSE.md" ||
+    reviewed.notice.original_file !== "licenses/vite-6.4.3/LICENSE.md" ||
+    reviewed.notice.public_file !== "vite-generated-browser-helpers-LICENSE.md" ||
+    !/^[a-f0-9]{64}$/.test(reviewed.notice.sha256) ||
+    JSON.stringify(reviewed.helper_families) !==
+      JSON.stringify([
+        "vite-commonjs-exports",
+        "vite-commonjs-module",
+        "vite-commonjs-es-import",
+        "vite-commonjs-helper",
+        "vite-preload-helper",
+      ]) ||
+    typeof reviewed.attribution !== "string" ||
+    !reviewed.attribution ||
+    reviewed.attribution.length > 4096 ||
+    reviewed.source_reproduction_verified !== false ||
+    reviewed.browser_module_closure_verified !== false ||
+    reviewed.publication_authorized !== false ||
+    reviewed.distribution_authorized !== false
+  )
+    throw new Error("Invalid reviewed Vite generated helpers notice");
+  const entry = lock.packages[reviewed.parent.path];
+  /** @type {InstalledPackage} */
+  const installed = JSON.parse(
+    regularBytes(web, `${reviewed.parent.path}/package.json`).toString("utf8"),
+  );
+  if (
+    entry.version !== reviewed.parent.version ||
+    entry.integrity !== reviewed.parent.integrity ||
+    installed.name !== reviewed.parent.name ||
+    installed.version !== reviewed.parent.version
+  )
+    throw new Error("Vite generated helpers parent differs from reviewed lock");
+  const generator = regularBytes(
+    web,
+    `${reviewed.parent.path}/${reviewed.generator.file}`,
+    4 * 1024 * 1024,
+  );
+  if (generator.length !== reviewed.generator.size || hash(generator) !== reviewed.generator.sha256)
+    throw new Error("Vite generated helpers generator changed");
+  const upstream = regularBytes(web, `${reviewed.parent.path}/${reviewed.notice.installed_file}`),
+    original = regularBytes(web, reviewed.notice.original_file);
+  if (hash(upstream) !== reviewed.notice.sha256 || !upstream.equals(original))
+    throw new Error("Vite generated helpers original notice changed");
+  notices.push(
+    "=== Generated browser helpers from vite@6.4.3 ===",
+    reviewed.attribution,
+    `Original grouped license: /licenses/${reviewed.notice.public_file}`,
+    "The Vite package's complete notices are included above; the original bytes are served separately.",
+    "",
+  );
+  return {
+    component: {
+      ...reviewed,
+      notices: [
+        {
+          file: reviewed.notice.public_file,
+          sha256: hash(original),
+          upstream_sha256: hash(upstream),
+        },
+      ],
+    },
+    original,
+  };
+}
+/**
+ * @param {string} web Explicit web root for deterministic offline fixtures.
+ * @param {{check?: boolean}} [options]
+ * @returns {{packages: number, embedded_components: number}}
+ */
+export function generateNotices(web, { check = false } = {}) {
+  const lockBytes = readFileSync(path.join(web, "package-lock.json")),
+    output = path.join(web, "static", "licenses");
+  /** @type {PackageLock} */
+  const lock = JSON.parse(lockBytes.toString("utf8"));
+  /** @type {PackageNotice[]} */
+  const packages = [];
+  const notices = [
     "psst.zip web dependency notices",
     "Generated from exact package-lock.json package versions after npm ci.",
     "License formatting uses LF, no trailing spaces/tabs, and one final newline.",
@@ -50,12 +416,13 @@ const packages = [],
     "",
   ];
 
-for (const [relative, entry] of Object.entries(lock.packages).sort(([a], [b]) =>
-  a.localeCompare(b),
-)) {
-  if (!relative) continue;
-  const name = relative.split("node_modules/").at(-1),
-    record = {
+  for (const [relative, entry] of Object.entries(lock.packages).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (!relative) continue;
+    const name = relative.split("node_modules/").at(-1) ?? "";
+    /** @type {PackageNotice} */
+    const record = {
       path: relative,
       name,
       version: entry.version,
@@ -65,52 +432,74 @@ for (const [relative, entry] of Object.entries(lock.packages).sort(([a], [b]) =>
       integrity: entry.integrity ?? null,
       notices: [],
     };
-  if (entry.optional) {
-    if (!entry.dev)
-      throw new Error(`Review optional runtime dependency before distributing: ${relative}`);
-    record.omitted_text_reason = "Optional development/platform package; metadata only";
-  } else {
-    const directory = path.join(web, relative),
-      installed = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
-    if (installed.version !== entry.version)
-      throw new Error(`Installed version differs from lockfile: ${relative}`);
-    const documents = readdirSync(directory, { withFileTypes: true })
-      .filter((item) => item.isFile() && /^(licen[cs]e|copying|copyright|notice)/i.test(item.name))
-      .map((item) => item.name)
-      .sort();
-    if (!documents.some((name) => /^(licen[cs]e|copying)/i.test(name))) {
-      const reason = omitted.get(`${name}@${entry.version}`);
-      if (!reason)
-        throw new Error(`No complete upstream license text: ${relative}@${entry.version}`);
-      record.omitted_text_reason = reason;
+    if (entry.optional) {
+      if (!entry.dev)
+        throw new Error(`Review optional runtime dependency before distributing: ${relative}`);
+      record.omitted_text_reason = "Optional development/platform package; metadata only";
+    } else {
+      const directory = path.join(web, relative),
+        installed = JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8"));
+      if (installed.version !== entry.version)
+        throw new Error(`Installed version differs from lockfile: ${relative}`);
+      const documents = readdirSync(directory, { withFileTypes: true })
+        .filter(
+          (item) => item.isFile() && /^(licen[cs]e|copying|copyright|notice)/i.test(item.name),
+        )
+        .map((item) => item.name)
+        .sort();
+      if (!documents.some((name) => /^(licen[cs]e|copying)/i.test(name))) {
+        const reason = omitted.get(`${name}@${entry.version}`);
+        if (!reason)
+          throw new Error(`No complete upstream license text: ${relative}@${entry.version}`);
+        record.omitted_text_reason = reason;
+      }
+      for (const document of documents) {
+        const upstream = readFileSync(path.join(directory, document)),
+          content = normalize(upstream);
+        record.notices.push({
+          file: document,
+          sha256: hash(content),
+          upstream_sha256: hash(upstream),
+        });
+        notices.push(`=== ${name}@${entry.version}: ${document} ===`, content, "");
+      }
     }
-    for (const document of documents) {
-      const upstream = readFileSync(path.join(directory, document)),
-        content = normalize(upstream);
-      record.notices.push({
-        file: document,
-        sha256: hash(content),
-        upstream_sha256: hash(upstream),
-      });
-      notices.push(`=== ${name}@${entry.version}: ${document} ===`, content, "");
-    }
+    packages.push(record);
   }
-  packages.push(record);
+  dijkstraSupplement(web, lock, packages, notices);
+  const embedded_components = embeddedNotices(web, lock, notices);
+  const generated = generatedHelperNotices(web, lock, notices);
+  const derived_components = generated ? [generated.component] : [];
+  /** @type {Map<string, string | Buffer>} */
+  const files = new Map([
+    [
+      "dependency-inventory.json",
+      JSON.stringify(
+        { package_lock_sha256: hash(lockBytes), packages, embedded_components, derived_components },
+        null,
+        2,
+      ) + "\n",
+    ],
+    ["THIRD_PARTY_NOTICES.txt", normalize(notices.join("\n"))],
+  ]);
+  if (generated) files.set(generated.component.notice.public_file, generated.original);
+  for (const [name, content] of files) {
+    const file = path.join(output, name);
+    if (check) {
+      if (!readFileSync(file).equals(Buffer.isBuffer(content) ? content : Buffer.from(content)))
+        throw new Error(
+          `Stale notices: ${file}; run node scripts/generate-third-party-notices.mjs`,
+        );
+    } else writeFileSync(file, content);
+  }
+  return { packages: packages.length, embedded_components: embedded_components.length };
 }
-const files = new Map([
-  [
-    "dependency-inventory.json",
-    JSON.stringify({ package_lock_sha256: hash(lockBytes), packages }, null, 2) + "\n",
-  ],
-  ["THIRD_PARTY_NOTICES.txt", normalize(notices.join("\n"))],
-]);
-for (const [name, content] of files) {
-  const file = path.join(output, name);
-  if (check) {
-    if (readFileSync(file, "utf8") !== content)
-      throw new Error(`Stale notices: ${file}; run node scripts/generate-third-party-notices.mjs`);
-  } else writeFileSync(file, content);
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+    check = process.argv.includes("--check"),
+    result = generateNotices(web, { check });
+  console.log(
+    `${check ? "Checked" : "Generated"} notices for ${result.packages} locked npm packages and ${result.embedded_components} embedded components.`,
+  );
 }
-console.log(
-  `${check ? "Checked" : "Generated"} notices for ${packages.length} locked npm packages.`,
-);

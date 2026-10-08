@@ -13,6 +13,7 @@ import re
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -21,6 +22,7 @@ from release_artifacts import (
     COMMIT,
     DIGEST,
     PLATFORMS,
+    VERSION,
     InvalidRelease,
     create_output,
     fields,
@@ -52,6 +54,28 @@ READBACK_GATES = frozenset(
     {"registry-readback", "anonymous-pull", "asset-readback", "provenance"}
 )
 SOURCE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}\Z")
+SOURCE_REVIEW_POLICY = "tools/container-distribution-policy.json"
+SOURCE_COVERAGE = {
+    component
+    + "-"
+    + arch: frozenset(
+        {"application", "runtime"}
+        | (
+            {"backend-modules"}
+            if component == "backend"
+            else {"browser-packages", "browser-generators"}
+        )
+    )
+    for component in ("backend", "web")
+    for arch in ("amd64", "arm64")
+}
+RECOVERY_CHECKS = (
+    "historical-upgrade",
+    "same-version-reapply",
+    "pause-preservation",
+    "post-migration-startup-failure",
+    "matching-checkpoint-isolated-restore",
+)
 
 
 def sha256(content: bytes) -> str:
@@ -149,11 +173,10 @@ def validate_registry_index(raw: bytes, record: dict) -> None:
     )
 
 
-def bind_reviewed_source(
-    root: Path, repository: str, ref: str, event_sha: str, reviewed_commit: str
-) -> tuple[str, str]:
+def checked_checkout(root: Path, repository: str, commit: str) -> None:
+    """Check checkout bytes/identity; this does not require or authorize a tag."""
     repository = repository_name(repository)
-    matches(reviewed_commit, COMMIT, "Invalid reviewed commit")
+    matches(commit, COMMIT, "Invalid reviewed commit")
     origin = git(root, "remote", "get-url", "origin").decode().strip()
     require(
         origin
@@ -165,16 +188,24 @@ def bind_reviewed_source(
         },
         "Checkout origin differs from the trusted repository",
     )
-    version, commit = validated_tag(root, ref, event_sha)
-    require(commit == reviewed_commit, "Tag is not the reviewed source commit")
     require(
         git(root, "rev-parse", "HEAD").decode().strip() == commit,
-        "Checkout is not the reviewed tagged commit",
+        "Checkout is not the reviewed commit",
     )
     require(
         git(root, "diff", "--name-only", commit, "--") == b"",
         "Tracked checkout differs from the reviewed commit",
     )
+
+
+def bind_reviewed_source(
+    root: Path, repository: str, ref: str, event_sha: str, reviewed_commit: str
+) -> tuple[str, str]:
+    repository = repository_name(repository)
+    matches(reviewed_commit, COMMIT, "Invalid reviewed commit")
+    version, commit = validated_tag(root, ref, event_sha)
+    require(commit == reviewed_commit, "Tag is not the reviewed source commit")
+    checked_checkout(root, repository, commit)
     return version, commit
 
 
@@ -216,6 +247,177 @@ class EvidenceVerifier(Protocol):
         """Verify trusted issuer/reviewer, source, workflow/ref and subject bytes."""
 
 
+def source_review_details(
+    details: dict, binding: Binding, *, distribution: bool
+) -> None:
+    """Check authenticated producer facts, never turn an approval flag into evidence.
+
+    The producer must replay archives, read the exact Git policy bytes/blob, and
+    authenticate real GitHub protected-environment approval and its authorized
+    reviewer. Bounded names/hashes here are not reviewer authorization. This
+    boundary additionally rejects partial or stale coverage even for signed reports.
+    """
+    fields(
+        details,
+        {"schema_version", "source_subjects", "images", "policy"}
+        | ({"coverage_digest", "review"} if distribution else {"coverage"}),
+        "complete source/distribution review details",
+    )
+    require(
+        type(details["schema_version"]) is int and details["schema_version"] == 1,
+        "Unsupported source review detail schema",
+    )
+    subjects = dict(binding.subjects)
+    sources = {
+        name: subject
+        for name, subject in subjects.items()
+        if name.startswith("source:")
+    }
+    require(
+        bool(sources) and details["source_subjects"] == sources,
+        "Source review does not cover every exact source subject",
+    )
+    images = fields(
+        details["images"], set(SOURCE_COVERAGE), "all four reviewed final images"
+    )
+    for name, record in images.items():
+        fields(record, {"subject", "notice_inventory_digest"}, "reviewed image notices")
+        require(
+            record["subject"] == subjects.get(name),
+            "Source review covers another final image",
+        )
+        matches(
+            record["notice_inventory_digest"],
+            DIGEST,
+            "Missing exact final image notice inventory digest",
+        )
+    policy = fields(
+        details["policy"],
+        {"path", "source_commit", "record_digest", "git_blob"},
+        "reviewed committed distribution policy",
+    )
+    require(
+        policy["path"] == SOURCE_REVIEW_POLICY
+        and policy["source_commit"] == binding.commit,
+        "Distribution policy is not from the reviewed source commit",
+    )
+    matches(policy["record_digest"], DIGEST, "Missing committed policy record digest")
+    matches(policy["git_blob"], COMMIT, "Missing committed policy Git blob")
+    if distribution:
+        matches(
+            details["coverage_digest"],
+            DIGEST,
+            "Missing complete source coverage digest",
+        )
+        review = fields(
+            details["review"],
+            {
+                "decision",
+                "reviewer",
+                "record_digest",
+                "source_gate_report_digest",
+                "reviewed_subjects",
+            },
+            "authenticated authorized distribution review",
+        )
+        require(
+            review["decision"] == "approved"
+            and isinstance(review["reviewer"], str)
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@/-]{0,159}", review["reviewer"])
+            is not None
+            and review["reviewed_subjects"] == subjects,
+            "Distribution review is pending or does not cover the exact final subjects",
+        )
+        matches(
+            review["record_digest"],
+            DIGEST,
+            "Missing authenticated distribution review record digest",
+        )
+        matches(
+            review["source_gate_report_digest"],
+            DIGEST,
+            "Missing corresponding-source report binding",
+        )
+    else:
+        coverage = fields(
+            details["coverage"],
+            set(SOURCE_COVERAGE),
+            "source coverage for all final images",
+        )
+        for image, categories in SOURCE_COVERAGE.items():
+            entries = fields(
+                coverage[image],
+                set(categories),
+                "exact final source coverage categories",
+            )
+            for evidence in entries.values():
+                fields(
+                    evidence,
+                    {"status", "evidence_digest"},
+                    "completed source coverage evidence",
+                )
+                require(
+                    evidence["status"] == "complete",
+                    "Preferred-form source coverage remains incomplete",
+                )
+                matches(
+                    evidence["evidence_digest"],
+                    DIGEST,
+                    "Missing independently checked source coverage evidence",
+                )
+
+
+def recovery_review_details(details: dict, binding: Binding) -> None:
+    """Require complete native recovery scope, distinct from public/provider proof."""
+    require(
+        isinstance(details, dict)
+        and type(details.get("schema_version")) is int
+        and details["schema_version"] == 1
+        and details.get("checks") == list(RECOVERY_CHECKS),
+        "Recovery report lacks complete experiment coverage",
+    )
+    modes = fields(details.get("execution"), set(PLATFORMS), "recovery execution")
+    require(
+        all(mode == "native" for mode in modes.values()),
+        "Recovery requires both native architectures",
+    )
+    records = fields(
+        details.get("native_measurements"), set(PLATFORMS), "recovery measurements"
+    )
+    for record in records.values():
+        fields(record, {"record_digest", "completed_at"}, "completed native recovery")
+        matches(record["record_digest"], DIGEST, "Missing recovery measurement digest")
+        completed = record["completed_at"]
+        require(
+            isinstance(completed, str) and 0 < len(completed) <= 64,
+            "Missing recovery completion time",
+        )
+        try:
+            parsed = datetime.fromisoformat(completed.replace("Z", "+00:00"))
+        except ValueError:
+            raise InvalidRelease("Invalid recovery completion time") from None
+        require(parsed.tzinfo is not None, "Recovery completion lacks timezone")
+    subjects = dict(binding.subjects)
+    for name in ("manifest", "bundle"):
+        require(
+            subjects.get(name, "").endswith("@" + str(details.get(name + "_sha256")))
+            and subjects[name].startswith("file:"),
+            "Recovery ran another prepared manifest or bundle",
+        )
+        matches(details[name + "_sha256"], DIGEST, "Invalid recovery input digest")
+    require(
+        all(
+            details.get(key) is False
+            for key in (
+                "public_provenance_verified",
+                "off_host_provider_verified",
+                "browser_mobile_flows_verified",
+            )
+        ),
+        "Native recovery cannot claim public delivery or independent provider proof",
+    )
+
+
 def verify_gates(
     reports: dict[str, Path],
     gates: frozenset[str],
@@ -223,7 +425,7 @@ def verify_gates(
     verifier: EvidenceVerifier,
 ) -> dict[str, str]:
     fields(reports, set(gates), "required verification reports")
-    result = {}
+    result, source_details = {}, None
     for gate in sorted(gates):
         report = read_bounded_file(reports[gate])
         receipt = verifier.verify(gate, reports[gate], binding)
@@ -295,11 +497,8 @@ def verify_gates(
                 receipt.details.get("execution"), set(PLATFORMS), "smoke execution"
             )
             require(
-                all(
-                    isinstance(mode, str) and mode in {"native", "emulated"}
-                    for mode in modes.values()
-                ),
-                "Smoke evidence must record native or emulated execution",
+                all(mode == "native" for mode in modes.values()),
+                "Publication requires native smoke on both architectures",
             )
         elif gate == "source-ci":
             require(
@@ -310,10 +509,32 @@ def verify_gates(
                 },
                 "Exact source CI did not pass all five jobs",
             )
+        elif gate == "upgrade-recovery":
+            recovery_review_details(receipt.details, binding)
         elif gate == "provenance":
             require(
                 receipt.details.get("subjects") == dict(binding.subjects),
                 "Provenance does not cover every updater and source subject",
+            )
+        elif gate == "corresponding-source":
+            source_review_details(receipt.details, binding, distribution=False)
+            source_details = receipt.details
+        elif gate == "distribution-review":
+            source_review_details(receipt.details, binding, distribution=True)
+            require(
+                source_details is not None and "corresponding-source" in result,
+                "Distribution review requires the verified corresponding-source gate",
+            )
+            require(
+                all(
+                    receipt.details[name] == source_details[name]
+                    for name in ("source_subjects", "images", "policy")
+                )
+                and receipt.details["coverage_digest"]
+                == sha256(json_bytes(source_details["coverage"]))
+                and receipt.details["review"]["source_gate_report_digest"]
+                == result["corresponding-source"],
+                "Distribution review differs from completed source/notice/policy evidence",
             )
         result[gate] = receipt.report_digest
     return result
@@ -390,6 +611,35 @@ def prepare_inputs(
     version, commit = bind_reviewed_source(
         root, repository, ref, event_sha, reviewed_commit
     )
+    return measure_prepared_inputs(
+        repository=repository,
+        version=version,
+        commit=commit,
+        manifest_path=manifest_path,
+        bundle=bundle,
+        indexes=indexes,
+        source_assets=source_assets,
+    )
+
+
+def measure_prepared_inputs(
+    *,
+    repository: str,
+    version: str,
+    commit: str,
+    manifest_path: Path,
+    bundle: Path,
+    indexes: dict[str, Path],
+    source_assets: dict[str, Path],
+) -> PublicationInputs:
+    """Measure exact prepared bytes only; no tag, source CI or publication trust.
+
+    Planned-version assembly may use this structural helper, but publication must
+    enter through prepare_inputs and its mandatory reviewed-tag binding.
+    """
+    repository = repository_name(repository)
+    matches(version, VERSION, "Invalid prepared version")
+    matches(commit, COMMIT, "Invalid prepared source commit")
     raw = read_bounded_file(manifest_path)
     manifest = validate_manifest(read_json(raw), repository)
     require(

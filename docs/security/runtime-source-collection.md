@@ -345,3 +345,67 @@ publication and anonymous download/hash verification remain separate required
 checks. Retain the complete private source pack until the publisher can deliver
 and verify it alongside the actual released pair; do not upload unchecked
 review outputs as Actions artifacts.
+
+## Replay the exact retained source asset
+
+`tools/verify_runtime_source_pack.py` produces technical runtime source
+completeness measurements from an existing asset and actual native OCI exports.
+It requires the externally bound source asset SHA256, exact release identity
+and the native smoke measurement that identifies the configurations tested.
+Existing `source_pack_complete`, `review_required`, or cached successful
+signature flags do not grant approval or replace these checks.
+
+```sh
+python3 tools/verify_runtime_source_pack.py \
+  --pack /private/release-review/pack \
+  --backend-archive /private/release-review/export/backend-amd64.oci.tar \
+  --web-archive /private/release-review/export/web-amd64.oci.tar \
+  --smoke-report /private/release-review/smoke-report.json \
+  --cosign /private/release-review/cosign-linux-amd64 \
+  --repository endorses/psst.zip --version v1.2.3 \
+  --revision FULL_APPLICATION_COMMIT \
+  --source-sha256 sha256:BOUND_RUNTIME_SOURCE_ASSET_SHA256 \
+  --output /private/release-review/source-completeness-verification.json
+python3 tools/test_runtime_source_replay.py
+```
+
+The verifier hashes and safely expands the original archive without rewriting
+or repackaging it. It compares archived legal evidence with the trusted pinned
+notice documents, verifies complete origin coverage, checks original source
+SHA512 sums against the retained APKBUILD declarations, and compares copied
+recipe/helper bytes. Full aports recipe directories also retain unused patch
+files; those need not be present inside abuild's source package unless declared
+as source inputs. The full recipe remains in the hash-bound outer asset.
+
+OCI validation replays every content-addressed blob and uncompressed layer
+against the configuration actually smoke-tested. The verifier independently
+reads each retained APK database, checks the original layer prefix and runtime
+configuration, reconstructs the complete lower-layer package graph, and
+compares the final database, executable, legal files and discovery metadata.
+It rebuilds full supplied notices from original source bytes. Caddy's source
+and checksum signatures are freshly verified through the pinned Cosign tool,
+including public transparency checks. The actual final Caddy executable must
+match the signed architecture-specific binary and its embedded module graph
+must match the authenticated vendor/wrapper sources and recorded Go settings.
+
+The output distinguishes `runtime_source_inputs_verified` from application
+source verification, APK binary signature verification, anonymous source
+publication and distribution authorization. It is an unsigned technical
+measurement until the publisher authenticates its producer and binds its
+actual source/archive/manifest subjects to the release. The caller must obtain
+the expected source SHA256 and trusted smoke evidence from that release binding;
+passing arbitrary caller-created metadata does not establish release authority.
+The replay does not rerun Alpine builds or independently renew every historical
+aports Git tree lookup: it checks the exact retained collector inputs and source
+checksums against the bound asset, preserving their recorded immutable recipe
+provenance. Caddy proof authenticates its covered artifacts only, never APKs.
+
+On 2026-10-07 the private patched AMD64 source asset for application revision
+`750f440d143d6766d83b13e1ce789436471ae029` replayed successfully without changing
+archive SHA256 `4ce28130c2d926558568fdcc58cdd78193da92fefe54873c827fb3454d45bad6`.
+It covers backend 20 retained package versions / 13 origin revisions and web
+33 versions / 21 origins, including replaced OpenSSL and zlib lower-layer
+versions. Native OCI bytes, full notices and fresh Caddy signatures were checked.
+This remains private preparation evidence; application source delivery, ARM64
+native evidence, authenticated release provenance and authorized distribution
+review are separate gates.

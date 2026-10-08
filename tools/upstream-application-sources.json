@@ -1,0 +1,548 @@
+{
+  "kind": "pinned-upstream-application-source-inputs",
+  "schema_version": 1,
+  "upstreams": [
+    {
+      "archive": {
+        "file": "sqlite-3cd92ce875fd4e5601e535c35fef33494a6684e3.tar.gz",
+        "sha256": "sha256:bd93114084a6c02b6d7abd56e5cd2c4c047e5238b0d0e26341340be5b78e10ac",
+        "size": 12985080
+      },
+      "commit": "3cd92ce875fd4e5601e535c35fef33494a6684e3",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "id": "backend-sqlite-c",
+      "inspect_paths": [
+        "LICENSE.md",
+        "Makefile.in",
+        "VERSION",
+        "manifest",
+        "manifest.uuid",
+        "main.mk",
+        "src/main.c",
+        "src/sqlite.h.in",
+        "tool/mksqlite3c.tcl"
+      ],
+      "repository": "sqlite/sqlite"
+    },
+    {
+      "archive": {
+        "file": "musl-7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0.tar.gz",
+        "sha256": "sha256:b65b3c7ca604a839ecb5abcdb7454e2e7d11db2b8e08df668c7fee45e8e50fbf",
+        "size": 1081419
+      },
+      "commit": "7ada6dde6f9dc6a2836c3d92c2f762d35fd229e0",
+      "go_modules": {
+        "modernc.org/libc": "v1.65.0"
+      },
+      "id": "backend-libc-musl",
+      "inspect_paths": [
+        "COPYRIGHT",
+        "INSTALL",
+        "Makefile",
+        "VERSION",
+        "configure",
+        "src/locale/iconv.c",
+        "src/string/memcpy.c",
+        "src/stdio/printf.c"
+      ],
+      "repository": "musl-libc/musl",
+      "source_host": "musl"
+    },
+    {
+      "archive": {
+        "file": "lucide-45b0e148db4ee4d748340d0f99982aa1c2159d52.tar.gz",
+        "sha256": "sha256:8d74567fb686aef7d6a7d2e773fc8dec223b7719360d7043cbd84568eadad691",
+        "size": 5540149
+      },
+      "commit": "45b0e148db4ee4d748340d0f99982aa1c2159d52",
+      "id": "lucide",
+      "inspect_paths": [
+        ".github/workflows/release.yml",
+        "LICENSE",
+        "package.json",
+        "packages/svelte/package.json",
+        "packages/svelte/scripts/appendBlockComments.mts",
+        "packages/svelte/scripts/exportTemplate.mts",
+        "tools/build-helpers/package.json",
+        "tools/build-icons/package.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "@lucide/svelte": "1.51.0"
+      },
+      "repository": "lucide-icons/lucide"
+    },
+    {
+      "archive": {
+        "file": "fflate-dcb3714a6c25db3a2748641019c5277413d09714.tar.gz",
+        "sha256": "sha256:24d3150cf1b94ced292df0888d7a169473ab6aeead44518718dd2bd96893e981",
+        "size": 120872
+      },
+      "commit": "dcb3714a6c25db3a2748641019c5277413d09714",
+      "id": "fflate",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "src/index.ts",
+        "tsconfig.esm.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "fflate": "0.8.3"
+      },
+      "repository": "101arrowz/fflate"
+    },
+    {
+      "archive": {
+        "file": "hpke-24456ca764f094228b5b292508236bc26d76eeed.tar.gz",
+        "sha256": "sha256:d2e5df0f2c01304a575bd5da0c0c734c60bee0dc994886aa964d5387a5e4dcbb",
+        "size": 1995407
+      },
+      "commit": "24456ca764f094228b5b292508236bc26d76eeed",
+      "id": "hpke",
+      "inspect_paths": [
+        "build.cjs",
+        "index.ts",
+        "package.json",
+        "tsconfig.json"
+      ],
+      "packages": {
+        "@panva/hpke-noble": "1.1.7",
+        "hpke": "1.1.7"
+      },
+      "repository": "panva/hpke"
+    },
+    {
+      "archive": {
+        "file": "noble-curves-656c4364dffa44c64aa0c49914b8000b278b67a9.tar.gz",
+        "sha256": "sha256:d362a58c18f2a05544fad5d93b7873ee871d9cd5ad5104c49bee6f0087fd535a",
+        "size": 13833717
+      },
+      "commit": "656c4364dffa44c64aa0c49914b8000b278b67a9",
+      "id": "noble-curves",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/ed25519.ts",
+        "src/abstract/curve.ts",
+        "src/abstract/edwards.ts",
+        "src/abstract/modular.ts",
+        "src/abstract/montgomery.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/curves": "2.4.0"
+      },
+      "repository": "paulmillr/noble-curves"
+    },
+    {
+      "archive": {
+        "file": "noble-hashes-663c2aeeffc308ac0cded59bd32f7c212adacfc2.tar.gz",
+        "sha256": "sha256:ee5786c9daef2c202dc6a90e7a3d65e7dd91f9185b2f710227b9f22da7619878",
+        "size": 15949481
+      },
+      "commit": "663c2aeeffc308ac0cded59bd32f7c212adacfc2",
+      "id": "noble-hashes",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/_md.ts",
+        "src/_u64.ts",
+        "src/hkdf.ts",
+        "src/hmac.ts",
+        "src/sha2.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/hashes": "2.4.0"
+      },
+      "repository": "paulmillr/noble-hashes"
+    },
+    {
+      "archive": {
+        "file": "clsx-925494cf31bcd97d3337aacd34e659e80cae7fe2.tar.gz",
+        "sha256": "sha256:90b01de6b585bd1f2a86edee60a0142e2d4ac3347ae9dc297a76033eb4b77e73",
+        "size": 28084
+      },
+      "commit": "925494cf31bcd97d3337aacd34e659e80cae7fe2",
+      "id": "clsx",
+      "inspect_paths": [
+        "license",
+        "package.json",
+        "bin/index.js",
+        "src/index.js",
+        "src/lite.js"
+      ],
+      "packages": {
+        "clsx": "2.1.1"
+      },
+      "repository": "lukeed/clsx"
+    },
+    {
+      "archive": {
+        "file": "node-qrcode-3848ed2c17de5bcdead487417dbf14c5dd017f8d.tar.gz",
+        "sha256": "sha256:d96b31fba9f50e152c1b183ac60087b33748acb1981cc2cc87141f2467d331e5",
+        "size": 386143
+      },
+      "commit": "3848ed2c17de5bcdead487417dbf14c5dd017f8d",
+      "id": "qrcode",
+      "inspect_paths": [
+        "license",
+        "package.json",
+        "rollup.config.js",
+        "lib/browser.js",
+        "lib/core/qrcode.js",
+        "helper/to-sjis.js"
+      ],
+      "packages": {
+        "qrcode": "1.5.4"
+      },
+      "repository": "soldair/node-qrcode"
+    },
+    {
+      "archive": {
+        "file": "qr-scanner-abcfe1bce2703721408d8ce7ebde94a359998506.tar.gz",
+        "sha256": "sha256:fbf00505c638dd4c75822bd23b9586c83c1b6b8f5e76fa9bb446219bfd0c63f8",
+        "size": 154187
+      },
+      "commit": "abcfe1bce2703721408d8ce7ebde94a359998506",
+      "id": "qr-scanner",
+      "inspect_paths": [
+        "LICENSE",
+        "README.md",
+        "package.json",
+        "qr-scanner-worker.min.js",
+        "qr-scanner-worker.min.js.map",
+        "qr-scanner.legacy.min.js",
+        "qr-scanner.legacy.min.js.map",
+        "qr-scanner.min.js",
+        "qr-scanner.min.js.map",
+        "qr-scanner.umd.min.js",
+        "qr-scanner.umd.min.js.map",
+        "rollup.config.js",
+        "src/qr-scanner.ts",
+        "src/worker.ts",
+        "tsconfig.json",
+        "types/qr-scanner.d.ts",
+        "yarn.lock"
+      ],
+      "packages": {
+        "qr-scanner": "1.4.2"
+      },
+      "repository": "nimiq/qr-scanner"
+    },
+    {
+      "archive": {
+        "file": "jsQR-42dbfd55f35db625119e8f33247b6e9d073902ec.tar.gz",
+        "sha256": "sha256:e7989689d0400ddab9e14ccc11834bd9fcfa9343c6fe53018304f092698486fc",
+        "size": 45404815
+      },
+      "commit": "42dbfd55f35db625119e8f33247b6e9d073902ec",
+      "id": "qr-scanner-decoder",
+      "inspect_paths": [
+        "LICENSE",
+        "README.md",
+        "package.json",
+        "rollup.config.js",
+        "tsconfig.json",
+        "yarn.lock",
+        "src/Point.ts",
+        "src/BitMatrix.ts",
+        "src/index.ts",
+        "src/binarizer/index.ts",
+        "src/decoder/decodeData/BitStream.ts",
+        "src/decoder/decodeData/index.ts",
+        "src/decoder/decoder.ts",
+        "src/decoder/reedsolomon/GenericGF.ts",
+        "src/decoder/reedsolomon/GenericGFPoly.ts",
+        "src/decoder/reedsolomon/index.ts",
+        "src/decoder/version.ts",
+        "src/extractor/index.ts",
+        "src/locator/index.ts"
+      ],
+      "packages": {
+        "qr-scanner": "1.4.2"
+      },
+      "relationship": {
+        "kind": "embedded-component",
+        "name": "jsqr-es6",
+        "package": "qr-scanner",
+        "version": "1.4.0-1"
+      },
+      "repository": "danimoh/jsQR"
+    },
+    {
+      "archive": {
+        "file": "noble-ciphers-d9e8a6a599e7ed729d9be03854c46a3c73bd9a79.tar.gz",
+        "sha256": "sha256:3bcf1bc60f00480615d370001efbcd000f10b542c7f15b3ab00acdb97cf6a41d",
+        "size": 1289689
+      },
+      "commit": "d9e8a6a599e7ed729d9be03854c46a3c73bd9a79",
+      "id": "noble-ciphers",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "tsconfig.json",
+        "test/tsconfig.json",
+        "src/aes.ts",
+        "src/_polyval.ts",
+        "src/utils.ts"
+      ],
+      "packages": {
+        "@noble/ciphers": "2.4.0"
+      },
+      "repository": "paulmillr/noble-ciphers"
+    },
+    {
+      "archive": {
+        "file": "kit-39e8e1fbd4feba7f22dd46bfdf7335362c38de16.tar.gz",
+        "sha256": "sha256:6d19fda7fb03101a40a0ccb45a89338303a442e33dbc2b7a5e983686a18dc46b",
+        "size": 4350585
+      },
+      "commit": "39e8e1fbd4feba7f22dd46bfdf7335362c38de16",
+      "id": "sveltekit",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/kit/package.json",
+        "packages/kit/scripts/generate-version.js",
+        "packages/kit/scripts/generate-dts.js",
+        "packages/kit/src/version.js",
+        "packages/adapter-static/package.json",
+        "packages/adapter-static/index.js",
+        "packages/adapter-static/platforms.js"
+      ],
+      "packages": {
+        "@sveltejs/kit": "2.70.3",
+        "@sveltejs/adapter-static": "3.0.10"
+      },
+      "repository": "sveltejs/kit"
+    },
+    {
+      "archive": {
+        "file": "svelte-636eaaaa6f064b55072e7d192bb76dc9d8c4516e.tar.gz",
+        "sha256": "sha256:951e36068331f3f7e206bdc948e25824375f1c3a0356c34c462b0f3e8e1148c7",
+        "size": 1938208
+      },
+      "commit": "636eaaaa6f064b55072e7d192bb76dc9d8c4516e",
+      "id": "svelte",
+      "inspect_paths": [
+        "LICENSE.md",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/svelte/package.json",
+        "packages/svelte/rollup.config.js",
+        "packages/svelte/scripts/generate-version.js",
+        "packages/svelte/scripts/generate-types.js",
+        "packages/svelte/scripts/generate-browser-support.ts",
+        "packages/svelte/scripts/check-treeshakeability.js",
+        "packages/svelte/tsconfig.generated.json",
+        "packages/svelte/scripts/process-messages/index.js",
+        "packages/svelte/messages/client-errors/errors.md",
+        "packages/svelte/messages/client-warnings/warnings.md",
+        "packages/svelte/messages/compile-errors/options.md",
+        "packages/svelte/messages/compile-errors/script.md",
+        "packages/svelte/messages/compile-errors/style.md",
+        "packages/svelte/messages/compile-errors/template.md",
+        "packages/svelte/messages/compile-warnings/a11y.md",
+        "packages/svelte/messages/compile-warnings/misc.md",
+        "packages/svelte/messages/compile-warnings/options.md",
+        "packages/svelte/messages/compile-warnings/script.md",
+        "packages/svelte/messages/compile-warnings/style.md",
+        "packages/svelte/messages/compile-warnings/template.md",
+        "packages/svelte/messages/server-errors/errors.md",
+        "packages/svelte/messages/server-warnings/warnings.md",
+        "packages/svelte/messages/shared-errors/errors.md",
+        "packages/svelte/messages/shared-warnings/warnings.md",
+        "packages/svelte/scripts/process-messages/templates/client-errors.js",
+        "packages/svelte/scripts/process-messages/templates/client-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/compile-errors.js",
+        "packages/svelte/scripts/process-messages/templates/compile-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/server-errors.js",
+        "packages/svelte/scripts/process-messages/templates/server-warnings.js",
+        "packages/svelte/scripts/process-messages/templates/shared-errors.js",
+        "packages/svelte/scripts/process-messages/templates/shared-warnings.js"
+      ],
+      "packages": {
+        "svelte": "5.57.1"
+      },
+      "repository": "sveltejs/svelte"
+    },
+    {
+      "id": "vite",
+      "repository": "vitejs/vite",
+      "commit": "6c2c881f15495738ff03bc1d67cc052c07e0cac4",
+      "archive": {
+        "file": "vite-6c2c881f15495738ff03bc1d67cc052c07e0cac4.tar.gz",
+        "sha256": "sha256:b5d5e3a9c865752266bb84714ce0b08c9c010a8f3287dc9dc8db28bd861bc09c",
+        "size": 11346610
+      },
+      "packages": {
+        "vite": "6.4.3"
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/vite/package.json",
+        "packages/vite/rollup.config.ts",
+        "packages/vite/src/node/plugins/importAnalysisBuild.ts"
+      ]
+    },
+    {
+      "archive": {
+        "file": "plugins-8b5fb987f82644ed31660b44f5c4df1cb085bf32.tar.gz",
+        "sha256": "sha256:dbd76e3255715afaa2ed11e001f5a4b400e6beb9d50b70e8c6dfc8ac19832093",
+        "size": 633189
+      },
+      "commit": "8b5fb987f82644ed31660b44f5c4df1cb085bf32",
+      "id": "rollup-commonjs",
+      "inspect_paths": [
+        "LICENSE",
+        "package.json",
+        "pnpm-lock.yaml",
+        "packages/commonjs/package.json",
+        "packages/commonjs/src/helpers.js",
+        "packages/commonjs/src/index.js"
+      ],
+      "packages": {
+        "vite": "6.4.3"
+      },
+      "relationship": {
+        "kind": "embedded-component",
+        "name": "@rollup/plugin-commonjs",
+        "package": "vite",
+        "version": "28.0.3"
+      },
+      "repository": "rollup/plugins",
+      "source_fixture_links": {
+        "packages/alias/test/node_modules/current-package": "../..",
+        "packages/babel/test/node_modules/current-package": "../..",
+        "packages/data-uri/test/node_modules/current-package": "../..",
+        "packages/dynamic-import-vars/test/node_modules/current-package": "../..",
+        "packages/eslint/test/node_modules/current-package": "../..",
+        "packages/graphql/test/node_modules/current-package": "../..",
+        "packages/multi-entry/test/node_modules/current-package": "../..",
+        "packages/node-resolve/test/node_modules/current-package": "../..",
+        "packages/typescript/test/node_modules/current-package": "../..",
+        "packages/wasm/test/node_modules/current-package": "../.."
+      }
+    },
+    {
+      "id": "backend-sqlite-project",
+      "repository": "cznic/sqlite",
+      "commit": "dc8212054b608339e80d7e986e530fa24bc5e369",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "archive": {
+        "file": "sqlite-dc8212054b608339e80d7e986e530fa24bc5e369.tar.gz",
+        "sha256": "sha256:492752855dd34e06c4798019c6708e1f89e7b9444ef80ddd9e94c54a1322e167",
+        "size": 39232665
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "vendor_libsqlite3/main.go",
+        "vendor_libsqlite3/go.mod",
+        "vendor_libsqlite3/go.sum",
+        "lib/sqlite_linux_amd64.go",
+        "lib/sqlite_linux_arm64.go"
+      ]
+    },
+    {
+      "id": "backend-libc-project",
+      "repository": "cznic/libc",
+      "commit": "d6b3f0f238e49c751b8ace5b5595ccc93db8b536",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/libc": "v1.65.0"
+      },
+      "archive": {
+        "file": "libc-d6b3f0f238e49c751b8ace5b5595ccc93db8b536.tar.gz",
+        "sha256": "sha256:8bfc54fb0cd88402f0fcd902a3117e785cf30de3574216fe95ba22685f67e81f",
+        "size": 15742379
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "go.mod",
+        "go.sum",
+        "generate.go",
+        "generator.go",
+        "internal/archive/archive.go",
+        "ccgo_linux_amd64.go",
+        "ccgo_linux_arm64.go"
+      ]
+    },
+    {
+      "archive": {
+        "file": "jsbt-c138efca67d90dce86a7cc22c01d6b66d193ea7a.tar.gz",
+        "sha256": "sha256:0c0f435d7945837d6473279d73da94582bea474fcc80edc127997a8d9172c94b",
+        "size": 224261
+      },
+      "commit": "c138efca67d90dce86a7cc22c01d6b66d193ea7a",
+      "id": "jsbt",
+      "inspect_paths": ["LICENSE", "package.json", "tsconfig.json"],
+      "packages": {
+        "@noble/curves": "2.4.0"
+      },
+      "relationship": {
+        "configuration_sha256": "sha256:be47d0e8938ae5896bbd69348b22fc5e756e5a820480229035d3ac06861875ac",
+        "integrity": "sha512-v6OsD1LOpAALat6MDT/hcyEGWzly8t8rSEF//2CVhV7aFyQ4EMVkWpPXh0OFO0z+SLXMHX1K0XdxWPrU5Rk+pw==",
+        "kind": "build-configuration",
+        "name": "@paulmillr/jsbt",
+        "package": "@noble/curves",
+        "version": "0.7.1"
+      },
+      "repository": "paulmillr/jsbt"
+    },
+    {
+      "id": "backend-libsqlite3-project",
+      "repository": "cznic/libsqlite3",
+      "commit": "489e7b6027e7cc723ec60b34a00be46236c94cc7",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "relationship": {
+        "kind": "generator-project",
+        "name": "modernc.org/libsqlite3",
+        "version": "v1.9.0",
+        "module": "modernc.org/sqlite"
+      },
+      "archive": {
+        "file": "libsqlite3-489e7b6027e7cc723ec60b34a00be46236c94cc7.tar.gz",
+        "sha256": "sha256:2fe319a41b9026fdcf10fa1cc7b40983d6209ac06f816045882e03776987a16f",
+        "size": 70672238
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "builder.json",
+        "go.mod",
+        "go.sum",
+        "generator.go",
+        "internal/sqlite_issue173.patch",
+        "internal/issue1.patch",
+        "include/sqlite3.h",
+        "include/sqlite3ext.h",
+        "ccgo_linux_amd64.go",
+        "ccgo_linux_arm64.go"
+      ]
+    }
+  ]
+}

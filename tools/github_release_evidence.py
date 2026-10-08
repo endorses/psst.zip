@@ -42,6 +42,62 @@ ISSUER = "https://token.actions.githubusercontent.com"
 PREDICATE = "https://slsa.dev/provenance/v1"
 MAX_OUTPUT = 4 * 1024 * 1024
 TIMEOUT = 55
+MAX_AUTHENTICATION_CACHE = 64
+
+
+def checked_invocation(run_id: int | None, run_attempt: int | None) -> tuple | None:
+    require(
+        (run_id is None and run_attempt is None)
+        or (
+            type(run_id) is int
+            and run_id > 0
+            and type(run_attempt) is int
+            and run_attempt > 0
+        ),
+        "Verification requires both positive workflow run ID and attempt",
+    )
+    return None if run_id is None else (run_id, run_attempt)
+
+
+def matching_invocation(statement: dict, binding: Binding, invocation: tuple) -> bool:
+    """Constrain provenance only after the CLI verified its certificate/signature."""
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict):
+        return False
+    build, run = predicate.get("buildDefinition"), predicate.get("runDetails")
+    if not isinstance(build, dict) or not isinstance(run, dict):
+        return False
+    external, internal = build.get("externalParameters"), build.get(
+        "internalParameters"
+    )
+    builder, metadata = run.get("builder"), run.get("metadata")
+    if not all(
+        isinstance(row, dict) for row in (external, internal, builder, metadata)
+    ):
+        return False
+    github = internal.get("github")
+    if not isinstance(github, dict):
+        return False
+    repository = "https://github.com/" + binding.repository
+    ref = "refs/tags/" + binding.version
+    return (
+        statement.get("_type") == "https://in-toto.io/Statement/v1"
+        and build.get("buildType") == "https://actions.github.io/buildtypes/workflow/v1"
+        and external.get("workflow")
+        == {"repository": repository, "ref": ref, "path": WORKFLOW}
+        and build.get("resolvedDependencies")
+        == [
+            {
+                "uri": "git+" + repository + "@" + ref,
+                "digest": {"gitCommit": binding.commit},
+            }
+        ]
+        and github.get("event_name") == "push"
+        and github.get("runner_environment") == "github-hosted"
+        and builder.get("id") == repository + "/" + WORKFLOW + "@" + ref
+        and metadata.get("invocationId")
+        == repository + f"/actions/runs/{invocation[0]}/attempts/{invocation[1]}"
+    )
 
 
 def bounded_verify(args: list[str], environment: dict[str, str]) -> bytes:
@@ -127,13 +183,25 @@ def verification_arguments(gh: Path, report: Path, binding: Binding) -> list[str
     ]
 
 
-def verified_subject(output: bytes, digest: str) -> None:
+def verified_subject(
+    output: bytes,
+    digest: str,
+    *,
+    binding: Binding | None = None,
+    run_id: int | None = None,
+    run_attempt: int | None = None,
+) -> None:
     """Reject empty or malformed successful output, even if the CLI exits zero.
 
     Certificate policies are enforced by the CLI flags above. A workflow can
     control predicate contents, so those contents never substitute for signer
     identity or hosted-runner verification.
     """
+    invocation = checked_invocation(run_id, run_attempt)
+    require(
+        invocation is None or binding is not None,
+        "Workflow scope lacks release identity",
+    )
     results = read_json(output)
     require(
         isinstance(results, list) and 0 < len(results) <= 30,
@@ -168,9 +236,14 @@ def verified_subject(output: bytes, digest: str) -> None:
                 isinstance(subject, dict) and isinstance(subject.get("digest"), dict),
                 "Invalid verified subject",
             )
-            if subject["digest"].get("sha256") == digest.removeprefix("sha256:"):
+            if subject["digest"].get("sha256") == digest.removeprefix("sha256:") and (
+                invocation is None
+                or matching_invocation(statement, binding, invocation)
+            ):
                 found = True
-    require(found, "Verified attestation does not cover the report bytes")
+    require(
+        found, "Verified attestation does not cover the report bytes and workflow scope"
+    )
 
 
 class GhEvidenceVerifier:
@@ -181,7 +254,15 @@ class GhEvidenceVerifier:
     arbitrary statements emitted by compromised reviewed workflow code.
     """
 
-    def __init__(self, *, token: str | None = None, gh: Path | None = None):
+    def __init__(
+        self,
+        *,
+        token: str | None = None,
+        gh: Path | None = None,
+        run_id: int | None = None,
+        run_attempt: int | None = None,
+    ):
+        self.invocation = checked_invocation(run_id, run_attempt)
         executable = gh or Path(shutil.which("gh") or "/usr/bin/gh")
         require(
             executable.is_absolute() and executable.is_file(),
@@ -193,6 +274,7 @@ class GhEvidenceVerifier:
         )
         self.gh = executable
         self.token = token
+        self._authenticated: dict[tuple, None] = {}
 
     def verify(self, gate: str, report: Path, binding: Binding) -> VerifiedEvidence:
         require(gate in GATES | READBACK_GATES, "Unknown release evidence gate")
@@ -228,6 +310,10 @@ class GhEvidenceVerifier:
             isinstance(content, bytes) and 0 < len(content) <= MAX_BUNDLE_BYTES,
             "Attested measurement bytes exceed bounds or are empty",
         )
+        digest = sha256(content)
+        key = (binding.digest, digest, self.invocation)
+        if key in self._authenticated:
+            return
         # Verify the same bytes that were parsed. A substituted caller file or
         # changes made during the CLI call cannot become an authenticated report.
         with tempfile.TemporaryDirectory(prefix="psst-evidence-") as temporary:
@@ -251,4 +337,16 @@ class GhEvidenceVerifier:
                 read_bounded_file(snapshot) == content,
                 "Verification snapshot was changed",
             )
-            verified_subject(output, sha256(content))
+            run_id, run_attempt = self.invocation or (None, None)
+            verified_subject(
+                output,
+                digest,
+                binding=binding,
+                run_id=run_id,
+                run_attempt=run_attempt,
+            )
+        # Store only successful verification of these exact immutable bytes.
+        # Keep this instance-local and bounded; never persist a trust decision.
+        if len(self._authenticated) >= MAX_AUTHENTICATION_CACHE:
+            self._authenticated.pop(next(iter(self._authenticated)))
+        self._authenticated[key] = None

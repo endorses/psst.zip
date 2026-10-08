@@ -18,6 +18,8 @@ import secrets
 import shutil
 import time
 import sqlite3
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -27,6 +29,13 @@ spec = importlib.util.spec_from_file_location(
 u = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(u)
 images = json.load(__import__("sys").stdin)
+assert not sys.flags.optimize, "fixture assertions must execute"
+prior_version = images.get("prior_version", "v1.2.2")
+candidate_version = images.get("candidate_version", "v1.2.3")
+repeat_version = images.get("repeat_version", "v1.2.4")
+observations = []
+startup_observations = []
+old_cli_rejected = None
 root = Path("/opt/installation")
 root.mkdir(mode=0o700)
 u.private_directory(u.STATE_PATH)
@@ -154,7 +163,7 @@ class LocalAcquisition(u.Host):
 
     def download(self, version, target):
         shutil.copytree("/opt/fixture/bundle-deploy", target / "bundle/deploy")
-        return {
+        local = {
             "version": version,
             "source": {"commit": images["versions"][version]["commit"]},
             "images": {
@@ -172,6 +181,21 @@ class LocalAcquisition(u.Host):
             },
             "requirements": {"docker": "27.0.0", "compose": "2.24.4"},
         }
+        if images.get("candidate_manifest"):
+            # Bind all release files to the real assembled manifest. Only remote
+            # acquisition is replaced by the already loaded exact config IDs;
+            # this does not verify public registry indexes or attestations.
+            assert (
+                version == candidate_version == images["candidate_manifest"]["version"]
+            )
+            actual = json.loads(json.dumps(images["candidate_manifest"]))
+            assert actual["source"]["commit"] == local["source"]["commit"]
+            for component in ("backend", "web"):
+                actual["images"][component]["index"] = local["images"][component][
+                    "index"
+                ]
+            return actual
+        return local
 
     def pull(self, manifest, platform):
         # Already loaded immutable image IDs: still validate the production
@@ -192,6 +216,13 @@ class LocalAcquisition(u.Host):
 
     def automatic_checks(self, private, transaction):
         super().automatic_checks(private, transaction)
+        startup_observations.append(
+            {
+                "transaction": transaction["id"],
+                "restoring": bool(transaction["restoring"]),
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         if self.fail_after_start and not transaction["restoring"]:
             raise u.UpdateError(
                 "injected post-startup failure after real automatic gates"
@@ -221,9 +252,11 @@ import http.client
 import ssl
 
 context = ssl.create_default_context(cafile=str(root / "fixture-ca.crt"))
+last_http_status = None
 
 
 def request(method, path, body=None, cookie="", headers=None, expected=200):
+    global last_http_status
     connection = http.client.HTTPSConnection(
         config["domain"], 18443, context=context, timeout=15
     )
@@ -239,6 +272,7 @@ def request(method, path, body=None, cookie="", headers=None, expected=200):
     data = response.read()
     fields = dict(response.getheaders())
     connection.close()
+    last_http_status = response.status
     assert response.status in (
         expected if isinstance(expected, tuple) else (expected,)
     ), f"fixture {method} {path} expected {expected}, got {response.status}"
@@ -434,7 +468,7 @@ request(
 initial = host.current()
 u.atomic_json(
     u.STATE_PATH / "active.json",
-    {"version": "v1.2.2", "compose": initial, "transaction": "fixture-initial"},
+    {"version": prior_version, "compose": initial, "transaction": "fixture-initial"},
 )
 u.atomic_json(
     Path("/opt/fixture/flow-state.json"),
@@ -458,6 +492,10 @@ u.atomic_json(
         },
     },
 )
+if images.get("initially_paused"):
+    host.incident(initial, "pause")
+initial_pause = host.incident(initial, "incident-status")
+assert initial_pause is bool(images.get("initially_paused", False))
 time.sleep(1)
 pre_checkpoint_traffic = {
     "server": json.loads(request("GET", "/admin/traffic-policy", cookie=admin)[1]),
@@ -473,6 +511,42 @@ def schema_count(path):
 
 
 schema_before = schema_count(data_root / "psst.db")
+
+
+def transaction_observation(stage, transaction):
+    # Never export the full transaction: protected environment, sessions and
+    # checkpoint paths stay inside the disposable daemon. The verification hook
+    # already produces bounded, directly asserted HTTP/ciphertext observations.
+    if transaction["phase"] == "completed":
+        settings = json.loads(request("GET", "/config")[1])
+        assert settings["public_transfers_paused"] is initial_pause
+        ingress = {
+            "https_port": 18443,
+            "config_status": last_http_status,
+            "public_transfers_paused": settings["public_transfers_paused"],
+        }
+    else:
+        running = host.run(
+            "docker", "ps", "-q", "--filter", "label=com.docker.compose.project=fixture"
+        ).splitlines()
+        assert not running
+        ingress = {"running_services": len(running)}
+    value = {
+        "stage": stage,
+        "transaction": transaction["id"],
+        "version": transaction["version"],
+        "active_version": transaction.get("active_version"),
+        "previous_version": transaction["previous_version"],
+        "phase": transaction["phase"],
+        "mutation_started": transaction["mutation_started"],
+        "prior_pause": transaction["prior_pause"],
+        "restoring": transaction["restoring"],
+        "verification": transaction.get("verification"),
+        "public_ingress": ingress,
+    }
+    observations.append(value)
+
+
 flow_spec = importlib.util.spec_from_file_location("flows", "/opt/fixture/flows.py")
 flow_module = importlib.util.module_from_spec(flow_spec)
 flow_spec.loader.exec_module(flow_module)
@@ -481,7 +555,7 @@ updater = u.Updater(config, host)
 if images.get("failure_after_start"):
     host.fail_after_start = True
     try:
-        updater.update("v1.2.3")
+        updater.update(candidate_version)
     except u.UpdateError as error:
         assert "injected post-startup" in str(error)
     else:
@@ -493,6 +567,7 @@ if images.get("failure_after_start"):
     assert not host.run(
         "docker", "ps", "-q", "--filter", "label=com.docker.compose.project=fixture"
     ).strip()
+    transaction_observation("post-startup-failure", transaction)
     # This fault occurs before any post-checkpoint flow/security mutations.
     # A separate fixture ledger records the independently observed baseline.
     u.atomic_json(
@@ -512,44 +587,62 @@ if images.get("failure_after_start"):
         flush=True,
     )
 else:
-    transaction = updater.update("v1.2.3")
+    transaction = updater.update(candidate_version)
     assert (
         transaction["phase"] == "completed"
-        and transaction["active_version"] == "v1.2.3"
+        and transaction["active_version"] == candidate_version
     )
-    assert transaction["previous_version"] == "v1.2.2"
+    assert transaction["previous_version"] == prior_version
     if images.get("require_schema_change"):
         assert schema_count(data_root / "psst.db") > schema_before
         try:
             host.incident(initial, "incident-status")
         except u.UpdateError:
-            pass
+            old_cli_rejected = True
         else:
             raise AssertionError("old exact-schema CLI accepted migrated original DB")
         print(
             "PASS historical schema version advances through normal candidate startup; old CLI refuses migrated original",
             flush=True,
         )
-    assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
+    assert (
+        json.loads(request("GET", "/config")[1])["public_transfers_paused"]
+        is initial_pause
+    )
     request("GET", "/auth/me", cookie=admin)
-    assert request("GET", f"/transfers/{transfer}/files/{blob_id}")[1] == sealed
+    if initial_pause:
+        request("GET", f"/transfers/{transfer}/files/{blob_id}", expected=503)
+    else:
+        assert request("GET", f"/transfers/{transfer}/files/{blob_id}")[1] == sealed
+    transaction_observation("candidate-activation", transaction)
     print(
         "PASS prior public-source pair -> candidate activation with real authenticated flow hook",
         flush=True,
     )
-    transaction = updater.update("v1.2.4")
+    transaction = updater.update(repeat_version)
     assert (
         transaction["phase"] == "completed"
-        and transaction["active_version"] == "v1.2.4"
+        and transaction["active_version"] == repeat_version
     )
-    assert transaction["previous_version"] == "v1.2.3"
-    assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
+    assert transaction["previous_version"] == candidate_version
+    assert (
+        json.loads(request("GET", "/config")[1])["public_transfers_paused"]
+        is initial_pause
+    )
+    transaction_observation("repeat-activation", transaction)
     print(
         "PASS repeat release update reuses protected operator binds and preserves initialized state",
         flush=True,
     )
 checkpoint = Path(transaction["checkpoint"])
-u.Host.verify_backup(checkpoint)
+checkpoint_records = u.Host.verify_backup(checkpoint)
+if images.get("require_schema_change") and images.get("failure_after_start"):
+    try:
+        host.incident(initial, "incident-status")
+    except u.UpdateError:
+        old_cli_rejected = True
+    else:
+        raise AssertionError("old exact-schema CLI accepted migrated original DB")
 volume_archive = next(checkpoint.glob("volume-*.tar"))
 original = volume_archive.read_bytes()
 volume_archive.write_bytes(original[:-31])
@@ -566,7 +659,7 @@ checkpoint_hash = u.fingerprint(checkpoint / "checkpoint.json")
 restored = updater.restore()
 assert restored["phase"] == "completed" and restored["restoring"]
 assert restored["active_version"] == (
-    "v1.2.2" if images.get("failure_after_start") else "v1.2.3"
+    prior_version if images.get("failure_after_start") else candidate_version
 )
 assert set(restored["restored_volumes"]) == set(config["volume_names"].values())
 assert not set(restored["restored_volumes"].values()) & set(
@@ -577,8 +670,14 @@ assert u.fingerprint(checkpoint / "checkpoint.json") == checkpoint_hash
 request("GET", "/auth/me", cookie=admin)
 request("GET", "/auth/me", cookie=member)
 assert json.loads(request("GET", "/admin/security", cookie=admin)[1])["enabled"] is True
-assert json.loads(request("GET", "/config")[1])["public_transfers_paused"] is False
-request("GET", f"/transfers/{transfer}/manifest", expected=(404, 410))
+assert (
+    json.loads(request("GET", "/config")[1])["public_transfers_paused"] is initial_pause
+)
+request(
+    "GET",
+    f"/transfers/{transfer}/manifest",
+    expected=503 if initial_pause else (404, 410),
+)
 restored_ca = (
     Path(
         json.loads(
@@ -593,6 +692,13 @@ restored_ca = (
     / "caddy/pki/authorities/local/root.crt"
 )
 assert restored_ca.read_bytes() == ca.read_bytes()
+restored_root = Path(
+    json.loads(
+        host.run(
+            "docker", "volume", "inspect", restored["restored_volumes"]["fixture-data"]
+        )
+    )[0]["Mountpoint"]
+)
 if images.get("require_schema_change") and images.get("failure_after_start"):
     restored_root = Path(
         json.loads(
@@ -614,6 +720,81 @@ print(
     "PASS isolated checkpoint restore, independent allowance/security reconciliation, hook-gated public activation and prior pause restoration",
     flush=True,
 )
+transaction_observation("isolated-restore-activation", restored)
+
+
+def configuration_pair(version):
+    return {
+        component: json.loads(
+            host.run(
+                "docker", "image", "inspect", images["versions"][version][component]
+            )
+        )[0]["Id"]
+        for component in ("backend", "web")
+    }
+
+
+receipt = u.load_json(checkpoint / "off-host-receipt.json")
+result = {
+    "schema_version": 1,
+    "kind": "disposable-updater-experiment",
+    "scenario": (
+        "post-startup-failure" if images.get("failure_after_start") else "normal"
+    ),
+    "candidate": {
+        "version": candidate_version,
+        "commit": images["versions"][candidate_version]["commit"],
+        "configs": configuration_pair(candidate_version),
+    },
+    "baseline": {
+        "version": prior_version,
+        "commit": images["versions"][prior_version]["commit"],
+        "configs": configuration_pair(prior_version),
+    },
+    "prior_pause": initial_pause,
+    "repeat_mode": (
+        "same-exact-candidate"
+        if repeat_version == candidate_version
+        else "subsequent-fixture-version"
+    ),
+    "observations": observations,
+    "startup_observations": startup_observations,
+    "schema": {
+        "before": schema_before,
+        "original_after": schema_count(data_root / "psst.db"),
+        "restored": schema_count(restored_root / "psst.db"),
+        "old_cli_rejected_migrated_original": old_cli_rejected,
+    },
+    "checkpoint": {
+        "sha256": checkpoint_hash,
+        "records": {
+            kind: sum(
+                item["kind"] == kind for item in checkpoint_records["records"].values()
+            )
+            for kind in ("image", "volume", "configuration")
+        },
+        "corrupt_archive_refused": True,
+        "preserved_sha256": u.fingerprint(checkpoint / "checkpoint.json"),
+        "encrypted_export_receipt": receipt,
+    },
+    "restore": {
+        "volume_mapping": restored["restored_volumes"],
+        "original_volumes": config["volume_names"],
+        "original_payload_sha256": original_hash,
+        "preserved_original_payload_sha256": u.fingerprint(payload),
+        "certificate_sha256": hashlib.sha256(ca.read_bytes()).hexdigest(),
+        "restored_certificate_sha256": hashlib.sha256(
+            restored_ca.read_bytes()
+        ).hexdigest(),
+    },
+    "completed_at": datetime.now(timezone.utc).isoformat(),
+    "acquisition": "fixture-local-exact-loaded-configs",
+    "backup_provider": "same-host-separated-store-encryption-simulation",
+    "public_provenance_verified": False,
+    "off_host_provider_verified": False,
+    "publication_authorized": False,
+}
+u.atomic_json(Path("/opt/fixture/result.json"), result)
 print(
     "LIMITATIONS: fixture-local acquisition and encrypted export simulation; independent Python client, no browser/mobile execution; observed original schema migration delta="
     + str(schema_count(data_root / "psst.db") - schema_before),

@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -758,23 +759,126 @@ class Boundaries(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(update.UpdateError):
                 update.reconciled_restore_settings(baseline, observed | {field: value})
 
-    def test_attestation_policy_binds_repository_workflow_source_tag_and_runner(self):
+    def test_attestation_policy_binds_exact_certificate_signer_commit_source_tag_and_runner(
+        self,
+    ):
         host = update.Host(config(Path("/opt/psst.zip")))
         calls = []
         host.run = lambda *args, **kwargs: calls.append((args, kwargs)) or b""
         value = manifest()
-        host.verify_identity("oci://" + value["images"]["backend"]["index"], value)
-        args, kwargs = calls[0]
-        self.assertIn("--deny-self-hosted-runners", args)
-        for flag, expected in (
-            ("--repo", "endorses/psst.zip"),
-            ("--signer-workflow", "endorses/psst.zip/.github/workflows/release.yml"),
-            ("--source-digest", "a" * 40),
-            ("--source-ref", "refs/tags/v1.2.3"),
-            ("--cert-oidc-issuer", "https://token.actions.githubusercontent.com"),
+        subjects = [
+            "/private/release-manifest.json",
+            "/private/deployment-bundle.tar.gz",
+            "oci://" + value["images"]["backend"]["index"],
+            "oci://" + value["images"]["web"]["index"],
+        ]
+        for subject in subjects:
+            host.verify_identity(subject, value)
+            args, kwargs = calls[-1]
+            self.assertEqual(args[:4], ("gh", "attestation", "verify", subject))
+            self.assertIn("--deny-self-hosted-runners", args)
+            expected_flags = {
+                "--hostname": "github.com",
+                "--repo": "endorses/psst.zip",
+                "--cert-identity": "https://github.com/endorses/psst.zip/.github/workflows/release.yml@refs/tags/v1.2.3",
+                "--signer-digest": "a" * 40,
+                "--source-digest": "a" * 40,
+                "--source-ref": "refs/tags/v1.2.3",
+                "--cert-oidc-issuer": "https://token.actions.githubusercontent.com",
+                "--predicate-type": "https://slsa.dev/provenance/v1",
+            }
+            for flag, expected in expected_flags.items():
+                self.assertEqual(args.count(flag), 1)
+                self.assertEqual(args[args.index(flag) + 1], expected)
+            # An extra weak/mixed certificate selector or a test trust override
+            # must fail this policy regression, not just duplicate its values.
+            self.assertEqual(
+                {arg for arg in args if arg.startswith("--")},
+                set(expected_flags) | {"--deny-self-hosted-runners"},
+            )
+            self.assertEqual(kwargs, {"gh": True})
+
+    def test_attestation_binding_rejects_weak_workflow_or_malformed_ref_before_cli(
+        self,
+    ):
+        for workflow in (
+            "other/psst.zip/.github/workflows/release.yml",
+            "endorses/psst.zip/.github/workflows/other.yml",
+            "endorses/psst.zip/.github/workflows/release.yml@refs/heads/main",
+            "https://github.com/endorses/psst.zip/.github/workflows/release.yml",
         ):
-            self.assertEqual(args[args.index(flag) + 1], expected)
-        self.assertTrue(kwargs["gh"])
+            settings = config(Path("/opt/psst.zip")) | {"signer_workflow": workflow}
+            with self.subTest(workflow=workflow), self.assertRaises(update.UpdateError):
+                update.validate_config(settings)
+            host = update.Host(settings)
+            with patch.object(host, "run") as runner, self.assertRaises(
+                update.UpdateError
+            ):
+                host.verify_identity("/private/manifest.json", manifest())
+            runner.assert_not_called()
+        for field, value in (
+            ("version", "v1.2.3@refs/heads/main"),
+            ("version", "v1.2.3\n"),
+            ("commit", "a" * 39),
+            ("commit", "refs/tags/v1.2.3"),
+        ):
+            selected = manifest()
+            if field == "commit":
+                selected["source"][field] = value
+            else:
+                selected[field] = value
+            host = update.Host(config(Path("/opt/psst.zip")))
+            with self.subTest(field=field, value=value), patch.object(
+                host, "run"
+            ) as runner, self.assertRaises(update._release.InvalidRelease):
+                host.verify_identity("/private/manifest.json", selected)
+            runner.assert_not_called()
+
+    @unittest.skipUnless(
+        shutil.which("gh"), "Install GitHub CLI for argument compatibility"
+    )
+    def test_actual_cli_accepts_exact_policy_before_offline_missing_trust_failure(self):
+        # Exercise the production-generated arguments with the actual CLI parser.
+        # Missing test-local trust fails before network/attestation access; these
+        # added test flags are never accepted by the production helper.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            names = ("release-manifest.json", "deployment-bundle.tar.gz")
+            for name in names:
+                (root / name).write_bytes(b"disposable policy parser fixture")
+            subjects = [str(root / name) for name in names] + [
+                "oci://" + manifest()["images"]["backend"]["index"]
+            ]
+            for subject in subjects:
+                host = update.Host(config(Path("/opt/psst.zip")))
+                calls = []
+                host.run = lambda *args, **kwargs: calls.append(args) or b""
+                host.verify_identity(str(subject), manifest())
+                args = [shutil.which("gh"), *calls[0][1:]]
+                args += ["--bundle", str(root / "missing-attestation.json")]
+                args += [
+                    "--custom-trusted-root",
+                    str(root / "missing-trusted-root.jsonl"),
+                ]
+                with self.subTest(subject=subject):
+                    result = subprocess.run(
+                        args,
+                        capture_output=True,
+                        timeout=5,
+                        env={
+                            "PATH": os.defpath,
+                            "HOME": str(root),
+                            "GH_CONFIG_DIR": str(root / "gh-config"),
+                            "GH_PROMPT_DISABLED": "1",
+                            "GH_TOKEN": "fixture-token",
+                        },
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    diagnostic = result.stderr.decode()
+                    self.assertIn("missing-trusted-root.jsonl", diagnostic)
+                    self.assertNotIn("cannot be used together", diagnostic)
+                    self.assertNotIn("mutually exclusive", diagnostic)
+                    self.assertNotIn("unknown flag", diagnostic)
 
     def test_command_failure_withholds_secret_output(self):
         host = update.Host(config(Path("/opt/psst.zip")))
