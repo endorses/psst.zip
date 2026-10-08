@@ -28,7 +28,7 @@ A main-only manual dispatch accepts an unused planned version, defaulting to
 publication is enabled. Its successful checks cannot satisfy the exact-tag
 publication gate.
 
-After CI succeeds, the workflow resolves the application base-image indexes and
+After source identity validation, the workflow resolves the application base-image indexes and
 BuildKit builder once and checks their AMD64 and ARM64 coverage. Separate native
 runners build the paired images and retain genuine build records and original
 Docker saves. Each runner then collects runtime sources, verifies signed Caddy
@@ -452,7 +452,18 @@ publication in this multi-module repository.
 
 ## Assemble the two native build results
 
-After both native jobs finish, `tools/prepare_release_inputs.py` assembles their
+After source identity validation, native preparation and upstream source retention
+run alongside exact-commit CI. Assembly waits for all five CI jobs and both native
+results; failed or incomplete CI cannot reach source-CI approval or publication.
+The workflow keeps its existing serialized publication group. Preparation may
+consume runner time when CI fails, but does not authorize a release.
+
+Ordinary PR/main CI treats changes to this reviewed release workflow as release
+tooling and runs repository-security checks. CI/unknown workflow changes and
+selector-policy changes still require all application checks. Tags, planned
+dispatches and explicit full validation always run all five source-CI jobs.
+
+After CI and both native jobs finish, `tools/prepare_release_inputs.py` assembles their
 actual final OCI exports, measurements, source packs and build records. Each job
 can complete its local measurements before the release manifest exists. The
 assembly step checks both native platforms, shared immutable bases, matching

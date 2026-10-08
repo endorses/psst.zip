@@ -82,6 +82,10 @@ class Selection:
 
 
 def classify_path(path: str) -> frozenset[str]:
+    # Reviewed release orchestration is covered by repository security checks.
+    # Tags/dispatch/full-validation still force every application check in select().
+    if path == ".github/workflows/release.yml":
+        return frozenset()
     if path.startswith(
         (
             ".github/workflows/",

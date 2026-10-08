@@ -97,6 +97,7 @@ class ChangeScopeTests(unittest.TestCase):
 
     def test_docs_skip_but_explicit_release_validation_runs_all(self) -> None:
         self.write("docs/plans/ci.md")
+        self.write(".github/workflows/release.yml")
         self.commit()
         self.push_event()
         for job in sorted(selector.JOBS):
@@ -125,6 +126,9 @@ class ChangeScopeTests(unittest.TestCase):
             "docs/testing/fixtures/vector.json": selector.JOBS,
             "docs/security/fixtures/vector.json": selector.JOBS,
             ".github/workflows/ci.yml": selector.JOBS,
+            ".github/workflows/release.yml": set(),
+            ".github/workflows/release.yaml": selector.JOBS,
+            ".github/workflows/new-workflow.yml": selector.JOBS,
             "tools/select_ci_checks.py": selector.JOBS,
             "tools/test_ci_change_scope.py": selector.JOBS,
             "README.md": set(),
@@ -182,6 +186,7 @@ class ChangeScopeTests(unittest.TestCase):
 
     def test_uncertain_events_history_and_unknown_changes_run_all(self) -> None:
         self.write("docs/plans/ci.md")
+        self.write(".github/workflows/release.yml")
         self.commit()
         self.push_event()
         original_env = self.env.copy()

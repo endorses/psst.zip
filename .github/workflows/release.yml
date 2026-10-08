@@ -69,7 +69,7 @@ jobs:
 
   resolve-bases:
     name: Resolve official multi-platform base indexes
-    needs: [validate-tag, ci]
+    needs: validate-tag
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -126,7 +126,7 @@ jobs:
 
   upstream-inputs:
     name: Retain common upstream source inputs
-    needs: [validate-tag, ci]
+    needs: validate-tag
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -162,7 +162,8 @@ jobs:
 
   build-and-smoke:
     name: Native candidate pair (${{ matrix.arch }})
-    needs: [validate-tag, ci, resolve-bases]
+    # Preparation can overlap source CI; assembly below still requires CI success.
+    needs: [validate-tag, resolve-bases]
     strategy:
       fail-fast: false
       matrix:
