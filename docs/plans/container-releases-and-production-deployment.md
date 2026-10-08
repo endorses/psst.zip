@@ -2590,9 +2590,39 @@ runner, not a claim that the later failed native-container preparation passed.
       and helper image identity. Production's updater uses its engine's opaque
       image identity and registry manifest references; this CI setting does not
       change the VPS daemon or establish a production storage-driver prerequisite.
-- [ ] Verify the configured measurement daemon on both hosted architectures and
-      complete original-pair metadata, source replay and recovery in a new
-      planned candidate after the repaired source is integrated.
+- [x] Verify the configured measurement daemon and original-pair metadata on both
+      hosted architectures. Planned candidate `37756970689`, source
+      `2eb45035582d42229c8ae9302b1e208f07853edd`, passed engine setup,
+      exact socket/version/driver/architecture checks, original native builds and
+      authentic build metadata plus paired saves on AMD64 and ARM64. No
+      config-digest fallback or weakening of source/identity checks was needed.
+- [ ] Complete native source replay, assembly and recovery. Candidate
+      `37756970689` ended with both architectures refusing native preparation:
+      `Runtime collection command failed: docker`. Original-pair metadata and
+      application dependency collection passed; final overlays, complete source
+      replay, assembly and recovery did not. Diagnose the retained failure before
+      dispatching a repaired source; do not restart this terminal attempt.
+- [x] Make runtime collection failures identify their operation and exit status
+      without exposing command arguments, environment, or captured output. The
+      earlier generic Docker failure does not establish a root cause. Add labels
+      for image inspection/save, helper/runtime APK inventories and source
+      fetching; preserve all collection and checksum checks. One focused
+      regression checks that sensitive details stay hidden and successful output
+      is preserved; all 18 existing runtime-boundary cases passed in 0.008s.
+      Bounded review identified timeout and launch exceptions as another possible
+      command-detail leak. Convert them to fixed operation-only failures with
+      suppressed exception context; injected exception subcases in the same test
+      verify that boundary without a real timeout. Native preparation passed its
+      13 cases in 0.086s with the existing opt-in Docker case explicitly skipped.
+- [ ] Establish the hosted runtime-collection failure from these bounded
+      diagnostics before making a cause-specific repair. A local helper-only
+      probe passed inventory/save and multiple source-fetch operations, which
+      does not prove the complete application inventory on either hosted runner.
+      A compile-free backend-runtime scaffold using the exact Alpine 3.24.2 base,
+      unchanged APK installation and app user also passed inventories, image save,
+      and the first retained `alpine-baselayout` source fetch with checksum
+      verification. It stopped there and cleaned its image and temporary files;
+      this is not complete source replay or evidence of the hosted failure cause.
 - [x] Address the measured missing Kotlin/Native input cache in routine iOS CI.
       Preserve `~/.konan` with an immutable stable Node 24 cache action and
       exact host/toolchain inputs; enable Gradle's local build cache for shared.
@@ -2606,12 +2636,18 @@ runner, not a claim that the later failed native-container preparation passed.
       successful 409,931,939-byte compiler cache save. This proves cache
       population, not faster compilation. PR #8 merged through protection as
       `cf67e1eac2082bc7f095c630be2bb100bb06b0dc`; the merged tree equals the
-      checked head. The native container/recovery daemon setting still needs
-      the next complete planned candidate.
-- [ ] Verify warm restore on hosted macOS, including cache transfer overhead.
-      Seed the main-scoped cache through existing required main CI, then use the
-      candidate's full CI for the warm measurement. Do not add another test suite
-      or claim a timing improvement before measuring it.
+      checked head. The subsequent candidate verified both original measurement
+      daemons; complete native source/recovery execution remains pending.
+- [x] Verify warm restore on hosted macOS, including cache transfer overhead.
+      Main CI `37754625017` passed with zero annotations and seeded the exact
+      main-scoped cache. The candidate restored it in 29s on the same runner image
+      and Xcode build. Native iOS took 17m07s versus the cold main run's 19m16s;
+      first Gradle work dropped from 8m30s to 3m02s. Greater startup/Swift/test
+      times offset part of that gain, so the observed complete-job improvement
+      is 2m09s. All 176 cases passed in 93.706s; all five candidate source-CI jobs
+      passed with zero annotations. No tests or limits changed and no benchmark
+      suite or extra full CI rerun was added. Full source/recovery and publication
+      remain separate pending checks.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.

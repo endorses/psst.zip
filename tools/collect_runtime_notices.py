@@ -41,9 +41,29 @@ RECIPE_LIMIT = 8 * 1024 * 1024
 API_ROOT = "https://api.github.com/repos/alpinelinux/aports/contents/"
 
 
-def command(*args: str, timeout: int = 300) -> bytes:
-    result = subprocess.run(args, capture_output=True, timeout=timeout)
-    require(result.returncode == 0, f"Runtime collection command failed: {args[0]}")
+def command(
+    *args: str, timeout: int = 300, operation: str = "runtime-command"
+) -> bytes:
+    # Only a named operation and exit status cross the public diagnostic boundary.
+    # Commands, environment and captured output can contain private paths or tokens.
+    require(
+        re.fullmatch(r"[a-z][a-z0-9-]{0,95}", operation) is not None,
+        "Invalid runtime operation label",
+    )
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise InvalidRelease(
+            f"Runtime collection command timed out: {operation}"
+        ) from None
+    except OSError:
+        raise InvalidRelease(
+            f"Runtime collection command could not start: {operation}"
+        ) from None
+    require(
+        result.returncode == 0,
+        f"Runtime collection command failed: {operation} (exit {result.returncode})",
+    )
     return result.stdout
 
 
@@ -329,6 +349,7 @@ abuild -C /work/recipe -s /work/distfiles -P /output fetch srcpkg
             "-c",
             script,
             timeout=900,
+            operation="apk-source-package-fetch",
         )
     finally:
         # A subprocess timeout does not stop a detached Docker workload by itself.
@@ -408,7 +429,9 @@ def verify_source_package(archive: Path, sums: str) -> None:
 
 
 def image_info(image: str) -> dict:
-    result = json.loads(command("docker", "image", "inspect", image))
+    result = json.loads(
+        command("docker", "image", "inspect", image, operation="runtime-image-inspect")
+    )
     require(isinstance(result, list) and len(result) == 1, "Image must exist locally")
     info = result[0]
     matches(info.get("Id"), DIGEST, "Invalid runtime image ID")
@@ -546,6 +569,7 @@ def collect(image: str, helper: str, output: Path) -> dict:
         "cat",
         helper,
         "/lib/apk/db/installed",
+        operation="helper-apk-inventory",
     )
     raw = command(
         "docker",
@@ -562,12 +586,22 @@ def collect(image: str, helper: str, output: Path) -> dict:
         "cat",
         image,
         "/lib/apk/db/installed",
+        operation="runtime-apk-inventory",
     )
     entries = packages(raw)
     (output / "installed-apk-db").write_bytes(raw)
     with tempfile.TemporaryDirectory(prefix="psst-runtime-layers-") as folder:
         archive = Path(folder) / "image.tar"
-        command("docker", "image", "save", "--output", str(archive), image, timeout=600)
+        command(
+            "docker",
+            "image",
+            "save",
+            "--output",
+            str(archive),
+            image,
+            timeout=600,
+            operation="runtime-image-save",
+        )
         retained, layers = layer_packages(archive, image)
     all_packages = {
         tuple(item[field] for field in ("name", "version", "aports_commit")): item

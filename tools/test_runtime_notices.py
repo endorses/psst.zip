@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -42,6 +44,59 @@ def apk(**overrides: str) -> bytes:
 
 
 class RuntimeBoundaries(unittest.TestCase):
+    def test_runtime_command_failure_names_operation_without_private_details(self):
+        result = SimpleNamespace(
+            returncode=125, stdout=b"private stdout", stderr=b"private stderr"
+        )
+        with patch.object(runtime.subprocess, "run", return_value=result) as execute:
+            with self.assertRaises(InvalidRelease) as rejected:
+                runtime.command(
+                    "docker",
+                    "run",
+                    "private command argument",
+                    timeout=19,
+                    operation="helper-apk-inventory",
+                )
+            self.assertEqual(
+                str(rejected.exception),
+                "Runtime collection command failed: helper-apk-inventory (exit 125)",
+            )
+            execute.assert_called_once_with(
+                ("docker", "run", "private command argument"),
+                capture_output=True,
+                timeout=19,
+            )
+        result.returncode = 0
+        with patch.object(runtime.subprocess, "run", return_value=result):
+            self.assertEqual(runtime.command("docker", "version"), result.stdout)
+        for error, expected in (
+            (
+                subprocess.TimeoutExpired(
+                    ["docker", "private command argument"],
+                    19,
+                    output=b"private stdout",
+                    stderr=b"private stderr",
+                ),
+                "Runtime collection command timed out: helper-apk-inventory",
+            ),
+            (
+                OSError("private launch details"),
+                "Runtime collection command could not start: helper-apk-inventory",
+            ),
+        ):
+            with self.subTest(error=type(error).__name__), patch.object(
+                runtime.subprocess, "run", side_effect=error
+            ):
+                with self.assertRaises(InvalidRelease) as rejected:
+                    runtime.command(
+                        "docker",
+                        "private command argument",
+                        timeout=19,
+                        operation="helper-apk-inventory",
+                    )
+                self.assertEqual(str(rejected.exception), expected)
+                self.assertTrue(rejected.exception.__suppress_context__)
+
     def test_caddy_wrapper_is_selected_at_archive_root(self):
         with tempfile.TemporaryDirectory(prefix="psst-runtime-test-") as folder:
             archive = Path(folder) / "buildable.tar.gz"
