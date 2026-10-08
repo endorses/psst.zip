@@ -2727,7 +2727,7 @@ runner, not a claim that the later failed native-container preparation passed.
 - [ ] Complete a matching-checkpoint isolated restore and rollback exercise,
       preserving the original state and checking security reconciliation before
       accepting traffic.
-- [ ] Run repository-security/backend/web release gates for the container
+- [x] Run repository-security/backend/web release gates for the container
       candidate. Keep routine mobile CI and its native macOS/Xcode requirements
       separate; Linux checks do not replace mobile build/device verification.
 - [ ] Demonstrate anonymous installation from the published release bundle and
@@ -2792,8 +2792,10 @@ status code or a general runner-network outage.
       successful preparation, not a claim to have observed individual network
       traces. Both complete native jobs subsequently passed, including compiler
       correspondence and source/final-image scanning and measurements.
-- [ ] Complete source replay, candidate assembly and disposable recovery before
-      publication. A successful source-preparation step alone does not close these.
+- [x] Complete source replay, candidate assembly and disposable recovery before
+      publication. Tagged run `37782470022` completed signed source assembly and
+      authenticated both native recovery results as recorded below. Public
+      acquisition and production recovery remain separate pending checks.
 
 The server-scope/source-fetch PR #13 completed all five ordinary protected checks
 and GitGuardian with zero annotations at
@@ -2849,7 +2851,7 @@ immutable reference/configuration/platform comparison remains required.
       unverified. The earlier candidate `37774541174` is terminal:
       both ARM64 job `113308361468` and AMD64 job `113308361461` reached the actual
       producer and failed before the experiment with `TypeError: command()
-  missing 1 required keyword-only argument: 'environment'`. The default
+missing 1 required keyword-only argument: 'environment'`. The default
       command adapter was not exercised by the injected-executor fixtures.
       Aggregated authentication, distribution review and publication were skipped;
       the later successful candidate verifies the repair below on both platforms.
@@ -2896,3 +2898,51 @@ That checkpoint verified its selector-policy change on hosted CI, not a complete
 release or overlapping preparation. The later candidate above verifies overlap;
 an exact release-workflow-only PR remains needed to observe application-step
 skipping on that particular change scope.
+
+### First signed v0.1.0 candidate
+
+- [x] Create the previously unused `v0.1.0` tag at the protected and verified
+      source `77c6cebc238c37830ab5421da02392f860b7aba5`, preserving `v0.0.0`.
+      Tagged run `37782470022`, attempt 1, uses that exact commit. Configure
+      publication enablement and protected first-package initialization only
+      after the successful planned candidate; retain all signed gates and the
+      required `endorses` environment approval.
+- [x] Complete exact tagged security/backend/web CI, both native image jobs and
+      signed source assembly. Assembly job `113333210975` authenticated the
+      current native evidence, produced and attested the complete source report,
+      then independently verified its signature without repeating source replay.
+      All six source/CI/scan/smoke/notice reports share binding
+      `sha256:4390f6af409d61603617cab58ef23a7d327e7cbbccd25f5a21b49cadbbcc8561`.
+      The complete source report covers all four native images and six source
+      archives; its SHA256 is
+      `1b3d9c98e0b1507181e667515cb82e246bbeaab2ab9d48532b904e920f099aa0`.
+- [x] Complete both tagged native recovery measurements and authenticate their
+      aggregate for this exact binding and run attempt. ARM64 job `113335447979`
+      and AMD64 job `113335448974` passed; aggregate job `113339640600` verified
+      the measurements, attested the recovery gate and independently verified it.
+      Its report shares the exact source binding above. Independent off-host
+      provider, public provenance and browser/mobile-flow checks remain false.
+- [x] Present the exact distribution packet before the configured human review.
+      Artifact `candidate-distribution-presentation-37782470022-1` contains the
+      final image/source/notice references and attempt-bound approval comment.
+      GitHub readback confirms job `113339930195` is waiting on the configured
+      `container-release` reviewer `endorses`; no approval has been supplied.
+- [ ] Obtain the configured human review, including its attempt-bound approval
+      comment. A signed source report does not grant this approval.
+- [ ] Publish the immutable release and paired repository-linked public packages,
+      then verify fresh anonymous image/source/deployment-file retrieval. Remove
+      first-package initialization after successful publication.
+
+The release tag and publication configuration do not deploy the VPS. Independent
+backup/restore and production migration remain deferred. Store research drafts
+and the delegated iOS diagnostic branch remain outside these release commits.
+
+All completed tagged jobs have zero annotations. Source CI took 1m04s for
+repository security, 4m18s for backend and 6m43s for web. Native image jobs took
+9m12s on AMD64 and 8m59s on ARM64; signed assembly took 4m58s, with authenticated
+source production taking 2m37s and independent signature verification 24s.
+Recovery jobs took 9m12s on AMD64 and 7m51s on ARM64; aggregation took 33s.
+The workflow reached human review in approximately 25 minutes. This includes
+native image/source preparation, artifact transfer and actual recovery, rather
+than a 25-minute routine application test suite. No timeout was extended or
+additional timing run requested.

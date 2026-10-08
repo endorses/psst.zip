@@ -107,10 +107,19 @@ live prerequisites are incomplete.
       authentication, public retrieval and live production recovery remain
       separate pending checks.
 
-- [ ] Complete the [source review](application-package-source-review.md),
+- [x] Complete the [source review](application-package-source-review.md),
       actual native scanner/smoke/recovery gates and their authentication. Review
       exact image configurations and all corresponding-source offerings; a green
       candidate summary alone is insufficient.
+
+      Tagged run `37782470022`, attempt 1, at the same reviewed source completed
+      the authenticated source/scan/smoke/notice reports and both tagged native
+      recovery measurements. Their signed aggregate passed independent
+      verification. It is now waiting for the separate human distribution
+      review, with exact subjects and the required approval comment in artifact
+      `candidate-distribution-presentation-37782470022-1`. All completed jobs have
+      zero annotations. Public retrieval and production recovery remain pending.
+
 - [ ] Configure reviewed branch/tag protection, immutable-release policy and
       narrowly scoped publication credentials. Review the
       wired publisher and complete its prerequisites in the
@@ -124,11 +133,17 @@ live prerequisites are incomplete.
       GitHub Releases provide publication storage. Independent VPS backups and
       their restore verification are deferred prerequisites for production
       migration, separate from container publication.
-- [ ] Once publishing is enabled, create an unused version tag at the reviewed
+- [x] Once publishing is enabled, create an unused version tag at the reviewed
       source SHA and push that tag. Its workflow must rerun CI for that exact
       tagged commit, authenticate the complete image/source/bundle subjects and
       publish only after every gate passes. Never move an existing release tag
       or replace a partially published version to hide an interruption.
+
+      `v0.1.0` points to `77c6cebc238c37830ab5421da02392f860b7aba5` and
+      `v0.0.0` is preserved. Publication enablement and first-package
+      initialization are configured. The protected distribution review remains
+      required; the tag does not itself authorize publication or deploy the VPS.
+
 - [ ] Confirm the immutable ready GitHub Release, authenticated manifest/bundle,
       both multi-platform image indexes, all four native children, source assets
       and fresh anonymous retrieval. Follow the publication guide's protected
