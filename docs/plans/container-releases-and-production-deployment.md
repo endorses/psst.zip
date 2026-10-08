@@ -2375,9 +2375,48 @@ PR #1 merged the fully passing `14dc7c2` into main as
 confirmed identical file contents. Planned main-only candidate run
 [`37729240625`](https://github.com/endorses/psst.zip/actions/runs/37729240625)
 uses that exact merge commit and planned version `v0.1.0`. Its current native
-image/source/recovery checks remain pending; this dispatch creates no release
-tag and cannot authorize publication. Provider credentials, tagged review and
+CI failed after the app/extension/test build succeeded: `simctl bootstatus -b`
+timed out after 120 seconds, before any XCTest case started. The other four CI
+jobs passed, and image/source/recovery preparation was skipped. The separate
+main integration run `37729196108` failed at the same readiness boundary on the
+same image version as the preceding passing PR. Image/source/recovery checks
+remain pending; this dispatch created no release tag and cannot authorize
+publication. Provider credentials, tagged review and
 the first published release/VPS migration remain separate incomplete tasks.
+
+- [x] Inspect the two terminal readiness failures before changing or repeating
+      native CI. Both used runner image `20260907.0337.1`; neither log establishes
+      a slow XCTest fixture or a runner-image version change as the cause.
+- [x] Modernize deprecated workflow actions using upstream-verified stable
+      Node 24 manifests and immutable commit pins. Preserve ZIP artifact names
+      and roots explicitly with `archive: true`, keep digest-mismatch rejection,
+      and select Gradle's open-source `basic` cache provider. Attest, Buildx and
+      golangci action pins already match their maintained stable releases.
+      Pin routine Linux jobs to Ubuntu 24.04 instead of a moving `latest` label.
+- [x] Retire the old native CI pair in favor of the installed stable Xcode 27.0
+      and iOS 27.0 pair on GitHub's `xcode-27` macOS 27 runner. Apple documents simulator cache creation and
+      `simctl` hang fixes in [Xcode 26.4](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_4-release-notes).
+      The runner infrastructure is still marked preview, approved explicitly by
+      the operator on 2026-10-08; select its
+      stable compiler, excluding the installed betas. That is a reason to use a
+      maintained toolchain, not proof of the internal
+      cause of these failures. Retain the existing test/readiness budgets and
+      complete native suite; bound listing/boot commands and collect limited
+      failure diagnostics. Native Kotlin/SKIE/cryptography compatibility still
+      requires hosted compilation and XCTest, beyond the local syntax checks.
+      Actionlint 1.7.12 passed with the newly documented hosted runner label
+      allowlisted explicitly. All 69 shell steps and eight inline Python scripts
+      parsed; immutable action pins, 16 ZIP uploads, 22 named downloads, unchanged
+      native budgets and full-release/unconditional-security wiring were checked.
+      The iOS source/configuration gate passed; it is not a Swift build.
+- [ ] Verify the updated actions, simulator startup, full native suite and
+      preserved artifact layout on GitHub before checking off hosted execution
+      or restarting the planned release candidate from the integrated repair.
+
+Application compiler, build tool and base-image upgrades are tracked separately
+in [the maintained toolchain plan](maintained-build-toolchains.md). The action
+runtime modernization does not claim that every existing application dependency
+has been upgraded or that the newer native pair has passed hosted execution.
 
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time
