@@ -3311,8 +3311,16 @@ archives were not downloaded for this review.
       retained source and recovery reports. Repository, version, source commit,
       run/attempt, source-report hash, binding, all fourteen subjects and complete
       four-image/six-archive coverage match the committed reviewer policy.
-- [ ] Obtain the configured attempt-bound human distribution and publication
-      reviews for v0.1.4. Earlier approvals apply only to their earlier candidates.
+- [x] Inspect the actual v0.1.4 distribution decision and terminal workflow result.
+      Reviewer `endorses` approved the environment, but GitHub recorded the earlier
+      v0.1.3 comment naming run `37815441912` and its previous artifact hashes.
+      Distribution job `113517829627` rejected that mismatched decision;
+      publisher `113519214077` was skipped. All automated preparation and recovery
+      gates passed. No publication was attempted. Preserve the v0.1.4 tag.
+- [ ] Obtain fresh attempt-bound human distribution and publication reviews before
+      publication. Earlier comments and approvals do not authorize different run
+      subjects or attempts. Do not automatically start another full preparation
+      run after this approval mismatch.
 - [ ] Complete actual hosted attestor initialization and independently verify
       the immutable public release, paired repository-linked packages and fresh
       anonymous delivery. Remove first-package initialization only after success;
