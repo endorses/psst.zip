@@ -800,6 +800,49 @@ class RecoveryMeasurements(unittest.TestCase):
         for call in experiment.call_args_list:
             self.assertFalse(call.kwargs["exact_candidate"].bundle_root.exists())
 
+    def test_default_executor_retains_native_connection_without_workflow_secrets(self):
+        environment = {
+            "PATH": "/selected/docker/bin:" + os.environ.get("PATH", os.defpath),
+            "HOME": "/selected/home",
+            "DOCKER_HOST": "unix:///selected/native/docker.sock",
+            "DOCKER_CONTEXT": "default",
+            "DOCKER_CONFIG": "/selected/docker/config",
+            "DOCKER_CERT_PATH": "/selected/docker/certs",
+            "DOCKER_TLS": "1",
+            "DOCKER_TLS_VERIFY": "1",
+            "XDG_RUNTIME_DIR": "/selected/runtime",
+        }
+        observed = []
+
+        def transported(args, *, environment, timeout):
+            observed.append((environment, timeout))
+            return self.command(args)
+
+        def simulated(**kwargs):
+            return self.experiment(
+                failure=kwargs["failure_after_start"], paused=kwargs["initially_paused"]
+            )
+
+        with patch.dict(
+            os.environ,
+            {
+                **environment,
+                "GH_TOKEN": "private",
+                "GITHUB_TOKEN": "private",
+                "PSST_IMMUTABLE_INSPECTION_TOKEN": "private",
+            },
+            clear=True,
+        ), patch.object(
+            recovery, "native_platform", return_value="linux/amd64"
+        ), patch.object(
+            recovery, "command", autospec=True, side_effect=transported
+        ), patch.object(
+            recovery.integration, "execute_experiment", side_effect=simulated
+        ):
+            # Omit execute so the actual production adapter is exercised.
+            recovery.measure_recovery(self.context, **self.args)
+        self.assertEqual(observed, [(environment, 55)] * 3)
+
     def test_failure_changed_inputs_and_wrong_daemon_never_emit_terminal_record(self):
         with patch.object(
             recovery, "native_platform", return_value="linux/amd64"
