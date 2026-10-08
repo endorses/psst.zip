@@ -509,6 +509,7 @@ def checked_experiment(
     paused: bool,
     policy: tuple[set[str], set[str]],
     started: str,
+    completed_before: str | None = None,
 ) -> dict:
     """Validate facts from the actual assertion controller, never PASS log lines."""
     value = fields(
@@ -589,7 +590,11 @@ def checked_experiment(
     upper = datetime.fromisoformat(timestamp(value["completed_at"]))
     require(
         lower <= upper
-        and abs((datetime.now(timezone.utc) - upper).total_seconds()) < 300,
+        and (
+            upper <= datetime.fromisoformat(timestamp(completed_before))
+            if completed_before is not None
+            else abs((datetime.now(timezone.utc) - upper).total_seconds()) < 300
+        ),
         "Stale/invalid actual experiment completion",
     )
     expected = (

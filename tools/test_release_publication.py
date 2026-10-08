@@ -109,6 +109,25 @@ class FixtureVerifier:
             ]
         elif gate == "final-image-smoke":
             details["execution"] = {name: "native" for name in release.PLATFORMS}
+        elif gate == "upgrade-recovery":
+            subjects = dict(binding.subjects)
+            details = {
+                "schema_version": 1,
+                "execution": {name: "native" for name in release.PLATFORMS},
+                "checks": list(publication.RECOVERY_CHECKS),
+                "native_measurements": {
+                    name: {
+                        "record_digest": digest("e"),
+                        "completed_at": "2026-10-08T00:00:00Z",
+                    }
+                    for name in release.PLATFORMS
+                },
+                "manifest_sha256": subjects["manifest"].split("@")[-1],
+                "bundle_sha256": subjects["bundle"].split("@")[-1],
+                "public_provenance_verified": False,
+                "off_host_provider_verified": False,
+                "browser_mobile_flows_verified": False,
+            }
         elif gate == "provenance":
             details["subjects"] = dict(binding.subjects)
         elif gate == "corresponding-source":
@@ -500,6 +519,25 @@ class PublicationChecks(unittest.TestCase):
         self.verifier.mutate = lambda receipt: {"passed": True}
         with self.assertRaisesRegex(release.InvalidRelease, "no receipt"):
             self.prepare()
+
+    def test_incomplete_or_substituted_recovery_cannot_approve_publication(self):
+        binding = self.prepare().binding
+        valid = self.verifier.verify(
+            "upgrade-recovery", self.reports["upgrade-recovery"], binding
+        ).details
+        for field, replacement in (
+            ("checks", []),
+            ("execution", {"linux/amd64": "native"}),
+            ("native_measurements", {}),
+            ("manifest_sha256", digest("f")),
+            ("bundle_sha256", digest("f")),
+            ("off_host_provider_verified", True),
+        ):
+            details = copy.deepcopy(valid)
+            details[field] = replacement
+            self.verifier.details = {"upgrade-recovery": details}
+            with self.subTest(field=field), self.assertRaises(release.InvalidRelease):
+                self.prepare()
 
     def test_scanner_errors_missing_targets_unresolved_findings_and_wrong_subject_fail(
         self,

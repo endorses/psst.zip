@@ -13,6 +13,7 @@ import re
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -68,6 +69,13 @@ SOURCE_COVERAGE = {
     for component in ("backend", "web")
     for arch in ("amd64", "arm64")
 }
+RECOVERY_CHECKS = (
+    "historical-upgrade",
+    "same-version-reapply",
+    "pause-preservation",
+    "post-migration-startup-failure",
+    "matching-checkpoint-isolated-restore",
+)
 
 
 def sha256(content: bytes) -> str:
@@ -359,6 +367,57 @@ def source_review_details(
                 )
 
 
+def recovery_review_details(details: dict, binding: Binding) -> None:
+    """Require complete native recovery scope, distinct from public/provider proof."""
+    require(
+        isinstance(details, dict)
+        and type(details.get("schema_version")) is int
+        and details["schema_version"] == 1
+        and details.get("checks") == list(RECOVERY_CHECKS),
+        "Recovery report lacks complete experiment coverage",
+    )
+    modes = fields(details.get("execution"), set(PLATFORMS), "recovery execution")
+    require(
+        all(mode == "native" for mode in modes.values()),
+        "Recovery requires both native architectures",
+    )
+    records = fields(
+        details.get("native_measurements"), set(PLATFORMS), "recovery measurements"
+    )
+    for record in records.values():
+        fields(record, {"record_digest", "completed_at"}, "completed native recovery")
+        matches(record["record_digest"], DIGEST, "Missing recovery measurement digest")
+        completed = record["completed_at"]
+        require(
+            isinstance(completed, str) and 0 < len(completed) <= 64,
+            "Missing recovery completion time",
+        )
+        try:
+            parsed = datetime.fromisoformat(completed.replace("Z", "+00:00"))
+        except ValueError:
+            raise InvalidRelease("Invalid recovery completion time") from None
+        require(parsed.tzinfo is not None, "Recovery completion lacks timezone")
+    subjects = dict(binding.subjects)
+    for name in ("manifest", "bundle"):
+        require(
+            subjects.get(name, "").endswith("@" + str(details.get(name + "_sha256")))
+            and subjects[name].startswith("file:"),
+            "Recovery ran another prepared manifest or bundle",
+        )
+        matches(details[name + "_sha256"], DIGEST, "Invalid recovery input digest")
+    require(
+        all(
+            details.get(key) is False
+            for key in (
+                "public_provenance_verified",
+                "off_host_provider_verified",
+                "browser_mobile_flows_verified",
+            )
+        ),
+        "Native recovery cannot claim public delivery or independent provider proof",
+    )
+
+
 def verify_gates(
     reports: dict[str, Path],
     gates: frozenset[str],
@@ -450,6 +509,8 @@ def verify_gates(
                 },
                 "Exact source CI did not pass all five jobs",
             )
+        elif gate == "upgrade-recovery":
+            recovery_review_details(receipt.details, binding)
         elif gate == "provenance":
             require(
                 receipt.details.get("subjects") == dict(binding.subjects),

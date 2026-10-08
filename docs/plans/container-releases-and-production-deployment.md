@@ -1286,6 +1286,52 @@ The combined release-tooling suite passed all 257 tests in 19.5 seconds after
 these changes. Python formatting, syntax, documented shell commands and Markdown
 formatting passed. This local result does not replace the pending hosted checks.
 
+### Authenticated native recovery aggregation
+
+- [x] Derive an upgrade-recovery gate from both signed terminal native records,
+      checking exact prepared inputs, committed helpers, final configurations and
+      all upgrade/reapply/pause/failure/isolated-restore facts without rerunning
+      experiments or replaying image/source archives.
+- [x] Wire tagged recovery attestation and post-matrix aggregation using small
+      descriptor/binding artifacts. Authenticate the complete source gate before
+      using its full binding without downloading offered source payloads again.
+- [ ] Execute and verify this integrated recovery gate on both actual native
+      hosted architectures. Independent off-host provider recovery, public
+      acquisition/provenance and browser/mobile flows remain separate checks.
+
+The publication consumer now requires complete recovery coverage and both native
+measurement identities; an authenticated report with empty recovery details is
+insufficient. The gate preserves explicit false scope flags for the separate
+public-delivery, provider and browser/mobile checks. Retained experiments are
+validated within their signed measurement interval; immediate experiment
+execution keeps its existing freshness requirement.
+
+`tools/aggregate_release_recovery.py` authenticates both native terminal records
+and validates their structured scenarios, exact manifest/bundle/configurations,
+committed execution helpers, historical ancestry and measurement time interval.
+Its `--source-report` mode requires the current attempt's authenticated complete
+source report before accepting the full binding from the three small retained
+prepared files. It checks exact source-asset metadata coverage and rechecks
+retained small bytes. `--verify-only` authenticates the resulting canonical gate
+without another experiment or archive replay. Host runner and isolated daemon
+tool versions are validated independently, since they can legitimately differ.
+
+The tagged workflow now signs native recovery measurements and the joined gate.
+Small native-descriptor and prepared-binding artifacts avoid downloading all
+images/source payloads in the aggregation job. Planned main dispatches still
+cannot satisfy these authenticated tagged gates. No registry publication or
+production permission was added.
+
+Nine small aggregation/command cases and eleven existing measurement cases
+passed in 2.83 seconds; the final asset-metadata refinement passed all nine
+aggregation cases in 0.49 seconds. Existing publication/command cases, including
+one incomplete-recovery rejection case, passed 34 checks in 3.45 seconds. These
+fixtures use local bytes, Git and mocked experiment results, with no Docker
+execution. Workflow YAML parsed, all 25 shell steps passed `bash -n` and three
+inline Python blocks parsed. The selected historical commit remains an ancestor
+of the current source. Actual hosted execution and artifact-layout validation
+remain pending, as do the separate public/provider/mobile checks.
+
 ### OCI archive and publishing transport checkpoint
 
 - [x] Add `tools/assemble_release_oci.py` to verify all four local OCI exports
