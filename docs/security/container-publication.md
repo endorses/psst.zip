@@ -123,11 +123,13 @@ inputs require a fresh controlled run; approval cannot transfer across attempts.
 
 This wiring is merged into `main` at `d59ca65`. The `v0.1.0` candidate
 [run 37739559953](https://github.com/endorses/psst.zip/actions/runs/37739559953)
-was in progress on 2026-10-08. Hosted candidate artifact verification remains
-pending. Signed version-tag reports, real reviewer approval/rejection and hosted
-publication are separate pending checks; the planned candidate cannot authorize
-publication. Fixture checks exercise authorization and substitution failures,
-not live approval.
+completed on 2026-10-08 with all five CI jobs passing. Both native container jobs
+then failed at an obsolete Go/Node record-validation guard after original image
+builds and dependency collection passed. Its complete candidate source and
+recovery checks remain unverified. Signed version-tag reports, real reviewer
+approval/rejection and hosted publication are separate pending checks; the
+planned candidate cannot authorize publication. Fixture checks exercise
+authorization and substitution failures, not live approval.
 
 ## Reports from completed checks
 

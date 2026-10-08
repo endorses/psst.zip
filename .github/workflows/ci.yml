@@ -18,7 +18,7 @@ permissions:
 jobs:
   repository-security:
     name: Repository security
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -75,7 +75,7 @@ jobs:
 
   backend:
     name: Backend
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     defaults:
       run:
@@ -123,7 +123,7 @@ jobs:
 
   web:
     name: Web
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     defaults:
       run:
@@ -204,7 +204,7 @@ jobs:
 
   android:
     name: Android and shared module
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
       GRADLE_OPTS: -Dorg.gradle.warning.mode=all

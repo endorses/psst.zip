@@ -269,8 +269,11 @@ class RecoveryMeasurements(unittest.TestCase):
                     "checked_platform": platform,
                     "native_execution": True,
                     "toolchain_output": {
-                        "go": "go version go1.26.8 " + platform,
-                        "node": "v22.22.0",
+                        "go": "go version go"
+                        + BASES["golang"].rsplit(":", 1)[1].split("-", 1)[0]
+                        + " "
+                        + platform,
+                        "node": "v" + BASES["node"].rsplit(":", 1)[1].split("-", 1)[0],
                         "docker": "29.8.2",
                         "compose": "5.6.0",
                         "buildx": "v0.37.1",

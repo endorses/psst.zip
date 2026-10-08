@@ -300,8 +300,10 @@ class NativePreparation(unittest.TestCase):
             "checked_platform": self.context.platform,
             "native_execution": True,
             "toolchain_output": {
-                "go": "go version go1.26.8 linux/amd64",
-                "node": "v22.22.0",
+                "go": "go version go"
+                + BASES["golang"].rsplit(":", 1)[1].split("-", 1)[0]
+                + " linux/amd64",
+                "node": "v" + BASES["node"].rsplit(":", 1)[1].split("-", 1)[0],
                 "docker": "29.8.2",
                 "compose": "5.6.0",
                 "buildx": "v0.37.1",
@@ -391,8 +393,16 @@ class NativePreparation(unittest.TestCase):
             lambda value: value.update(checked_platform="linux/arm64"),
             lambda value: value.update(native_execution=False),
             lambda value: value["toolchain_output"].update(
-                go="go version go1.26.8 linux/arm64"
+                go=value["toolchain_output"]["go"].replace("linux/amd64", "linux/arm64")
             ),
+            lambda value: value["toolchain_output"].update(
+                go="go version go1.26.8 linux/amd64"
+            ),
+            lambda value: value["toolchain_output"].update(
+                go="go version go1.27.0 linux/amd64"
+            ),
+            lambda value: value["toolchain_output"].update(node="v22.22.0"),
+            lambda value: value["toolchain_output"].update(node="v26.10.1"),
             lambda value: value["base_images"].update(caddy="caddy:latest"),
             lambda value: value["build_metadata"]["web"].pop(
                 "containerimage.config.digest"
@@ -409,6 +419,27 @@ class NativePreparation(unittest.TestCase):
                     self.prepare()
                 self.assertEqual(self.ops.events, [])
                 self.assertFalse(self.output.exists())
+
+    def test_toolchain_expectations_follow_trusted_application_base_tags(self):
+        with patch.dict(
+            native.BASES,
+            {
+                "golang": "docker.io/library/golang:1.27.2-alpine3.24",
+                "node": "docker.io/library/node:26.10.1-alpine3.24",
+            },
+        ):
+            with self.assertRaisesRegex(InvalidRelease, "compiler/runtime output"):
+                native.build_inputs(self.context, self.record, self.archive)
+            self.record["toolchain_output"].update(
+                go="go version go1.27.2 linux/amd64", node="v26.10.1"
+            )
+            candidate, originals = native.build_inputs(
+                self.context, self.record, self.archive
+            )
+            self.assertEqual(candidate, self.candidate)
+            self.assertEqual(originals, self.originals)
+        self.assertEqual(self.ops.events, [])
+        self.assertFalse(self.output.exists())
 
     def test_substituted_original_bytes_and_rehashed_wrong_pair_are_rejected(self):
         self.archive.write_bytes(b"substitution")

@@ -26,7 +26,7 @@ concurrency:
 jobs:
   validate-tag:
     name: Validate source identity and main ancestry
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.tag.outputs.version }}
       commit: ${{ steps.tag.outputs.commit }}
@@ -70,7 +70,7 @@ jobs:
   resolve-bases:
     name: Resolve official multi-platform base indexes
     needs: [validate-tag, ci]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       id-token: write
@@ -127,7 +127,7 @@ jobs:
   upstream-inputs:
     name: Retain common upstream source inputs
     needs: [validate-tag, ci]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -169,11 +169,11 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             cosign_sha256: c3b4f5410e608af03a5eb0aaac84a4313d8da131248e08ff1759ac70c79d1644
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             cosign_sha256: 426193b4c5da4d4d643e822f48fe0cc8a476ca1782a272704831f5a0cef716d7
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -589,7 +589,7 @@ jobs:
   assemble-candidate:
     name: Assemble both native candidate results
     needs: [validate-tag, ci, resolve-bases, upstream-inputs, build-and-smoke]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -766,10 +766,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -861,7 +861,7 @@ jobs:
     name: Authenticate completed native recovery
     needs: [validate-tag, assemble-candidate, recovery-candidate]
     if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -971,7 +971,7 @@ jobs:
     name: Verify authorized distribution review
     needs: [validate-tag, assemble-candidate, aggregate-recovery]
     if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     environment:
       name: container-release
@@ -1053,7 +1053,7 @@ jobs:
         distribution-review,
       ]
     if: github.event_name == 'push' && needs.validate-tag.outputs.source_kind == 'version-tag' && vars.CONTAINER_RELEASE_PUBLICATION_ENABLED == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Publication reuses completed native payloads and all eight signed gates.
     # Its network transfer budget is separate from ordinary source CI.
     timeout-minutes: 30
@@ -1098,9 +1098,33 @@ jobs:
           from github_release_attestor import hosted_node
           hosted_node()
           PY
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Build and install stable native Skopeo from pinned upstream source
+        run: |
           sudo apt-get update -qq
-          sudo apt-get install --yes --no-install-recommends skopeo
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential git libgpgme-dev libassuan-dev libbtrfs-dev pkg-config
+          build_root=$(mktemp -d "$RUNNER_TEMP/psst-skopeo.XXXXXX")
+          trap 'sudo rm -rf -- "$build_root"' EXIT
+          source_dir="$build_root/src/go.podman.io/skopeo"
+          source_commit=77f3d92f861271c7cb9175afcf876017bcae9202 # v1.24.1
+          git init --quiet "$source_dir"
+          git -C "$source_dir" fetch --quiet --depth=1 \
+            https://github.com/podman-container-tools/skopeo.git "$source_commit"
+          git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$source_dir" rev-parse HEAD)" = "$source_commit"
+          # Use upstream's native CGO build and install its container policy/config.
+          # Ubuntu's packaged Skopeo is an older prerelease; static builds are unsupported.
+          sudo env "PATH=$PATH" "GOPATH=$build_root" "GOCACHE=$build_root/cache" \
+            CGO_ENABLED=1 GOTOOLCHAIN=local \
+            make -C "$source_dir" DISABLE_DOCS=1 install
           skopeo --version
+          test "$(skopeo --version)" = "skopeo version 1.24.1 commit: $source_commit"
+          test -r /etc/containers/policy.json
+          test -r /etc/containers/registries.d/default.yaml
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: candidate-prepared-inputs-${{ github.run_id }}-${{ github.run_attempt }}

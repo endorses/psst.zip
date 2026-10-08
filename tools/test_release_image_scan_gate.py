@@ -42,7 +42,12 @@ class ImageScanGateChecks(unittest.TestCase):
             pack = self.native.packs[platform] / "runtime-pack.json"
             record = read_json(pack.read_bytes())
             record["bindings"] = {
-                c: {"binary_sha256": sha256((c + platform).encode())[7:]}
+                c: {
+                    "binary_sha256": sha256((c + platform).encode())[7:],
+                    "go_version": (
+                        aggregate.GO_VERSION if c == "backend" else "go1.26.8"
+                    ),
+                }
                 for c in aggregate.TARGETS
             }
             pack.write_bytes(json_bytes(record))
@@ -229,7 +234,7 @@ class ImageScanGateChecks(unittest.TestCase):
                 ]
             )
         info = {
-            "GoVersion": aggregate.GO_VERSION,
+            "GoVersion": aggregate.GO_VERSION if component == "backend" else "go1.26.8",
             "Path": root_import,
             "Main": {"Path": main, "Version": "(devel)"},
             "Deps": [
@@ -418,6 +423,42 @@ class ImageScanGateChecks(unittest.TestCase):
             self.assertEqual(finding["affected_packages"], ["golang.org/x/crypto/ssh"])
             self.assertIn("official_advisory", finding)
             self.assertIn("binary_sha256", finding)
+
+    def test_compiler_versions_bind_runtime_binary_and_component_source_policy(self):
+        platform = "linux/amd64"
+        native = read_json(self.native_measurements[platform].read_bytes())
+        context = NativeSourceContext(
+            self.binding.repository, self.binding.version, self.binding.commit, platform
+        )
+        original_pack = read_json(
+            (self.native.packs[platform] / "runtime-pack.json").read_bytes()
+        )
+        for component, version, rebind, error in (
+            ("backend", "go1.26.8", False, "toolchain metadata"),
+            ("web", aggregate.GO_VERSION, False, "toolchain metadata"),
+            ("backend", "go1.26.8", True, "Backend compiler differs"),
+            ("web", "go1.26.7", True, "no pinned complete runtime source"),
+        ):
+            with self.subTest(component=component, version=version, rebind=rebind):
+                target = component + "-amd64"
+                graph = copy.deepcopy(self.graph_records[target])
+                graph["binary"]["build_info"]["GoVersion"] = version
+                graph["binary"]["build_info_sha256"] = sha256(
+                    json_bytes(graph["binary"]["build_info"])
+                )
+                pack = copy.deepcopy(original_pack)
+                if rebind:
+                    pack["bindings"][component]["go_version"] = version
+                with self.assertRaisesRegex(InvalidRelease, error):
+                    aggregate.checked_graph(
+                        graph,
+                        self.graphs[target].parent,
+                        context=context,
+                        component=component,
+                        image=native["images"][component],
+                        runtime=native["runtime"],
+                        pack=pack,
+                    )
 
     def test_missing_arch_unsigned_measurement_and_changed_raw_scan_fail(self):
         subset = {k: v for k, v in self.scans.items() if k != "backend-arm64"}

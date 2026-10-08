@@ -32,7 +32,7 @@ from generate_release_gate_reports import (
 )
 from github_release_transport import command
 import package_runtime_sources
-from prepare_release_candidate import validate_candidate
+from prepare_release_candidate import BASES, validate_candidate
 from release_artifacts import (
     DIGEST,
     InvalidRelease,
@@ -308,12 +308,19 @@ def build_inputs(
         ),
         "Actual toolchain output is missing",
     )
-    require(
-        re.fullmatch(
-            r"go version go1\.26\.8 " + re.escape(context.platform), toolchain["go"]
+    # record_build measures the application bases, not Caddy's separate compiler.
+    # Derive exact outputs from the producer's trusted tags to avoid pin drift.
+    versions = {}
+    for name in ("golang", "node"):
+        version = re.fullmatch(
+            r"([0-9]+\.[0-9]+\.[0-9]+)-alpine[0-9]+\.[0-9]+",
+            BASES[name].rsplit(":", 1)[1],
         )
-        is not None
-        and re.fullmatch(r"v22\.\d+\.\d+", toolchain["node"]) is not None,
+        require(version is not None, "Application base must pin an exact toolchain")
+        versions[name] = version[1]
+    require(
+        toolchain["go"] == f"go version go{versions['golang']} {context.platform}"
+        and toolchain["node"] == f"v{versions['node']}",
         "Native compiler/runtime output differs",
     )
     require(

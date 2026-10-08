@@ -1,6 +1,9 @@
-# GitHub's hosted preview label is not in actionlint 1.7.12's built-in inventory.
-# This permits only that documented label; it does not select a self-hosted runner.
+# These documented hosted labels postdate actionlint 1.7.12's built-in inventory.
+# This permits only these labels; it does not select a self-hosted runner.
 # https://github.com/actions/runner-images/issues/14404
+# https://github.com/actions/runner-images/issues/14747
 self-hosted-runner:
   labels:
     - xcode-27
+    - ubuntu-26.04
+    - ubuntu-26.04-arm
