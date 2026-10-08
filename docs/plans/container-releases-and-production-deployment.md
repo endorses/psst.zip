@@ -2609,10 +2609,20 @@ runner, not a claim that the later failed native-container preparation passed.
       fetching; preserve all collection and checksum checks. One focused
       regression checks that sensitive details stay hidden and successful output
       is preserved; all 18 existing runtime-boundary cases passed in 0.008s.
+      Bounded review identified timeout and launch exceptions as another possible
+      command-detail leak. Convert them to fixed operation-only failures with
+      suppressed exception context; injected exception subcases in the same test
+      verify that boundary without a real timeout. Native preparation passed its
+      13 cases in 0.086s with the existing opt-in Docker case explicitly skipped.
 - [ ] Establish the hosted runtime-collection failure from these bounded
       diagnostics before making a cause-specific repair. A local helper-only
       probe passed inventory/save and multiple source-fetch operations, which
       does not prove the complete application inventory on either hosted runner.
+      A compile-free backend-runtime scaffold using the exact Alpine 3.24.2 base,
+      unchanged APK installation and app user also passed inventories, image save,
+      and the first retained `alpine-baselayout` source fetch with checksum
+      verification. It stopped there and cleaned its image and temporary files;
+      this is not complete source replay or evidence of the hosted failure cause.
 - [x] Address the measured missing Kotlin/Native input cache in routine iOS CI.
       Preserve `~/.konan` with an immutable stable Node 24 cache action and
       exact host/toolchain inputs; enable Gradle's local build cache for shared.

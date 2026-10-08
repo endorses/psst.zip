@@ -50,7 +50,16 @@ def command(
         re.fullmatch(r"[a-z][a-z0-9-]{0,95}", operation) is not None,
         "Invalid runtime operation label",
     )
-    result = subprocess.run(args, capture_output=True, timeout=timeout)
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise InvalidRelease(
+            f"Runtime collection command timed out: {operation}"
+        ) from None
+    except OSError:
+        raise InvalidRelease(
+            f"Runtime collection command could not start: {operation}"
+        ) from None
     require(
         result.returncode == 0,
         f"Runtime collection command failed: {operation} (exit {result.returncode})",
