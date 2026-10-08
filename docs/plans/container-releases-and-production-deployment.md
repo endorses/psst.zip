@@ -2977,11 +2977,6 @@ remains unchanged. Do not retry mutations or move that tag to hide the failure.
       versions. Application steps were correctly skipped for these reviewed
       release-helper changes. A bounded independent review found no blocker.
 
-- [ ] Prepare the corrected source as `v0.1.1`, preserving the existing failed
-      `v0.1.0` tag. Recompute and authenticate its exact subjects and obtain a
-      fresh attempt-bound distribution approval; the previous version's reports
-      and approval cannot authorize the changed source.
-
 The exact runner version was `2.337.0` on Ubuntu `26.04.1`, image
 `ubuntu26/20260927.149`. Its published
 [HostContext](https://raw.githubusercontent.com/actions/runner/v2.337.0/src/Runner.Common/HostContext.cs)
@@ -2991,3 +2986,47 @@ selects the advertised runtime relative to that root. The failed job did not
 record an absolute runtime path; the repair does not invent one. One harmless,
 bounded unmocked lookup now runs in the existing hosted Linux security tests,
 without signing, network requests, additional application builds or benchmarks.
+
+### Corrected v0.1.1 publication candidate
+
+- [x] Merge the verified runtime repair through protected PR #18 as
+      `84313f4d74e9f624a62327af180b1f7399e2097b`, matching the checked head's
+      tree. Create the unused `v0.1.1` tag at that exact source, preserving both
+      `v0.0.0` and the failed `v0.1.0` tag. Run `37790269573`, attempt 1, is
+      verifying this candidate; creating the tag does not publish or deploy it.
+- [x] Complete exact tagged server CI, both native image preparations and signed
+      source/scan/smoke/notice assembly for the corrected source. Assembly job
+      `113360559867` passed source authentication, signing and independent
+      verification. All six reports passed with binding
+      `sha256:161bc5080809b45b68a24108e7d72cfa355ac63bdab532358f1403b6b4b03eae`.
+      The complete source report covers four images and six source archives;
+      its SHA256 is
+      `b440ea156dbff19971f3b50f36e2bbafa1dc1bb87f9cccd8af94f6a947396bda`.
+- [x] Authenticate both native recovery measurements and their signed aggregate
+      for this exact source binding and attempt. ARM64 job `113363007391` and
+      AMD64 job `113363007431` passed; aggregate job `113367188509` passed
+      authenticated derivation, signing and independent verification. The retained
+      gate uses the source binding above, manifest
+      `sha256:27533c9662bd4d87a0e788a2eeb43de6d7d19a1a81f10eb83796884e6c71040b`
+      and deployment bundle
+      `sha256:7a4dcb0d3ba8d5cec73e7a7aaeee75453167d7286d89229c8901bed6405f6db5`.
+      Off-host provider, public provenance and browser/mobile-flow checks remain
+      explicitly false.
+- [x] Prepare and inspect the fresh distribution packet
+      `candidate-distribution-presentation-37790269573-1`. It identifies the new
+      source, image/source/notice subjects and exact attempt-bound comment.
+      GitHub is holding distribution job `113367582260` for the configured
+      `container-release` reviewer `endorses`.
+- [ ] Obtain the configured human distribution review for this candidate. The
+      previous version's reports and approval cannot authorize the changed source.
+- [ ] Publish the immutable release and paired public packages, verify fresh
+      anonymous retrieval, and remove first-package initialization.
+
+Production migration and independent off-host backup/restore remain deferred.
+
+This necessary tagged attempt's server CI took 1m38s for security, 6m31s for
+backend and 7m45s for web. Native preparation took 8m32s on ARM64 and 9m47s on
+AMD64. Signed assembly took 5m01s; recovery took 8m23s on ARM64 and 8m37s on AMD64.
+All completed gate jobs have zero annotations at this checkpoint. Separate
+mobile builds were correctly skipped. No additional benchmark run or timeout
+increase was used to obtain these timings.
