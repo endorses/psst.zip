@@ -528,8 +528,21 @@ and an absolute private `--state` directory. Repository, tag, source SHA, active
 hosted workflow/job identity and run attempt come from the workflow environment.
 No configuration identity, signer command or approval boolean can be supplied.
 
+`tools/prepare_publication_inputs.py` constructs this JSON from downloaded
+artifacts under an absolute `--inputs-root`. Its directories are `prepared`,
+`amd64`, `arm64`, `source`, `recovery` and `distribution`, matching the candidate
+artifact roots. It requires `--repository`, `--version`, `--commit` and an
+exclusive absolute `--output` outside that tree. It checks bounded prepared
+metadata, the declared manifest/subject inventory, regular archive paths and
+all eight gate names and bindings. It does not read large source or OCI payloads,
+perform builds, verify signatures or grant publication authority. The driver
+performs the actual immutable snapshot and authenticated verification once.
+
 The command snapshots inputs privately and verifies the full release binding and
-authenticated gates. It derives the four tested configurations from the signed
+authenticated gates. Its default verifier requires the current hosted run ID
+and attempt, so signed evidence from an earlier attempt cannot authorize a new
+publication. Invalid identifiers fail before snapshots or remote API calls.
+It derives the four tested configurations from the signed
 native smoke report and validates all four actual OCI exports before publication
 transport operations. The production adapters check the exact current workflow and
 existing public, repository-linked GHCR packages before draft reservation. An
@@ -553,6 +566,20 @@ the first remote mutation. An existing version journal blocks a subsequent invoc
 there is no automatic retry, resume, draft replacement or remote cleanup. The
 CLI retains only explicit credentials and checked workflow/OIDC inputs for the
 official signing adapter, and prints no tokens, API payloads or tool diagnostics.
+
+The repository's immutable-release setting was enabled and independently read
+back on 2026-10-08 (`enabled: true`, `enforced_by_owner: false`). Both expected
+GHCR package lookups returned HTTP 404, and there were no existing releases.
+This setting change created no release, package or tag. Package visibility and
+linking, branch/tag protection and the separate Administration-read inspection
+credential remain prerequisites. The [official API](https://docs.github.com/en/rest/repos/repos#enable-immutable-releases)
+documents the setting and required permissions.
+
+Runner-local fsync and retained snapshots do not survive removal of a hosted
+runner. External retention must persist the input packet before mutation and
+the journal intent before each subsequent remote mutation; a final artifact
+upload alone cannot cover a runner that disappears mid-operation. The publishing
+job remains disabled while that storage and its credentials are unresolved.
 
 Ten fixture checks exercise the actual transport lifecycle, snapshot durability, ordering, absent
 gates, substituted native configurations/archives/reports, first-package policy,

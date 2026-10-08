@@ -22,6 +22,7 @@ from generate_release_gate_reports import NativeSourceContext, validate_smoke
 from github_release_evidence import GhEvidenceVerifier
 from github_release_transport import (
     GitHubReleaseTransport,
+    NUMBER,
     WorkflowContext,
     private_directory,
     sync_directory,
@@ -232,7 +233,17 @@ def publish(
     fields(reports, set(GATES), "authenticated pre-publication gate reports")
     fields(indexes, {"backend", "web"}, "both native indexes")
     fields(archives, TARGETS, "all four staged final OCI archives")
-    verifier = verifier or GhEvidenceVerifier(token=environment["GH_TOKEN"])
+    run_id = int(
+        matches(environment.get("GITHUB_RUN_ID"), NUMBER, "Invalid workflow run ID")
+    )
+    attempt = int(
+        matches(
+            environment.get("GITHUB_RUN_ATTEMPT"), NUMBER, "Invalid workflow attempt"
+        )
+    )
+    verifier = verifier or GhEvidenceVerifier(
+        token=environment["GH_TOKEN"], run_id=run_id, run_attempt=attempt
+    )
     private_directory(state)
     version = ref.removeprefix("refs/tags/")
     matches(version, VERSION, "Invalid publication version tag")

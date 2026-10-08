@@ -2008,6 +2008,47 @@ is claimed. Workflow YAML parsed, all 29 shell steps passed `bash -n` and three
 inline Python blocks parsed. The new local workflow remains unpushed; live
 review execution and later publication/VPS rollout are pending.
 
+### Publication attempt identity and first-release prerequisites
+
+- [x] Map the exact downloaded prepared, native and signed-gate artifact paths
+      into the publication command's input JSON without rereading source or OCI
+      payloads. Reuse the source command's bounded metadata inventory contract.
+- [x] Restrict the publication command's default evidence verifier to the exact
+      hosted run ID and attempt, matching the gate producers. Reject absent or
+      malformed identifiers before creating snapshots or contacting remote APIs.
+- [x] Inspect and enable the live repository's immutable-release policy before
+      the first release. Independently verify the setting after the change.
+- [ ] Provision public, repository-linked `psst-zip-backend` and `psst-zip-web`
+      GHCR packages and the separate Administration-read inspection credential.
+- [ ] Persist publication inputs and each mutation journal record beyond the
+      hosted runner's lifetime before enabling the publishing job. A local
+      fsync or final artifact upload alone does not protect against runner loss.
+
+On 2026-10-08, the authenticated repository API reported no existing releases,
+immutable releases disabled, and HTTP 404 for both expected package names.
+The planned immutable-release setting was enabled through the repository API;
+an independent read returned `enabled: true`, `enforced_by_owner: false`.
+No release, package, image or tag was created by this setup. Package provisioning,
+branch/tag protection and the least-privilege workflow inspection credential
+remain pending. The [official repository API](https://docs.github.com/en/rest/repos/repos#enable-immutable-releases)
+documents the setting and its separate Administration permissions.
+
+The eleven publication command fixtures passed in 1.23 seconds. The new case
+checks current-attempt wiring and malformed-identity refusal before snapshots
+or transport calls; existing evidence tests cover cryptographic rejection of
+stale provenance. It adds no network request, Docker build or arbitrary wait.
+`tools/prepare_publication_inputs.py` checks the declared source context, manifest,
+subject inventory, exact eight gate names/binding and four regular final archive
+paths. Its output is a path map, not authenticated approval; the publication
+command still snapshots, hashes and authenticates the selected bytes. Two small
+mapping fixtures and the five existing source-command cases passed in 0.036
+seconds, including a check that mapping never opens large source/bundle/OCI
+payloads. The dependent distribution and recovery command fixtures passed in
+0.018 and 0.481 seconds after the shared metadata refactor.
+The current workflow still grants no registry or release publication permission.
+The external recovery-record storage choice is pending; runner-local journal
+retention is implemented, but durable external retention is not yet established.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only

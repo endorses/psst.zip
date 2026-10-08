@@ -994,11 +994,12 @@ CHECK_GATES = frozenset(
 )
 
 
-def command_inputs(
-    *, root: Path, prepared: Path, repository: str, version: str, commit: str
-):
-    """Bind only tagged, exact prepared files; preparation flags confer no trust."""
-    browser_inventory.root_directory(root)
+def prepared_inventory(*, prepared: Path, repository: str, version: str, commit: str):
+    """Validate bounded prepared metadata and paths without reading source payloads.
+
+    This is structural inventory only; it authenticates no measurements and grants
+    no publication authority. Consumers must measure and verify exact bytes.
+    """
     browser_inventory.root_directory(prepared)
     record_path = prepared / "release-inputs.json"
     record_raw = read_bounded_file(record_path)
@@ -1070,6 +1071,38 @@ def command_inputs(
         component: prepared / (component + "-index.json")
         for component in ("backend", "web")
     }
+    return (
+        record_raw,
+        record,
+        manifest_raw,
+        manifest,
+        bundle_name,
+        sources,
+        indexes,
+        expected_names,
+    )
+
+
+def command_inputs(
+    *, root: Path, prepared: Path, repository: str, version: str, commit: str
+):
+    """Bind only tagged, exact prepared files; preparation flags confer no trust."""
+    browser_inventory.root_directory(root)
+    (
+        record_raw,
+        record,
+        manifest_raw,
+        manifest,
+        bundle_name,
+        sources,
+        indexes,
+        expected_names,
+    ) = prepared_inventory(
+        prepared=prepared, repository=repository, version=version, commit=commit
+    )
+    manifest_path = prepared / "release-manifest.json"
+    record_path = prepared / "release-inputs.json"
+    assets = record["assets"]
     inputs = prepare_inputs(
         root=root,
         repository=repository,

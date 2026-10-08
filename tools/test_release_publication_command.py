@@ -229,6 +229,31 @@ class PublicationCommand(unittest.TestCase):
         self.assertEqual(self.api.calls, [])
         self.assertEqual(self.api.registry, {})
 
+    def test_default_verifier_requires_the_current_run_attempt_before_snapshotting(
+        self,
+    ):
+        # An otherwise valid report from an earlier attempt must not authorize
+        # publication. The cryptographic matcher is exercised in evidence tests;
+        # here verify the real command supplies that matcher its exact context.
+        for field in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"):
+            for value in (None, "0", "01", "not-a-number"):
+                with self.subTest(field=field, value=value):
+                    env = self.environment | {field: value}
+                    with patch.object(driver, "GhEvidenceVerifier") as constructor:
+                        with self.assertRaisesRegex(InvalidRelease, "Invalid workflow"):
+                            self.publish(environment=env, verifier=None)
+                    constructor.assert_not_called()
+                    self.assertFalse(list(self.state.glob("publication-inputs-*")))
+                    self.assertEqual(self.api.calls, [])
+        with patch.object(
+            driver, "GhEvidenceVerifier", return_value=self.verifier
+        ) as constructor:
+            result = self.publish(verifier=None)
+        constructor.assert_called_once_with(
+            token="fixture-workflow-token", run_id=77, run_attempt=1
+        )
+        self.assertTrue(result["immutable"])
+
     def test_retained_snapshot_directories_are_durable_before_first_mutation(self):
         synced, mutations = set(), []
         original_sync, original_request = driver.sync_directory, self.api.request
