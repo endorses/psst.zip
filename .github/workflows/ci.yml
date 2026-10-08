@@ -245,6 +245,17 @@ jobs:
           test -d "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app"
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
+      - name: Wait for selected simulator readiness
+        timeout-minutes: 3
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          # First boot overlaps compilation; wait for readiness before XCTest.
+          subprocess.run(
+              ["xcrun", "simctl", "bootstatus", os.environ["PSST_IOS_SIMULATOR_ID"], "-b"],
+              check=True, timeout=120,
+          )
+          PY
       - name: Run native XCTest suite
         # Leave time to upload diagnostics if simulator startup or a test stalls.
         timeout-minutes: 10

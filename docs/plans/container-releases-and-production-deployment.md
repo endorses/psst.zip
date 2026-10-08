@@ -2297,6 +2297,16 @@ justify them.
       behavior with portable boundaries; it does not prove an iOS timing gain.
 - [ ] Measure both optimized cases in the complete hosted native XCTest suite
       and confirm the real Kotlin frame fixture and Apple boundaries pass.
+- [x] Diagnose terminal run `37723307243` before superseding it: backend, web,
+      Android and security passed; iOS exhausted the job budget after its build
+      succeeded. Its completed log contains no XCTest case or suite start, so
+      there is no logged evidence linking the stall to fixture execution. The result upload completed,
+      but the partial bundle alone does not identify the startup cause. Retain
+      overlapping simulator boot and add an explicit `simctl bootstatus -b`
+      readiness check bounded to 120 seconds before XCTest. The step has a
+      three-minute cap; the XCTest step's separate cap also covers app/test launch.
+- [ ] Verify simulator readiness and native test startup on the next exact hosted
+      commit. A green static check does not establish that the runner issue is fixed.
 
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time
