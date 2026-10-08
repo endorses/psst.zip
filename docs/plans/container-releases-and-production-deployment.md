@@ -2837,13 +2837,22 @@ immutable reference/configuration/platform comparison remains required.
       collector/scanner builder comparisons. Backend/web CI finished in 6m22s
       and 6m21s respectively; subsequent artifact transfer is separate release
       work. No tag was created and publication remained disabled.
-- [ ] Validate disposable native recovery. Candidate `37774541174` is terminal:
+- [x] Validate disposable native recovery after the default-executor repair.
+      Candidate `37778271584` at
+      `77c6cebc238c37830ab5421da02392f860b7aba5` passed both AMD64 job
+      `113320071540` and ARM64 job `113320071495`. Their retained measurements
+      bind the same manifest and deployment bundle to that exact source and
+      record normal upgrade/repeat/isolated restore, preservation of a prior
+      pause, and recovery after an injected post-migration startup failure.
+      This is unsigned disposable evidence; signed aggregation, public
+      acquisition, independent off-host backups and production restore remain
+      unverified. The earlier candidate `37774541174` is terminal:
       both ARM64 job `113308361468` and AMD64 job `113308361461` reached the actual
       producer and failed before the experiment with `TypeError: command()
-    missing 1 required keyword-only argument: 'environment'`. The default
+  missing 1 required keyword-only argument: 'environment'`. The default
       command adapter was not exercised by the injected-executor fixtures.
       Aggregated authentication, distribution review and publication were skipped;
-      a new integrated candidate must verify the repair below on both platforms.
+      the later successful candidate verifies the repair below on both platforms.
 - [x] Repair the real default recovery command adapter by supplying its mandatory
       scoped environment while preserving the installed Docker CLI, configuration
       and native connection. Keep injected executor signatures and recovery
@@ -2854,6 +2863,31 @@ immutable reference/configuration/platform comparison remains required.
       not a successful hosted Docker recovery experiment.
 - [ ] Publish the first reviewed server release only after the remaining gates
       pass. Production backup/restore and migration remain explicitly deferred.
+
+PR #15 passed all five ordinary protected checks and GitGuardian with zero
+annotations at `f3d69912788d85f6b179964ae0fd20d555d2b243`, then merged through
+protection as `77c6cebc238c37830ab5421da02392f860b7aba5` with an equal tree.
+The planned candidate at that merged commit completed successfully with zero
+annotations. All three server CI jobs, both native image preparations, strict
+assembly and both recovery jobs passed; mobile compilation, signed aggregation,
+distribution approval and publication were intentionally skipped.
+
+Backend CI took 6m24s. Web CI took 10m54s: integration tests 6s, browser
+installation 3m26s, browser tests 5m47s and administrator lifecycle checks 40s.
+These are observations from the necessary candidate, not an isolated performance
+experiment. Recovery jobs took 9m03s on AMD64 and 11m36s on ARM64; their actual
+measurement steps took 7m27s and 6m51s respectively, including downloaded-tree
+verification. Artifact transfer is separate from those steps. No extra full test
+run, test deletion or timeout increase was introduced to obtain these results.
+
+The retained measurements explicitly report `off_host_provider_verified: false`,
+`public_provenance_verified: false` and `publication_authorized: false`. They
+preserve settings, encrypted payloads, quota/expiry enforcement, sessions and
+factor state, reconcile restored authority and traffic allowances, and preserve
+certificate storage in isolated fixture volumes. They do not establish public
+ACME renewal or browser/mobile flows. Publication was disabled, `v0.1.0` remained
+unused and no VPS state changed. The next step is the exact version-tag attempt,
+signed gates and its protected distribution review.
 
 The scheduling PR #12 completed all five required checks with zero annotations
 at `b023bddd0669f88bcebbd050db104c9caeeae7ac` and merged through protection as

@@ -80,11 +80,11 @@ tag. A main push runs source CI. The guarded publication transport and signing
 bridge are wired into the tag workflow, but publication remains disabled while
 live prerequisites are incomplete.
 
-- [ ] Review and commit the complete release source and workflow. Push the
+- [x] Review and commit the complete release source and workflow. Push the
       reviewed checkpoint only with authorization, then verify routine CI on
       that exact commit. The planned candidate below repeats full source CI,
       including application suites selected out by routine checks.
-- [ ] Exercise the main-only planned-version candidate. For this repository, the
+- [x] Exercise the main-only planned-version candidate. For this repository, the
       dispatch command is:
 
       ```sh
@@ -99,20 +99,31 @@ live prerequisites are incomplete.
       jobs can leave same-attempt input artifacts unavailable. This dispatch
       creates no version tag and does not satisfy tagged publication checks.
 
+      Planned run `37778271584`, attempt 1, at
+      `77c6cebc238c37830ab5421da02392f860b7aba5` passed all three server CI
+      jobs, both native preparations, strict assembly and both native recovery
+      jobs with zero annotations. Recovery covered upgrade/repeat/restore,
+      preservation of a prior pause and an injected startup failure. Signed
+      authentication, public retrieval and live production recovery remain
+      separate pending checks.
+
 - [ ] Complete the [source review](application-package-source-review.md),
       actual native scanner/smoke/recovery gates and their authentication. Review
       exact image configurations and all corresponding-source offerings; a green
       candidate summary alone is insufficient.
-- [ ] Configure reviewed branch/tag protection, immutable-release policy, private
-      recovery storage and narrowly scoped publication credentials. Review the
+- [ ] Configure reviewed branch/tag protection, immutable-release policy and
+      narrowly scoped publication credentials. Review the
       wired publisher and complete its prerequisites in the
       [publication guide](container-publication.md) before creating a release tag.
       When both packages are absent, configure its explicit first-package mode;
       that same publishing attempt creates the reviewed pair and verifies public
       repository linkage before exposing version tags or a ready release. This
-      instance's branch/tag and immutable-release policies are configured;
-      storage, inspection credentials and actual first-package initialization
-      remain pending.
+      instance's branch/tag and immutable-release policies are configured, and
+      the operator supplied the scoped inspection credential. Its authenticated
+      use and actual first-package initialization remain pending. GHCR and
+      GitHub Releases provide publication storage. Independent VPS backups and
+      their restore verification are deferred prerequisites for production
+      migration, separate from container publication.
 - [ ] Once publishing is enabled, create an unused version tag at the reviewed
       source SHA and push that tag. Its workflow must rerun CI for that exact
       tagged commit, authenticate the complete image/source/bundle subjects and
