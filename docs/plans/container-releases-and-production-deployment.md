@@ -2360,9 +2360,15 @@ justify them.
       removed. Both workflows passed actionlint 1.7.12, exact five-job/full-release
       wiring checks, shell parsing and embedded Python syntax checks. No release
       evidence-parser relaxation or additional reusable job was introduced.
-- [ ] Verify the changed workflow on GitHub before claiming its routine time
-      saving or complete native execution. Application skips mean unaffected
-      source was selected out, not that its tests executed.
+- [x] Verify the changed workflow on GitHub before claiming its routine time
+      saving or complete native execution. Exact-head run `37728045919` executed
+      and passed all five jobs for workflow/native changes. Documentation-only
+      run `37729387662` at `0d6a5b7` also completed successfully: security took
+      1m25s, while web/backend/Android/iOS jobs took 5/6/9/11 seconds. Step
+      metadata confirms all application toolchain setup, compilation and tests
+      were selected out; security checks ran unconditionally. Application skips
+      mean unaffected source was selected out, not that its tests executed. The
+      separate planned release run explicitly requests full validation.
 
 PR #1 merged the fully passing `14dc7c2` into main as
 `c2576f8132c5b790e2672543893b52ace3001272` on 2026-10-08; an independent diff
