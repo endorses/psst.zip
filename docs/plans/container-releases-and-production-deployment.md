@@ -2409,14 +2409,21 @@ the first published release/VPS migration remain separate incomplete tasks.
       parsed; immutable action pins, 16 ZIP uploads, 22 named downloads, unchanged
       native budgets and full-release/unconditional-security wiring were checked.
       The iOS source/configuration gate passed; it is not a Swift build.
-- [ ] Verify the updated actions, simulator startup, full native suite and
+- [x] Verify the updated actions, simulator startup, full native suite and
       preserved artifact layout on GitHub before checking off hosted execution
       or restarting the planned release candidate from the integrated repair.
+      Run `37733269430` passed current-toolchain app/framework/share-extension
+      compilation and all 176 XCTest cases. Readiness took one second; the test
+      step took 1m52s. The updated artifact action's actual named ZIP layout was
+      verified in preceding run `37731752144`; release bundle download/recovery
+      remains pending. Repository fixture and backend timeout repairs still need
+      a fully passing integrated workflow before candidate preparation restarts.
 
 Application compiler, build tool and base-image upgrades are tracked separately
 in [the maintained toolchain plan](maintained-build-toolchains.md). The action
 runtime modernization does not claim that every existing application dependency
-has been upgraded or that the newer native pair has passed hosted execution.
+has been upgraded. The maintained native pair has now passed hosted execution;
+the integrated release and production gates remain incomplete.
 
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time

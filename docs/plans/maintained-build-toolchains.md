@@ -11,7 +11,7 @@ Version discovery is separate from successful build validation. GitHub's preview
       inline Python syntax locally without adding test cases.
 - [x] Select stable Xcode 27.0 and iOS 27.0 explicitly on the approved preview
       runner. Preserve readiness and XCTest budgets, with bounded failure logs.
-- [ ] Verify the updated actions, native build and XCTest on GitHub.
+- [x] Verify the updated actions, native build and XCTest on GitHub.
 - [x] Refresh Go, Node, Buildx, BuildKit and golangci-lint pins together with
       their release source/scanning constraints. Verify meaningful affected
       regressions and application builds.
@@ -60,8 +60,8 @@ and shared host tests (158 and 175 cases, no failures or skips). The migrated
 shared test task is `:shared:testAndroidHostTest`; its Android fixtures moved to
 the plugin's `androidHostTest` source set. Both generated legal bundles verified
 their resolved artifacts, and the repackaged APK's three legal assets matched
-the repository. Apple app/framework/share-extension compilation and XCTest
-remain pending on GitHub's Xcode 27 runner.
+the repository. Hosted Xcode 27 subsequently passed the Apple
+app/framework/share-extension build and all 176 XCTest cases.
 
 Primary references: [Go](https://go.dev/dl/),
 [Node](https://nodejs.org/en/blog/release),
@@ -97,9 +97,10 @@ unchanged.
 
 Hosted run
 [`37733269430`](https://github.com/endorses/psst.zip/actions/runs/37733269430)
-passed the updated Android/shared and web jobs. Both checks have no annotations;
-the Gradle 9.1 out-of-date notice is gone. Native compilation was still running
-at the checkpoint, so final native verification remains unchecked.
+passed the updated Android/shared, web and native iOS jobs. These checks have no
+annotations; the Gradle 9.1 out-of-date notice is gone. Native compilation took
+10m26s, readiness one second, and the XCTest step 1m52s. All 176 cases passed
+with no failures; case execution itself took 70.525 seconds.
 
 The security job exposed an overlooked consumer fixture that still reported Go
 1.26.8 to the now-pinned Go 1.27.1 dependency collector. The fixture now uses the
@@ -113,6 +114,30 @@ request exceeded the existing three-second HTTP deadline. The same focused test
 passed locally with Go 1.27.1 and race checking in 4.127 seconds:
 `go test -race -count=1 -timeout 90s -run '^TestColdRestoreRunsRealServerStartupAndHTTPPolicies$' ./cmd/server`
 from `backend/`. This does not establish the hosted cause or make the failing run
-successful. Production authentication and test deadlines were left unchanged.
-Integration and release preparation are paused at this separate validation
-failure under the operator's unexpected-issues instruction.
+successful. Inspection found that the test's three-second deadline was shorter
+than SQLite's existing five-second busy wait, while authentication can overlap
+startup maintenance after health readiness. Requests now allow six seconds,
+with no sleeps or retries and the unchanged overall 60-second test bound.
+Transport failures include the method, path and child server log. Five focused
+race-checked repetitions passed in 17.690 seconds. Production authentication and
+database behavior are unchanged; hosted verification of the correction remains
+pending.
+
+Native logs also disclosed Google's newly deprecated `sdkmanager`, despite the
+current setup action release. Keep that pinned action only as the SDK downloader:
+disable its legacy license invocation and package installation, then use the
+supported `android --no-metrics --sdk="$ANDROID_HOME" sdk install` command in
+both jobs. Preserve the project's compile SDK 35; remove the iOS job's unused
+explicit build-tools 35.0.0 download. Google's replacement has no separate
+license command. The normal hosted Gradle builds must verify the resulting SDK
+installation. Primary references:
+[SDK Manager deprecation](https://developer.android.com/tools/sdkmanager),
+[Android CLI](https://developer.android.com/tools/agents/android-cli),
+[SDK installation](https://developer.android.com/tools/agents/android-cli/commands/sdk_install),
+[pinned setup implementation](https://github.com/android-actions/setup-android/blob/be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd/src/main.ts).
+
+The native Gradle logs contain a future Gradle 10 deprecation summary without
+individual attribution. Both jobs now use supported warning mode `all` to expose
+the responsible script or plugin during their existing builds; this adds no
+builds or tests. Other compiler diagnostics remain visible. Empty GitHub check
+annotations are not a claim that all compiler output is warning-free.
