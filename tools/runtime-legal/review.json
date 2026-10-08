@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-10-07",
+  "reviewed_at": "2026-10-08",
   "purpose": "Pinned runtime legal evidence and supported notice treatment; not distribution approval",
   "review_required": true,
-  "scope": "Four origins from final AMD64 filesystems of two pinned base images only; retained lower-layer and final release graphs require separate matching review.",
+  "scope": "Four origins from final AMD64 filesystems of three pinned base images only; retained lower-layer and final release graphs require separate matching review.",
   "base_images": [
     {
       "base_ref": "alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507",
@@ -115,6 +115,58 @@
           "origin": "ca-certificates",
           "aports_commit": "c733d58a9d16316e7fb6a49e65f28ecda365c56b",
           "apk_checksum": "Q1C38kuKcTv0u4ad43dQWlBAI5p7w="
+        }
+      ]
+    },
+    {
+      "base_ref": "alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+      "image_id": "sha256:320994c3b997e2ec6433f717f153e108023c5bec8fefa8d76b83451d16d05ea8",
+      "architecture": "amd64",
+      "packages": [
+        {
+          "name": "alpine-baselayout",
+          "version": "3.7.2-r1",
+          "architecture": "x86_64",
+          "license": "GPL-2.0-only",
+          "origin": "alpine-baselayout",
+          "aports_commit": "60a7585bbab2fa0f762504eb617dbca90216e31f",
+          "apk_checksum": "Q18Pz9wvTaBYr2RzvEXE6rYpFiJbI="
+        },
+        {
+          "name": "alpine-baselayout-data",
+          "version": "3.7.2-r1",
+          "architecture": "x86_64",
+          "license": "GPL-2.0-only",
+          "origin": "alpine-baselayout",
+          "aports_commit": "60a7585bbab2fa0f762504eb617dbca90216e31f",
+          "apk_checksum": "Q1xvm97RfYRLbxsLtXZtLDXA1chQg="
+        },
+        {
+          "name": "alpine-keys",
+          "version": "2.6-r0",
+          "architecture": "x86_64",
+          "license": "MIT",
+          "origin": "alpine-keys",
+          "aports_commit": "b9f23becced4d7b3ccc0fa0f28530243ccd314a0",
+          "apk_checksum": "Q12Na4DlPAWad+SRXaeLqWTz/+okA="
+        },
+        {
+          "name": "alpine-release",
+          "version": "3.24.2-r0",
+          "architecture": "x86_64",
+          "license": "MIT",
+          "origin": "alpine-base",
+          "aports_commit": "d9d560d5de74ff9a7a73f3c903d6f126a0bf3142",
+          "apk_checksum": "Q1b9G+RpyiNenGLxtz+j5b/6/etrU="
+        },
+        {
+          "name": "ca-certificates-bundle",
+          "version": "20260909-r0",
+          "architecture": "x86_64",
+          "license": "MPL-2.0 AND MIT",
+          "origin": "ca-certificates",
+          "aports_commit": "eb7078df3a16d666e8f7723f94bb92e00d4b9236",
+          "apk_checksum": "Q1eRI3zuh3mIiTo1S19snETzXU7bk="
         }
       ]
     }
@@ -356,6 +408,30 @@
       "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/curl.txt",
       "upstream_commit": "d46e94e2c78ceede1cfc63cfa0396472d2798d4c",
       "git_blob_sha1": "dd333ab2e4918a2d0f5a520253c1a4d84877d4fb"
+    },
+    {
+      "path": "recipes/alpine-baselayout-3.7.2-r1-60a7585bbab2fa0f762504eb617dbca90216e31f/APKBUILD",
+      "size": 8670,
+      "sha256": "aef255516b71e39109860b92eb027a0986d90197427fb93ec91ebcd04bf59763",
+      "role": "packaging-recipe",
+      "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/APKBUILD",
+      "git_blob_sha1": "d79c198a0a923f2781242b9553afaecd65d95afc"
+    },
+    {
+      "path": "recipes/alpine-base-3.24.2-r0-d9d560d5de74ff9a7a73f3c903d6f126a0bf3142/APKBUILD",
+      "size": 1507,
+      "sha256": "5f3e6446e3e80b20e0f9986760b9f151e47e723e57d32c108bce617846d05b52",
+      "role": "packaging-recipe",
+      "url": "https://raw.githubusercontent.com/alpinelinux/aports/d9d560d5de74ff9a7a73f3c903d6f126a0bf3142/main/alpine-base/APKBUILD",
+      "git_blob_sha1": "e63c4c38fd02ceeb3bea466139b601706dd299e4"
+    },
+    {
+      "path": "recipes/ca-certificates-20260909-r0-eb7078df3a16d666e8f7723f94bb92e00d4b9236/APKBUILD",
+      "size": 2520,
+      "sha256": "0c14312c1d5c4a8b7ef74433be9db58517b17eb091bccdf2c8325bc4c9c26480",
+      "role": "packaging-recipe",
+      "url": "https://raw.githubusercontent.com/alpinelinux/aports/eb7078df3a16d666e8f7723f94bb92e00d4b9236/main/ca-certificates/APKBUILD",
+      "git_blob_sha1": "1dc886bc363ca5418211781ef0c946ea805ccfe0"
     }
   ],
   "origins": [
@@ -1111,6 +1187,263 @@
           "sha256": "1bf77c8eae3220b1bd7dd86561d0899315f51d72257c1aeb4066072ed4304fe5",
           "git_blob_sha1": "0ed2ac4980c97739fb6addfbf41a5700c6d286a1",
           "url": "https://raw.githubusercontent.com/alpinelinux/aports/c733d58a9d16316e7fb6a49e65f28ecda365c56b/main/ca-certificates/ca-certificates.trigger"
+        }
+      ],
+      "review_required": true,
+      "notice_paths": [
+        "licenses/MPL-2.0.txt",
+        "licenses/MIT.txt",
+        "notices/ca-certificates-c_rehash-c-header.txt",
+        "notices/ca-certificates-certdata-txt-header.txt",
+        "notices/ca-certificates-mk-ca-bundle-pl-header.txt",
+        "notices/curl-COPYING.txt",
+        "notices/curl-THANKS.txt"
+      ],
+      "external_inputs": [
+        {
+          "name": "ca-certificates-20260909.tar.bz2",
+          "url": "https://gitlab.alpinelinux.org/alpine/ca-certificates/-/archive/20260909/ca-certificates-20260909.tar.bz2",
+          "size": 232735,
+          "sha256": "dc460c535f3833432be4e561d214a5fe816b05ede5a2ade64787e501671cd082",
+          "sha512": "d235529da679f14e2e8df4175bc8189507add1382fe0ef8493824b07a49763a2a3af8201f43d30a0260eb8357a10bb0d7054d9b012abf3b74ecf889551cf0dd7",
+          "members": [
+            {
+              "name": "ca-certificates-20260909/c_rehash.c",
+              "size": 9533,
+              "sha256": "a68fedc0edd976b9f35ecfdcb252d80dc12084b1bc4e945be7dc42c437d8b540",
+              "notice_path": "notices/ca-certificates-c_rehash-c-header.txt",
+              "notice_start": 0,
+              "notice_length": 330
+            },
+            {
+              "name": "ca-certificates-20260909/certdata.txt",
+              "size": 1375050,
+              "sha256": "beb7e6dfe6499926e52c075c27bcfbe4c957f8609c575b3860273ae2806f63eb",
+              "notice_path": "notices/ca-certificates-certdata-txt-header.txt",
+              "notice_start": 0,
+              "notice_length": 201
+            },
+            {
+              "name": "ca-certificates-20260909/mk-ca-bundle.pl",
+              "size": 24902,
+              "sha256": "8e278f4982210b37e4f9a048bd6ed23df41e4a054085bd73f8242628f03d09ca",
+              "notice_path": "notices/ca-certificates-mk-ca-bundle-pl-header.txt",
+              "notice_start": 0,
+              "notice_length": 1664
+            }
+          ]
+        }
+      ],
+      "remaining_review": [
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the package SPDX declaration and full MPL-2.0/MIT terms, every actual source notice including complete c_rehash attribution, certdata license header and exact curl COPYING/THANKS for mk-ca-bundle.pl. Headerless package files remain covered by the upstream package declaration without fabricated authorship."
+    },
+    {
+      "origin": "alpine-baselayout",
+      "version": "3.7.2-r1",
+      "aports_commit": "60a7585bbab2fa0f762504eb617dbca90216e31f",
+      "declared_license": "GPL-2.0-only",
+      "recipe_path": "recipes/alpine-baselayout-3.7.2-r1-60a7585bbab2fa0f762504eb617dbca90216e31f/APKBUILD",
+      "recipe_files": [
+        {
+          "name": "20locale.sh",
+          "size": 97,
+          "sha256": "284a6ef56ab97a13a777c6b01ae14f2cc3d2b7a29c19e750e622e70cc3c73186",
+          "git_blob_sha1": "9b9fde51f510e8d4ddb79f3ea0423ec75efb9297",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/20locale.sh"
+        },
+        {
+          "name": "APKBUILD",
+          "size": 8670,
+          "sha256": "aef255516b71e39109860b92eb027a0986d90197427fb93ec91ebcd04bf59763",
+          "git_blob_sha1": "d79c198a0a923f2781242b9553afaecd65d95afc",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/APKBUILD"
+        },
+        {
+          "name": "aliases.conf",
+          "size": 1545,
+          "sha256": "3ebaba946f213670170c7d69949f690a3854553bd0b1560f1d980cba4c83a942",
+          "git_blob_sha1": "b1790179608c46f117fd36073e2316546ca08acd",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/aliases.conf"
+        },
+        {
+          "name": "alpine-baselayout.post-install",
+          "size": 453,
+          "sha256": "dd30b63bfbe4f7d8085f57840e15b84015b3518d6f282a3e0924f73a61000016",
+          "git_blob_sha1": "88966d35c3327efc03e5d383fa577782ea256c5d",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/alpine-baselayout.post-install"
+        },
+        {
+          "name": "alpine-baselayout.post-upgrade",
+          "size": 30,
+          "sha256": "53f570f015ac2086597ab62accc6ad08600e2994577ac622263f17e9de39d2e2",
+          "git_blob_sha1": "0e73fc07f3bfd966d5ed2e4be2a4838422dab0ed",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/alpine-baselayout.post-upgrade"
+        },
+        {
+          "name": "alpine-baselayout.pre-install",
+          "size": 56,
+          "sha256": "28ecff91a36f438ca26bc8cc08d857863378aa94eab399a1f413e52501b86f85",
+          "git_blob_sha1": "fc0d0b9f5dab5ce07189ead013e0fb8a6fbc0bc8",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/alpine-baselayout.pre-install"
+        },
+        {
+          "name": "alpine-baselayout.pre-upgrade",
+          "size": 944,
+          "sha256": "3f35fa5402d397389f366e8934ba0f800a017a149f4281dc8c22762419e47e10",
+          "git_blob_sha1": "b89ad05a74debf8a6f6001b05526770feb40ee88",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/alpine-baselayout.pre-upgrade"
+        },
+        {
+          "name": "blacklist.conf",
+          "size": 2247,
+          "sha256": "0e9ab848289bfb20b9b066d05c8b1383a7c92b97ff8072a50806054b5d3fd739",
+          "git_blob_sha1": "f14a1233af1c6160f3ed507283b09853ee8ad5ca",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/blacklist.conf"
+        },
+        {
+          "name": "color_prompt.sh.disabled",
+          "size": 447,
+          "sha256": "ba24425c6864a5d17fa0fdaf914c4d21419e47c4d62080c33830af059fe46617",
+          "git_blob_sha1": "96e47891b31f72ed8f4073061ff48288a4d3cb7b",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/color_prompt.sh.disabled"
+        },
+        {
+          "name": "crontab",
+          "size": 283,
+          "sha256": "575d810a9fae5f2f0671c9b2c0ce973e46c7207fbe5cb8d1b0d1836a6a0470e3",
+          "git_blob_sha1": "fd8acd8b9a27203f33bd213e9a38d975cbef8dcc",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/crontab"
+        },
+        {
+          "name": "group",
+          "size": 510,
+          "sha256": "6fb6ab5a5526e6f4896b70c7e3c350fd475158a1f0d7b5fc0f3f9bd57f1c3be8",
+          "git_blob_sha1": "4a0d291366667f110e5f4d890c585f929fba517e",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/group"
+        },
+        {
+          "name": "hier.7",
+          "size": 6855,
+          "sha256": "8a91913d8a05ad57316355ee74d966210a6eae7bd850d46dac53e799d3981cc2",
+          "git_blob_sha1": "7faad97aaf042a21cdf44b33d7aba1d60b512fb4",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/hier.7"
+        },
+        {
+          "name": "i386.conf",
+          "size": 122,
+          "sha256": "6c46c4cbfb8b7594f19eb94801a350fa2221ae9ac5239a8819d15555caa76ae8",
+          "git_blob_sha1": "b89459f1ef675fced8b3fcf97cca1a4ed0e55f01",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/i386.conf"
+        },
+        {
+          "name": "inittab",
+          "size": 570,
+          "sha256": "7326d8ad56bf5fea63b1ca516a747ff6e6723e25ae84a93c31620b03de6c001d",
+          "git_blob_sha1": "5294b8f53b1c9946e66bf75b37644af6cd94cfb1",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/inittab"
+        },
+        {
+          "name": "passwd",
+          "size": 702,
+          "sha256": "31a94f06f17bc3b9085fccab1d0fa6ee9e79c4a1e4d91f617fa5de95863be015",
+          "git_blob_sha1": "1130fa0b21cc1bf66f41206ffad4748ffe457af1",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/passwd"
+        },
+        {
+          "name": "profile",
+          "size": 547,
+          "sha256": "87e8643d3ce156de0c09370d4d39446f30bd00d264bea248abc191c4d7b9df3e",
+          "git_blob_sha1": "fbc3ba0cd506424c1b67b1a2397aa1097803ad25",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/profile"
+        },
+        {
+          "name": "usr_merge_nag.sh",
+          "size": 677,
+          "sha256": "ffab41e32add88a13483309172c22da013f50a82bc552b488765254a6e92115c",
+          "git_blob_sha1": "83ad6e5d9b869d17b7ac98f5b4d753fc6fa6d584",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/60a7585bbab2fa0f762504eb617dbca90216e31f/main/alpine-baselayout/usr_merge_nag.sh"
+        }
+      ],
+      "review_required": true,
+      "notice_paths": [
+        "licenses/GPL-2.0-only.txt",
+        "notices/netbase-6.4-copyright.txt"
+      ],
+      "external_inputs": [
+        {
+          "name": "protocols-6.4",
+          "url": "https://salsa.debian.org/md/netbase/-/raw/a0c50d66656551d076c545cd42a83c2e4140ea0e/etc/protocols",
+          "sha256": "4959498abbadaa1e50894a266f8d0d94500101cfe5b5f09dcad82e9d5bdfab46",
+          "sha512": "3a00083bcdf5a9e884c9d07877d52311e3d99e79cbee656e236ba06e08ba0dddb7ba76494fdc9dd1a826c48e197a790a69e6bb458e9df64832d6b5e904e9fd15",
+          "size": 3144
+        },
+        {
+          "name": "services-6.4",
+          "url": "https://salsa.debian.org/md/netbase/-/raw/a0c50d66656551d076c545cd42a83c2e4140ea0e/etc/services",
+          "sha256": "f6183055fd949f9c53d49ee620f85d0150123ea691d25ed1bba0c641b4ee2f48",
+          "sha512": "47b0f3ee73af2d259bd206a026204be0ea25531a895a0b035a904b38fe5407bc3dd2beab7f8fcb3d760587e6159702ebdb9cbc4f508942befdf7f10c10c87888",
+          "size": 12813
+        }
+      ],
+      "remaining_review": [
+        "This exact origin review must match the complete final and retained-layer package graph.",
+        "Retain and deliver the original source package, complete recipe and all supplied notices together with the released image."
+      ],
+      "supported_treatment": "Preserve the recipe-declared GPL-2.0-only terms, every supplied source/helper notice, exact Debian netbase copyright and all recipe/source inputs; do not assign missing Alpine configuration-file ownership."
+    },
+    {
+      "origin": "alpine-base",
+      "version": "3.24.2-r0",
+      "aports_commit": "d9d560d5de74ff9a7a73f3c903d6f126a0bf3142",
+      "declared_license": "MIT",
+      "recipe_path": "recipes/alpine-base-3.24.2-r0-d9d560d5de74ff9a7a73f3c903d6f126a0bf3142/APKBUILD",
+      "recipe_files": [
+        {
+          "name": "APKBUILD",
+          "size": 1507,
+          "sha256": "5f3e6446e3e80b20e0f9986760b9f151e47e723e57d32c108bce617846d05b52",
+          "git_blob_sha1": "e63c4c38fd02ceeb3bea466139b601706dd299e4",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/d9d560d5de74ff9a7a73f3c903d6f126a0bf3142/main/alpine-base/APKBUILD"
+        }
+      ],
+      "review_required": true,
+      "notice_paths": ["licenses/MIT.txt"],
+      "external_inputs": [],
+      "remaining_review": [
+        "This scoped notice treatment does not approve an uncollected package version, missing sources, or unpublished source delivery; collect and bind the complete distributed graph."
+      ],
+      "supported_treatment": "Preserve every upstream-supplied notice, recipe and exact generated metadata/public signing-key source input, together with the declared MIT identifier and full MIT terms; no copyright owner is supplied or invented."
+    },
+    {
+      "origin": "ca-certificates",
+      "version": "20260909-r0",
+      "aports_commit": "eb7078df3a16d666e8f7723f94bb92e00d4b9236",
+      "declared_license": "MPL-2.0 AND MIT",
+      "recipe_path": "recipes/ca-certificates-20260909-r0-eb7078df3a16d666e8f7723f94bb92e00d4b9236/APKBUILD",
+      "recipe_files": [
+        {
+          "name": "APKBUILD",
+          "size": 2520,
+          "sha256": "0c14312c1d5c4a8b7ef74433be9db58517b17eb091bccdf2c8325bc4c9c26480",
+          "git_blob_sha1": "1dc886bc363ca5418211781ef0c946ea805ccfe0",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/eb7078df3a16d666e8f7723f94bb92e00d4b9236/main/ca-certificates/APKBUILD"
+        },
+        {
+          "name": "ca-certificates.post-deinstall",
+          "size": 137,
+          "sha256": "9523860edc396093bd41270c6e33a569a30657e2ffd729829514ee6b6d54d652",
+          "git_blob_sha1": "10d219f03f526641af8a366db975b010b3c260e1",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/eb7078df3a16d666e8f7723f94bb92e00d4b9236/main/ca-certificates/ca-certificates.post-deinstall"
+        },
+        {
+          "name": "ca-certificates.trigger",
+          "size": 67,
+          "sha256": "1bf77c8eae3220b1bd7dd86561d0899315f51d72257c1aeb4066072ed4304fe5",
+          "git_blob_sha1": "0ed2ac4980c97739fb6addfbf41a5700c6d286a1",
+          "url": "https://raw.githubusercontent.com/alpinelinux/aports/eb7078df3a16d666e8f7723f94bb92e00d4b9236/main/ca-certificates/ca-certificates.trigger"
         }
       ],
       "review_required": true,

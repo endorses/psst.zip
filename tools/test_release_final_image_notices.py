@@ -246,6 +246,40 @@ class FinalBackendNotices(unittest.TestCase):
                 committed=committed,
             )
 
+    def test_backend_license_uses_its_own_runtime_source_when_caddy_is_older(self):
+        runtime = read_json(self.files["runtime/runtime-inventory.json"])
+        commit = "d" * 40
+        backend_license = b"Backend compiler original Go license\n"
+        runtime["backend_go_runtime"] = {
+            "go_version": "go1.27.1",
+            "go_source": {
+                "version": "go1.27.1",
+                "commit": commit,
+                "file": "go-" + commit + ".tar.gz",
+            },
+            "notices": {
+                "go-"
+                + commit
+                + ".tar.gz::go-"
+                + commit
+                + "/LICENSE": notices.digest(backend_license)[7:]
+            },
+        }
+        self.pack["bindings"]["backend"]["go_version"] = "go1.27.1"
+        self.files["go/LICENSE"] = backend_license
+        for record in (runtime, {**runtime, "backend_go_runtime": runtime["caddy"]}):
+            self.files["runtime/runtime-inventory.json"] = json_bytes(record)
+            self.pack["overlays"]["backend"]["runtime-inventory.json"] = notices.digest(
+                json_bytes(record)
+            )[7:]
+            if record["backend_go_runtime"]["go_version"] == "go1.27.1":
+                self.verify()
+            else:
+                with self.assertRaisesRegex(
+                    InvalidRelease, "Go notice runtime identity differs"
+                ):
+                    self.verify()
+
     def test_layer_removals_opaque_replacement_and_link_substitution(self):
         base = tar_bytes(
             {"app/licenses/" + name: raw for name, raw in self.files.items()}

@@ -88,7 +88,7 @@ jobs:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          version: v0.37.1
+          version: v0.37.2
       - name: Resolve once and verify immutable index architecture coverage
         id: bases
         env:
@@ -193,6 +193,9 @@ jobs:
       RUNTIME_IMAGE: ${{ needs.resolve-bases.outputs.alpine_image }}
       NODE_IMAGE: ${{ needs.resolve-bases.outputs.node_image }}
       CADDY_IMAGE: ${{ needs.resolve-bases.outputs.caddy_image }}
+      # Replay the signed upstream Caddy binary with its actual Go producer.
+      # This inspection compiler does not build the application or replace GO_IMAGE.
+      CADDY_GO_IMAGE: docker.io/library/golang@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c
       COSIGN_SHA256: ${{ matrix.cosign_sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -205,7 +208,7 @@ jobs:
           path: ${{ runner.temp }}/candidate-inputs
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          version: v0.37.1
+          version: v0.37.2
           driver-opts: image=${{ needs.resolve-bases.outputs.buildkit_image }}
       - name: Build original native pair using the shared immutable bases
         env:
@@ -404,14 +407,16 @@ jobs:
             while IFS= read -r advisory; do
               extras+=(--advisory-id "$advisory")
             done < "$private/compiler-advisories-$component.txt"
+            compiler_image="$GO_IMAGE"
             if [ "$component" = web ]; then
               extras+=(--cosign "$private/tools/cosign")
+              compiler_image="$CADDY_GO_IMAGE"
             fi
             psst_checked "compiler-$component" python3 tools/measure_release_source_scans.py \
               --mode compiler-graph --repository "$GITHUB_REPOSITORY" \
               --version "$CANDIDATE_VERSION" --revision "$SOURCE_COMMIT" \
               --platform "$PLATFORM" --repository-root "$GITHUB_WORKSPACE" \
-              --go-image "$GO_IMAGE" --component "$component" \
+              --go-image "$compiler_image" --component "$component" \
               --runtime-pack "$private/native/pack" --runtime-source-sha256 "$source_sha256" \
               --image-archive "$private/native/export/$component-$ARCH.oci.tar" \
               --tested-config "$config" --output "$private/compiler-$component" "${extras[@]}"
@@ -619,7 +624,7 @@ jobs:
           path: ${{ runner.temp }}/candidate-assembly/upstream
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.8"
+          go-version: "1.27.1"
           cache: false
       - name: Verify exact retained trees and assemble unsigned candidate inputs
         run: |

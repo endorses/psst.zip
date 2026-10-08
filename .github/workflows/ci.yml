@@ -30,7 +30,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.8"
+          go-version: "1.27.1"
           cache: false
 
       - name: Install pinned secret scanner
@@ -95,14 +95,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.scope.outputs.run == 'true'
         with:
-          go-version: "1.26.8"
+          go-version: "1.27.1"
           cache-dependency-path: backend/go.sum
 
       - name: Lint
         if: steps.scope.outputs.run == 'true'
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.13.0
+          version: v2.14.0
           working-directory: backend
 
       - name: Check dependency notices
@@ -143,7 +143,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "22"
+          node-version: "26.11.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -158,7 +158,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.scope.outputs.run == 'true'
         with:
-          go-version: "1.26.8"
+          go-version: "1.27.1"
           cache-dependency-path: backend/go.sum
 
       - name: Type check
@@ -205,6 +205,7 @@ jobs:
   android:
     name: Android and shared module
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -220,7 +221,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "27"
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         if: steps.scope.outputs.run == 'true'
         with:
@@ -231,7 +232,7 @@ jobs:
           cache-provider: basic
       - name: Assemble and test
         if: steps.scope.outputs.run == 'true'
-        run: ./android/gradlew -p android :app:assembleDebug :shared:testDebugUnitTest --no-daemon
+        run: ./android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :shared:testAndroidHostTest --no-daemon
       - name: Verify actual resolved native dependency notices
         if: steps.scope.outputs.run == 'true'
         run: python3 tools/generate_native_notices.py --check
@@ -257,7 +258,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           distribution: temurin
-          java-version: "25"
+          java-version: "27"
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         if: steps.scope.outputs.run == 'true'
         with:

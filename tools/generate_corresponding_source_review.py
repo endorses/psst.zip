@@ -13,6 +13,7 @@ import gzip
 import io
 import os
 from pathlib import Path
+import re
 import tempfile
 
 import browser_preferred_source_relationships as preferred
@@ -175,18 +176,43 @@ def verify_runtime_source_records(
             ),
             "Runtime source/package coverage is missing",
         )
-        go = fields(
-            coverage["go_runtime"],
-            {"version", "commit", "archive_sha256", "executables"},
-            "retained original Go runtime",
-        )
-        matches(go["commit"], COMMIT, "Original Go source revision missing")
-        matches(go["archive_sha256"], DIGEST, "Original Go archive digest missing")
+        go = coverage["go_runtime"]
+        if isinstance(go, dict) and set(go) == {"sources", "executables"}:
+            go_sources = fields(
+                go["sources"], {"backend", "web"}, "original Go sources"
+            )
+        else:
+            fields(
+                go,
+                {"version", "commit", "archive_sha256", "executables"},
+                "retained original Go runtime",
+            )
+            go_sources = {
+                component: {
+                    key: go[key] for key in ("version", "commit", "archive_sha256")
+                }
+                for component in ("backend", "web")
+            }
+        for source in go_sources.values():
+            fields(
+                source,
+                {"version", "commit", "archive_sha256"},
+                "original executable Go source",
+            )
+            matches(source["commit"], COMMIT, "Original Go source revision missing")
+            matches(
+                source["archive_sha256"], DIGEST, "Original Go archive digest missing"
+            )
+            require(
+                isinstance(source["version"], str)
+                and re.fullmatch(r"go[0-9]+\.[0-9]+\.[0-9]+", source["version"]),
+                "Original executable Go version missing",
+            )
         require(
-            isinstance(go["version"], str)
-            and go["version"].startswith("go")
-            and go["executables"]
-            == {component: go["version"] for component in ("backend", "web")}
+            go["executables"]
+            == {
+                component: source["version"] for component, source in go_sources.items()
+            }
             and isinstance(record["caddy_signature_verification"], dict)
             and record["caddy_signature_verification"].get(
                 "legacy_sigstore_signatures_verified"

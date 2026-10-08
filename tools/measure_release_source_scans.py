@@ -32,7 +32,7 @@ from release_artifacts import (
 
 SCANNER_VERSION = "v1.8.0"
 SCANNER_SUM = "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U="
-GO_VERSION = "go1.26.8"
+GO_VERSION = "go1.27.1"
 MAX_RAW = 32 * 1024**2
 SOURCE_LIMIT = 256 * 1024**2
 GO_SCRIPT = r"""set -eu
@@ -404,7 +404,7 @@ def analyze_npm(raw: dict[str, bytes], lock: bytes) -> dict:
     node = raw["node-version.txt"].decode().strip()
     npm = raw["npm-version.txt"].decode().strip()
     require(
-        re.fullmatch(r"v22\.[0-9]+\.[0-9]+", node)
+        re.fullmatch(r"v26\.[0-9]+\.[0-9]+", node)
         and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", npm),
         "Unexpected bundled Node/npm version",
     )
@@ -897,8 +897,15 @@ def compiler_correspondence(
         "Compiler graph execution incomplete",
     )
     actual = read_json(raw["binary-build-info.json"])
+    target_go = expected_build.get("GoVersion")
+    if component == "backend":
+        require(
+            target_go == GO_VERSION, "Backend compiler differs from pinned producer"
+        )
+    else:
+        caddy_sources.go_source_policy(target_go)
     require(
-        actual == expected_build and actual["GoVersion"] == GO_VERSION,
+        actual == expected_build and actual["GoVersion"] == target_go,
         "Executable build metadata does not correspond to graph target",
     )
     settings = {s["Key"]: s["Value"] for s in actual["Settings"]}
@@ -920,7 +927,7 @@ def compiler_correspondence(
         )
     require(
         raw["go-version.txt"].decode().strip()
-        == "go version " + GO_VERSION + " " + platform
+        == "go version " + target_go + " " + platform
         and environment.get("GOTOOLCHAIN") == "local",
         "Compiler toolchain differs from executable",
     )

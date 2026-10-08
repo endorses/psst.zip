@@ -409,6 +409,41 @@ class CorrespondingSource(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "record changed"):
             self.produce()
 
+    def test_distinct_go_runtime_sources_need_exact_coverage_for_each_executable(self):
+        for path in self.runtime_paths.values():
+            record = source.read_json(path.read_bytes())
+            record["coverage"]["go_runtime"] = {
+                "sources": {
+                    "backend": {
+                        "version": "go1.27.1",
+                        "commit": "c" * 40,
+                        "archive_sha256": sha256(b"Backend Go original"),
+                    },
+                    "web": {
+                        "version": "go1.26.8",
+                        "commit": "b" * 40,
+                        "archive_sha256": sha256(b"Caddy Go original"),
+                    },
+                },
+                "executables": {"backend": "go1.27.1", "web": "go1.26.8"},
+            }
+            path.write_bytes(json_bytes(record))
+            self.trusted.add(path.read_bytes())
+        self.produce()
+        path = self.runtime_paths["linux/arm64"]
+        original = path.read_bytes()
+        for alteration in ("missing", "swapped"):
+            record = source.read_json(original)
+            sources = record["coverage"]["go_runtime"]["sources"]
+            if alteration == "missing":
+                del sources["backend"]
+            else:
+                sources["backend"], sources["web"] = sources["web"], sources["backend"]
+            path.write_bytes(json_bytes(record))
+            self.trusted.add(path.read_bytes())
+            with self.subTest(alteration=alteration), self.assertRaises(InvalidRelease):
+                self.produce()
+
 
 if __name__ == "__main__":
     unittest.main()

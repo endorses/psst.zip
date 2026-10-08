@@ -104,8 +104,8 @@ Select an installed simulator name from `xcrun simctl list devices available` if
 
 CI now defines a separate **Native iOS app, extension and XCTest** job on
 `xcode-27`, selecting stable Xcode 27.0 and the installed iOS 27.0 simulator explicitly,
-and using the repository Gradle wrapper with JDK 25. The shared Kotlin 2.3.21
-version lists Xcode 26.0 in its
+and using the repository Gradle wrapper with JDK 27. The shared Kotlin 2.4.20
+version lists Xcode 26.4 in its
 [compatibility table](https://kotlinlang.org/docs/multiplatform/multiplatform-compatibility-guide.html);
 the newer CI pair requires actual native compilation and XCTest verification,
 which remains pending for this change. The chosen Xcode and iOS simulator runtime

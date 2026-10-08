@@ -26,11 +26,11 @@ from release_artifacts import (
 )
 
 BASES = {
-    "golang": "docker.io/library/golang:1.26.8-alpine",
-    "alpine": "docker.io/library/alpine:3.21",
-    "node": "docker.io/library/node:22-alpine",
+    "golang": "docker.io/library/golang:1.27.1-alpine3.24",
+    "alpine": "docker.io/library/alpine:3.24.2",
+    "node": "docker.io/library/node:26.10.0-alpine3.24",
     "caddy": "docker.io/library/caddy:2-alpine",
-    "buildkit": "docker.io/moby/buildkit:buildx-stable-1",
+    "buildkit": "docker.io/moby/buildkit:v0.34.0",
 }
 INDEX_TYPES = {
     "application/vnd.oci.image.index.v1+json",

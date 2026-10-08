@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.skie)
     alias(libs.plugins.cryptography)
 }
@@ -10,7 +10,11 @@ plugins {
 cryptography { configureSwiftLinkerOpts.set(true) }
 
 kotlin {
-    androidTarget {
+    android {
+        namespace = "zip.psst.shared"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        withHostTest {}
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
 
@@ -46,17 +50,5 @@ kotlin {
             implementation(libs.ktor.client.darwin)
             implementation(libs.cryptography.provider.cryptokit)
         }
-    }
-}
-
-android {
-    namespace = "zip.psst.shared"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-
-    defaultConfig { minSdk = libs.versions.android.minSdk.get().toInt() }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
     }
 }
