@@ -2151,6 +2151,40 @@ API projections matched the tracked policy; no application tests or builds were
 repeated for these reversible configuration changes. Remaining provider/package
 and real hosted deployment checks remain pending.
 
+### Release-compatible external gateway verification
+
+- [x] Adapt the existing external-proxy harness to accept an already-loaded,
+      immutable backend/web pair and use both release Compose files. Preserve
+      source mode, share the selected web image across both proxy hops, and keep
+      caller images out of cleanup. Reuse a loaded immutable client image too.
+- [x] Verify the existing proxy and managed certificate-state restore flows with
+      the retained local pair. Check selected image/configuration identities at
+      startup and after restoration/restart; perform no new builds or pulls.
+- [ ] Repeat against the final exact tagged candidate and complete public ACME,
+      anonymous release acquisition and production adoption verification.
+
+On 2026-10-08, the release-mode proxy flow passed in 20.250 seconds: verified TLS,
+isolated ingress, hardening, canonical Origin/authentication/cookies, live SSE,
+public revocation, pause/restart/logout persistence, stopped backend restoration
+into a new volume, and spoofed-IP rate limits with independent client peers.
+The managed certificate flow passed in 16.662 seconds: both gateway state volumes
+were copied through backups into new volumes, original/backup contents and key
+permissions were preserved, and the original CA trust and leaf certificate
+survived restore and restart. Both runs checked the exact selected images and
+matching inner/gateway/trusted-proxy configuration and cleaned their disposable
+containers, networks, volumes and private temporary files.
+
+These runs reused source `4ae5954223e6ec93f191a6578722551f60fdb54f`, with backend
+configuration ID `sha256:70ae03fb2348deafc079ddcd24700c144abc908af360becc92ed100fb83ede69`
+and web configuration ID `sha256:e79a61c39d68234e0be066093fd2262c93b99e27d53f280616b9cadc5cc4821e`.
+No backend/web application or proxy configuration source changed between that
+revision and this checkpoint. The pair remained intact after harness cleanup;
+only the diagnostic tags loaded for these checks were subsequently removed.
+Its original saved archive remains retained. This verifies current release
+Compose/harness behavior, not new hosted provenance or final-candidate approval.
+The invocation is documented in the container release guide. No routine CI job
+or new test suite was added; syntax, formatting and diff checks passed.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only

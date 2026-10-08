@@ -314,6 +314,35 @@ another listener on the same public ports. A different external proxy requires a
 operator-specific reviewed configuration; this overlay is a complete separate
 Caddy TLS gateway, not a universal proxy integration.
 
+Exercise this release configuration with an already-loaded backend/web image pair
+from the same source checkout. Supply full local `sha256:` image IDs or
+`repository@sha256:` digest references; floating tags are rejected. Resolve the
+prepared images and Python helper to local IDs, then run both existing flows:
+
+```sh
+BACKEND_ID=$(docker image inspect --format '{{.Id}}' "$BACKEND_IMAGE")
+WEB_ID=$(docker image inspect --format '{{.Id}}' "$WEB_IMAGE")
+CLIENT_ID=$(docker image inspect --format '{{.Id}}' python:3.13-alpine)
+python3 tools/test_external_proxy.py \
+  --backend-image "$BACKEND_ID" --web-image "$WEB_ID" --client-image "$CLIENT_ID"
+python3 tools/test_external_proxy.py \
+  --backend-image "$BACKEND_ID" --web-image "$WEB_ID" --client-image "$CLIENT_ID" \
+  --certificate-state
+```
+
+Release mode uses `compose.release.yml` and `external-proxy.release.compose.yml`,
+without building or pulling the application pair. Both proxy hops must run the
+selected web image; the bundled inner Caddyfile and mounted proxy configurations
+must match this checkout, including after restore/restart. The disposable fixture
+adds test credentials, isolated addresses and loopback ports. Caller-supplied
+application/helper images remain intact during cleanup. A tagged Python helper
+argument retains the original pull behavior; use its already-loaded immutable ID
+to avoid that pull. The managed certificate flow retains the original CA trust and
+leaf certificate while restoring gateway data/config into new volumes. These
+flows test local configuration and storage behavior; public ACME, anonymous
+release acquisition, native clients and current-candidate release evidence require
+their separate checks. Keep this expensive harness outside routine CI.
+
 ## Preparing the detached manifest and bundle
 
 `tools/release_artifacts.py` builds a deterministic archive from the current Git
