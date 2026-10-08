@@ -1519,6 +1519,43 @@ compiler builds or coverage-only tests were added to the routine suite. The
 updated source-scanner caller was included in those checks after the runtime
 replay API change.
 
+### Native Go source packaging and compiler input capture
+
+- [x] Prepare and independently verify the updated native AMD64 pair from
+      `4ae5954223e6ec93f191a6578722551f60fdb54f`, including complete Go sources,
+      both original executable versions, final notice overlays, OCI exports,
+      actual image smoke checks and the existing browser input replay.
+- [x] Retain the installed Svelte compiler and preprocessor inputs in the
+      browser builder capture: 235 Svelte files and all 21 plugin JavaScript
+      files. Require the reviewed package identities and entrypoints and reuse
+      the existing npm archive integrity checks.
+- [x] Add one small regression for omitted or substituted compiler/preprocessor
+      bytes. Use seven representative files in fixtures; all 34 affected browser
+      and native-preparation checks passed in 1.2 seconds, with one opt-in Docker
+      case skipped. The actual native Docker check above ran separately.
+- [ ] Verify the complete new compiler/plugin capture against the actual builder
+      and retained locked npm archives.
+- [ ] Finish preferred-source/generator relationships and the native ARM64
+      preparation before emitting the complete corresponding-source gate.
+
+The AMD64 preparation took 348.6 seconds. Its 190,781,748-byte runtime source
+asset has SHA256
+`cecccf06bc91a10a3377ddc966d4f5306db0312935fdd263e698101d2340aa53`.
+The independently checked final configurations are
+`72268e1334d2eb6aa2e9580aca617072936b86c048d16914d9b801e19f497688`
+(backend) and
+`a348f835af1e0009bda5b8252096b35c13bd006149548b4fced9863f0dd79ce3`
+(web). Private schema-2 artifact and replay receipts are retained. Both executable
+Go versions are 1.26.8 and match the retained original. This establishes the
+runtime packaging check for that exact AMD64 source, not full application-source
+completeness, ARM64 validation or publication approval.
+
+The first attempt stopped before creating output because a prior temporary
+source-helper image was absent. Recreating the helper and restoring the saved
+application images reused completed builds and dependency originals. No image
+was published or deployed. The compiler capture is a subsequent implementation;
+the earlier AMD64 receipt does not validate its additional inputs.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only

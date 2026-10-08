@@ -217,8 +217,22 @@ Independent runtime replay checks the archived policy against the trusted select
 source, the full original archive and VERSION, and both final executable versions.
 These Go sources are separately pinned; Caddy's signatures do not authenticate
 the Go archive. The existing AMD64 executable pair was checked against this
-original in three seconds. New final runtime packs, both architecture executions
-and hosted authentication remain pending.
+original in three seconds. An updated final AMD64 pair from
+`4ae5954223e6ec93f191a6578722551f60fdb54f` passed actual image smoke checks and
+independent runtime/browser replay in 348.6 seconds. Its runtime offering retains
+the complete Go tree and both final notice overlays. ARM64 execution, full
+application-source completeness and hosted authentication remain pending.
+
+The browser builder capture also retains the reviewed installed Svelte 5.57.1
+compiler inputs and vite-plugin-svelte 5.1.1 JavaScript sources. Its finite catalog
+includes the 227 compiler JavaScript files, six external relative inputs, the
+CommonJS compiler entrypoints and all 21 plugin JavaScript files. The capture and
+replay require the package identities and entrypoints, bound each recipe to 512
+members, and reuse locked npm integrity/member checks. The ESM compiler resolves
+to `src/compiler/index.js`; retaining the CommonJS bundle does not establish that
+it executed. Retained helpers likewise do not imply every helper executed or that
+outputs reproduce. The prior AMD64 receipt predates this additional capture; its
+actual builder verification remains pending.
 
 ### Native image scanner measurements
 

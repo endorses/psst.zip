@@ -84,8 +84,28 @@ class NativeBrowser(unittest.TestCase):
         )
         self.local.write(self.web, npm_name, npm)
         catalog = json.loads((self.web / native.RECIPE_CATALOG).read_bytes())
-        for recipe in (catalog["vite"], catalog["kit"], catalog["adapter_static"]):
-            self.add_recipe_package(recipe)
+        # Only representative compiler/preprocessor inputs are needed to test
+        # the integrity boundary; avoid hundreds of files in every fixture.
+        catalog["svelte_compiler"]["members"] = [
+            "src/compiler/index.js",
+            "src/compiler/preprocess/index.js",
+            "compiler/index.js",
+            "compiler/package.json",
+        ]
+        catalog["svelte_plugin"]["members"] = [
+            "src/index.js",
+            "src/preprocess.js",
+            "src/utils/compile.js",
+        ]
+        self.local.write(self.web, native.RECIPE_CATALOG, catalog)
+        for key in (
+            "vite",
+            "kit",
+            "adapter_static",
+            "svelte_compiler",
+            "svelte_plugin",
+        ):
+            self.add_recipe_package(catalog[key])
         self.git("init", "--quiet")
         self.git(
             "add",
@@ -348,6 +368,34 @@ class NativeBrowser(unittest.TestCase):
         self.save_oci()
         with self.assertRaisesRegex(InvalidRelease, "exact Git blob"):
             self.replay()
+
+    def test_compiler_and_preprocessor_inputs_reject_omission_and_substitution(self):
+        result = self.replay()["source_associations"]["integrity_bound_recipe_files"]
+        for path in (
+            "node_modules/svelte/src/compiler/preprocess/index.js",
+            "node_modules/@sveltejs/vite-plugin-svelte/src/preprocess.js",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(path, result)
+                self.save_pack(omit=path)
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "^Browser inventory: Input must be a regular local file$",
+                ):
+                    self.replay()
+                original = (self.web / path).read_bytes()
+                try:
+                    self.local.write(
+                        self.web, path, b"substituted compiler/preprocessor\n"
+                    )
+                    self.save_pack()
+                    with self.assertRaisesRegex(
+                        InvalidRelease, "integrity-bound archive member"
+                    ):
+                        self.replay()
+                finally:
+                    self.local.write(self.web, path, original)
+                    self.save_pack()
 
     def test_static_adapter_generator_is_npm_bound_and_fallback_is_not_copied(self):
         result = self.replay()["source_associations"]

@@ -111,6 +111,8 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
             "vite",
             "kit",
             "adapter_static",
+            "svelte_compiler",
+            "svelte_plugin",
             "source_reproduction_verified",
             "browser_module_closure_verified",
             "distribution_authorized",
@@ -146,7 +148,35 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
         == {"lock_path", "name", "version", "members", "preferred_source", "fallback"},
         "Unexpected browser recipe fields",
     )
-    for recipe in (vite, kit, adapter):
+    compiler, plugin = catalog["svelte_compiler"], catalog["svelte_plugin"]
+    for recipe, name, version, entrypoints in (
+        (
+            compiler,
+            "svelte",
+            "5.57.1",
+            {
+                "src/compiler/index.js",
+                "src/compiler/preprocess/index.js",
+                "compiler/index.js",
+                "compiler/package.json",
+            },
+        ),
+        (
+            plugin,
+            "@sveltejs/vite-plugin-svelte",
+            "5.1.1",
+            {"src/index.js", "src/preprocess.js", "src/utils/compile.js"},
+        ),
+    ):
+        require(
+            set(recipe) == {"lock_path", "name", "version", "members"}
+            and recipe["name"] == name
+            and recipe["version"] == version
+            and isinstance(recipe["members"], list)
+            and entrypoints.issubset(recipe["members"]),
+            "Unreviewed Svelte compiler/preprocessor recipe",
+        )
+    for recipe in (vite, kit, adapter, compiler, plugin):
         location = browser.safe_path(recipe["lock_path"])
         require(
             location == "node_modules/" + recipe["name"],
@@ -154,7 +184,7 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
         )
         require(
             isinstance(recipe["members"], list)
-            and 0 < len(recipe["members"]) <= 64
+            and 0 < len(recipe["members"]) <= 512
             and len(set(recipe["members"])) == len(recipe["members"]),
             "Invalid generator members",
         )
@@ -254,7 +284,7 @@ def recipe_plan(folder: Path, inventory: dict) -> dict:
             },
         )
     virtual, generated = [], []
-    needed = {"adapter_static"}
+    needed = {"adapter_static", "svelte_compiler", "svelte_plugin"}
     for row in inventory["modules"] + inventory["excluded_modules"]:
         if row["kind"] == "virtual":
             match = candidates.get(row["id"])

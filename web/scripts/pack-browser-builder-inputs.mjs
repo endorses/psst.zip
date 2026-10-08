@@ -79,7 +79,35 @@ check(
     adapter.preferred_source.commit === "39e8e1fbd4feba7f22dd46bfdf7335362c38de16" &&
     adapter.preferred_source.directory === "packages/adapter-static",
 );
-const needed = new Set(["adapter_static"]);
+for (const [key, name, version, entrypoints] of [
+  [
+    "svelte_compiler",
+    "svelte",
+    "5.57.1",
+    [
+      "src/compiler/index.js",
+      "src/compiler/preprocess/index.js",
+      "compiler/index.js",
+      "compiler/package.json",
+    ],
+  ],
+  [
+    "svelte_plugin",
+    "@sveltejs/vite-plugin-svelte",
+    "5.1.1",
+    ["src/index.js", "src/preprocess.js", "src/utils/compile.js"],
+  ],
+]) {
+  const recipe = recipes[key];
+  check(
+    Object.keys(recipe).sort().join(",") === "lock_path,members,name,version" &&
+      recipe.name === name &&
+      recipe.version === version &&
+      Array.isArray(recipe.members) &&
+      entrypoints.every((member) => recipe.members.includes(member)),
+  );
+}
+const needed = new Set(["adapter_static", "svelte_compiler", "svelte_plugin"]);
 for (const row of [...inventory.modules, ...inventory.excluded_modules]) {
   if (row.kind === "virtual" && virtualCandidates.has(row.id)) needed.add("vite");
   if (row.kind === "generated-application") {
@@ -99,7 +127,12 @@ for (const key of needed) {
   const recipe = recipes[key];
   const location = safe(recipe.lock_path);
   check(location === "node_modules/" + recipe.name);
-  check(Array.isArray(recipe.members) && recipe.members.length > 0 && recipe.members.length <= 64);
+  check(
+    Array.isArray(recipe.members) &&
+      recipe.members.length > 0 &&
+      recipe.members.length <= 512 &&
+      new Set(recipe.members).size === recipe.members.length,
+  );
   for (const member of [...recipe.members, "package.json"]) {
     safe(member);
     check(!member.split("/").some((part) => part.startsWith(".")));
