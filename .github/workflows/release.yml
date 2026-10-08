@@ -1055,6 +1055,7 @@ jobs:
           persist-credentials: false
       - name: Check explicit private retention configuration before downloading payloads
         env:
+          PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
           PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
           PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}
           PSST_PUBLICATION_S3_BUCKET: ${{ vars.PSST_PUBLICATION_S3_BUCKET }}
@@ -1070,8 +1071,10 @@ jobs:
           import os, sys
           sys.path.insert(0, 'tools')
           from publication_retention import validate_configuration
+          from publish_verified_release import package_initialization_enabled
           from release_artifacts import require
           validate_configuration(os.environ)
+          package_initialization_enabled(os.environ)
           require(bool(os.environ.get('PSST_IMMUTABLE_INSPECTION_TOKEN')), 'Missing immutable-release inspection credential')
           PY
       - name: Require trusted hosted transfer and attestation tools
@@ -1121,6 +1124,7 @@ jobs:
       - name: Publish after authenticating gates and persisting private recovery state
         id: publication
         env:
+          PSST_INITIALIZE_GHCR_PACKAGES: ${{ vars.PSST_INITIALIZE_GHCR_PACKAGES }}
           GH_TOKEN: ${{ github.token }}
           PSST_IMMUTABLE_INSPECTION_TOKEN: ${{ secrets.PSST_IMMUTABLE_INSPECTION_TOKEN }}
           PSST_PUBLICATION_S3_ENDPOINT: ${{ vars.PSST_PUBLICATION_S3_ENDPOINT }}

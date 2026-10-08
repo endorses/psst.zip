@@ -272,6 +272,15 @@ class PublicationCommand(unittest.TestCase):
                     constructor.assert_not_called()
                     self.assertFalse(list(self.state.glob("publication-inputs-*")))
                     self.assertEqual(self.api.calls, [])
+        for value in (True, None, "TRUE", "yes"):
+            with self.subTest(initialization=value):
+                with self.assertRaisesRegex(InvalidRelease, "initialization setting"):
+                    self.publish(
+                        environment=self.environment
+                        | {"PSST_INITIALIZE_GHCR_PACKAGES": value}
+                    )
+                self.assertFalse(list(self.state.glob("publication-inputs-*")))
+                self.assertEqual(self.api.calls, [])
         with patch.object(
             driver, "GhEvidenceVerifier", return_value=self.verifier
         ) as constructor:
@@ -467,6 +476,28 @@ class PublicationCommand(unittest.TestCase):
         self.assertEqual(self.api.assets, {})
         self.assertFalse(self.adapter.tags_created)
         self.assertFalse((self.state / "v1.2.3.jsonl").exists())
+
+    def test_explicit_first_package_setup_reuses_the_reviewed_pair_in_one_run(self):
+        request = self.api.request
+
+        def first_packages(method, url, **kwargs):
+            if "/packages/container/psst-zip-" in url and not self.api.registry:
+                return self.api.response({"message": "Not Found"}, 404)
+            return request(method, url, **kwargs)
+
+        with patch.object(self.api, "request", side_effect=first_packages):
+            result = self.publish(
+                environment=self.environment | {"PSST_INITIALIZE_GHCR_PACKAGES": "true"}
+            )
+        self.assertTrue(result["immutable"])
+        self.assertEqual(len(self.api.releases), 1)
+        self.assertEqual(len(self.api.registry), 8)  # Six digests plus version tags.
+        self.assertTrue(self.adapter.public_verified)
+        intents = [
+            row["operation"] for row in self.events() if row["phase"] == "intent"
+        ]
+        self.assertEqual(intents.count("reserve-draft"), 1)
+        self.assertEqual(sum(name.startswith("push-") for name in intents), 6)
 
     def test_default_official_signer_checks_capability_before_reservation(self):
         constructor_calls = []

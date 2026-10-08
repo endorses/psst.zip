@@ -2185,6 +2185,58 @@ Compose/harness behavior, not new hosted provenance or final-candidate approval.
 The invocation is documented in the container release guide. No routine CI job
 or new test suite was added; syntax, formatting and diff checks passed.
 
+### First-package publication ordering
+
+- [x] Remove the first-release package-creation circular dependency with an
+      explicit protected-environment initialization option in the existing
+      publication run. Preserve strict existing-public-package behavior by default.
+- [x] Admit only paired missing package lookups for initialization; reject mixed
+      state, existing private/unlinked packages and permission/server failures.
+      Reuse the exact reviewed native archives, held lease and retained journal.
+- [x] Require independent public package readback after the complete digest pair
+      push and before anonymous pulls, registry version tags or ready publication.
+      Bound operator visibility setup to ten minutes without retrying writes,
+      automatically resuming a journal or adopting prior seeded images.
+- [x] Exercise the actual driver-to-transport initialization path and failure
+      boundaries with tiny fake API/clock fixtures; validate malformed settings
+      before snapshots and record the operator setup instructions.
+- [ ] Verify first-package creation, repository linkage, operator visibility
+      changes and anonymous retrieval on the actual GHCR service.
+
+The previous driver required existing public packages before draft reservation,
+while its only image transfer required that draft. Separate seeding would also
+conflict with deliberate existing-child/index refusal. The opt-in
+`PSST_INITIALIZE_GHCR_PACKAGES=true` path instead operates within one authenticated
+tag attempt: verify every existing gate and retention prerequisite, admit both
+missing package lookups, reserve the draft, push the exact reviewed digests, then
+wait for the owner to make the new linked packages public. It changes no package
+visibility itself and creates no registry release tags during the wait. Existing
+public packages proceed without waiting; preexisting private packages remain a
+refusal. Failure preserves the original draft, inputs and journal for explicit
+reconciliation. No namespace marker, extra build, seeding receipt or resume mode
+was added.
+
+Twenty transport checks passed in 2.014 seconds and fourteen publication driver
+checks in 1.564 seconds. Three new transport cases cover strict/default opt-in,
+created-private-to-public transition, identity/API failures and deadline expiry
+using fake time; one driver case covers the same-run complete release path.
+The existing early-refusal case also rejects malformed initialization settings.
+No real sleeps, service calls or application builds occur in these fixtures.
+Workflow YAML, all 35 shell steps and seven embedded Python blocks parsed;
+formatting and diff checks passed. Actual initialization and publication remain
+disabled and unrun.
+
+The reviewed deployment checkpoint `bcc4871a4b8d8f17e4f06db8bbb4301cc2b40aad` was
+pushed to `container-release-deployment` and opened as
+[draft PR #1](https://github.com/endorses/psst.zip/pull/1).
+[CI run 37721962715](https://github.com/endorses/psst.zip/actions/runs/37721962715)
+passed all five jobs: repository security 1m32s (release regression step 38s),
+Android/shared 1m37s, backend 5m23s (race tests 4m54s), web 8m02s (browser tests
+5m59s), and iOS 12m32s (build 7m37s, XCTest 2m33s). This proves that checkpoint,
+not the subsequent package-ordering correction; its exact hosted verification
+remains pending. Main, release tags, enablement and VPS state were unchanged by
+the draft PR.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only

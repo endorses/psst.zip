@@ -581,11 +581,12 @@ and attempt, so signed evidence from an earlier attempt cannot authorize a new
 publication. Invalid identifiers fail before snapshots or remote API calls.
 It derives the four tested configurations from the signed
 native smoke report and validates all four actual OCI exports before publication
-transport operations. The production adapters check the exact current workflow and
-existing public, repository-linked GHCR packages before draft reservation. An
-absent/private package requires separate approved setup; this command cannot
-bootstrap a package or change its visibility, and stops before a release version
-is reserved.
+transport operations. The production adapters check the exact current workflow and,
+by default, existing public, repository-linked GHCR packages before draft
+reservation. First-package initialization requires the explicit protected
+environment option described below. An existing private or unlinked package
+still stops the command before a release version is reserved; the command never
+changes package visibility.
 
 Under the held repository lease, it pushes the reviewed children and indexes,
 checks registry contents and actual anonymous pulls, signs and independently
@@ -639,6 +640,41 @@ The initial external adapter uses installed AWS CLI v2 and explicit configuratio
 | Secrets `PSST_PUBLICATION_S3_ACCESS_KEY_ID`, `PSST_PUBLICATION_S3_SECRET_ACCESS_KEY`                 | Separate publication-storage credential                                              |
 | Optional secret `PSST_PUBLICATION_S3_SESSION_TOKEN`                                                  | Temporary credential session token                                                   |
 | Secret `PSST_IMMUTABLE_INSPECTION_TOKEN`                                                             | Separate repository Administration-read credential; not the package publishing token |
+| Optional variable `PSST_INITIALIZE_GHCR_PACKAGES=true`                                               | Permit creation of both missing packages from the exact reviewed images in this run  |
+
+### First GHCR package creation
+
+GitHub creates a container package when an image is first published, with private
+visibility by default. Publishing through the repository's `GITHUB_TOKEN` links
+it to that repository. Making it public is a separate package-settings action.
+[GitHub container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+For the first release only, set `PSST_INITIALIZE_GHCR_PACKAGES=true` in the protected
+`container-release` environment and be available during the publishing job.
+The default is strict existing-public-package verification. Initialization
+accepts both package lookups missing; it rejects mixed missing/existing state,
+existing private/unlinked packages, and permission/server failures. It does not
+bypass the eight authenticated gates, exact run/attempt checks, final reviewer
+approval, private input retention or mutation journaling.
+
+In the same held run, the command reserves the draft and pushes the four reviewed
+children and two indexes by digest. It reuses the prepared archives without
+building images or seeding dummy content. It then prints the package settings
+URLs and waits at most ten minutes for the owner to make both newly created,
+repository-linked packages public. No registry version/convenience tags or public
+release are created during this wait. Incorrect package identity/linkage and API
+errors fail immediately; only correctly linked private packages may wait.
+Independent public metadata checks and the normal anonymous digest pulls must
+pass before the existing signing, asset and ready-release checks continue.
+
+Remove the initialization variable after setup. A timeout or any other failure
+preserves the draft, exact stored inputs and journal for explicit reconciliation;
+it does not retry writes, adopt prior seeded images, resume a previous journal,
+delete the draft or overwrite a version. The normal new-reviewed-version recovery
+policy remains unchanged. This path still needs live GHCR validation before the
+first release is treated as ready.
+
+### Storage permissions and retention
 
 The storage credential needs `s3:PutObject` and `s3:GetObject` restricted to
 `publication/endorses/psst.zip/*`, plus bucket-level

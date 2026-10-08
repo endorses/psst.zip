@@ -81,7 +81,17 @@ WORKFLOW_ENV = {
     "PSST_PUBLICATION_S3_ACCESS_KEY_ID",
     "PSST_PUBLICATION_S3_SECRET_ACCESS_KEY",
     "PSST_PUBLICATION_S3_SESSION_TOKEN",
+    "PSST_INITIALIZE_GHCR_PACKAGES",
 }
+
+
+def package_initialization_enabled(environment: dict) -> bool:
+    value = environment.get("PSST_INITIALIZE_GHCR_PACKAGES", "")
+    require(
+        isinstance(value, str) and value in {"", "false", "true"},
+        "Invalid first-package initialization setting",
+    )
+    return value == "true"
 
 
 @dataclass
@@ -243,6 +253,7 @@ def publish(
         and environment["PSST_IMMUTABLE_INSPECTION_TOKEN"],
         "Explicit workflow and immutable-policy inspection credentials required",
     )
+    initialize_packages = package_initialization_enabled(environment)
     fields(reports, set(GATES), "authenticated pre-publication gate reports")
     fields(indexes, {"backend", "web"}, "both native indexes")
     fields(archives, TARGETS, "all four staged final OCI archives")
@@ -380,9 +391,10 @@ def publish(
             inspection_token=environment["PSST_IMMUTABLE_INSPECTION_TOKEN"],
             actor=environment.get("GITHUB_ACTOR", ""),
             journal_checkpoint=retention.checkpoint,
+            initialize_packages=initialize_packages,
         )
         adapter.verify_workflow()
-        adapter.package_visibility()
+        adapter.package_preflight()
         exclusive_report(private / "snapshot-binding.json", plan.record())
         inventory["snapshot-binding.json"] = {
             "sha256": source_digest(private / "snapshot-binding.json"),
@@ -400,6 +412,7 @@ def publish(
         retention.persist_inputs(private, inventory)
         with reserve_draft(plan, adapter) as reservation:
             adapter.push_images(archive_paths, index_paths, tested_configs=configs)
+            adapter.wait_for_public_packages()
             registry = adapter.inspect_pair()
             anonymous = adapter.anonymous_pull()
             provenance = None

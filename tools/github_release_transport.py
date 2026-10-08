@@ -90,6 +90,7 @@ class HTTPS:
         body: bytes | Path | None = None,
         limit: int = MAX_JSON,
         destination: Path | None = None,
+        timeout: float | None = None,
     ) -> Response:
         parsed = urlsplit(url)
         require(
@@ -103,9 +104,14 @@ class HTTPS:
         require(
             method in {"GET", "HEAD", "POST", "PUT", "PATCH"}, "Unsupported HTTP method"
         )
-        connection = http.client.HTTPSConnection(parsed.hostname, timeout=30)
-        started = time.monotonic()
         deadline = 1200 if isinstance(body, Path) or destination else 180
+        if timeout is not None:
+            require(timeout > 0, "HTTPS request deadline expired")
+            deadline = min(deadline, timeout)
+        connection = http.client.HTTPSConnection(
+            parsed.hostname, timeout=min(30, deadline)
+        )
+        started = time.monotonic()
 
         def abort():
             if connection.sock is not None:
@@ -376,6 +382,9 @@ class GitHubReleaseTransport:
         http: HTTPS | None = None,
         execute: Callable = command,
         journal_checkpoint: Callable | None = None,
+        initialize_packages: bool = False,
+        clock: Callable = time.monotonic,
+        sleeper: Callable = time.sleep,
     ):
         validate_plan(plan)
         validate_manifest(plan.manifest, plan.binding.repository)
@@ -402,6 +411,9 @@ class GitHubReleaseTransport:
             is not None,
             "Invalid registry actor",
         )
+        require(
+            type(initialize_packages) is bool, "Package initialization must be explicit"
+        )
         self.plan, self.context, self.state_dir = plan, context, state_dir
         self.token, self.inspection_token, self.actor = (
             github_token,
@@ -410,6 +422,9 @@ class GitHubReleaseTransport:
         )
         self.http, self.execute = http or HTTPS(), execute
         self.journal_checkpoint = journal_checkpoint
+        self.initialize_packages = initialize_packages
+        self.clock, self.sleeper = clock, sleeper
+        self.package_setup_needed = False
         self.base = "https://api.github.com/repos/" + plan.binding.repository
         self.held = False
         self.journal = None
@@ -430,6 +445,8 @@ class GitHubReleaseTransport:
         body: dict | None = None,
         inspection: bool = False,
         expected: int = 200,
+        allow_missing: bool = False,
+        timeout: float | None = None,
     ) -> object:
         token = (
             self.inspection_token
@@ -447,7 +464,10 @@ class GitHubReleaseTransport:
                 "User-Agent": "psst.zip-release",
             },
             body=json_bytes(body) if body is not None else None,
+            **({"timeout": timeout} if timeout is not None else {}),
         )
+        if allow_missing and method == "GET" and response.status == 404:
+            return None
         require(
             response.status == expected,
             f"GitHub API failed (HTTP {response.status}); state is not absence",
@@ -967,25 +987,49 @@ class GitHubReleaseTransport:
             "subjects": records,
         }
 
-    def package_visibility(self) -> dict:
+    def package_records(
+        self,
+        *,
+        allow_missing: bool = False,
+        allow_private: bool = False,
+        deadline: float | None = None,
+    ) -> tuple[dict, dict]:
+        def remaining():
+            if deadline is None:
+                return None
+            value = deadline - self.clock()
+            require(value > 0, "Package setup timed out; preserve draft and journal")
+            return value
+
         owner = self.plan.binding.repository.split("/")[0]
-        owner_record = self.github("GET", "users/" + owner)
+        owner_record = self.github("GET", "users/" + owner, timeout=remaining())
         require(
             isinstance(owner_record, dict)
-            and owner_record.get("type") in {"User", "Organization"},
+            and owner_record.get("type") in {"User", "Organization"}
+            and owner_record.get("login") == owner,
             "Unknown package owner",
         )
         prefix = "orgs" if owner_record["type"] == "Organization" else "users"
         records = {}
         for component in ("backend", "web"):
             value = self.github(
-                "GET", f"{prefix}/{owner}/packages/container/psst-zip-{component}"
+                "GET",
+                f"{prefix}/{owner}/packages/container/psst-zip-{component}",
+                allow_missing=allow_missing,
+                timeout=remaining(),
             )
+            if value is None and allow_missing:
+                records[component] = None
+                continue
             require(
                 isinstance(value, dict)
-                and value.get("visibility") == "public"
+                and value.get("visibility")
+                in ({"public", "private"} if allow_private else {"public"})
                 and value.get("package_type") == "container"
                 and value.get("name") == "psst-zip-" + component
+                and isinstance(value.get("owner"), dict)
+                and value.get("owner", {}).get("login") == owner
+                and isinstance(value.get("repository"), dict)
                 and value.get("repository", {}).get("full_name")
                 == self.plan.binding.repository,
                 "Package is not public and linked to the selected repository",
@@ -994,7 +1038,61 @@ class GitHubReleaseTransport:
                 "visibility": value["visibility"],
                 "repository": value["repository"]["full_name"],
             }
+        urls = {
+            component: f"https://github.com/{prefix}/{owner}/packages/container/psst-zip-{component}/settings"
+            for component in ("backend", "web")
+        }
+        return records, urls
+
+    def package_visibility(self) -> dict:
+        records, _ = self.package_records()
         return records
+
+    def package_preflight(self) -> dict:
+        require(
+            not self.images_pushed, "Package preflight must precede registry writes"
+        )
+        records, urls = self.package_records(allow_missing=self.initialize_packages)
+        absent = [component for component, value in records.items() if value is None]
+        require(
+            not absent or len(absent) == 2,
+            "Mixed existing/missing packages require separate operator setup",
+        )
+        self.package_setup_needed = bool(absent)
+        return {
+            "initialization_required": self.package_setup_needed,
+            "packages": records,
+            "setup_urls": urls if self.package_setup_needed else {},
+        }
+
+    def wait_for_public_packages(self) -> dict:
+        self.require_lease()
+        require(
+            self.images_pushed, "Package setup requires the complete pushed image pair"
+        )
+        if not self.package_setup_needed:
+            return self.package_visibility()
+        deadline = self.clock() + 600
+        records, urls = self.package_records(allow_private=True, deadline=deadline)
+        print(
+            "Make both newly created linked container packages public while this run waits. "
+            "Do not change image bytes or tags. Settings: " + " ".join(urls.values()),
+            flush=True,
+        )
+        while True:
+            require(
+                self.clock() < deadline,
+                "Package setup timed out; preserve draft and journal",
+            )
+            if all(value["visibility"] == "public" for value in records.values()):
+                self.package_setup_needed = False
+                return records
+            remaining = deadline - self.clock()
+            require(
+                remaining > 0, "Package setup timed out; preserve draft and journal"
+            )
+            self.sleeper(min(5, remaining))
+            records, _ = self.package_records(allow_private=True, deadline=deadline)
 
     def upload_assets(self, reservation: dict, files: dict[str, Path]) -> None:
         self.require_lease()
