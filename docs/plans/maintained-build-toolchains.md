@@ -94,3 +94,25 @@ Hosted race checking and the complete workflow on the updated commit remain
 pending. Existing application tests are retained; Android's previously unbounded
 job now has a 15-minute limit, and the native iOS/readiness/XCTest limits remain
 unchanged.
+
+Hosted run
+[`37733269430`](https://github.com/endorses/psst.zip/actions/runs/37733269430)
+passed the updated Android/shared and web jobs. Both checks have no annotations;
+the Gradle 9.1 out-of-date notice is gone. Native compilation was still running
+at the checkpoint, so final native verification remains unchecked.
+
+The security job exposed an overlooked consumer fixture that still reported Go
+1.26.8 to the now-pinned Go 1.27.1 dependency collector. The fixture now uses the
+collector's selected version while retaining wrong-version and wrong-platform
+rejection checks. The complete existing release regression suite passed locally:
+369 cases in 23.666 seconds. No tests or longer timeouts were added.
+
+The hosted backend job separately failed
+`TestColdRestoreRunsRealServerStartupAndHTTPPolicies` because its first login
+request exceeded the existing three-second HTTP deadline. The same focused test
+passed locally with Go 1.27.1 and race checking in 4.127 seconds:
+`go test -race -count=1 -timeout 90s -run '^TestColdRestoreRunsRealServerStartupAndHTTPPolicies$' ./cmd/server`
+from `backend/`. This does not establish the hosted cause or make the failing run
+successful. Production authentication and test deadlines were left unchanged.
+Integration and release preparation are paused at this separate validation
+failure under the operator's unexpected-issues instruction.
