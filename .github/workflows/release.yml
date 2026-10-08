@@ -49,6 +49,21 @@ jobs:
             python3 tools/prepare_release_candidate.py validate-tag \
               --root . --ref "$GITHUB_REF" --event-sha "$GITHUB_SHA" \
               --github-output "$GITHUB_OUTPUT"
+            # Validate the same push identity the publication signer requires,
+            # before source CI, native preparation and protected reviews.
+            python3 - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from github_release_attestor import limited_file, validate_tag_push_event
+          from release_artifacts import read_json
+          validate_tag_push_event(
+              read_json(limited_file(Path(os.environ['GITHUB_EVENT_PATH']), 2 * 1024**2)),
+              repository=os.environ['GITHUB_REPOSITORY'],
+              version=os.environ['GITHUB_REF'].removeprefix('refs/tags/'),
+              commit=os.environ['GITHUB_SHA'],
+          )
+          PY
             printf '%s\n' 'source_kind=version-tag' >> "$GITHUB_OUTPUT"
           else
             printf '%s\n' 'Unsupported candidate trigger' >&2

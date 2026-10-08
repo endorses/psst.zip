@@ -44,6 +44,7 @@ from publish_container_release import (
     validate_plan,
 )
 from release_artifacts import (
+    COMMIT,
     DIGEST,
     InvalidRelease,
     json_bytes,
@@ -245,6 +246,26 @@ def hosted_node() -> tuple[Path, str]:
     raise InvalidRelease("Official hosted runner Node24 runtime is unavailable")
 
 
+def validate_tag_push_event(
+    record: object, *, repository: str, version: str, commit: str
+) -> None:
+    """Bind tag pushes to their expanded commit, including annotated tags."""
+    # GitHub's push schema specifies head_commit as the commit pointed to by
+    # after, even when after identifies an annotated tag object.
+    require(
+        isinstance(record, dict)
+        and isinstance(record.get("repository"), dict)
+        and record["repository"].get("visibility") == "public"
+        and record["repository"].get("full_name") == repository
+        and record.get("ref") == "refs/tags/" + version
+        and isinstance(record.get("after"), str)
+        and COMMIT.fullmatch(record["after"]) is not None
+        and isinstance(record.get("head_commit"), dict)
+        and record["head_commit"].get("id") == commit,
+        "Signing requires the exact public repository push event",
+    )
+
+
 def run_action(node: Path, action: Path, environment: dict[str, str]) -> None:
     """Drain but never log stdout/stderr, including embedded Actions commands."""
     process = subprocess.Popen(
@@ -423,6 +444,7 @@ class WorkflowAttestor:
         private_output: Path,
         private_action_cache: Path | None = None,
     ):
+        print("Attestor initialization: oidc-context", flush=True)
         WorkflowContext.from_environment(SimpleNamespace(binding=binding), environment)
         require(
             isinstance(token, str)
@@ -482,20 +504,19 @@ class WorkflowAttestor:
             }
         )
         self.token = token
+        print("Attestor initialization: push-event", flush=True)
         event = limited_file(
             Path(environment.get("GITHUB_EVENT_PATH", "")), 2 * 1024**2
         )
         record = read_json(event)
-        require(
-            isinstance(record, dict)
-            and isinstance(record.get("repository"), dict)
-            and record["repository"].get("visibility") == "public"
-            and record["repository"].get("full_name") == binding.repository
-            and record.get("after") == binding.commit
-            and record.get("ref") == "refs/tags/" + binding.version,
-            "Signing requires the exact public repository push event",
+        validate_tag_push_event(
+            record,
+            repository=binding.repository,
+            version=binding.version,
+            commit=binding.commit,
         )
         self.event = event
+        print("Attestor initialization: hosted-runtime", flush=True)
         self.node, self.node_version = hosted_node()
         self.node_digest = source_digest(self.node)
         action_cache = private_action_cache or self.root / "official-attestor"
@@ -504,6 +525,7 @@ class WorkflowAttestor:
             and not any(c in str(action_cache) for c in "*?[]\r\n\0"),
             "Official action cache must be an absolute literal path",
         )
+        print("Attestor initialization: pinned-action", flush=True)
         self.action = checked_action(action_cache)
 
     def _attest(self, name: str, digest: str, path: Path | None = None) -> str:

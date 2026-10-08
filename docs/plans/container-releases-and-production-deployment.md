@@ -3224,11 +3224,54 @@ archives were not downloaded for this review.
 - [x] Inspect `candidate-distribution-presentation-37815441912-1` against the
       actual retained source and recovery reports. Source, version, run/attempt,
       source-report hash, all fourteen subjects and complete four-image/six-archive
-      coverage match the committed reviewer policy. Distribution job
-      `113453236106` is waiting for the configured reviewer `endorses`.
-- [ ] Obtain the configured human distribution and publication approvals for this
-      exact source and attempt. Do not reuse earlier versions' approval comments.
-- [ ] Observe publisher preparation, publish and independently verify the immutable
+      coverage match the committed reviewer policy.
+- [x] Obtain the configured human distribution and publication approvals for this
+      exact source and attempt. Distribution job `113453236106` authenticated,
+      signed and independently verified the approval by `endorses`; the gate's
+      SHA256 is `e09bdc69f3f4f3ff48a9741adb9282f3dcb0291997909328d9c9eca789c23d21`.
+      The retained evidence names this run, attempt and all fourteen subjects.
+      The operator separately approved publisher job `113498680224`. These
+      approvals do not authorize a future changed source or version.
+- [x] Observe publisher preparation with the new safe diagnostics. All eight signed
+      gates, native smoke and final OCI checks passed. Attestor initialization then
+      rejected before transport initialization or the publication lease. The
+      bounded diagnostics record `journal_present: false` and `records: []`;
+      this publisher made no registry or release writes. Preserve `v0.1.3` and
+      fix preparation before another necessary release attempt.
+- [ ] Publish and independently verify the immutable
       public release, paired repository-linked packages and anonymous delivery.
       Remove first-package initialization only after success. Production migration
       and independent off-host backup/restore remain deferred.
+
+### Annotated tag push validation
+
+- [x] Investigate the attestor's actual rejecting boundary with a specialized
+      read-only subagent. Its workflow environment requirements are present in
+      the publisher's allowlist. The signing guard instead assumes push `after`
+      equals the peeled commit. The actual `v0.1.3` annotated tag object is
+      `9de1c6c744741406cabb71d98255782ef4f931d4`, while its peeled commit is
+      `d2d6020eb26dd33d453bd966a14611995232ac34`.
+      GitHub's official [push schema](https://raw.githubusercontent.com/octokit/webhooks/main/payload-schemas/api.github.com/push/event.schema.json)
+      permits `after` to refer to an annotated tag and identifies its commit in
+      `head_commit`. The original hosted payload was not retained, so this is a
+      demonstrated contract gap and leading explanation, not proof of the
+      original failure's exact guard.
+- [x] Require the exact expanded commit identity for both lightweight and
+      annotated pushes, retaining the public repository, version ref and valid
+      object SHA checks. Reuse that validation before source CI/native preparation
+      so an invalid push event fails before expensive work or human reviews.
+- [x] Add four fixed-literal attestor capability diagnostics without exposing
+      token, event or exception data. The focused attestor suite passed 19 offline
+      tests in 0.108s, with one genuine hosted-runner check explicitly skipped
+      locally. Constructor regressions accept both tag types and reject missing,
+      null, malformed or different expanded commits, malformed object SHAs and
+      wrong/private repositories or refs before runtime/action acquisition.
+      Execute the actual embedded early-preflight Python against both valid tag
+      types and a different expanded commit; valid cases passed and the mismatch
+      was rejected. Black, Prettier, actionlint, embedded Python parsing and diff
+      checks passed. A bounded independent review found no blockers. These are
+      offline checks, not signing, image rebuilds or hosted publication evidence.
+- [ ] Commit code and this plan through normal protected review.
+- [ ] Verify the corrected contract and actual publication against a fresh unused
+      patch version. Preserve earlier immutable tags and use new attempt-bound
+      reviews; completed local tests do not establish hosted publication.

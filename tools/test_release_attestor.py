@@ -143,6 +143,7 @@ class AttestorFixtures(unittest.TestCase):
                         "visibility": "public",
                     },
                     "after": self.binding.commit,
+                    "head_commit": {"id": self.binding.commit},
                     "ref": "refs/tags/v0.1.0",
                 }
             )
@@ -345,7 +346,7 @@ class AttestorFixtures(unittest.TestCase):
                     self.create()
                 acquisition.assert_not_called()
 
-    def test_oidc_endpoint_token_and_event_are_checked(self):
+    def test_oidc_endpoint_and_token_are_checked(self):
         for key, value in (
             ("ACTIONS_ID_TOKEN_REQUEST_URL", "https://evil.invalid/oidc"),
             (
@@ -358,23 +359,75 @@ class AttestorFixtures(unittest.TestCase):
             with self.subTest(key=key), patch.dict(self.environment, {key: value}):
                 with self.assertRaises(InvalidRelease):
                     self.create()
-        for mutation in (
-            {
-                "repository": {
-                    "full_name": self.binding.repository,
-                    "visibility": "private",
-                }
-            },
-            {"after": "b" * 40},
-            {"ref": "refs/heads/main"},
-        ):
-            record = json.loads(self.event.read_bytes())
-            original = self.event.read_bytes()
-            record.update(mutation)
-            self.event.write_bytes(json_bytes(record))
-            with self.assertRaises(InvalidRelease):
-                self.create()
-            self.event.write_bytes(original)
+
+    def test_lightweight_and_annotated_tag_pushes_use_expanded_commit(self):
+        for after in (self.binding.commit, "b" * 40):
+            with self.subTest(after=after):
+                record = json.loads(self.event.read_bytes())
+                record["after"] = after
+                self.event.write_bytes(json_bytes(record))
+                logged = io.StringIO()
+                with redirect_stdout(logged), patch.object(
+                    signing, "run_action"
+                ) as execution:
+                    signer = self.create()
+                self.assertEqual(signer.event, self.event.read_bytes())
+                self.assertEqual(
+                    logged.getvalue().splitlines(),
+                    [
+                        "Attestor initialization: oidc-context",
+                        "Attestor initialization: push-event",
+                        "Attestor initialization: hosted-runtime",
+                        "Attestor initialization: pinned-action",
+                    ],
+                )
+                execution.assert_not_called()
+
+    def test_invalid_tag_pushes_fail_before_runtime_and_action_acquisition(self):
+        original = self.event.read_bytes()
+        mutations = (
+            ("missing-head", lambda event: event.pop("head_commit")),
+            ("null-head", lambda event: event.update(head_commit=None)),
+            ("nonobject-head", lambda event: event.update(head_commit=[])),
+            ("missing-head-id", lambda event: event.update(head_commit={})),
+            (
+                "wrong-expanded-commit",
+                lambda event: event.update(head_commit={"id": "b" * 40}),
+            ),
+            ("short-after", lambda event: event.update(after="a" * 39)),
+            ("uppercase-after", lambda event: event.update(after="A" * 40)),
+            ("nonhex-after", lambda event: event.update(after="g" * 40)),
+            ("nonstring-after", lambda event: event.update(after=None)),
+            (
+                "wrong-repository",
+                lambda event: event["repository"].update(full_name="other/psst.zip"),
+            ),
+            (
+                "private-repository",
+                lambda event: event["repository"].update(visibility="private"),
+            ),
+            ("wrong-ref", lambda event: event.update(ref="refs/heads/main")),
+        )
+        for name, mutate in mutations:
+            with self.subTest(name=name):
+                record = json.loads(original)
+                mutate(record)
+                self.event.write_bytes(json_bytes(record))
+                logged = io.StringIO()
+                with redirect_stdout(logged), patch.object(
+                    signing, "hosted_node"
+                ) as runtime, patch.object(signing, "checked_action") as acquisition:
+                    with self.assertRaises(InvalidRelease):
+                        self.create()
+                runtime.assert_not_called()
+                acquisition.assert_not_called()
+                self.assertEqual(
+                    logged.getvalue().splitlines(),
+                    [
+                        "Attestor initialization: oidc-context",
+                        "Attestor initialization: push-event",
+                    ],
+                )
 
     def test_action_source_hash_substitution_is_rejected(self):
         signer = self.create()
