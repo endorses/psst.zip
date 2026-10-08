@@ -14,11 +14,13 @@ final class StreamedFileTests: XCTestCase {
             encoding: "chunked-v1", chunkSize: Int32(StreamedFiles.chunkBytes), encryptionId: context)
     }
 
-    private func frame(total: Int64, index: Int64, byte: UInt8 = 9) throws -> KotlinByteArray {
+    private func frame(total: Int64, index: Int64) throws -> KotlinByteArray {
         let count = try Int(ChunkedFileCrypto.shared.plaintextSize(totalSize: total, index: index))
+        // Kotlin arrays start zero-filled. Avoid per-byte Swift bridge calls just
+        // to construct fixtures; encryption and the production writer stay real.
         return try ChunkedFileCrypto.shared.encrypt(
             key: key, id: context, totalSize: total, index: index,
-            plaintext: Data(repeating: byte, count: count).toKotlinByteArray())
+            plaintext: KotlinByteArray(size: Int32(count)))
     }
 
     func testMoreThan100MiBWritesFramesWithoutWholeFileBuffer() throws {
@@ -30,7 +32,7 @@ final class StreamedFileTests: XCTestCase {
         for index in 0..<chunks {
             try autoreleasepool {
                 let count = try Int(ChunkedFileCrypto.shared.plaintextSize(totalSize: total, index: index))
-                expected.update(data: Data(repeating: 9, count: count))
+                expected.update(data: Data(repeating: 0, count: count))
                 XCTAssertTrue(try writer.accept(frame(total: total, index: index)))
             }
         }

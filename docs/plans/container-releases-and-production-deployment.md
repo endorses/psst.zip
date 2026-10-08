@@ -2273,6 +2273,31 @@ skip meaningful checks. Measure the next hosted run before claiming CI timing.
 Do not repeat broad suites without changes, failures or unresolved risks that
 justify them.
 
+- [x] Bound native XCTest execution independently of the whole build job. The
+      test step now has a ten-minute limit, and XCTest enforces a maximum
+      two-minute allowance per case. The existing unconditional result-bundle
+      upload remains after the step. These limits fail hangs rather than claim
+      faster successful execution. Run `37721962715` passed all 176 native cases;
+      the slowest large-file streaming case took 52.873 seconds and the oversized
+      inbox case took 27.282 seconds. Both meaningful size-boundary checks remain.
+      The iOS build and tests were unchanged in the subsequent `de0721b` source;
+      its prolonged live XCTest step prompted this bounded-execution change.
+- [ ] Verify the native execution limits on macOS/Xcode after pushing this
+      workflow change. Inspect the exact run's case timings and result bundle;
+      static YAML and shell validation does not prove simulator execution.
+- [x] Reduce construction costs in the two measured slow native fixtures without
+      changing their failure contracts. The 101 MiB streaming test now constructs
+      zero-filled Kotlin plaintext directly, retaining actual frame encryption,
+      authentication, file writing and digest verification. The oversized inbox
+      fixture uses 4,200 valid longer paths instead of 5,000 rows, still asserts
+      the original exceeds 16 MiB, and retains staged-state reopen/resume, late
+      identity, secrets and both JSON/legacy SQLite recovery. The existing
+      portable checkpoint harness passed all 17 cases in 41.768 seconds, with
+      the changed oversized case taking 21.913 seconds. This validates migration
+      behavior with portable boundaries; it does not prove an iOS timing gain.
+- [ ] Measure both optimized cases in the complete hosted native XCTest suite
+      and confirm the real Kotlin frame fixture and Apple boundaries pass.
+
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time
       and slowest cases, including fixture setup and cleanup.

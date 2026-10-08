@@ -246,6 +246,8 @@ jobs:
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app"
           codesign --verify --strict "$RUNNER_TEMP/psst-ios-derived/Build/Products/Debug-iphonesimulator/Psst.app/PlugIns/PsstShareExtension.appex"
       - name: Run native XCTest suite
+        # Leave time to upload diagnostics if simulator startup or a test stalls.
+        timeout-minutes: 10
         working-directory: ios
         run: |
           xcodebuild -project Psst.xcodeproj -scheme Psst \
@@ -254,6 +256,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/psst-ios-derived" \
             -resultBundlePath "$RUNNER_TEMP/psst-ios-tests.xcresult" \
             -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 120 \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual test-without-building
       - name: Preserve native test results
         if: always()
