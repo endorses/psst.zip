@@ -160,11 +160,13 @@ class SourceGateTests(unittest.TestCase):
                 }
             )
             raw_go["go-env.json"] = json_bytes(environment)
-            raw_go["go-version.txt"] = f"go version go1.26.8 {platform}\n".encode()
+            raw_go["go-version.txt"] = (
+                f"go version {producer.GO_VERSION} {platform}\n".encode()
+            )
             raw_npm = {
                 "node-execution.complete": b"complete\n",
-                "node-version.txt": b"v22.23.3\n",
-                "npm-version.txt": b"10.9.9\n",
+                "node-version.txt": b"v26.10.0\n",
+                "npm-version.txt": b"11.19.1\n",
                 "npm-audit.exit": b"0\n",
                 "npm-audit.json": json_bytes(
                     {

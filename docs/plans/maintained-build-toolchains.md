@@ -30,7 +30,7 @@ Version discovery is separate from successful build validation. GitHub's preview
 - [ ] Inspect hosted check annotations as well as conclusions. Verify that the
       Node action deprecation, moving Ubuntu runner and outdated Gradle notices
       are removed; investigate any new warnings without extending test budgets.
-- [ ] Commit verified changes and plan checkpoints; keep store research drafts
+- [x] Commit verified changes and plan checkpoints; keep store research drafts
       uncommitted. Do not publish a release or update production while its
       candidate checks remain incomplete.
 
