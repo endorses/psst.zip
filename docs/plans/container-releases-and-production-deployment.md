@@ -3175,7 +3175,60 @@ archives were not downloaded for this review.
       concurrent verification, signer failures and approval whitespace. Workflow
       actionlint, embedded Python parsing and diff checks passed. Local fixtures
       do not establish hosted signatures, artifact delivery or elapsed-time savings.
-- [ ] Commit the implementation and this plan, use normal protected review,
-      and measure the next necessary release attempt
-      rather than launching a separate benchmark workflow. Do not increase
-      timeouts or mark live publication, off-host recovery or VPS migration done.
+- [x] Commit the implementation and this plan and merge through normal protected
+      PR #21. All five CI contexts and GitGuardian passed for head
+      `e4650745b9e7a04590867d8b673f4642cdc446b4`; merge
+      `d2d6020eb26dd33d453bd966a14611995232ac34` has the same tree. Main CI
+      `37807442614` passed after retrying only the security job's transient Go
+      proxy download failure. The retry took 1m12s, including 30 seconds for release
+      regressions; the other passing jobs were reused.
+- [x] Measure the next necessary release attempt without a separate benchmark
+      workflow. Run `37815441912` completed automated preparation in 23m43s,
+      versus 30m28s for `v0.1.2`, a reduction of 6m45s. The complete signed source
+      report and all three real native recovery scenarios remain required.
+      No timeout was increased. This measures preparation before human review;
+      it does not establish publication, off-host recovery or VPS migration.
+
+### Optimized v0.1.3 candidate
+
+- [x] Confirm the new version is unused and create `v0.1.3` at verified merge
+      `d2d6020eb26dd33d453bd966a14611995232ac34`. Push only that new tag and run
+      `37815441912`, attempt 1. Preserve all earlier tags; their failed publication
+      attempts are superseded by this candidate, not authorized by its future
+      reviews. The tag does not update the VPS.
+- [x] Complete exact tagged server CI and both native image preparations.
+      Security took 1m33s, backend 6m31s and web 7m10s. Separate Android and iOS
+      builds were skipped as agreed. Native preparation took 10m17s on AMD64 and
+      9m25s on ARM64; these phases were not changed by the transfer optimization.
+- [x] Complete signed assembly and independent source-report verification in job
+      `113447588163`. All six reports passed with binding
+      `sha256:8cc66834a673e1528caee5510905394b21d086395de7ee04191af9351d1c1258`.
+      The complete source report covers four images and six archives; its SHA256
+      is `912b465210cb6cbadcf53c9abc09b34c93503e30d9a6ed83fc72f2a3794da623`.
+      Assembly took 4m24s versus 5m17s previously. Native authentication and report
+      generation took 1m57s versus 2m16s; assembly payload downloads took 27s versus
+      76s, excluding the small base-resolution record.
+      These observed comparisons include runner and network variation and are not
+      additional benchmark runs.
+- [x] Authenticate both completed native recovery measurements and their signed
+      aggregate. AMD64 job `113449563567` passed in 7m29s and ARM64 job
+      `113449563883` in 7m20s, versus 13m59s and 7m45s previously. Downloads took
+      15s and 25s, versus 6m03s and 33s. Aggregate job `113452875899` signed and
+      independently verified the complete recovery gate for the binding above,
+      manifest `sha256:5752ac10269b62dfaa374a4c493bacec84371543563c7cfd1caae35163140abd`
+      and bundle `sha256:0ddafe9f2c58a850610c61d630f3554a41c434ff870319b69fcad6c384b2f045`.
+      The gate's SHA256 is
+      `681e98502b26371401ba37ce2108ab19d0683e1abd7e3e3e05efa303b9ecd85c`.
+      Independent off-host provider, public provenance and browser/mobile-flow
+      checks remain explicitly false.
+- [x] Inspect `candidate-distribution-presentation-37815441912-1` against the
+      actual retained source and recovery reports. Source, version, run/attempt,
+      source-report hash, all fourteen subjects and complete four-image/six-archive
+      coverage match the committed reviewer policy. Distribution job
+      `113453236106` is waiting for the configured reviewer `endorses`.
+- [ ] Obtain the configured human distribution and publication approvals for this
+      exact source and attempt. Do not reuse earlier versions' approval comments.
+- [ ] Observe publisher preparation, publish and independently verify the immutable
+      public release, paired repository-linked packages and anonymous delivery.
+      Remove first-package initialization only after success. Production migration
+      and independent off-host backup/restore remain deferred.
