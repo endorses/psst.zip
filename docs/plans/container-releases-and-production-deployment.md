@@ -27,9 +27,14 @@ recovery requirement and can use a suitable off-host destination without S3.
 
 ```text
 Pull request / main → CI
-Version tag → CI for that exact commit → publish release images and bundle
+Version tag → exact-commit CI + native preparation → reviewed publication
 Select a release → Deploy production → pull → stopped backup → update → verify
 ```
+
+After source identity validation, CI and native preparation can overlap.
+Assembly requires both to succeed; a failed or incomplete CI cannot produce the
+source-CI approval report or reach publication. Preparation may consume runner
+time after a CI failure. Whole-workflow publication serialization remains in place.
 
 Build two images for `linux/amd64` and `linux/arm64`:
 
@@ -538,8 +543,8 @@ All Actions in CI and the candidate workflow were pinned to verified upstream
 commits, and checkouts disabled
 persisted credentials. All five source CI jobs and their commands were preserved.
 
-Strict tag/event/ancestry checks precede reusable CI. The two native build jobs
-are gated on all CI jobs and share resolved index digests for Go, Alpine, Node,
+Strict tag/event/ancestry checks precede reusable CI. At this initial checkpoint,
+the two native build jobs were gated on all CI jobs and shared resolved index digests for Go, Alpine, Node,
 Caddy and BuildKit. Build records include actual toolchain output and local image
 metadata, explicitly separated from future registry manifest/index digests.
 At this initial checkpoint, candidate metadata had one-day artifact retention
@@ -2669,6 +2674,32 @@ runner, not a claim that the later failed native-container preparation passed.
       passed with zero annotations. No tests or limits changed and no benchmark
       suite or extra full CI rerun was added. Full source/recovery and publication
       remain separate pending checks.
+
+- [x] Remove the unnecessary source-CI wait from base resolution, common upstream
+      retention and native preparation. Require validated source identity first,
+      retain assembly's dependency on all five CI jobs, and preserve every
+      downstream recovery/review/publication gate, permission and the literal
+      serialized workflow group. Bounded dependency review found no early
+      consumer of CI outcomes in those three preparation jobs. No job, test or
+      timeout was added or removed. Actionlint passed; the two existing
+      exact-attempt/all-five-outcomes and failed/skipped/pending/missing-CI
+      producer regressions passed in 0.183s. Formatting and diff checks passed.
+- [ ] Verify hosted overlap on an integrated candidate, including that assembly
+      remains blocked until all exact-source CI succeeds. Do not claim a shorter
+      complete workflow from static dependency checks or the earlier sequential
+      candidate.
+- [x] Avoid unchanged application builds for the specifically reviewed release
+      workflow on ordinary PR/main CI. Classify only
+      `.github/workflows/release.yml` as security-only; retain all-app selection
+      for CI/unknown workflows and selector/selector-test changes. Repository
+      security still runs. Tag, planned dispatch and explicit full validation
+      independently force all application jobs. Existing range/classification
+      regressions, extended with the exact exception and unknown-workflow cases,
+      passed all five tests in 1.227s; no new test methods were added. The
+      selector-policy change itself must still complete all hosted app checks.
+- [ ] Verify the selector-policy change on hosted CI and confirm that a later
+      release-workflow-only PR skips application steps while planned/tagged
+      release validation still executes all five source-CI jobs.
 
 - [ ] Validate workflow syntax, release manifest parsing, Compose configuration,
       bundle contents, and image metadata without exposing live secrets.
