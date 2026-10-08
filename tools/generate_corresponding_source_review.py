@@ -13,6 +13,7 @@ from pathlib import Path
 import tempfile
 
 import browser_preferred_source_relationships as preferred
+import backend_preferred_source_relationships as backend_preferred
 import measure_browser_source_inventory as browser_inventory
 import measure_native_browser_inputs as browser_inputs
 import package_upstream_application_sources as upstream_inputs
@@ -54,6 +55,7 @@ def verify_backend_source_inputs(
     dependency_collections: dict[str, Path],
     source_scans: dict[str, Path],
     compiler_graphs: dict[str, Path],
+    upstream_collection: Path,
     authenticator: MeasurementAuthenticator,
 ) -> dict:
     """Bind retained H1-verified module inputs to both actual native backend binaries.
@@ -73,9 +75,35 @@ def verify_backend_source_inputs(
     ):
         fields(values, set(PLATFORMS), label)
     fields(compiler_graphs, {"backend-amd64", "backend-arm64"}, "both backend graphs")
+    # Authenticate the complete small observation set before reading large originals.
+    authenticated_sources = {
+        platform: load_authenticated(source_scans[platform], binding, authenticator)
+        for platform in PLATFORMS
+    }
+    authenticated_graphs = {
+        target: load_authenticated(path, binding, authenticator)
+        for target, path in compiler_graphs.items()
+    }
+    upstream, originals = upstream_inputs.verify_source_files(
+        root,
+        binding.repository,
+        binding.version,
+        binding.commit,
+        upstream_collection,
+        component="backend",
+    )
+    upstream_asset = upstream["asset"]
+    require(
+        subjects.get("source:" + upstream_asset["name"])
+        == "file:" + upstream_asset["name"] + "@" + upstream_asset["digest"],
+        "Backend upstream offering differs from exact publication binding",
+    )
     application_digest = sha256(git(root, "archive", binding.commit))
     reports = {}
-    snapshots = []
+    snapshots = [
+        (upstream_collection / upstream_inputs.RECORD, upstream["collection_sha256"]),
+        (upstream_collection / upstream_asset["name"], upstream_asset["digest"]),
+    ]
     for platform in PLATFORMS:
         context = NativeSourceContext(
             binding.repository, binding.version, binding.commit, platform
@@ -86,15 +114,13 @@ def verify_backend_source_inputs(
             runtime == native[platform]["runtime"],
             "Runtime pack/source bytes differ from authenticated native execution",
         )
-        source, source_digest_value = load_authenticated(
-            source_scans[platform], binding, authenticator
-        )
+        source, source_digest_value = authenticated_sources[platform]
         require(
             source.get("source") == context.checked(),
             "Backend source scan belongs to another native source context",
         )
         graph_path = compiler_graphs[target]
-        graph, graph_digest = load_authenticated(graph_path, binding, authenticator)
+        graph, graph_digest = authenticated_graphs[target]
         checked_graph(
             graph,
             graph_path.parent,
@@ -108,8 +134,20 @@ def verify_backend_source_inputs(
             graph["source_inputs"]["application_archive_sha256"] == application_digest,
             "Backend compiler source archive differs from selected committed Git source",
         )
-        replay = dependency_inputs.verify(
-            context, root, dependency_collections[platform], source_scans[platform]
+        replay, module_originals = dependency_inputs.verify_module_source_files(
+            context,
+            root,
+            dependency_collections[platform],
+            source_scans[platform],
+            modules=frozenset(
+                {
+                    "modernc.org/sqlite",
+                    "modernc.org/libc",
+                    "modernc.org/cc/v4",
+                    "modernc.org/ccgo/v4",
+                    "modernc.org/fileutil",
+                }
+            ),
         )
         require(
             replay.get("source") == context.checked()
@@ -152,6 +190,9 @@ def verify_backend_source_inputs(
                 "Actual backend module version/checksum lacks retained verified source inputs",
             )
             dependencies.append(retained_dep)
+        preferred_sources = backend_preferred.verify_relationships(
+            originals, module_originals
+        )
         reports[target] = {
             "subject": subjects[target],
             "image": native[platform]["images"]["backend"],
@@ -162,6 +203,7 @@ def verify_backend_source_inputs(
             "dependency_asset": {"name": asset_name, "sha256": archive_digest},
             "dependency_replay": replay,
             "binary_module_inputs": dependencies,
+            "preferred_sources": preferred_sources,
         }
         snapshots.extend(
             [
@@ -220,6 +262,7 @@ def verify_backend_source_inputs(
         "binding_digest": binding.digest,
         "images": reports,
         "backend_source_inputs_verified": True,
+        "upstream_inputs": upstream,
         "preferred_source_review_required": True,
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,

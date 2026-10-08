@@ -247,14 +247,33 @@ class UpstreamInputs(unittest.TestCase):
                 "b" * 40,
             ),
             ("musl-source", "musl-libc/musl", "modernc.org/libc", "v1.65.0", "c" * 40),
+            (
+                "backend-libsqlite3-project",
+                "cznic/libsqlite3",
+                "modernc.org/sqlite",
+                "v1.37.0",
+                "d" * 40,
+            ),
         ):
             prefix = repository.split("/")[1] + "-" + commit
-            raw = upstream.tar_gzip(
-                {
-                    prefix + "/VERSION": b"original version\n",
-                    prefix + "/Makefile": b"# retained recipe; never executed\n",
-                }
-            )
+            contents = {
+                prefix + "/VERSION": b"original version\n",
+                prefix + "/Makefile": b"# retained recipe; never executed\n",
+            }
+            if identifier == "backend-libsqlite3-project":
+                contents.update(
+                    {
+                        prefix + "/" + path: b"original generator fixture\n"
+                        for path in (
+                            "generator.go",
+                            "go.mod",
+                            "go.sum",
+                            "ccgo_linux_amd64.go",
+                            "ccgo_linux_arm64.go",
+                        )
+                    }
+                )
+            raw = upstream.tar_gzip(contents)
             record = {
                 "id": identifier,
                 "repository": repository,
@@ -269,6 +288,23 @@ class UpstreamInputs(unittest.TestCase):
             }
             if identifier == "musl-source":
                 record["source_host"] = "musl"
+            if identifier == "backend-libsqlite3-project":
+                record["source_host"] = "gitlab"
+                record["relationship"] = {
+                    "kind": "generator-project",
+                    "name": "modernc.org/libsqlite3",
+                    "version": "v1.9.0",
+                    "module": "modernc.org/sqlite",
+                }
+                record["inspect_paths"].extend(
+                    [
+                        "generator.go",
+                        "go.mod",
+                        "go.sum",
+                        "ccgo_linux_amd64.go",
+                        "ccgo_linux_arm64.go",
+                    ]
+                )
             catalog["upstreams"].append(record)
             self.fetch_map[upstream.url(record)] = raw
         module = self.root / upstream.GO_LOCKS[0]
@@ -279,7 +315,34 @@ class UpstreamInputs(unittest.TestCase):
         sums.write_bytes(b"original committed sums\n")
         self.catalog_commit(catalog)
         first = self.collect()
-        self.assertEqual(self.verify()["asset"], first["asset"])
+        replay, originals = upstream.verify_source_files(
+            self.root,
+            "endorses/psst.zip",
+            "v1.2.3",
+            self.revision,
+            self.output,
+            component="backend",
+        )
+        self.assertEqual(replay["asset"], first["asset"])
+        self.assertEqual(
+            set(originals),
+            {"sqlite-source", "musl-source", "backend-libsqlite3-project"},
+        )
+        self.assertEqual(
+            originals["sqlite-source"]["files"]["Makefile"],
+            b"# retained recipe; never executed\n",
+        )
+        with self.assertRaisesRegex(
+            InvalidRelease, "Unsupported preferred source component"
+        ):
+            upstream.verify_source_files(
+                self.root,
+                "endorses/psst.zip",
+                "v1.2.3",
+                self.revision,
+                self.output,
+                component="unknown",
+            )
         self.assertEqual(
             first["backend_lock_sha256"],
             {
@@ -313,6 +376,27 @@ class UpstreamInputs(unittest.TestCase):
                     upstream.context("endorses/psst.zip", "v1.2.3", self.revision),
                 )
         module.write_bytes(original_mod)
+        for change in ("missing", "wrong-version", "wrong-module", "wrong-kind"):
+            invalid = copy.deepcopy(catalog)
+            sibling = invalid["upstreams"][-1]
+            if change == "missing":
+                sibling.pop("relationship")
+            else:
+                sibling["relationship"][
+                    {
+                        "wrong-version": "version",
+                        "wrong-module": "module",
+                        "wrong-kind": "kind",
+                    }[change]
+                ] = "wrong"
+            self.catalog_commit(invalid)
+            with self.subTest(generator_relationship=change), self.assertRaises(
+                InvalidRelease
+            ):
+                upstream.policy(
+                    self.root,
+                    upstream.context("endorses/psst.zip", "v1.2.3", self.revision),
+                )
         for changes in (
             {"packages": {"fixture-package": "1.0.0"}},
             {"go_modules": {"other.invalid/module": "v1.0.0"}},
@@ -390,6 +474,15 @@ class UpstreamInputs(unittest.TestCase):
             + "d" * 40
             + ".tar.gz",
         )
+        sibling_url = upstream.url({**record, "repository": "cznic/libsqlite3"})
+        self.assertEqual(
+            sibling_url,
+            "https://gitlab.com/cznic/libsqlite3/-/archive/"
+            + "d" * 40
+            + "/libsqlite3-"
+            + "d" * 40
+            + ".tar.gz",
+        )
         response = unittest.mock.Mock()
         response.status = 200
         response.getheader.return_value = "8"
@@ -401,6 +494,11 @@ class UpstreamInputs(unittest.TestCase):
         ) as client:
             self.assertEqual(upstream.official_fetch(source_url), b"original")
         client.assert_called_once_with("gitlab.com", timeout=30)
+        response.read1.side_effect = [b"original", b""]
+        with patch.object(
+            upstream.http.client, "HTTPSConnection", return_value=connection
+        ):
+            self.assertEqual(upstream.official_fetch(sibling_url), b"original")
         response.status = 302
         with patch.object(
             upstream.http.client, "HTTPSConnection", return_value=connection

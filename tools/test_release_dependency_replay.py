@@ -156,7 +156,36 @@ class DependencyReplay(unittest.TestCase):
         self,
     ):
         before = set(Path("/tmp").glob("psst-dependency-replay-*"))
-        result = self.verify()
+        result, sources = replay.verify_module_source_files(
+            self.context,
+            self.root,
+            self.collection,
+            self.measurement_path,
+            modules=frozenset({self.fixture.module}),
+        )
+        self.assertEqual(set(sources), {self.fixture.module})
+        self.assertEqual(
+            sources[self.fixture.module]["files"],
+            {
+                "go.mod": self.fixture.mod,
+                "source.go": b"package dependency\n",
+            },
+        )
+        self.assertEqual(
+            sources[self.fixture.module]["record"], result["go_module_inputs"][0]
+        )
+        # A metadata-free proxy cannot invent a project-origin claim.
+        self.assertIsNone(sources[self.fixture.module]["origin"])
+        with self.assertRaisesRegex(
+            InvalidRelease, "missing from verified dependency graph"
+        ):
+            replay.verify_module_source_files(
+                self.context,
+                self.root,
+                self.collection,
+                self.measurement_path,
+                modules=frozenset({"not.selected/module"}),
+            )
         self.assertEqual((result["go_modules"], result["npm_packages"]), (1, 1))
         self.assertTrue(result["preferred_source_review_required"])
         self.assertFalse(result["publication_authorized"])

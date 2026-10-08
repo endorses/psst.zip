@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import tarfile
 import tempfile
+import zipfile
 
 from assemble_release_oci import StrictTarInfo
 from generate_release_gate_reports import NativeSourceContext
@@ -143,13 +144,24 @@ def scanner_raw(measurement_path: Path, row: dict, name: str) -> bytes:
     return body
 
 
-def verify(
+def _verify(
     context: NativeSourceContext,
     repository_root: Path,
     collection_dir: Path,
     source_measurement: Path,
-) -> dict:
+    *,
+    requested_modules: frozenset[str] | None = None,
+):
     """Return unapproved checksum replay facts; caller authenticates inputs separately."""
+    require(
+        requested_modules is None
+        or (
+            isinstance(requested_modules, frozenset)
+            and 0 < len(requested_modules) <= package.MAX_MEMBERS
+            and all(isinstance(module, str) and module for module in requested_modules)
+        ),
+        "Invalid preferred module source selection",
+    )
     identity = context.checked()
     origin = git(repository_root, "remote", "get-url", "origin").decode().strip()
     require(
@@ -319,6 +331,11 @@ def verify(
         if isinstance(row, dict)
     }
     require(len(inventory) == len(retained_go), "Duplicate dependency module inventory")
+    if requested_modules is not None:
+        require(
+            requested_modules <= {module for module, _ in inventory},
+            "Preferred module source missing from verified dependency graph",
+        )
     # Reuse the original checksum primitive while generating every cache path ourselves.
     # No downloaded metadata/archive path is written to the host filesystem.
     with tempfile.TemporaryDirectory(prefix="psst-dependency-replay-") as temporary:
@@ -423,7 +440,7 @@ def verify(
         and collection["npm_packages"] == len(replayed_npm),
         "External dependency coverage counts differ",
     )
-    return {
+    replay = {
         "schema_version": 1,
         "kind": "application-dependency-replay",
         "source": identity,
@@ -450,3 +467,60 @@ def verify(
         "corresponding_source_completeness_verified": False,
         "publication_authorized": False,
     }
+
+    if requested_modules is None:
+        return replay
+    # Full independent H1 replay above checked each original ZIP/info. Reuse
+    # those bytes; do not reread the offering or write a module cache again.
+    records = {row["module"]: row for row in replay["go_module_inputs"]}
+    sources = {}
+    for row in replayed:
+        module, version = row["module"], row["version"]
+        if module not in requested_modules:
+            continue
+        raw = files[row["inputs"]["zip"]["file"]]
+        prefix = module + "@" + version + "/"
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            members = {
+                entry.filename.removeprefix(prefix): archive.read(entry)
+                for entry in archive.infolist()
+                if not entry.is_dir()
+            }
+        info = read_json(files[row["inputs"]["info"]["file"]])
+        sources[module] = {
+            "record": records[module],
+            "files": members,
+            "origin": info.get("Origin"),
+        }
+    return replay, sources
+
+
+def verify(
+    context: NativeSourceContext,
+    repository_root: Path,
+    collection_dir: Path,
+    source_measurement: Path,
+) -> dict:
+    return _verify(context, repository_root, collection_dir, source_measurement)
+
+
+def verify_module_source_files(
+    context: NativeSourceContext,
+    repository_root: Path,
+    collection_dir: Path,
+    source_measurement: Path,
+    *,
+    modules: frozenset[str],
+) -> tuple[dict, dict]:
+    """Expose selected H1-replayed original module members for preferred source review.
+
+    This does not authenticate scanner records or establish source completeness.
+    The consumer must bind the replay to authenticated native/publication inputs.
+    """
+    return _verify(
+        context,
+        repository_root,
+        collection_dir,
+        source_measurement,
+        requested_modules=modules,
+    )

@@ -637,9 +637,36 @@ class ImageScanGateChecks(unittest.TestCase):
                     },
                 ],
             }
+        upstream_collection = self.root / "upstream-originals"
+        upstream_collection.mkdir()
+        upstream_name = "psst.zip-upstream-inputs-v1.2.3.tar.gz"
+        upstream_raw = b"independently replayed preferred source originals"
+        (upstream_collection / upstream_name).write_bytes(upstream_raw)
+        (upstream_collection / corresponding.upstream_inputs.RECORD).write_bytes(
+            b"fixture upstream record"
+        )
+        upstream = {
+            "asset": {"name": upstream_name, "digest": sha256(upstream_raw)},
+            "collection_sha256": sha256(b"fixture upstream record"),
+        }
+        subjects["source:" + upstream_name] = (
+            "file:" + upstream_name + "@" + sha256(upstream_raw)
+        )
         binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
 
-        def replay(context, root, collection, scan):
+        def replay(context, root, collection, scan, *, modules):
+            self.assertEqual(
+                modules,
+                frozenset(
+                    {
+                        "modernc.org/sqlite",
+                        "modernc.org/libc",
+                        "modernc.org/cc/v4",
+                        "modernc.org/ccgo/v4",
+                        "modernc.org/fileutil",
+                    }
+                ),
+            )
             self.assertEqual(
                 (root, collection, scan),
                 (
@@ -648,7 +675,7 @@ class ImageScanGateChecks(unittest.TestCase):
                     source_scans[context.platform],
                 ),
             )
-            return replays[context.platform]
+            return replays[context.platform], {}
 
         def verify(**overrides):
             return corresponding.verify_backend_source_inputs(
@@ -664,6 +691,7 @@ class ImageScanGateChecks(unittest.TestCase):
                         for key, value in self.graphs.items()
                         if key.startswith("backend-")
                     },
+                    "upstream_collection": upstream_collection,
                     "authenticator": self.auth,
                     **overrides,
                 },
@@ -672,10 +700,29 @@ class ImageScanGateChecks(unittest.TestCase):
         with patch.object(
             corresponding, "git", return_value=git_archive
         ) as git_read, patch.object(
-            corresponding.dependency_inputs, "verify", side_effect=replay
-        ):
+            corresponding.dependency_inputs,
+            "verify_module_source_files",
+            side_effect=replay,
+        ), patch.object(
+            corresponding.upstream_inputs,
+            "verify_source_files",
+            return_value=(upstream, {"fixture": "originals"}),
+        ) as offering, patch.object(
+            corresponding.backend_preferred,
+            "verify_relationships",
+            return_value={"associations": [], "pending": ["fixture translation"]},
+        ) as preferred:
             result = verify()
             git_read.assert_called_once_with(self.root, "archive", binding.commit)
+            offering.assert_called_once_with(
+                self.root,
+                binding.repository,
+                binding.version,
+                binding.commit,
+                upstream_collection,
+                component="backend",
+            )
+            self.assertEqual(preferred.call_count, 2)
             self.assertEqual(set(result["images"]), {"backend-amd64", "backend-arm64"})
             self.assertTrue(result["backend_source_inputs_verified"])
             self.assertFalse(result["corresponding_source_completeness_verified"])
@@ -683,8 +730,28 @@ class ImageScanGateChecks(unittest.TestCase):
             self.assertEqual(
                 len(result["images"]["backend-amd64"]["binary_module_inputs"]), 1
             )
+            offering.reset_mock()
             with self.assertRaisesRegex(InvalidRelease, "unsigned"):
                 verify(authenticator=FixtureAuthenticator())
+            offering.assert_not_called()
+            upstream["asset"]["digest"] = sha256(b"substituted offering")
+            with self.assertRaisesRegex(
+                InvalidRelease, "upstream offering.*publication binding"
+            ):
+                verify()
+            upstream["asset"]["digest"] = sha256(upstream_raw)
+
+            def mutate(*args):
+                (upstream_collection / upstream_name).write_bytes(
+                    b"changed after preferred replay"
+                )
+                return {"fixture": "mapped"}
+
+            preferred.side_effect = mutate
+            with self.assertRaisesRegex(InvalidRelease, "changed during replay"):
+                verify()
+            (upstream_collection / upstream_name).write_bytes(upstream_raw)
+            preferred.side_effect = None
             for path in (self.graphs["backend-amd64"], source_scans["linux/amd64"]):
                 content = path.read_bytes()
                 self.auth.trusted.remove(content)

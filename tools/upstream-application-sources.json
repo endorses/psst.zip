@@ -509,6 +509,40 @@
         "version": "0.7.1"
       },
       "repository": "paulmillr/jsbt"
+    },
+    {
+      "id": "backend-libsqlite3-project",
+      "repository": "cznic/libsqlite3",
+      "commit": "489e7b6027e7cc723ec60b34a00be46236c94cc7",
+      "source_host": "gitlab",
+      "go_modules": {
+        "modernc.org/sqlite": "v1.37.0"
+      },
+      "relationship": {
+        "kind": "generator-project",
+        "name": "modernc.org/libsqlite3",
+        "version": "v1.9.0",
+        "module": "modernc.org/sqlite"
+      },
+      "archive": {
+        "file": "libsqlite3-489e7b6027e7cc723ec60b34a00be46236c94cc7.tar.gz",
+        "sha256": "sha256:2fe319a41b9026fdcf10fa1cc7b40983d6209ac06f816045882e03776987a16f",
+        "size": 70672238
+      },
+      "inspect_paths": [
+        "LICENSE",
+        "Makefile",
+        "builder.json",
+        "go.mod",
+        "go.sum",
+        "generator.go",
+        "internal/sqlite_issue173.patch",
+        "internal/issue1.patch",
+        "include/sqlite3.h",
+        "include/sqlite3ext.h",
+        "ccgo_linux_amd64.go",
+        "ccgo_linux_arm64.go"
+      ]
     }
   ]
 }

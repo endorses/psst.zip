@@ -1693,6 +1693,56 @@ needed; temporary extraction caches were cleaned and the private replay receipt
 retained. These are source associations, not byte-identical regeneration or
 authenticated final-image checks for the current commit on both architectures.
 
+### Preferred backend project and generator relationships
+
+- [x] Expose selected module members from the existing independent H1 replay,
+      reusing verified original ZIP/info bytes without rereading the large asset
+      or creating another module cache. Keep the original hash-only API intact.
+- [x] Bind both authenticated backend compiler observations to the exact
+      publication-bound upstream offering. Authenticate the complete small
+      observation set before reading large originals, and check offering mutation
+      after the preferred-source comparison.
+- [x] Encode exact SQLite/libc module origin/version and every proxy member's
+      equality to the preferred full project. Associate both Linux SQLite outputs
+      with the original C version and Fossil source ID; use active libc generator
+      recipes, musl archive pins, platform overlays/headers and exact retained
+      CC/CCGo/fileutil source/version/H1 inputs.
+- [x] Pin and boundedly inspect the complete matching sibling libsqlite3 v1.9.0
+      project at its immutable official Go/GitLab origin. Restrict its auxiliary
+      association to the locked SQLite module and its acquisition to the exact
+      full-commit canonical GitLab route.
+- [ ] Collect and independently replay the twenty-original offering from the
+      committed catalog, reusing existing original archives.
+- [ ] Encode and independently replay the sibling vendoring transformation
+      against both generated Linux outputs; keep byte regeneration separate.
+- [ ] Finish the complete corresponding-source producer and authenticate the
+      final current candidate inputs on both native architectures.
+
+Actual offline replay used the retained nineteen-original `8bed82d` offering and
+SHA-bound `4ae5954` dependency asset. Five selected module ZIPs passed independent
+H1 verification in 1.5 seconds; the offering reader took 9.0 seconds and preferred
+source association 0.44 seconds. All 1,323 SQLite and 4,153 libc proxy members
+match their pinned full projects; 622 libc recipe/overlay/header inputs are mapped.
+This verifies retained source relationships, not authenticated native execution
+for the current commit or a complete corresponding-source gate. Private receipts
+remain retained; no source generators were executed or temporary caches left.
+
+The missing SQLite sibling is `cznic/libsqlite3` commit
+`489e7b6027e7cc723ec60b34a00be46236c94cc7` (`modernc.org/libsqlite3 v1.9.0`).
+Official Go proxy Origin and GitLab tag metadata agree. Its complete
+70,672,238-byte source archive has SHA256
+`2fe319a41b9026fdcf10fa1cc7b40983d6209ac06f816045882e03776987a16f`;
+bounded inspection checked 1,367 members and 399,686,031 member bytes in 1.2
+seconds. The per-original limit is now 80 MiB; aggregate 256 MiB and expanded
+512 MiB limits remain unchanged. Both source outputs match the vendoring recipe
+under comment/whitespace token normalization, package rename, removal of
+`SQLITE_TRANSIENT` and 797 added aliases per platform. This research receipt
+identifies the inputs; the production transformation verifier remains pending.
+The sibling's translator pins are CC/CCGo v4.25.2 and fileutil v1.3.0, distinct
+from libc's retained v4.26.0/v1.3.1 tools. Their declared recipes/locks are retained;
+independent regeneration would require its old tool environment and is not
+claimed by these source associations.
+
 ## Verification and completion criteria
 
 Implementation and live rollout are separate gates. Mark tasks complete only
@@ -1703,11 +1753,14 @@ pending until performed in those environments.
 Keep routine checks focused on observable failures rather than coverage totals.
 Use small local fixtures for release parsing, tamper rejection and preservation
 rules; keep full image/source/recovery experiments in release verification. The
-combined local release/notice regression suite passed 402 tests in 24.8 seconds
+combined local release/notice regression suite passed 405 tests in 25.7 seconds
 on 2026-10-08, including native preparation, browser input and runtime source
 replay fixtures. One existing opt-in Docker case was skipped; actual container
 builds remain separate release checks. Per-test timing included fixture setup
-and cleanup; the slowest case took 0.72 seconds. The six focused browser-source
+and cleanup; the slowest case took 1.02 seconds. The three new backend source
+regressions took 0.020 seconds; they reject substituted project origins/members,
+wrong C source identities, changed generator pins and missing platform/tool inputs.
+The six focused browser-source
 checks, including the two new generator methods, took 0.005 seconds. These catch
 wrong workspace lock selection, substituted helper/configuration bytes and
 unclassified rendered source inputs. The source-archive regression

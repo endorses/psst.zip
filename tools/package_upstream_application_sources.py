@@ -39,7 +39,9 @@ GO_LOCKS = ("backend/go.mod", "backend/go.sum")
 RECORD = "upstream-source-collection.json"
 # The embedded jsQR source includes original test images (45,404,815 bytes).
 # Retain its complete original archive rather than dropping source-tree inputs.
-MAX_ARCHIVE = 64 * 1024**2
+# The complete libsqlite3 generator project is 70,672,238 compressed bytes.
+# Keep the untouched original, with a bounded 80 MiB per-source limit.
+MAX_ARCHIVE = 80 * 1024**2
 # The complete modernc SQLite project is 244,731,639 expanded bytes and includes
 # nested generator modules omitted by the Go proxy ZIP. Retain them unchanged.
 MAX_ASSET = 256 * 1024**2
@@ -245,7 +247,11 @@ def _policy_inputs(
             require(
                 association_key == "go_modules"
                 and set(record["go_modules"])
-                == {"modernc.org/" + record["repository"].split("/")[1]},
+                == (
+                    {"modernc.org/sqlite"}
+                    if record["repository"] == "cznic/libsqlite3"
+                    else {"modernc.org/" + record["repository"].split("/")[1]}
+                ),
                 "Canonical modernc project must match its locked module",
             )
         archive = fields(
@@ -311,9 +317,46 @@ def _policy_inputs(
             safe_path(name)
         fixture_links(record)
         records.append(record)
+        require(
+            record.get("repository") != "cznic/libsqlite3" or "relationship" in record,
+            "Sibling generator project requires its exact relationship",
+        )
         if "relationship" in record:
             relationship = record["relationship"]
             require(isinstance(relationship, dict), "Invalid upstream relationship")
+            if relationship.get("kind") == "generator-project":
+                fields(
+                    relationship,
+                    {"kind", "name", "version", "module"},
+                    "generator relationship",
+                )
+                require(
+                    identifier == "backend-libsqlite3-project"
+                    and record["repository"] == "cznic/libsqlite3"
+                    and record.get("source_host") == "gitlab"
+                    and record.get("go_modules") == {"modernc.org/sqlite": "v1.37.0"}
+                    and relationship
+                    == {
+                        "kind": "generator-project",
+                        "name": "modernc.org/libsqlite3",
+                        "version": "v1.9.0",
+                        "module": "modernc.org/sqlite",
+                    }
+                    and {
+                        "generator.go",
+                        "go.mod",
+                        "go.sum",
+                        "ccgo_linux_amd64.go",
+                        "ccgo_linux_arm64.go",
+                    }
+                    <= set(inspected),
+                    "Unreviewed backend generator project association",
+                )
+                continue
+            require(
+                record.get("repository") != "cznic/libsqlite3",
+                "Sibling generator project requires its exact relationship",
+            )
             build_configuration = relationship.get("kind") == "build-configuration"
             fields(
                 relationship,
@@ -381,7 +424,7 @@ def policy(root: Path, source: dict) -> tuple[bytes, bytes, list[dict]]:
 def url(record: dict) -> str:
     if record.get("source_host") == "gitlab":
         require(
-            record["repository"] in {"cznic/sqlite", "cznic/libc"},
+            record["repository"] in {"cznic/sqlite", "cznic/libc", "cznic/libsqlite3"},
             "Only the exact canonical modernc project routes are supported",
         )
         matches(record["commit"], COMMIT, "Upstream reference must be a full commit")
@@ -425,7 +468,7 @@ def official_fetch(url: str) -> bytes:
     ):
         host = "codeload.github.com"
     elif re.fullmatch(
-        r"https://gitlab\.com/cznic/(sqlite|libc)/-/archive/([0-9a-f]{40})/\1-\2\.tar\.gz",
+        r"https://gitlab\.com/cznic/(sqlite|libc|libsqlite3)/-/archive/([0-9a-f]{40})/\1-\2\.tar\.gz",
         url,
     ):
         host = "gitlab.com"
@@ -860,7 +903,12 @@ def _verify(
     collection: Path,
     *,
     with_source_files: bool = False,
+    component: str = "browser",
 ):
+    require(
+        component in {"browser", "backend", "all"},
+        "Unsupported preferred source component",
+    )
     source = context(repository, version, commit)
     catalog, lock, records, go_inputs = _policy_inputs(root, source)
     require(
@@ -943,11 +991,13 @@ def _verify(
     if not with_source_files:
         return replay
     # The independent offering replay above has already checked the complete
-    # original archives against committed pins. Read browser originals only;
-    # do not unpack the much larger backend projects a second time.
+    # original archives against committed pins. Expose only the requested
+    # component; browser consumers do not need the much larger backend trees.
     sources = {}
     for item in records:
-        if "packages" not in item:
+        if (component == "browser" and "packages" not in item) or (
+            component == "backend" and "go_modules" not in item
+        ):
             continue
         prefix = item["repository"].split("/")[1] + "-" + item["commit"] + "/"
         original = by_url[url(item)]
@@ -974,15 +1024,27 @@ def verify(
 
 
 def verify_source_files(
-    root: Path, repository: str, version: str, commit: str, collection: Path
+    root: Path,
+    repository: str,
+    version: str,
+    commit: str,
+    collection: Path,
+    *,
+    component: str = "browser",
 ) -> tuple[dict, dict]:
-    """Replay one offering and expose validated browser originals to its consumer.
+    """Replay one offering and expose requested validated originals to its consumer.
 
     No extraction, upstream execution, authentication or approval is performed.
     The consumer must bind the returned asset digest to its publication subjects.
     """
     return _verify(
-        root, repository, version, commit, collection, with_source_files=True
+        root,
+        repository,
+        version,
+        commit,
+        collection,
+        with_source_files=True,
+        component=component,
     )
 
 
