@@ -2691,10 +2691,12 @@ runner, not a claim that the later failed native-container preparation passed.
       timeout was added or removed. Actionlint passed; the two existing
       exact-attempt/all-five-outcomes and failed/skipped/pending/missing-CI
       producer regressions passed in 0.183s. Formatting and diff checks passed.
-- [ ] Verify hosted overlap on an integrated candidate, including that assembly
-      remains blocked until all exact-source CI succeeds. Do not claim a shorter
-      complete workflow from static dependency checks or the earlier sequential
-      candidate.
+- [x] Verify hosted overlap on an integrated candidate, including that assembly
+      waits for every required exact-source server CI outcome under the current
+      three-job contract. Candidate `37774541174` ran native preparation alongside
+      server CI and completed assembly only after both native jobs and all three
+      server checks passed. This proves scheduling and the assembly boundary,
+      not a completed publication or a general workflow speedup.
 - [x] Avoid unchanged application builds for the specifically reviewed release
       workflow on ordinary PR/main CI. Classify only
       `.github/workflows/release.yml` as security-only; retain all-app selection
@@ -2826,14 +2828,37 @@ immutable reference/configuration/platform comparison remains required.
       after the final edit: 41 checks passed in 2.242 seconds. The existing
       immutable-builder mismatch checks remain active; formatting and diff checks
       passed. No local full application build or extra timing run was added.
-- [ ] Validate the integrated hosted assembly and disposable recovery. A local
-      environment check does not prove a successful release candidate.
+- [x] Validate the integrated hosted assembly. PR #14 passed all five ordinary
+      protected checks and GitGuardian with zero annotations at
+      `8bedad47f0add26f1975067542839d57a38ccba0`, then merged through protection
+      as `49bbeea73b1dc483eeb549d682ad3a862c916cd3` with an equal tree. Planned
+      candidate `37774541174` used that exact commit, passed both complete native
+      preparations and assembly job `113305596210`, including unchanged strict
+      collector/scanner builder comparisons. Backend/web CI finished in 6m22s
+      and 6m21s respectively; subsequent artifact transfer is separate release
+      work. No tag was created and publication remained disabled.
+- [ ] Validate disposable native recovery. Candidate `37774541174` is terminal:
+      both ARM64 job `113308361468` and AMD64 job `113308361461` reached the actual
+      producer and failed before the experiment with `TypeError: command()
+    missing 1 required keyword-only argument: 'environment'`. The default
+      command adapter was not exercised by the injected-executor fixtures.
+      Aggregated authentication, distribution review and publication were skipped;
+      a new integrated candidate must verify the repair below on both platforms.
+- [x] Repair the real default recovery command adapter by supplying its mandatory
+      scoped environment while preserving the installed Docker CLI, configuration
+      and native connection. Keep injected executor signatures and recovery
+      assertions unchanged. Add one regression that omits the executor override
+      and enforces the transport's actual required argument and secret exclusion.
+      The 12 measurement checks passed in 2.631s and nine gate checks in 0.535s;
+      per-file Black and diff checks passed. This verifies the wiring locally,
+      not a successful hosted Docker recovery experiment.
 - [ ] Publish the first reviewed server release only after the remaining gates
       pass. Production backup/restore and migration remain explicitly deferred.
 
 The scheduling PR #12 completed all five required checks with zero annotations
 at `b023bddd0669f88bcebbd050db104c9caeeae7ac` and merged through protection as
 `3e599052e7170f8687004d132b47b25d3ec70221`; its tree matches the checked head.
-This verifies its selector-policy change on hosted CI, not a completed release
-or proof of overlapping preparation. A later release-workflow-only PR remains
-needed to observe application-step skipping on that particular change scope.
+That checkpoint verified its selector-policy change on hosted CI, not a completed
+release or overlapping preparation. The later candidate above verifies overlap;
+an exact release-workflow-only PR remains needed to observe application-step
+skipping on that particular change scope.

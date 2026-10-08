@@ -16,6 +16,7 @@ import ast
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import os
 import platform as host_platform
 from pathlib import Path, PurePosixPath
 import re
@@ -94,6 +95,25 @@ EXPERIMENTS = (
 )
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 TRANSACTION = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\Z")
+
+
+def run(args: list[str], *, timeout: int = 1200) -> bytes:
+    # Retain the selected CLI, plugin configuration and native daemon connection,
+    # while excluding workflow credentials from the transport subprocess.
+    environment = {"PATH": os.environ.get("PATH", os.defpath)}
+    for name in (
+        "HOME",
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_CERT_PATH",
+        "DOCKER_TLS",
+        "DOCKER_TLS_VERIFY",
+        "XDG_RUNTIME_DIR",
+    ):
+        if name in os.environ:
+            environment[name] = os.environ[name]
+    return command(args, environment=environment, timeout=timeout)
 
 
 def native_platform() -> str:
@@ -849,7 +869,7 @@ def measure_recovery(
     previous_source: str,
     output: Path,
     root: Path = ROOT,
-    execute=command,
+    execute=run,
     allow_legacy_browser: bool = False,
 ) -> dict:
     context.checked()
