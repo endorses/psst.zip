@@ -6,10 +6,19 @@ are a separate manual action. The release publishing and updater tooling are
 being implemented; these templates alone do not establish a verified release. No
 tagged container release has been published through this release process yet.
 
+Routine pushes and pull requests retain security/history checks and select
+application steps from their source, build and fixture dependencies. Prose-only
+documentation and reviewed release-tooling changes can omit unrelated app builds.
+The five existing check names remain present; each scope step explains its
+selection. An omitted application suite has not executed. Unknown changes or
+unavailable Git baselines run everything. Manual CI and reusable release calls
+always request the full application suite.
+
 ## Release candidate checks
 
-The current `.github/workflows/release.yml` verifies candidates without publishing
-images or a GitHub Release. It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
+The current `.github/workflows/release.yml` verifies candidates and contains an
+explicitly enabled, protected publication job. Publication is disabled by default.
+It accepts strict `vMAJOR.MINOR.PATCH` tags, requires
 the tag's full source commit to match the triggering event and be reachable from
 `main`, and calls the reusable CI workflow from that same commit. All five CI
 jobs remain required, including native iOS and Android/shared checks.
@@ -49,23 +58,29 @@ Docker's local `--load` exporter can report a configuration digest in its
 those values must not be used as registry manifest or index digests. The future
 publisher must resolve and verify the digests actually stored in the registry.
 
-The workflow has read-only repository permissions and no registry publishing,
-attestation or production credentials. Main-branch pushes still run CI only.
-Publication will be added after its provenance, version-reservation, dependency
-review and source/license gates are implemented; production deployment will
-remain a separate manual operation. Tag ancestry checks do not configure branch
-or tag protection; those repository settings are a separate maintainer task.
+The workflow defaults to read-only repository permissions. Tagged evidence jobs
+receive scoped OIDC/attestation permissions; only the guarded publication job can
+write packages or releases after exact signed gates and protected review. Planned
+dispatches remain unsigned, read-only candidates. No release job has production
+access. Main-branch pushes run CI only. Publication remains disabled until private
+recovery storage, dedicated inspection credentials and the first-package procedure
+are configured and verified as described in the
+[publication guide](container-publication.md). Production deployment remains a
+separate manual operation. Tag ancestry checks do not replace branch/tag policy;
+the configured policies for this instance are recorded in the plan and operator
+guides.
 
 ## Maintainer path to a ready release
 
 For the first container release, use `v0.1.0` and preserve the existing `v0.0.0`
-tag. A main push runs source CI, rather than deploying production. The current
-tag workflow remains candidate-only; the publication transport and signing bridge
-are implemented locally but not yet connected to an enabled publishing job.
+tag. A main push runs source CI. The guarded publication transport and signing
+bridge are wired into the tag workflow, but publication remains disabled while
+live prerequisites are incomplete.
 
 - [ ] Review and commit the complete release source and workflow. Push the
-      reviewed checkpoint only with authorization, then verify all five source
-      CI jobs on that exact commit.
+      reviewed checkpoint only with authorization, then verify routine CI on
+      that exact commit. The planned candidate below repeats full source CI,
+      including application suites selected out by routine checks.
 - [ ] Exercise the main-only planned-version candidate. For this repository, the
       dispatch command is:
 
@@ -85,11 +100,16 @@ are implemented locally but not yet connected to an enabled publishing job.
       actual native scanner/smoke/recovery gates and their authentication. Review
       exact image configurations and all corresponding-source offerings; a green
       candidate summary alone is insufficient.
-- [ ] Configure reviewed branch/tag protection, immutable-release policy, both
-      public repository-linked GHCR packages and narrowly scoped publication
-      credentials. Complete and verify the tagged publishing job described in
-      the [publication guide](container-publication.md) before creating a release
-      tag. The first-package bootstrap and policy settings remain unperformed.
+- [ ] Configure reviewed branch/tag protection, immutable-release policy, private
+      recovery storage and narrowly scoped publication credentials. Review the
+      wired publisher and complete its prerequisites in the
+      [publication guide](container-publication.md) before creating a release tag.
+      When both packages are absent, configure its explicit first-package mode;
+      that same publishing attempt creates the reviewed pair and verifies public
+      repository linkage before exposing version tags or a ready release. This
+      instance's branch/tag and immutable-release policies are configured;
+      storage, inspection credentials and actual first-package initialization
+      remain pending.
 - [ ] Once publishing is enabled, create an unused version tag at the reviewed
       source SHA and push that tag. Its workflow must rerun CI for that exact
       tagged commit, authenticate the complete image/source/bundle subjects and
@@ -103,8 +123,8 @@ are implemented locally but not yet connected to an enabled publishing job.
 
 The detailed [native preparation guide](container-native-preparation.md) records
 the measured inputs, replay commands and remaining hosted gates. These steps
-describe the full maintainer path; they do not claim the unfinished publication
-workflow or a first ready release exists.
+describe the full maintainer path; they do not establish live publication or a
+first ready release.
 
 ## Operator path for updates and recovery
 

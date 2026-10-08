@@ -317,13 +317,13 @@ extension ReceiveCheckpointTests {
         try output.write(contentsOf: Data("[{\"savedFiles\":{".utf8))
         // Exceed the 16 MiB record cap with fewer rows to stage and promote.
         // Paths remain below the production 4096-character path limit.
-        let suffix = String(repeating: "x", count: 4000)
-        for index in 0..<4200 {
+        let suffix = String(repeating: "x", count: 3500)
+        for index in 0..<4800 {
             if index > 0 { try output.write(contentsOf: Data([44])) }
             try output.write(
                 contentsOf: Data("\"child-\(index)/file\":\"Received/\(index)-\(suffix)\"".utf8))
         }
-        try output.write(contentsOf: Data("},\"savedTransfers\":[\"child-4199\"],".utf8))
+        try output.write(contentsOf: Data("},\"savedTransfers\":[\"child-4799\"],".utf8))
         try output.write(contentsOf: tail)
         try output.write(contentsOf: Data([93]))
         try output.close()
@@ -350,9 +350,9 @@ extension ReceiveCheckpointTests {
         XCTAssertNil(current.savedFiles)
         let value = try XCTUnwrap(
             resumed.receiveCheckpoints(
-                parent: current, transferIDs: ["child-4199"], fileExists: { _, _ in true })[
-                    "child-4199"])
-        XCTAssertEqual(value.paths["file"], "Received/4199-" + suffix)
+                parent: current, transferIDs: ["child-4799"], fileExists: { _, _ in true })[
+                    "child-4799"])
+        XCTAssertEqual(value.paths["file"], "Received/4799-" + suffix)
         XCTAssertTrue(value.complete)
         XCTAssertEqual(
             (try FileManager.default.attributesOfItem(atPath: file.path)[.size] as! NSNumber).intValue,
@@ -392,8 +392,8 @@ extension ReceiveCheckpointTests {
         XCTAssertEqual(try sqliteStore.record(old.localID)?.totalSize, old.totalSize)
         let restored = try XCTUnwrap(
             sqliteStore.receiveCheckpoints(
-                parent: old, transferIDs: ["child-4199"], fileExists: { _, _ in true })[
-                    "child-4199"])
+                parent: old, transferIDs: ["child-4799"], fileExists: { _, _ in true })[
+                    "child-4799"])
         XCTAssertEqual(restored.paths, value.paths)
         XCTAssertTrue(restored.complete)
     }

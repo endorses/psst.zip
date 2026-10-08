@@ -1405,8 +1405,16 @@ file cleanup, output/timeout bounds and rejection of a mismatched active version
 The workflow passes actionlint v1.7.12. SSH/sudo templates and setup/rotation
 instructions are in
 [the production Actions guide](../security/actions-production-deployment.md).
-Template syntax/effective configuration, host installation, production
-environment protections and the actual SSH/deployment flow remain pending.
+Standalone template syntax and effective Match restrictions passed locally on
+2026-10-08 using OpenSSH 10.5p1 with a disposable host key and isolated config.
+The deployment user received the exact forced command, public-key-only
+authentication, protected key-file path and disabled forwarding/TTY/tunnels;
+the nonmatching maintenance user did not inherit those restrictions. Sudoers
+syntax passed with visudo 1.9.17p2. The local visudo also warned about unrelated
+ownership of `/etc/sudo.conf`; this check did not modify that file or validate
+the local machine's installed sudo policy. All temporary keys/configs were
+removed. Installed VPS Includes, account/PAM policy, sudo grants and actual
+connection/denial behavior remain pending, as do production secrets and rollout.
 
 Source dependency review is recorded in
 [the dependency review](../security/container-dependency-review.md). Pinned
@@ -2282,21 +2290,35 @@ justify them.
       inbox case took 27.282 seconds. Both meaningful size-boundary checks remain.
       The iOS build and tests were unchanged in the subsequent `de0721b` source;
       its prolonged live XCTest step prompted this bounded-execution change.
-- [ ] Verify the native execution limits on macOS/Xcode after pushing this
-      workflow change. Inspect the exact run's case timings and result bundle;
-      static YAML and shell validation does not prove simulator execution.
+- [x] Verify the native execution limits on macOS/Xcode at `8e18de8`, run
+      `37725494465`. All 176 cases passed in 113.668 seconds. XCTest accepted the
+      enabled two-minute allowances; its step took 4m23s including startup. The
+      downloaded 287,402-byte result artifact matched its recorded SHA256
+      `9314828446b27dde518fe792ce521282175ffe46575e902e4b75abc619f99315`;
+      its 379 entries included result metadata with no external locations.
+      This inspected archive structure and logs, not native xcresulttool decoding.
 - [x] Reduce construction costs in the two measured slow native fixtures without
       changing their failure contracts. The 101 MiB streaming test now constructs
-      zero-filled Kotlin plaintext directly, retaining actual frame encryption,
-      authentication, file writing and digest verification. The oversized inbox
-      fixture uses 4,200 valid longer paths instead of 5,000 rows, still asserts
+      one bridged nonzero full plaintext chunk instead of constructing it for
+      every frame, retaining actual nonce/frame encryption, authentication, file
+      writing and digest verification. Encryption copies header plus plaintext,
+      so the cached input cannot be mutated by its provider. The oversized inbox
+      fixture uses 4,800 paths at the original width instead of 5,000 rows, still asserts
       the original exceeds 16 MiB, and retains staged-state reopen/resume, late
       identity, secrets and both JSON/legacy SQLite recovery. The existing
-      portable checkpoint harness passed all 17 cases in 41.768 seconds, with
-      the changed oversized case taking 21.913 seconds. This validates migration
+      portable checkpoint harness passed all 17 cases at the initial 4,200-row
+      checkpoint in 41.768 seconds, with its oversized case taking 21.913 seconds. This validates migration
       behavior with portable boundaries; it does not prove an iOS timing gain.
-- [ ] Measure both optimized cases in the complete hosted native XCTest suite
-      and confirm the real Kotlin frame fixture and Apple boundaries pass.
+      After retaining the original path width, only the changed migration case
+      was repeated: it passed in 22.982 seconds, with 5.99 seconds of portable
+      compilation. These final refinements still require native verification.
+- [x] Measure the initial fixture checkpoint in complete hosted native XCTest.
+      Run `37725494465` passed all 176 cases: streaming took 45.733 seconds and
+      oversized inbox recovery 33.229 seconds. These different-run measurements
+      do not demonstrate an inbox timing improvement over its earlier 27.282
+      seconds. Keep that limitation explicit instead of claiming faster tests.
+- [ ] Verify and measure the final cached nonzero frame and original-width inbox
+      fixtures with real Kotlin/Apple boundaries in the next hosted native run.
 - [x] Diagnose terminal run `37723307243` before superseding it: backend, web,
       Android and security passed; iOS exhausted the job budget after its build
       succeeded. Its completed log contains no XCTest case or suite start, so
@@ -2305,8 +2327,35 @@ justify them.
       overlapping simulator boot and add an explicit `simctl bootstatus -b`
       readiness check bounded to 120 seconds before XCTest. The step has a
       three-minute cap; the XCTest step's separate cap also covers app/test launch.
-- [ ] Verify simulator readiness and native test startup on the next exact hosted
-      commit. A green static check does not establish that the runner issue is fixed.
+- [x] Verify simulator readiness and native test startup on exact `8e18de8`:
+      readiness completed in 13 seconds, native build/embedded extension passed,
+      and the full XCTest suite executed successfully. The whole iOS job took
+      15m13s, including an 8m29s build; web took 8m02s and release fixtures 29s.
+      This successful runner check does not prove every future startup stall fixed.
+
+- [x] Scope routine application checks to their actual source/build/fixture
+      dependencies. Keep repository history/security checks unconditional and
+      preserve all five required job names. Select inside existing jobs so release
+      evidence retains its exact five-job contract. Backend changes also run web;
+      shared/native toolchain inputs run both mobile jobs. Protocol/shared fixture
+      or workflow changes and unknown inputs run the full suite. Missing Git
+      baselines or failed classification must never produce a silent skip.
+- [x] Require full validation for reusable release calls and manual CI runs,
+      regardless of routine path selection. Keep release evidence strict about
+      completed successful checks; an unrelated routine green run cannot replace
+      the exact tagged source-CI gate.
+- [x] Verify scope selection with small offline Git fixtures covering prose-only
+      edits versus forced full release checks, dependency crosspaths, renames,
+      deletions, complete push ranges and unavailable/unknown inputs. Do not add
+      repeated application builds or a second large test suite for this selector.
+      Five focused selector cases passed in 1.275 seconds, including subprocess
+      execution and Git fixtures; all temporary repositories/event files were
+      removed. Both workflows passed actionlint 1.7.12, exact five-job/full-release
+      wiring checks, shell parsing and embedded Python syntax checks. No release
+      evidence-parser relaxation or additional reusable job was introduced.
+- [ ] Verify the changed workflow on GitHub before claiming its routine time
+      saving or complete native execution. Application skips mean unaffected
+      source was selected out, not that its tests executed.
 
 - [x] Profile the complete routine release/notice regression suite after the
       browser source-producer and modernc archive changes; record wall time

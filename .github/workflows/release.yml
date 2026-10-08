@@ -62,6 +62,8 @@ jobs:
     # can exercise native preparation but cannot satisfy tagged source-CI gates.
     # All five jobs must succeed; an old successful run is insufficient.
     uses: ./.github/workflows/ci.yml
+    with:
+      full_validation: true
     permissions:
       contents: read
 

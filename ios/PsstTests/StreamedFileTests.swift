@@ -8,6 +8,9 @@ import XCTest
 final class StreamedFileTests: XCTestCase {
     private let key = Data(repeating: 7, count: 32).toKotlinByteArray()
     private let context = String(repeating: "a", count: 32)
+    // Bridge one nonzero full chunk once, retaining meaningful digest checks
+    // without rebuilding identical plaintext for every authenticated frame.
+    private lazy var fullChunk = Data(repeating: 9, count: StreamedFiles.chunkBytes).toKotlinByteArray()
     private func metadata(_ size: Int64) -> FileMetadata {
         FileMetadata(
             name: "large.bin", size: size, mimeType: "application/octet-stream", blobId: UUID().uuidString,
@@ -16,11 +19,13 @@ final class StreamedFileTests: XCTestCase {
 
     private func frame(total: Int64, index: Int64) throws -> KotlinByteArray {
         let count = try Int(ChunkedFileCrypto.shared.plaintextSize(totalSize: total, index: index))
-        // Kotlin arrays start zero-filled. Avoid per-byte Swift bridge calls just
-        // to construct fixtures; encryption and the production writer stay real.
+        // encrypt copies header + plaintext; it cannot mutate this cached input.
+        let plaintext =
+            count == StreamedFiles.chunkBytes
+            ? fullChunk : Data(repeating: 9, count: count).toKotlinByteArray()
         return try ChunkedFileCrypto.shared.encrypt(
             key: key, id: context, totalSize: total, index: index,
-            plaintext: KotlinByteArray(size: Int32(count)))
+            plaintext: plaintext)
     }
 
     func testMoreThan100MiBWritesFramesWithoutWholeFileBuffer() throws {
@@ -32,7 +37,7 @@ final class StreamedFileTests: XCTestCase {
         for index in 0..<chunks {
             try autoreleasepool {
                 let count = try Int(ChunkedFileCrypto.shared.plaintextSize(totalSize: total, index: index))
-                expected.update(data: Data(repeating: 0, count: count))
+                expected.update(data: Data(repeating: 9, count: count))
                 XCTAssertTrue(try writer.accept(frame(total: total, index: index)))
             }
         }
