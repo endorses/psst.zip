@@ -353,7 +353,13 @@ used a disposable signer, not the production key.
 Background inbox refresh initially erased the denied-permission message. Refresh
 now retains that specific message while continuing to clear recovered transient
 errors. The same four focused tests passed (17 seconds including compilation).
-Runtime verification of this final message-retention correction remains pending.
+The normal optimized APK from `ce31312` passed the final API 26 flow: deny storage,
+refresh the inbox, retain the explanation and Retry button, grant permission on
+Retry, then save all 32 decrypted bytes unchanged. Full signed-artifact validation
+passed with a disposable signer. Compilation/shrinking took 66 seconds; completing
+the explicitly opted-in unsigned packaging and lint used cached tasks in two
+seconds. This is local evidence; production signing and physical-phone checks
+remain pending.
 
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS
