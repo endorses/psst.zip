@@ -23,7 +23,9 @@ import android_release as release
 CAPABILITIES = {
     "installed data": True,
     "shared UID": False,
-    "permission": False,
+    # AndroidX declares a package-scoped signature permission. PackageManager
+    # requires PERMISSION continuity to let the rotated app retain ownership.
+    "permission": True,
     "rollback": False,
     "auth": False,
 }
@@ -63,7 +65,7 @@ def capability_arguments() -> list[str]:
         "--set-shared-uid",
         "false",
         "--set-permission",
-        "false",
+        "true",
         "--set-rollback",
         "false",
         "--set-auth",
@@ -119,16 +121,7 @@ def verify_old_apk(old_apk: Path, sdk_tools: Path, installed_fingerprint: str) -
             str(old_apk),
         ]
     )
-    certificates = re.findall(
-        r"^Signer #[0-9]+ certificate SHA-256 digest: ([a-fA-F0-9:]+)$",
-        signatures,
-        re.MULTILINE,
-    )
-    release.require(
-        len(certificates) == 1
-        and release.certificate_digest(certificates[0]) == installed_fingerprint,
-        "Old APK signer does not match recorded installed certificate",
-    )
+    release.verify_signer_output(signatures, installed_fingerprint)
     release.reject_public_lineage(old_apk)
     manifest = release.parse_badging(
         release.command([str(sdk_tools / "aapt2"), "dump", "badging", str(old_apk)]),
@@ -274,16 +267,7 @@ def prepare_bridge(
                 str(signed),
             ]
         )
-        certificates = re.findall(
-            r"^Signer #[0-9]+ certificate SHA-256 digest: ([a-fA-F0-9:]+)$",
-            signatures,
-            re.MULTILINE,
-        )
-        release.require(
-            len(certificates) == 1
-            and release.certificate_digest(certificates[0]) == new_fingerprint,
-            "Private bridge does not use production signer on selected Android API",
-        )
+        release.verify_signer_output(signatures, new_fingerprint, device_api=device_api)
         verify_lineage(
             release.command(
                 [
@@ -321,6 +305,7 @@ def prepare_bridge(
                 "productionSignerSha256": new_fingerprint,
                 "apkSha256": checksum,
                 "oldSignerCapabilities": CAPABILITIES,
+                "operatorPermissionTrustReviewRequired": True,
                 "devicePreservationVerified": False,
                 "subsequentProductionOnlyUpdateVerified": False,
             },
@@ -329,6 +314,13 @@ def prepare_bridge(
             "This APK and lineage are private migration artifacts. Never publish them "
             "or upload them to GitHub. Do not uninstall the old app. This artifact is "
             "intended only for the recorded Android 13+ device and certificate. "
+            "Before any real-device transition, the operator must review and accept "
+            "historical debug-key trust for installed data and signature permissions. "
+            "Permission continuity is required to retain ownership of AndroidX's "
+            "package-scoped signature permission; it also retains permission trust "
+            "for the historical signer. Shared UID, rollback and auth trust are disabled. "
+            "Installing a later production-only APK does not prove that Android has "
+            "forgotten this historical permission trust. "
             "Verify a disposable signing transition first, then verify the real "
             "in-place update preserves client-held keys, accounts and history. "
             "A subsequent production-only APK with a higher version code must "

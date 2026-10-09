@@ -129,6 +129,51 @@ def certificate_digest(value: str) -> str:
     return normalized
 
 
+def verify_signer_output(
+    value: str, expected: str, *, device_api: int | None = None
+) -> None:
+    """Accept SDK 37 labels without confusing rotation with multi-signing.
+
+    Verbose apksigner output reports the logical signer count separately from
+    certificate records. Rotated APKs can print old and current certificates with
+    SDK ranges; only the private bridge verifier supplies a selected API. Public
+    releases require every printed APK signer to have the approved key. Source
+    stamps are independent of the APK signing identity.
+    """
+    expected = certificate_digest(expected)
+    require(
+        re.findall(r"^Number of signers: ([0-9]+)$", value, re.MULTILINE) == ["1"],
+        "APK must have exactly one verified signer",
+    )
+    records = re.findall(
+        r"^(.+) certificate SHA-256 digest: ([^\r\n]+)$", value, re.MULTILINE
+    )
+    observed = []
+    for label, digest in records:
+        if label in {"Source Stamp Signer", "Source Stamp Signer:"}:
+            continue
+        identity = re.fullmatch(
+            r"(?:V(?:1|2|3\.[012]) )?Signer(?: #([1-9][0-9]{0,9}))?:?"
+            r"(?: \(minSdkVersion=([1-9][0-9]{0,9})(?: \(dev release=true\))?, "
+            r"maxSdkVersion=([1-9][0-9]{0,9})\))?",
+            label,
+        )
+        require(identity is not None, "Unrecognized APK signing certificate record")
+        number, minimum, maximum = identity.groups()
+        require(number in {None, "1"}, "APK must have exactly one verified signer")
+        digest = certificate_digest(digest)
+        if minimum is not None:
+            minimum, maximum = int(minimum), int(maximum)
+            require(minimum <= maximum, "Invalid APK signer SDK range")
+            if device_api is not None and not minimum <= device_api <= maximum:
+                continue
+        observed.append(digest)
+    require(
+        bool(observed) and set(observed) == {expected},
+        "APK signer differs from approved signer",
+    )
+
+
 def parse_badging(value: str, *, allow_debuggable: bool = False) -> dict:
     package = re.search(
         r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'",
@@ -332,7 +377,10 @@ def reject_public_lineage(apk: Path) -> None:
         block_id = struct.unpack_from("<I", block, offset + 8)[0]
         require(block_id not in seen, "Duplicate signing block")
         seen.add(block_id)
-        require(block_id != 0x1B93AD61, "Rotated private APK cannot be published")
+        require(
+            block_id not in {0x1B93AD61, 0x70E1C89F},
+            "Rotated private APK cannot be published",
+        )
         if block_id == 0xF05368C0:
             value = block[offset + 12 : end]
             signers, consumed = length_prefixed(value)
@@ -396,15 +444,7 @@ def verify_apk(
                 str(apk),
             ]
         )
-        observed = re.findall(
-            r"^Signer #[0-9]+ certificate SHA-256 digest: ([a-fA-F0-9:]+)$",
-            signatures,
-            re.MULTILINE,
-        )
-        require(
-            len(observed) == 1 and certificate_digest(observed[0]) == signer,
-            "APK signer differs from approved signer",
-        )
+        verify_signer_output(signatures, signer)
         require(
             bool(
                 re.search(

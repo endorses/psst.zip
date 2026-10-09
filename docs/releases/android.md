@@ -56,6 +56,11 @@ when finished.
 `PSST_ANDROID_DEVICE_TEST_BUILD_TYPE` and `PSST_ANDROID_DEVICE_TEST_VERSION_CODE`
 are reserved for private disposable update fixtures. Do not set them in a release
 workflow: fixture versions that disagree with the checked-in file are rejected.
+Release instrumentation fixtures preserve the single `androidx.tracing.Trace`
+runner facade in the target APK: AGP shares that dependency with the test APK,
+while ordinary target shrinking otherwise removes it before the runner starts.
+The fixture still shrinks and optimizes app and crypto code. This harness rule is
+enabled only for the explicit release test build; normal public APKs do not use it.
 
 ## Signing key custody
 

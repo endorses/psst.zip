@@ -42,7 +42,7 @@ class SigningBridgeTest(unittest.TestCase):
                 "Has installed data capability : false",
             ),
             value.replace(
-                "Has permission capability : false", "Has permission capability : true"
+                "Has permission capability : true", "Has permission capability : false"
             ),
         ):
             with self.assertRaises(release.InvalidRelease):
@@ -129,6 +129,9 @@ class SigningBridgeTest(unittest.TestCase):
         capabilities = bridge.capability_arguments()
         self.assertEqual(
             capabilities[capabilities.index("--set-rollback") + 1], "false"
+        )
+        self.assertEqual(
+            capabilities[capabilities.index("--set-permission") + 1], "true"
         )
 
 

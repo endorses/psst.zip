@@ -96,10 +96,30 @@ python3 tools/check_android_update.py \
 
 The runner creates two short-lived signing keys inside its own temporary private
 directory and passes random passwords through environment variables. It signs the
-seed and instrumentation packages, prepares an Android 13+ bridge with only
-installed-data trust, verifies its certificate order/capabilities, and signs the
+seed and instrumentation packages, prepares an Android 13+ bridge with
+installed-data and signature-permission continuity, verifies its certificate
+order/capabilities, and signs the
 later production-only APK without that lineage. Files and secrets are discarded
 on success or failure; no private key is printed or retained in the report.
+
+Permission continuity is necessary because AndroidX declares the package-scoped
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` as a signature permission. Android's
+installation code requires the signing-history `PERMISSION` capability to retain
+ownership of an existing permission, including during an update of the same
+package. Disabling it caused `INSTALL_FAILED_DUPLICATE_PERMISSION` in the actual
+Android 16 fixture. Keep the AndroidX declaration and protection level intact;
+it supports receiver isolation on older Android versions.
+[Android permission ownership checks](https://android.googlesource.com/platform/frameworks/base/+/1406600d75c1a30ebdf45312b7fa0f4a4355194b/services/core/java/com/android/server/pm/InstallPackageHelper.java),
+[AndroidX signature permission](https://android.googlesource.com/platform/prebuilts/sdk/+/5c762fb2f6235bbe5d006d3a26063a8e921354b4/current/androidx/manifests/androidx.core_core/AndroidManifest.xml).
+
+The private bridge grants historical debug-key trust for installed data and
+signature permissions. Shared UID, rollback and auth capabilities remain disabled.
+This is a material trust decision: before a real-device transition, the operator
+must review the exact installed signer and accept that permission trust. The OS
+may retain signing history after a subsequent production-only update; passing
+that update does not establish revocation of historical permission trust. Public
+release APKs must still contain only the production signing identity and no
+rotation lineage, so fresh public installations do not acquire debug-key authority.
 
 It executes `ReleaseUpdateDeviceTest#preservesClientState` three times: seed,
 after bridge installation, and after the production-only higher-code installation.

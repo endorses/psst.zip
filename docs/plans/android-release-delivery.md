@@ -258,8 +258,8 @@ The latest lint bidi rule stalled in Kotlin PSI traversal: one rule is replaced 
 rules stay enabled. Actual resource-type and configuration-awareness errors were
 fixed rather than suppressed.
 
-Focused tooling checks pass: 33 Android release/workflow/update/signing cases in
-0.053 seconds, 8 bidi boundary cases in 0.015 seconds and 5 CI-selection cases in
+Focused tooling checks pass: 34 Android release/workflow/update/signing cases in
+0.040 seconds, 8 bidi boundary cases in 0.015 seconds and 5 CI-selection cases in
 1.645 seconds. Actionlint and Android/iOS localization/source checks pass. Task
 instrumentation uses the supported Gradle completion service in the existing
 build; no extra full test benchmark was added. These timings describe local
@@ -287,7 +287,26 @@ iOS-target notices reflect the validation boundary above.
 The first timing-enabled composite build emitted duplicate task records; a
 minimal composite fixture reproduced and verified the root-only listener fix.
 The 75-second wall time is valid; that build's doubled task aggregates are not.
-The next required fixture build will produce a fresh timing report.
+The next 61-second fixture build produced unique task records: shrinking took
+41.999 seconds across two tasks, lint 27.458 seconds across six tasks and compilation
+20.381 seconds across 62 tasks. Tasks overlap; these sums are not elapsed build time.
+
+SDK 37 changed `apksigner` certificate output. The verifier now handles its
+scheme-specific certificates and Android API ranges, while public APK verification
+still rejects signing rotation, including v3.2 blocks. An actual Android 16 private
+bridge installation exposed AndroidX's signature-permission ownership requirement:
+the lineage needs installed-data and permission continuity. Shared-UID, rollback
+and auth capabilities remain disabled. Accepting historical debug permission trust
+on the real phone is still an operator decision; a later production-only APK does
+not prove that Android discarded that signing history.
+
+The first optimized instrumentation run failed before executing the test because
+R8 removed the test runner's shared `androidx.tracing.Trace` facade. A narrow keep
+rule applies only to explicit disposable release fixtures; public releases do not
+load it. Rebuilt instrumentation and full preservation evidence remain pending.
+The unmodified optimized public configuration starts successfully on an owned
+API 26 emulator with the latest stable emulator 37.2.12. This establishes startup,
+not the pending network, crypto, sharing or current-Android smoke checks.
 
 The next prerequisite is proving the private transition with synthetic protected
 state, then checking the actual phone and production-key recovery. Store acceptance, iOS

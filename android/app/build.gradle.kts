@@ -108,6 +108,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (deviceTestBuildType == "release") {
+                // The separate runner shares target dependencies. Preserve its
+                // tracing entry points only in disposable instrumented fixtures.
+                proguardFiles("proguard-device-fixture.pro")
+            }
         }
     }
 

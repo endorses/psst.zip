@@ -91,6 +91,9 @@ class AndroidReleaseTest(unittest.TestCase):
         signed_block(0x1B93AD61, b"private rotated signer")
         with self.assertRaises(release.InvalidRelease):
             release.reject_public_lineage(self.apk)
+        signed_block(0x70E1C89F, b"private SDK 37 rotated signer")
+        with self.assertRaises(release.InvalidRelease):
+            release.reject_public_lineage(self.apk)
 
     def test_unsigned_preview_rejects_existing_apk_and_jar_signatures(self):
         self.make_apk()
@@ -179,7 +182,7 @@ class AndroidReleaseTest(unittest.TestCase):
         )["versions"]
         badging = f"package: name='zip.psst.android' versionCode='2' versionName='0.1.0'\nminSdkVersion:'{versions['android-minSdk']}'\ntargetSdkVersion:'{versions['android-targetSdk']}'\n"
         good = (
-            "Verified using v2 scheme (APK Signature Scheme v2): true\nSigner #1 certificate SHA-256 digest: "
+            "Verified using v2 scheme (APK Signature Scheme v2): true\nNumber of signers: 1\nSigner #1 certificate SHA-256 digest: "
             + "b" * 64
             + "\n"
         )
@@ -204,6 +207,41 @@ class AndroidReleaseTest(unittest.TestCase):
                     self.apk, self.root, "b" * 64, self.version, self.revision
                 )["signed"]
             )
+
+    def test_sdk37_signer_labels_keep_single_identity_and_rotation_boundaries(self):
+        digest = "b" * 64
+        for label in ("Signer #1", "V2 Signer:", "V3.0 Signer:"):
+            value = (
+                f"Number of signers: 1\n{label} certificate SHA-256 digest: {digest}\n"
+            )
+            release.verify_signer_output(value, digest)
+        repeated = (
+            f"Number of signers: 1\nV2 Signer: certificate SHA-256 digest: {digest}\n"
+            f"V3.0 Signer: certificate SHA-256 digest: {digest}\n"
+            f"Source Stamp Signer: certificate SHA-256 digest: {'c' * 64}\n"
+        )
+        release.verify_signer_output(repeated, digest)
+        rotated = (
+            "Number of signers: 1\n"
+            f"V3.1 Signer: (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: {digest}\n"
+            f"V3.0 Signer: (minSdkVersion=28, maxSdkVersion=32) certificate SHA-256 digest: {'a' * 64}\n"
+        )
+        release.verify_signer_output(rotated, digest, device_api=36)
+        for value, api in (
+            (rotated, None),
+            (rotated, 32),
+            (rotated, 27),
+            (repeated.replace("Number of signers: 1", "Number of signers: 2"), None),
+            (repeated + f"V2 Signer #2: certificate SHA-256 digest: {digest}\n", None),
+            (repeated + "V2 Signer: certificate SHA-256 digest: invalid\n", None),
+            (repeated.replace("V2 Signer:", "Unknown Signer:"), None),
+            (rotated.replace("maxSdkVersion=32", "maxSdkVersion=36"), 36),
+        ):
+            with (
+                self.subTest(value=value, api=api),
+                self.assertRaises(release.InvalidRelease),
+            ):
+                release.verify_signer_output(value, digest, device_api=api)
 
     def test_existing_release_or_version_downgrade_is_rejected(self):
         for records in (
