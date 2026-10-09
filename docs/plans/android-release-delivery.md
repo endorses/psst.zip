@@ -162,7 +162,7 @@ scenario do not belong in every documentation or container-only change.
 - [x] Reuse existing app/shared tests for serialization, networking, history and
       crypto. Add only missing signing/version/artifact-boundary checks; a source
       test passing does not prove R8 preserved runtime behavior.
-- [ ] Execute one compact optimized-APK smoke covering server validation/pairing,
+- [x] Execute one compact optimized-APK smoke covering server validation/pairing,
       encrypted send/download, Receive-v2 private-key use, guest access, QR scanning
       and document/photo sharing. Use disposable resources and modest files;
       preserve existing coverage rather than adding another exhaustive transfer suite.
@@ -171,7 +171,7 @@ scenario do not belong in every documentation or container-only change.
       stable, and no uninstall or renewed NetGuard rule is required for a normal update.
 - [ ] Separately verify the existing debug-to-production transition. Keep first
       migration checks distinct from routine same-signer update verification.
-- [ ] Check API 26 behavior and the current stable Android version, including
+- [x] Check API 26 behavior and the current stable Android version, including
       packaged native library compatibility. Use an emulator/device only for
       release-specific behavior that JVM tests cannot establish.
 - [ ] Keep Android publication independent of native iOS CI. For any shared or
@@ -271,8 +271,8 @@ seconds with cached dependencies. App tests: 163 cases, 0 failures, 8.871 second
 shared Android tests: 175 cases, 0 failures, 7.215 seconds. This is local execution
 evidence, not a hosted timing or a production-signed APK.
 
-Pending: remaining camera-QR, Send/document/photo sharing and physical-device
-checks, the phone's actual transition, production-key recovery, GitHub
+Pending: physical-device checks, the phone's actual transition, production-key
+recovery, GitHub
 environment/tag rules, hosted preview and public delivery.
 Local JDK is Android Studio's Java 25.0.3; the workflow selects Java 27. Native iOS
 app/share-extension/XCTest validation of changed shared dependencies remains
@@ -366,6 +366,28 @@ The planned first public version code is now `3`, above the synthetic private
 bridge's `2`. This also permits a normal, unmodified public-APK code `2` to code
 `3` same-signer update check, independently of the private diagnostic. The actual
 phone's version/signature remains a prerequisite before applying either APK.
+
+The [compact public-APK smoke](../testing/android-release-smoke.md) passed on the
+stable API 37 16 KB image with unmodified optimized APKs: source `ce31312`, code `2`,
+then source `ea6d57b`, code `3`, using one disposable signer. The newer public build
+and release lint took 39 seconds; the 34 tooling cases passed in 0.044 seconds.
+Guest QR-image decoding saved the web fixture's exact 47 plaintext bytes. A
+short-lived synthetic login QR paired the account, and the backend independently
+reported its grant connected. An actual MediaStore image share and a DocumentsUI
+text selection produced an encrypted Android Send; web decryption matched all
+3,488 PNG bytes and 47 text bytes. The saved-file Share action opened the native
+chooser with the FileProvider filename; delivery to an external receiver was not
+tested.
+
+Installing the normal higher-code APK with `adb install -r` preserved its UID and
+paired session without uninstalling or clearing data. The updated app recovered
+the exact Send link/key from history, and both files decrypted again. A Receive-v2
+private key created before the update decrypted a 32-byte submission afterward.
+After removing only the synthetic guest plaintext, retained device history
+redownloaded it with all 47 bytes unchanged. The optimized camera decoder also read
+the generated QR through the emulator's image-file camera mode, without using the
+image picker. This is emulator evidence; real-device optics, OEM signing behavior
+and NetGuard remain separate physical checks. No production signing key was used.
 
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS
