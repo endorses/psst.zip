@@ -106,8 +106,12 @@ android {
     if (deviceTestBuildType != null) {
         // Compile the private diagnostic in the target so R8 sees its complete
         // store/crypto call graph. Its separate runner uses Android APIs only.
-        sourceSets.getByName("main").java.srcDir("src/deviceFixture/java")
-        sourceSets.getByName("androidTest").java.setSrcDirs(listOf("src/deviceFixtureTest/java"))
+        sourceSets.getByName("main").kotlin.directories.add("src/deviceFixture/java")
+        sourceSets.getByName("androidTest").apply {
+            java.directories.clear()
+            java.directories.add("src/deviceFixtureTest/java")
+            kotlin.directories.clear()
+        }
     }
 
     buildTypes {

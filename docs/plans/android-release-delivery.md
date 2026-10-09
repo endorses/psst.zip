@@ -307,7 +307,9 @@ framework-only Java instrumentation runner. R8 analyzes the entire diagnostic ca
 graph; only its reflective entry signature stays named. Public builds omit the
 diagnostic and keep rule. A fixture-only metadata marker prevents publication even
 when its version matches the public release. Rebuilt instrumentation and full
-preservation evidence remain pending.
+preservation evidence remain pending. AGP 9's separate Kotlin source roots are
+configured explicitly for this diagnostic; its target and framework runner
+compiled successfully in 24 seconds without the source-directory deprecation.
 The unmodified optimized public configuration starts successfully on an owned
 API 26 emulator with the latest stable emulator 37.2.12. This establishes startup,
 not the pending crypto or sharing smoke checks. The same public configuration also
