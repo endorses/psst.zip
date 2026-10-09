@@ -3770,10 +3770,53 @@ verification remain deferred and must not be reported as completed.
 - [ ] Once public routing is active, check Android login and the retained Receive
       history/download using the original device and its original keys. Native
       download validation remains pending until actually exercised.
-- [ ] Install a protected production verification hook for bounded automated
-      authenticated transfer/decryption and recovery checks. Until that hook is
-      installed and measured on the VPS, each real update still enters the same
-      interactive verifier; release publication does not trigger a deployment.
+- [ ] Install and measure the protected `runtime-v1` profile described below.
+      This supersedes requiring a second functional transfer suite and production
+      authentication credentials for normal updates. Restore/recovery retains its
+      separate full-flow reconciliation requirement.
 - [ ] Provision and exercise the restricted Actions deployment identity and
       environment secrets. Keep independent off-host recovery separately deferred
       under the selected local-only checkpoint policy.
+
+## Automatic normal updates without repeated functional tests (2026-10-09)
+
+The operator requires normal updates to finish without the eight manual flow
+prompts. CI remains responsible for functional authentication, transfer,
+decryption, policy and native coverage. Actual deployment verification checks
+the installed host and selected release; it does not duplicate CI or require
+an administrator cookie, extra account, password or factor secret. This decision
+supersedes the proposed production credential/fixture hook for normal updates.
+
+- [x] Add an explicit root-owned `verification_profile: runtime-v1` option.
+      Keep `full` as the omitted-field default and reject hooks combined with
+      runtime mode. Pin each transaction's profile and require matching report
+      shape, source/version and timestamp; do not manufacture full-flow or native
+      decryption claims in a runtime report.
+- [x] Automatically activate normal runtime-mode updates after real trusted
+      HTTPS/API health, served release/compiled assets, initialized account and
+      preserved public settings, container/physical storage bindings, and SQLite
+      integrity/foreign-key checks. SQLite checks share one read-only snapshot.
+      All post-start validation/activation commands share a 120-second deadline;
+      retries stop at the deadline, and failure recovery uses its separate bounds.
+- [x] Preserve full verification for restores, including a runtime-configured
+      installation. Recovery never accepts the smaller runtime report or runs a
+      runtime hook to claim full-flow/traffic reconciliation.
+- [x] Review failure/profile boundaries and exercise focused regressions. All
+      53 updater tests passed in 0.209 seconds, including a real SQLite foreign-key
+      failure, expired health-retry deadline, profile/source mismatch and actual
+      activation deadline propagation followed by fail-closed stop. The broader
+      release tools passed 449 tests in 26.092 seconds before the final focused
+      deadline changes; the final focused regressions cover those changes.
+- [ ] Format, commit and pass protected GitHub checks for the installed helper
+      source and guides. Bound the SSH deployment request to ten minutes; the
+      checkpoint/image acquisition and failure-recovery budgets remain distinct
+      from the 120-second candidate validation/activation budget.
+- [ ] Install only the reviewed helper/parser and opt the VPS into `runtime-v1`
+      with no verification hook or production authentication secrets. Preserve
+      all physical volumes, local-only checkpoint policy and release provenance.
+- [ ] Measure a real same-version v0.1.6 rehearsal using the shared installed
+      update path, confirm automatic completion with no prompts and check public
+      HTTPS/release identity, preserved storage/ciphertext and completed retention.
+- [ ] Provision the dedicated restricted SSH identity and production environment
+      secrets, verify allowed/denied commands and execute the manual GitHub Actions
+      deployment path. Commits and release publication still do not deploy the VPS.

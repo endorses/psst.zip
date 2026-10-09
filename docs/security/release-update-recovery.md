@@ -5,6 +5,19 @@ The shared updater is `deploy/update.py`. SSH and GitHub Actions select a strict
 on the VPS, pass image URLs, execute downloaded scripts or choose arbitrary paths.
 A commit on `main` does not update production.
 
+Normal production updates can select the protected `runtime-v1` verification
+profile. CI covers functional behavior; this profile checks the actual deployment's
+trusted HTTPS, API health, served release/static assets, initialized account state,
+preserved public settings, physical storage bindings and read-only SQLite integrity
+and foreign keys. Successful checks activate automatically, with no administrator
+cookie, test account or interactive checklist. This does not claim authenticated
+transfer, native decryption or a fresh administrator second-factor challenge.
+
+The original `full` profile remains the default when the field is omitted. It
+retains the protected full-flow hook or interactive verifier. Recovery always
+requires that full verification and its additional reconciliation checks, including
+on a host configured for automatic normal updates.
+
 The helper has fast transaction/input tests and a real disposable Docker
 upgrade, activation and isolated-recovery exercise. The Docker gate uses actual
 application images and authenticated encrypted transfer flows, including a real
@@ -82,6 +95,7 @@ example schema, **not** the VPS's discovered mapping:
   },
   "disk_reserve_bytes": 1073741824,
   "image_reserve_bytes": 1073741824,
+  "verification_profile": "runtime-v1",
   "verification_hook": null,
   "checkpoint_protection": "off-host",
   "checkpoint_hook": "/usr/local/libexec/psst-checkpoint-export",
@@ -97,6 +111,13 @@ against edits by other identities. Include **every** active protected bind file 
 `operator_files`, and include reviewed release override files in
 `release_overrides`. Each override must retain image pairing, private origins,
 HTTPS, forwarding policy, storage, limits and read-only mounts.
+
+Install the reviewed helper version supporting `verification_profile` before
+adding that field to the protected configuration. `runtime-v1` requires
+`verification_hook: null`; an SSH/Actions deployment request cannot select or
+change the profile. Each transaction records its selected profile, and its report
+must match that profile and the selected version/source. Previously created
+transactions retain their original full-verification requirement.
 
 An empty `release_overrides` list deliberately selects the new bundled Caddyfile
 and removes a source-era host Caddyfile mount. Preserve that old file in
@@ -290,7 +311,16 @@ public configuration fields remain subject to exact comparison. These checks est
 prove authentication, ciphertext decryption, private settings or complete upload,
 receive, budget/revocation and recovery flows.
 
-With no `verification_hook`, the helper records `awaiting-verification`, keeps
+In `runtime-v1`, these actual deployment checks and a consistent read-only SQLite
+integrity/foreign-key snapshot produce a scoped runtime report and activate without
+interaction. Candidate validation and activation share a 120-second budget;
+health retries stop when it expires. Failure clears that deadline before the
+separate fail-closed stop/recovery commands. Image acquisition, the stopped checkpoint
+and failure recovery have separate time bounds; 120 seconds is not a promise for
+the complete update or its downtime. The profile does not repeat CI's functional
+suite or require production authentication secrets.
+
+In `full` with no `verification_hook`, the helper records `awaiting-verification`, keeps
 loopback-only routing and returns **20**. Actions/SSH must report this as pending
 operator verification, not deployment success. Inspect status after an interrupted
 connection instead of starting another update.
@@ -325,7 +355,7 @@ The helper separately reruns its automatic/authenticated checks after the browse
 exercise. Browser observations are administrator attestations, not automated
 assertions, and are retained privately with the transaction/version/source identity.
 
-For fully automated updates, configure a protected `verification_hook` that
+For automated full-flow verification, configure a protected `verification_hook` that
 performs those same real authenticated flows against the isolated candidate with
 the site's protected credentials and retained fixture keys. It receives only
 `--transaction PATH --compose PATH`, exits nonzero on any failure, restores pause

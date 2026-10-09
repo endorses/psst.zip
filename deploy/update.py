@@ -71,6 +71,15 @@ FLOW_CHECKS = frozenset(
         "client_authenticated_decryption",
     }
 )
+RUNTIME_CHECKS = frozenset(
+    {
+        "trusted_https_and_health",
+        "release_and_static_assets",
+        "preserved_settings_and_account_state",
+        "runtime_storage_bindings",
+        "sqlite_integrity_and_foreign_keys",
+    }
+)
 RESTORE_CHECKS = frozenset(
     {
         "post_checkpoint_changes_reviewed",
@@ -181,6 +190,20 @@ def checkpoint_protection(value: dict) -> str:
     return policy
 
 
+def verification_profile(value: dict) -> str:
+    profile = value.get("verification_profile", "full")
+    require(
+        isinstance(profile, str) and profile in {"full", "runtime-v1"},
+        "invalid verification profile",
+    )
+    return profile
+
+
+def transaction_verification_profile(transaction: dict) -> str:
+    # Disaster recovery retains the stronger fixture/reconciliation contract.
+    return "full" if transaction.get("restoring") else verification_profile(transaction)
+
+
 def validate_config(value: dict) -> dict:
     fields = {
         "repository",
@@ -203,10 +226,15 @@ def validate_config(value: dict) -> dict:
         "retention_count",
     }
     require(
-        set(value) - {"checkpoint_protection"} == fields,
+        set(value) - {"checkpoint_protection", "verification_profile"} == fields,
         "deployment configuration has missing or unknown fields",
     )
     checkpoint_protection(value)
+    profile = verification_profile(value)
+    require(
+        profile != "runtime-v1" or value["verification_hook"] is None,
+        "runtime verification does not use a verification hook",
+    )
     _release.repository_name(value["repository"])
     require(
         value["signer_workflow"]
@@ -365,16 +393,27 @@ def verify_archive(path: Path, *, image: bool = False) -> None:
     require(count > 0, "empty checkpoint archive")
 
 
-def require_flow_report(report: dict, restore: bool) -> None:
-    required = FLOW_CHECKS | (RESTORE_CHECKS if restore else set())
+def require_flow_report(report: dict, restore: bool, profile: str = "full") -> None:
+    require(profile in {"full", "runtime-v1"}, "invalid verification profile")
+    require(not restore or profile == "full", "restore requires full verification")
+    runtime = profile == "runtime-v1"
+    required = (
+        RUNTIME_CHECKS
+        if runtime
+        else FLOW_CHECKS | (RESTORE_CHECKS if restore else set())
+    )
+    fields = {"checks", "observed_at", "version", "source_commit"}
+    if runtime:
+        fields.add("verification_profile")
     require(
         isinstance(report, dict)
-        and set(report) == {"checks", "observed_at", "version", "source_commit"},
-        "invalid authenticated verification report",
+        and set(report) == fields
+        and (not runtime or report["verification_profile"] == profile),
+        "invalid verification report",
     )
     require(
         isinstance(report["checks"], dict) and set(report["checks"]) == required,
-        "missing authenticated flow/security verification",
+        "missing required verification checks",
     )
     for observation in report["checks"].values():
         require(
@@ -409,14 +448,16 @@ def reconciled_restore_settings(baseline: dict, observed: dict) -> dict:
         actual.pop("public_transfers_paused", None) is True,
         "restored verification must remain paused",
     )
-    actual, baseline = persisted_public_settings(actual), persisted_public_settings(
-        baseline
+    actual, baseline = (
+        persisted_public_settings(actual),
+        persisted_public_settings(baseline),
     )
     if actual == baseline:
         return actual
     original, changed = dict(baseline), dict(actual)
-    old_policy, new_policy = original.pop("traffic_policy", None), changed.pop(
-        "traffic_policy", None
+    old_policy, new_policy = (
+        original.pop("traffic_policy", None),
+        changed.pop("traffic_policy", None),
     )
     require(
         original == changed
@@ -462,6 +503,11 @@ class Host:
         gh: bool = False,
         timeout: int = 900,
     ) -> bytes:
+        deadline = getattr(self, "operation_deadline", None)
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "runtime verification timed out")
+            timeout = min(timeout, remaining)
         environment = self.env.copy()
         if gh:
             # Fix the public host explicitly; public reads also work without a token.
@@ -1549,19 +1595,35 @@ class Host:
         )
 
     @staticmethod
-    def sqlite_integrity(database: Path) -> None:
+    def sqlite_integrity(database: Path, *, deadline: float | None = None) -> None:
         # No schema migrations, no creation, no journal deletion, no repair.
-        with closing(
-            sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
-        ) as connection:
-            require(
-                connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)],
-                "stopped database integrity check failed",
-            )
-            require(
-                connection.execute("PRAGMA foreign_key_check").fetchall() == [],
-                "stopped database foreign-key check failed",
-            )
+        try:
+            with closing(
+                sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+            ) as connection:
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    require(remaining > 0, "runtime database verification timed out")
+                    connection.execute(
+                        "PRAGMA busy_timeout=" + str(int(min(remaining, 5) * 1000))
+                    )
+                    connection.set_progress_handler(
+                        lambda: int(time.monotonic() >= deadline), 1000
+                    )
+                connection.execute("BEGIN")
+                require(
+                    connection.execute("PRAGMA integrity_check").fetchall()
+                    == [("ok",)],
+                    "database integrity check failed",
+                )
+                require(
+                    connection.execute("PRAGMA foreign_key_check").fetchall() == [],
+                    "database foreign-key check failed",
+                )
+        except sqlite3.Error:
+            raise UpdateError(
+                "read-only database verification failed or timed out"
+            ) from None
 
     @staticmethod
     def verify_backup(
@@ -1750,12 +1812,41 @@ class Host:
                     )
 
     def automatic_checks(self, private: dict, transaction: dict) -> None:
+        if transaction_verification_profile(transaction) == "runtime-v1":
+            # All candidate/activation rechecks share one bounded validation
+            # budget; downloading images and checkpointing precede this budget.
+            deadlines = getattr(self, "runtime_deadlines", {})
+            self.runtime_deadlines = deadlines
+            previous_deadline = getattr(self, "operation_deadline", None)
+            self.operation_deadline = deadlines.setdefault(
+                transaction["id"], time.monotonic() + 120
+            )
+            try:
+                self._automatic_checks(private, transaction)
+                self.sqlite_integrity(
+                    Path(transaction["adopted"]["database"]),
+                    deadline=self.operation_deadline,
+                )
+            finally:
+                if previous_deadline is None:
+                    del self.operation_deadline
+                else:
+                    self.operation_deadline = previous_deadline
+            return
+        self._automatic_checks(private, transaction)
+
+    def _automatic_checks(self, private: dict, transaction: dict) -> None:
         self.runtime_checks(private)
         for attempt in range(40):
             try:
                 self.https(private, "/api/v1/health")
                 break
             except (UpdateError, json.JSONDecodeError):
+                deadline = getattr(self, "operation_deadline", None)
+                require(
+                    deadline is None or time.monotonic() + 2 < deadline,
+                    "runtime verification timed out",
+                )
                 if attempt == 39:
                     raise UpdateError(
                         "candidate HTTPS/API health did not become ready"
@@ -1999,6 +2090,7 @@ class Updater:
             "phase": "preparing",
             "checkpoint": str(self.backups / identity),
             "checkpoint_protection": checkpoint_protection(self.config),
+            "verification_profile": verification_profile(self.config),
             "previous_version": (
                 load_json(self.state / "active.json")["version"]
                 if (self.state / "active.json").exists()
@@ -2076,8 +2168,12 @@ class Updater:
             self.write(transaction, "candidate-running")
             self.host.automatic_checks(isolated(candidate), transaction)
             self.write(transaction, "awaiting-verification")
-            evidence = self.host.verification_hook(
-                target / "private.compose.json", target / "transaction.json"
+            evidence = (
+                self.runtime_evidence(transaction)
+                if transaction_verification_profile(transaction) == "runtime-v1"
+                else self.host.verification_hook(
+                    target / "private.compose.json", target / "transaction.json"
+                )
             )
             if evidence is not None:
                 self.verify_evidence(transaction, evidence)
@@ -2130,8 +2226,33 @@ class Updater:
                 self.write(transaction, "failed-safe")
             raise
 
+    @staticmethod
+    def runtime_evidence(transaction: dict) -> dict:
+        require(
+            transaction_verification_profile(transaction) == "runtime-v1"
+            and transaction["phase"] == "awaiting-verification",
+            "runtime report requires completed candidate runtime checks",
+        )
+        return {
+            "verification_profile": "runtime-v1",
+            "version": transaction["version"],
+            "source_commit": transaction["manifest"]["source"]["commit"],
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "checks": {
+                "trusted_https_and_health": "Trusted HTTPS and API health responded successfully on isolated routing.",
+                "release_and_static_assets": "Served release identity matched the selected source and compiled assets loaded.",
+                "preserved_settings_and_account_state": "Initialized account state and persisted public operator settings matched the adopted baseline.",
+                "runtime_storage_bindings": "Container hardening, isolated listeners and adopted physical storage bindings were verified.",
+                "sqlite_integrity_and_foreign_keys": "Candidate database passed read-only SQLite integrity and foreign-key checks.",
+            },
+        }
+
     def verify_evidence(self, transaction: dict, report: dict) -> None:
-        require_flow_report(report, transaction.get("restoring", False))
+        require_flow_report(
+            report,
+            transaction.get("restoring", False),
+            transaction_verification_profile(transaction),
+        )
         expected = transaction.get(
             "verification_identity",
             {
@@ -2162,14 +2283,23 @@ class Updater:
     def activate(self, transaction: dict) -> None:
         require(
             transaction["phase"] == "verified",
-            "activation requires completed candidate and security verification",
+            "activation requires completed candidate and selected-profile verification",
         )
         require_flow_report(
-            transaction["verification"], transaction.get("restoring", False)
+            transaction["verification"],
+            transaction.get("restoring", False),
+            transaction_verification_profile(transaction),
         )
         target = self.state / "transactions" / transaction["id"]
         public = load_json(target / "public.compose.json")
         private = load_json(target / "private.compose.json")
+        runtime = transaction_verification_profile(transaction) == "runtime-v1"
+        if runtime:
+            deadlines = getattr(self.host, "runtime_deadlines", {})
+            self.host.runtime_deadlines = deadlines
+            self.host.operation_deadline = deadlines.setdefault(
+                transaction["id"], time.monotonic() + 120
+            )
         try:
             self.host.automatic_checks(private, transaction)
             self.write(transaction, "activating")
@@ -2214,6 +2344,8 @@ class Updater:
             )
             self.write(transaction, "completed")
         except BaseException:
+            if runtime and hasattr(self.host, "operation_deadline"):
+                del self.host.operation_deadline
             try:
                 self.host.compose(
                     target / "private.compose.json", "stop", "--timeout", "60"
@@ -2221,6 +2353,9 @@ class Updater:
             finally:
                 self.write(transaction, "failed-closed")
             raise
+        finally:
+            if runtime and hasattr(self.host, "operation_deadline"):
+                del self.host.operation_deadline
 
         # Cleanup is deliberately outside the activation rollback boundary.
         try:
@@ -2267,8 +2402,12 @@ class Updater:
             )
             self.host.automatic_checks(isolated(restored), transaction)
             self.write(transaction, "restored-awaiting-verification")
-            evidence = self.host.verification_hook(
-                target / "private.compose.json", target / "transaction.json"
+            evidence = (
+                self.host.verification_hook(
+                    target / "private.compose.json", target / "transaction.json"
+                )
+                if verification_profile(transaction) == "full"
+                else None
             )
             if evidence is not None:
                 self.verify_evidence(transaction, evidence)
@@ -2294,6 +2433,10 @@ class Updater:
         require(
             sys.stdin.isatty(),
             "local verification requires an interactive administrator terminal",
+        )
+        require(
+            transaction_verification_profile(transaction) == "full",
+            "runtime verification is automatic; use full verification for manual flow checks",
         )
         target = self.state / "transactions" / transaction["id"]
         private = load_json(target / "private.compose.json")
@@ -2577,6 +2720,7 @@ def display(record: dict | None) -> int:
                         "phase",
                         "cleanup",
                         "checkpoint_protection",
+                        "verification_profile",
                         "updated_at",
                     )
                 },

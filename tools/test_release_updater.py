@@ -123,6 +123,7 @@ class FakeHost:
     ):
         self.root, self.fail, self.pause, self.hook = root, fail, pause, hook
         self.calls = []
+        self.runtime_deadlines = {}
         self.original = compose()
         self.source_volume = root / "source-volume"
         self.source_volume.mkdir()
@@ -239,6 +240,11 @@ class FakeHost:
         self.step("health")
         if not self.pause:
             raise AssertionError("checks must precede resume")
+        if update.transaction_verification_profile(transaction) == "runtime-v1":
+            self.runtime_deadlines.setdefault(
+                transaction["id"], update.time.monotonic() + 120
+            )
+            self.step("runtime-database")
 
     def verification_hook(self, path, transaction_path):
         self.step("flow-verification")
@@ -306,10 +312,13 @@ class Transactions(unittest.TestCase):
 
     def test_protected_probe_success_activates_and_restores_prior_pause(self):
         for paused in (False, True):
-            with self.subTest(paused=paused), self.fixture(pause=paused, hook=True) as (
-                runner,
-                host,
-                _,
+            with (
+                self.subTest(paused=paused),
+                self.fixture(pause=paused, hook=True) as (
+                    runner,
+                    host,
+                    _,
+                ),
             ):
                 record = runner.update("v1.2.3")
                 self.assertEqual(record["phase"], "completed")
@@ -322,6 +331,131 @@ class Transactions(unittest.TestCase):
                     host.calls.index("open-public"),
                 )
 
+    def test_runtime_profile_activates_without_credentials_or_flow_hook(self):
+        for paused in (False, True):
+            with (
+                self.subTest(paused=paused),
+                self.fixture(pause=paused) as (runner, host, _),
+            ):
+                runner.config["verification_profile"] = "runtime-v1"
+                record = runner.update("v1.2.3")
+                self.assertEqual(record["phase"], "completed")
+                self.assertEqual(record["verification_profile"], "runtime-v1")
+                self.assertEqual(
+                    record["verification"]["verification_profile"], "runtime-v1"
+                )
+                self.assertEqual(
+                    set(record["verification"]["checks"]), update.RUNTIME_CHECKS
+                )
+                self.assertFalse(
+                    update.FLOW_CHECKS & record["verification"]["checks"].keys()
+                )
+                self.assertEqual(host.pause, paused)
+                self.assertNotIn("flow-verification", host.calls)
+                self.assertLess(
+                    host.calls.index("runtime-database"),
+                    host.calls.index("open-public"),
+                )
+
+    def test_runtime_database_failure_stays_closed_and_never_restarts_old_binary(self):
+        with self.fixture(fail="runtime-database") as (runner, host, _):
+            runner.config["verification_profile"] = "runtime-v1"
+            with self.assertRaises(update.UpdateError):
+                runner.update("v1.2.3")
+            self.assertEqual(runner.read()["phase"], "failed-closed")
+            self.assertNotIn("open-public", host.calls)
+            self.assertNotIn("restart-original", host.calls)
+
+    def test_real_runtime_check_context_bounds_activation_and_clears_for_recovery(self):
+        for fail_proxy in (False, True):
+            with (
+                self.subTest(fail_proxy=fail_proxy),
+                self.fixture() as (runner, _, root),
+            ):
+                transaction = runner.update("v1.2.3")
+                transaction["verification_profile"] = "runtime-v1"
+                database = root / "database.db"
+                with closing(update.sqlite3.connect(database)) as connection:
+                    connection.execute("CREATE TABLE fixture(id INTEGER PRIMARY KEY)")
+                transaction["adopted"]["database"] = str(database)
+                runner.verify_evidence(
+                    transaction, update.Updater.runtime_evidence(transaction)
+                )
+                real_host = update.Host(runner.config)
+                runner.host = real_host
+                commands = []
+
+                def execute(args, **kwargs):
+                    commands.append((args, kwargs["timeout"]))
+                    if (
+                        "public.compose.json" in " ".join(args)
+                        and "up" in args
+                        and fail_proxy
+                    ):
+                        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+                    return SimpleNamespace(
+                        returncode=0,
+                        stdout=b"container" if args[1:3] == ["ps", "-q"] else b"",
+                    )
+
+                with (
+                    patch.object(real_host, "_automatic_checks") as core_checks,
+                    patch.object(real_host, "incident", return_value=False),
+                    patch.object(update.subprocess, "run", side_effect=execute),
+                    patch.object(runner, "retention"),
+                ):
+                    if fail_proxy:
+                        with self.assertRaises(subprocess.TimeoutExpired):
+                            runner.activate(transaction)
+                        self.assertEqual(runner.read()["phase"], "failed-closed")
+                        self.assertEqual(core_checks.call_count, 1)
+                        self.assertIn("stop", commands[-1][0])
+                        self.assertEqual(commands[-1][1], 900)
+                    else:
+                        runner.activate(transaction)
+                        self.assertEqual(runner.read()["phase"], "completed")
+                        self.assertEqual(core_checks.call_count, 2)
+                        self.assertTrue(
+                            all(0 < timeout <= 120 for _, timeout in commands)
+                        )
+                    self.assertFalse(hasattr(real_host, "operation_deadline"))
+                    self.assertLessEqual(commands[0][1], 120)
+
+    def test_runtime_reports_cannot_cross_profiles_or_relax_restore(self):
+        with self.fixture() as (runner, host, _):
+            runtime = runner.update("v1.2.3")
+            report = update.Updater.runtime_evidence(
+                {**runtime, "verification_profile": "runtime-v1"}
+            )
+            with self.assertRaises(update.UpdateError):
+                runner.verify_evidence(runtime, report)
+            runtime["verification_profile"] = "runtime-v1"
+            for change in (
+                lambda value: value.update(verification_profile="full"),
+                lambda value: value.update(source_commit="b" * 40),
+                lambda value: value.update(observed_at="2020-01-01T00:00:00Z"),
+                lambda value: value["checks"].pop("sqlite_integrity_and_foreign_keys"),
+            ):
+                invalid = copy.deepcopy(report)
+                change(invalid)
+                with self.assertRaises(update.UpdateError):
+                    runner.verify_evidence(runtime, invalid)
+            with self.assertRaises(update.UpdateError):
+                runner.verify_evidence(runtime, evidence(runtime))
+            runner.write(runtime, "awaiting-verification")
+            # Changing the operator's current configuration cannot downgrade
+            # the transaction's pinned runtime report or its disaster recovery.
+            runner.config["verification_profile"] = "full"
+            host.hook = True
+            restored = runner.restore()
+            self.assertEqual(restored["phase"], "restored-awaiting-verification")
+            self.assertNotIn(
+                "flow-verification", host.calls[host.calls.index("restore") :]
+            )
+            with self.assertRaises(update.UpdateError):
+                runner.verify_evidence(restored, report)
+            self.assertEqual(update.transaction_verification_profile(restored), "full")
+
     def test_all_before_stop_failures_keep_original_untouched(self):
         for fault in (
             "configuration",
@@ -333,10 +467,13 @@ class Transactions(unittest.TestCase):
             "ownership",
             "proxy-validation",
         ):
-            with self.subTest(fault=fault), self.fixture(fail=fault) as (
-                runner,
-                host,
-                _,
+            with (
+                self.subTest(fault=fault),
+                self.fixture(fail=fault) as (
+                    runner,
+                    host,
+                    _,
+                ),
             ):
                 with self.assertRaises(update.UpdateError):
                     runner.update("v1.2.3")
@@ -351,10 +488,13 @@ class Transactions(unittest.TestCase):
 
     def test_partial_stop_and_backup_failures_restart_only_original(self):
         for fault in ("stop-writers", "free-ports", "backup", "verify-backup"):
-            with self.subTest(fault=fault), self.fixture(fail=fault) as (
-                runner,
-                host,
-                _,
+            with (
+                self.subTest(fault=fault),
+                self.fixture(fail=fault) as (
+                    runner,
+                    host,
+                    _,
+                ),
             ):
                 with self.assertRaises(update.UpdateError):
                     runner.update("v1.2.3")
@@ -375,10 +515,13 @@ class Transactions(unittest.TestCase):
             "open-public",
             "restart-policy",
         ):
-            with self.subTest(fault=fault), self.fixture(fail=fault, hook=True) as (
-                runner,
-                host,
-                _,
+            with (
+                self.subTest(fault=fault),
+                self.fixture(fail=fault, hook=True) as (
+                    runner,
+                    host,
+                    _,
+                ),
             ):
                 with self.assertRaises(update.UpdateError):
                     runner.update("v1.2.3")
@@ -535,6 +678,89 @@ class Transactions(unittest.TestCase):
 
 
 class Boundaries(unittest.TestCase):
+    def test_runtime_profile_is_explicit_and_rejects_hooks_or_unknown_profiles(self):
+        good = config(Path("/opt/psst.zip"))
+        self.assertEqual(
+            update.verification_profile(update.validate_config(good)), "full"
+        )
+        self.assertEqual(
+            update.verification_profile(
+                update.validate_config({**good, "verification_profile": "runtime-v1"})
+            ),
+            "runtime-v1",
+        )
+        for value in ("smoke", None, True):
+            with self.subTest(value=value), self.assertRaises(update.UpdateError):
+                update.validate_config({**good, "verification_profile": value})
+        with self.assertRaises(update.UpdateError):
+            update.validate_config(
+                {
+                    **good,
+                    "verification_profile": "runtime-v1",
+                    "verification_hook": "/usr/local/bin/hook",
+                }
+            )
+
+    def test_runtime_checks_verify_real_database_and_clear_deadline_after_failure(self):
+        with tempfile.TemporaryDirectory(prefix="psst-runtime-sqlite-") as directory:
+            root = Path(directory)
+            database = root / "private.db"
+            with closing(update.sqlite3.connect(database)) as connection:
+                connection.executescript(
+                    "CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(parent_id INTEGER REFERENCES parent(id)); INSERT INTO child VALUES(99);"
+                )
+            host = update.Host(config(root))
+            transaction = {
+                "id": "runtime-test",
+                "verification_profile": "runtime-v1",
+                "adopted": {"database": str(database)},
+            }
+            with patch.object(host, "_automatic_checks"):
+                with self.assertRaisesRegex(update.UpdateError, "foreign-key"):
+                    host.automatic_checks({}, transaction)
+                self.assertFalse(hasattr(host, "operation_deadline"))
+                with closing(update.sqlite3.connect(database)) as connection:
+                    connection.execute("DELETE FROM child")
+                    connection.commit()
+                host.automatic_checks({}, transaction)
+                self.assertFalse(hasattr(host, "operation_deadline"))
+                self.assertEqual(set(host.runtime_deadlines), {"runtime-test"})
+                with self.assertRaisesRegex(update.UpdateError, "timed out"):
+                    host.sqlite_integrity(database, deadline=0)
+
+    def test_runtime_deadline_caps_subprocess_timeout_and_prevents_late_commands(self):
+        host = update.Host(config(Path("/opt/psst.zip")))
+        with patch.object(update.time, "monotonic", return_value=100):
+            host.operation_deadline = 112
+            with patch.object(
+                update.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0, stdout=b"ok"),
+            ) as execute:
+                self.assertEqual(host.run("docker", "inspect", "container"), b"ok")
+                self.assertEqual(execute.call_args.kwargs["timeout"], 12)
+            host.operation_deadline = 99
+            with patch.object(update.subprocess, "run") as execute:
+                with self.assertRaisesRegex(update.UpdateError, "timed out"):
+                    host.run("docker", "inspect", "container")
+                execute.assert_not_called()
+
+    def test_expired_runtime_health_probe_stops_retrying_without_sleep(self):
+        host = update.Host(config(Path("/opt/psst.zip")))
+        host.operation_deadline = 100
+        with (
+            patch.object(host, "runtime_checks"),
+            patch.object(
+                host, "https", side_effect=update.UpdateError("health unavailable")
+            ) as probe,
+            patch.object(update.time, "monotonic", return_value=101),
+            patch.object(update.time, "sleep") as sleep,
+        ):
+            with self.assertRaisesRegex(update.UpdateError, "timed out"):
+                host._automatic_checks({}, {})
+            self.assertEqual(probe.call_count, 1)
+            sleep.assert_not_called()
+
     def test_checkpoint_protection_defaults_strict_and_requires_explicit_enum(self):
         good = config(Path("/opt/psst.zip"))
         self.assertEqual(
@@ -597,14 +823,19 @@ class Boundaries(unittest.TestCase):
     def test_public_github_commands_fix_host_without_inheriting_credentials(self):
         with tempfile.TemporaryDirectory(prefix="psst-public-release-") as directory:
             host = update.Host(config(Path(directory)))
-            with patch.dict(
-                update.os.environ,
-                {"GH_HOST": "unexpected.example", "GH_TOKEN": "not-a-real-token"},
-            ), patch.object(
-                update.subprocess,
-                "run",
-                return_value=SimpleNamespace(returncode=0, stdout=b"public metadata"),
-            ) as command:
+            with (
+                patch.dict(
+                    update.os.environ,
+                    {"GH_HOST": "unexpected.example", "GH_TOKEN": "not-a-real-token"},
+                ),
+                patch.object(
+                    update.subprocess,
+                    "run",
+                    return_value=SimpleNamespace(
+                        returncode=0, stdout=b"public metadata"
+                    ),
+                ) as command,
+            ):
                 host.run("gh", "api", "public-release", gh=True)
                 environment = command.call_args.kwargs["env"]
                 self.assertEqual(environment["GH_HOST"], "github.com")
@@ -727,10 +958,10 @@ class Boundaries(unittest.TestCase):
             saved["services"]["caddy"]["volumes"].append(mount)
             active = state / "active.json"
             active.write_text(json.dumps({"compose": saved}))
-            with patch.object(update, "STATE_PATH", state), patch.object(
-                update, "protected"
-            ) as protect, patch.object(
-                host, "protected_inputs", return_value=[approved]
+            with (
+                patch.object(update, "STATE_PATH", state),
+                patch.object(update, "protected") as protect,
+                patch.object(host, "protected_inputs", return_value=[approved]),
             ):
                 self.assertEqual(host.current(), saved)
                 protect.assert_any_call(approved, private=False)
@@ -790,8 +1021,9 @@ class Boundaries(unittest.TestCase):
         ):
             changed = copy.deepcopy(observed)
             changed["traffic_policy"][field] = value
-            with self.subTest(field=field, value=value), self.assertRaises(
-                update.UpdateError
+            with (
+                self.subTest(field=field, value=value),
+                self.assertRaises(update.UpdateError),
             ):
                 update.reconciled_restore_settings(baseline, changed)
         for field, value in (
@@ -853,8 +1085,9 @@ class Boundaries(unittest.TestCase):
             with self.subTest(workflow=workflow), self.assertRaises(update.UpdateError):
                 update.validate_config(settings)
             host = update.Host(settings)
-            with patch.object(host, "run") as runner, self.assertRaises(
-                update.UpdateError
+            with (
+                patch.object(host, "run") as runner,
+                self.assertRaises(update.UpdateError),
             ):
                 host.verify_identity("/private/manifest.json", manifest())
             runner.assert_not_called()
@@ -870,9 +1103,11 @@ class Boundaries(unittest.TestCase):
             else:
                 selected[field] = value
             host = update.Host(config(Path("/opt/psst.zip")))
-            with self.subTest(field=field, value=value), patch.object(
-                host, "run"
-            ) as runner, self.assertRaises(update._release.InvalidRelease):
+            with (
+                self.subTest(field=field, value=value),
+                patch.object(host, "run") as runner,
+                self.assertRaises(update._release.InvalidRelease),
+            ):
                 host.verify_identity("/private/manifest.json", selected)
             runner.assert_not_called()
 
@@ -927,9 +1162,10 @@ class Boundaries(unittest.TestCase):
         failed = subprocess.CompletedProcess(
             ["tool"], 1, stdout=b"private fixture secret", stderr=b"operator password"
         )
-        with patch.object(
-            update.subprocess, "run", return_value=failed
-        ), self.assertRaises(update.UpdateError) as caught:
+        with (
+            patch.object(update.subprocess, "run", return_value=failed),
+            self.assertRaises(update.UpdateError) as caught,
+        ):
             host.run("tool", "subcommand")
         self.assertNotIn("private fixture secret", str(caught.exception))
         self.assertNotIn("operator password", str(caught.exception))
@@ -1077,7 +1313,17 @@ class ConcreteHostBoundaries(unittest.TestCase):
                 "disk_usage",
                 side_effect=lambda path: SimpleNamespace(free=facts["disk_free"]),
             ):
-                yield host, root, value, candidate, selected, facts, objects, volumes, calls
+                yield (
+                    host,
+                    root,
+                    value,
+                    candidate,
+                    selected,
+                    facts,
+                    objects,
+                    volumes,
+                    calls,
+                )
 
     def test_preflight_checks_real_storage_account_ports_and_capacity_without_mutation(
         self,
@@ -1232,18 +1478,18 @@ class ConcreteHostBoundaries(unittest.TestCase):
                     SecurityOpt=["no-new-privileges"],
                 )
                 if name == "caddy":
-                    container["HostConfig"]["PortBindings"]["8443/tcp"][0][
-                        "HostIp"
-                    ] = "127.0.0.1"
+                    container["HostConfig"]["PortBindings"]["8443/tcp"][0]["HostIp"] = (
+                        "127.0.0.1"
+                    )
             host.runtime_checks(private)
-            objects["caddy"]["HostConfig"]["PortBindings"]["8443/tcp"][0][
-                "HostIp"
-            ] = "0.0.0.0"
+            objects["caddy"]["HostConfig"]["PortBindings"]["8443/tcp"][0]["HostIp"] = (
+                "0.0.0.0"
+            )
             with self.assertRaisesRegex(update.UpdateError, "listener"):
                 host.runtime_checks(private)
-            objects["caddy"]["HostConfig"]["PortBindings"]["8443/tcp"][0][
-                "HostIp"
-            ] = "127.0.0.1"
+            objects["caddy"]["HostConfig"]["PortBindings"]["8443/tcp"][0]["HostIp"] = (
+                "127.0.0.1"
+            )
             objects["backend"]["HostConfig"]["Privileged"] = True
             with self.assertRaisesRegex(update.UpdateError, "hardening"):
                 host.runtime_checks(private)
@@ -1326,8 +1572,9 @@ class ConcreteHostBoundaries(unittest.TestCase):
                 ):
                     original = report[field]
                     report[field] = wrong
-                    with self.subTest(field=field), self.assertRaises(
-                        update.UpdateError
+                    with (
+                        self.subTest(field=field),
+                        self.assertRaises(update.UpdateError),
                     ):
                         host.export_checkpoint(root)
                     report[field] = original
@@ -1620,8 +1867,11 @@ class CheckpointProtection(unittest.TestCase):
                 else:
                     backup["checkpoint_protection"] = policy
                 update.atomic_json(path, backup)
-                with self.subTest(policy=policy), self.assertRaises(
-                    (update.UpdateError, update._release.InvalidRelease)
+                with (
+                    self.subTest(policy=policy),
+                    self.assertRaises(
+                        (update.UpdateError, update._release.InvalidRelease)
+                    ),
                 ):
                     host.verify_backup(checkpoint)
             receipt = {
