@@ -3532,10 +3532,11 @@ operation not permitted`; production suppresses that stderr and reports a
 - [x] Complete signed source/scan/smoke/notice assembly and native recovery
       evidence for v0.1.6. The fresh bound distribution presentation was produced
       after both architecture experiments and all automated gates passed.
-- [ ] Obtain both configured fresh human GitHub reviews and verify actual
+- [x] Obtain both configured fresh human GitHub reviews and verify actual
       hosted publication, public linked packages, immutable release and fresh
-      anonymous delivery. Earlier v0.1.4 approvals do not authorize this candidate.
-      Production migration and independent off-host recovery remain deferred.
+      anonymous delivery for v0.1.6, as recorded below. Earlier v0.1.4 approvals
+      do not authorize this candidate. Production migration and independent
+      off-host recovery remain deferred.
 
 ## Temporary official Caddy acceptance (2026-10-09)
 
@@ -3598,9 +3599,28 @@ backups remain deferred by the operator.
       the candidate binding is
       `sha256:634cb78ac1a46a7fdcc7d26467a32f1c1c3350c5718033cd4ee70bce59911342`.
       The fresh distribution review passed following the operator's GitHub
-      approval. Publication is running; public delivery is not yet verified.
-- [ ] Obtain the configured fresh human distribution and publication approvals,
-      then verify immutable GitHub release assets, public GHCR images and fresh
-      anonymous delivery. Implementation alone does not complete publication.
+      approval. Publication and public delivery subsequently passed, as below.
+- [x] Obtain the configured fresh human distribution and publication approvals,
+      then verify actual hosted publication in run 37901084985, attempt 1.
+      Publisher job `113733938192` completed successfully. The public immutable
+      [v0.1.6 release](https://github.com/endorses/psst.zip/releases/tag/v0.1.6)
+      is release `407704196`, published October 9 at `08:27:57Z`, with all eight
+      expected assets. The retained `publication-receipt-37901084985-1` records
+      the exact source and binding above, complete anonymous pulls of all four
+      native images without credentials, anonymous registry readback, and
+      anonymous exact-byte delivery of every release asset. Independently
+      recheck both public version indexes and native child identities, plus
+      exact-byte anonymous delivery of the small release manifest. Backend
+      index is
+      `sha256:c52da1a4805cfb77cb60bba25c2b0a423c4b8e05da8abe9ea42784ff85d2c884`;
+      web index is
+      `sha256:7f1ca6c5fd16254cd58ef4b1f6b26e8715bf95bdd84fa782aee5d34436c56990`.
+      These checks supersede the pending first-publication checks in earlier
+      failed-candidate checkpoints; earlier failed transactions remain preserved.
+      This completes container publication, not a production VPS rollout.
+- [x] Disable the one-time package initialization path only after successful
+      public delivery. Set `PSST_INITIALIZE_GHCR_PACKAGES=false` and independently
+      read it back from the repository settings. Subsequent publication must use
+      the existing public, repository-linked package pair.
 - [ ] Remove this exception when a patched stable official Caddy image becomes
       available; rebuild and rescan before publishing the replacement.
