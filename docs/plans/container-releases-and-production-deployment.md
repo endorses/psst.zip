@@ -3716,9 +3716,64 @@ verification remain deferred and must not be reported as completed.
       images. Initial and post-pull runtime/storage/settings/capacity preflight,
       image ownership compatibility and isolated Caddy syntax passed. Temporary
       preflight/probe files were removed; selected immutable images remain cached.
-      The original application containers remain running. Public activation and
-      complete local checkpoint/recovery have not yet been exercised on this VPS.
-- [ ] Run the first local-checkpoint update and complete actual authenticated
-      candidate checks before reopening public routing. Keep restricted Actions
-      installation and independent off-host recovery separately pending until
-      their actual setup and verification are complete.
+      The original application containers remained running throughout preflight.
+- [x] Run the first local-checkpoint update to private candidate startup. Actual
+      transaction `20261009T104935Z-6ac521b2a4c6` selected v0.1.6, stopped the
+      original services, verified the complete local checkpoint and reached
+      `awaiting-verification` at `2026-10-09T10:50:31.807768+00:00`. Checkpoint
+      protection is `local-only`; no off-host receipt exists. The migration
+      boundary has been crossed, so the original binaries must not be restarted
+      against potentially migrated data. Public listeners remain loopback-only.
+- [x] Reverify the actual checkpoint and restart the private candidate under the
+      deployment lock. Repeated automatic checks passed for trusted HTTPS,
+      initialized account, preserved settings/storage, selected release metadata,
+      compiled assets and transfer pause. The local hostname override and port-443
+      SSH tunnel were checked against trusted loopback HTTPS, preserving the
+      existing browser origin, session and retained client keys. These checks do
+      not establish authenticated browser flows or a completed recovery exercise.
+- [x] Run actual administrator authentication and storage/counter/orphan checks
+      through the installed interactive verifier. Both automatic and authenticated
+      checks ran before report validation rejected the empty existing-download
+      entry and two four-character observations. No activation occurred; the
+      transaction remained `awaiting-verification`.
+- [x] Record the operator's request to stop additional manual checks and proceed
+      with the first rollout using completed checks and truthful descriptions of
+      deferred validation. The operator reported browser administrator second-factor
+      login, administrator/member roles and sessions, new-file decryption, transfer
+      revocation/cleanup and transfer pause. This is a first-rollout exception,
+      not permission to describe untested flows as passing or weaken automatic
+      authentication, provenance, storage, HTTPS or pause checks.
+- [x] Verify the actual retained pre-update payload independently of the failed
+      browser report. The cold checkpoint contains one completed receive-associated
+      file record and a 15,355-byte payload; the payload remains present and its
+      ciphertext matches the checkpoint byte-for-byte. This does not prove native
+      decryption. The Android phone is a separate device without the desktop's
+      private SSH route. Copying a Receive invitation is not equivalent to
+      exporting the recipient's private decryption key.
+- [x] Complete the operator-accepted interactive gate, recording native retained
+      decryption and additional manual policy/Receive-flow checks as deferred
+      rather than passed. Actual transaction `20261009T104935Z-6ac521b2a4c6`
+      reached `completed` with `active_version: v0.1.6` and
+      `cleanup.status: completed` at `2026-10-09T11:42:08.997421+00:00`.
+- [x] Independently verify public activation through the VPS's public IPv4 address,
+      bypassing the temporary desktop hostname override. Trusted HTTPS health
+      succeeded; served release metadata matched v0.1.6 and source commit
+      `c2b0fc2d94c71d97ac1c4ba26598604cedc27f75`. HTTP redirected to HTTPS with
+      status 308. Both containers were running the selected immutable image
+      pair with `unless-stopped` restart policies. Caddy published ports 80/443
+      on IPv4/IPv6; the backend published no host port. All three physical
+      backend/Caddy volume mappings were unchanged. Disk usage was 4,102,758,400
+      bytes with 34,211,508,224 bytes free after activation and retention.
+- [ ] Remove the temporary desktop hostname override and stop the operator's SSH
+      verification tunnel. The public endpoint is already independently verified;
+      these local verification aids must not become permanent configuration.
+- [ ] Once public routing is active, check Android login and the retained Receive
+      history/download using the original device and its original keys. Native
+      download validation remains pending until actually exercised.
+- [ ] Install a protected production verification hook for bounded automated
+      authenticated transfer/decryption and recovery checks. Until that hook is
+      installed and measured on the VPS, each real update still enters the same
+      interactive verifier; release publication does not trigger a deployment.
+- [ ] Provision and exercise the restricted Actions deployment identity and
+      environment secrets. Keep independent off-host recovery separately deferred
+      under the selected local-only checkpoint policy.
