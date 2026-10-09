@@ -3502,11 +3502,11 @@ operation not permitted`; production suppresses that stderr and reports a
       This is local source evidence, not an authenticated release gate or a claim
       about a container image or ARM64 execution. Temporary module downloads,
       compiler caches, toolchain, scanner and server are removed after inspection.
-- [ ] Validate actual container builds and authenticated native source/image
-      scans with the new toolchain in the eventual repaired candidate. Local
-      source validation above does not prove a rebuilt image is vulnerability-free;
-      Caddy still prevents completing the combined security gates. No candidate
-      tag or release workflow is created while the producer choice is pending.
+- [x] Validate actual container builds and authenticated native source/image
+      scans with the new toolchain in v0.1.6, as recorded below. Both native
+      backend binaries use Go 1.27.2. The Caddy producer choice was subsequently
+      resolved by the operator's bounded temporary acceptance; Caddy remains
+      affected, and the passing gates explicitly record that acceptance.
 - [x] Recheck the upstream Caddy availability blocker on October 9. Latest stable
       Caddy is still `v2.11.7`, published October 3. The official `caddy:2-alpine`
       index remains
@@ -3529,9 +3529,9 @@ operation not permitted`; production suppresses that stderr and reports a
       On October 9 the operator instead authorized temporary acceptance of the
       current official Caddy findings, as bounded below. No replacement Caddy
       build is required for that decision.
-- [ ] Complete signed source/scan/smoke/notice assembly and native recovery
-      evidence for a repaired candidate. Prepare a fresh bound distribution
-      presentation only after those actual gates pass.
+- [x] Complete signed source/scan/smoke/notice assembly and native recovery
+      evidence for v0.1.6. The fresh bound distribution presentation was produced
+      after both architecture experiments and all automated gates passed.
 - [ ] Obtain both configured fresh human GitHub reviews and verify actual
       hosted publication, public linked packages, immutable release and fresh
       anonymous delivery. Earlier v0.1.4 approvals do not authorize this candidate.
@@ -3578,12 +3578,27 @@ backups remain deferred by the operator.
       whitespace checks pass. Reviewed release-policy/helper changes select
       repository security checks rather than unrelated application jobs;
       workflow/toolchain changes and exact-tag server CI retain their checks.
-- [ ] Push and merge the verified changes through the protected main workflow;
-      preserve all earlier candidate tags and failed publication transactions.
-- [ ] Prepare a fresh exact-source backend/web candidate and inspect actual
-      native build, source, image, notice, correspondence and recovery gates.
+- [x] Push and merge the verified changes through the protected main workflow
+      in [PR #27](https://github.com/endorses/psst.zip/pull/27), after all required
+      checks passed. Preserve all earlier candidate tags and failed publication
+      transactions. The resulting source commit is
+      `c2b0fc2d94c71d97ac1c4ba26598604cedc27f75`.
+- [x] Prepare v0.1.6 from that exact source and inspect actual native build,
+      source, image, notice, correspondence and recovery gates in
+      [run 37901084985, attempt 1](https://github.com/endorses/psst.zip/actions/runs/37901084985).
+      Both actual backend binaries use Go 1.27.2; each backend scan has 21
+      module-only findings with all authoritative affected packages absent.
+      Each web scan records 18 exact temporarily accepted findings and one
+      proven affected-package absence. All 14 source coverage entries are
+      complete, and recovery experiments pass on both native architectures.
       The accepted Caddy runtime remains affected; a passing gate records the
       explicit temporary acceptance and does not claim it is patched.
+      The independently authenticated corresponding-source receipt is
+      `sha256:a56ba1946611c8de29ebf6f335fc8360495d64ed3f5cfd3c8d02ccb6cc7208b1`;
+      the candidate binding is
+      `sha256:634cb78ac1a46a7fdcc7d26467a32f1c1c3350c5718033cd4ee70bce59911342`.
+      The fresh distribution review passed following the operator's GitHub
+      approval. Publication is running; public delivery is not yet verified.
 - [ ] Obtain the configured fresh human distribution and publication approvals,
       then verify immutable GitHub release assets, public GHCR images and fresh
       anonymous delivery. Implementation alone does not complete publication.
