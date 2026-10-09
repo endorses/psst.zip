@@ -3485,10 +3485,28 @@ operation not permitted`; production suppresses that stderr and reports a
       runtime replay/packaging tests passed in 4.58s. Black/Prettier formatting
       and whitespace checks passed; owned temporary downloads were removed.
       No new tests or timing-only workflows were added.
-- [ ] Validate actual backend compilation and source/image scans with the new
-      toolchain in the eventual repaired candidate. Pin consistency and source
-      validation above do not prove a rebuilt image is vulnerability-free;
-      Caddy still prevents completing the combined security gates.
+- [x] Verify the actual local AMD64 backend build and source scan at repair
+      commit `34c8eb17c121223c302bee80193e25b986e83cd8` using the official Go
+      `1.27.2` Linux AMD64 distribution. Its complete downloaded archive SHA256
+      `ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5`
+      matches the official download metadata. Release-equivalent `CGO_ENABLED=0`
+      compilation passed in 4.327s; the server's build metadata confirms Go
+      `1.27.2`. Rebuild pinned govulncheck `v1.8.0` with that toolchain, verify
+      its expected GoSumDB module sum, and scan the actual backend roots against
+      the official advisory database (last modified October 8 at 22:31:09 UTC).
+      The scan completed in 1.822s with zero package/symbol findings. Its 21
+      module-only findings passed the existing `go_facts` policy against actual
+      all-root/server import graphs and selected module checksums: every official
+      affected package is absent. Raw scanner SHA256 is
+      `35638709c19443c5f6cf641c5c875a8fef6354a47f84039dee304f46f360963a`.
+      This is local source evidence, not an authenticated release gate or a claim
+      about a container image or ARM64 execution. Temporary module downloads,
+      compiler caches, toolchain, scanner and server are removed after inspection.
+- [ ] Validate actual container builds and authenticated native source/image
+      scans with the new toolchain in the eventual repaired candidate. Local
+      source validation above does not prove a rebuilt image is vulnerability-free;
+      Caddy still prevents completing the combined security gates. No candidate
+      tag or release workflow is created while the producer choice is pending.
 - [x] Recheck the upstream Caddy availability blocker on October 9. Latest stable
       Caddy is still `v2.11.7`, published October 3. The official `caddy:2-alpine`
       index remains
