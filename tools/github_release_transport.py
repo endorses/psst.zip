@@ -28,6 +28,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
 from assemble_release_oci import inspect_archive
+from github_release_oci import stage_verified_oci, validate_staged_oci
 from publish_container_release import (
     WORKFLOW,
     EvidenceVerifier,
@@ -67,6 +68,31 @@ ALLOWED_HOSTS = {
 
 class TransportError(InvalidRelease):
     """Fail-closed transport error without server payloads or credentials."""
+
+
+@dataclass(frozen=True)
+class PreparedImage:
+    key: str
+    archive: Path
+    archive_digest: str
+    directory: Path
+    inventory: tuple[tuple[str, str, int], ...]
+    expected: str
+    tested_config: str
+
+
+@dataclass(frozen=True)
+class PreparedIndex:
+    component: str
+    original: Path
+    digest: str
+    raw: bytes
+
+
+@dataclass(frozen=True)
+class PreparedImages:
+    images: tuple[PreparedImage, ...]
+    indexes: tuple[PreparedIndex, ...]
 
 
 @dataclass(frozen=True)
@@ -431,6 +457,7 @@ class GitHubReleaseTransport:
         self.temporary = None
         self.release_id = None
         self.images_pushed = False
+        self.prepared_images = None
         self.assets_uploaded = False
         self.tags_created = False
         self.published = False
@@ -831,18 +858,16 @@ class GitHubReleaseTransport:
             in {"PATH", "LANG", "LC_ALL", "HOME", "SSL_CERT_FILE", "SSL_CERT_DIR"}
         }
 
-    def push_images(
+    @contextmanager
+    def prepare_images(
         self,
         staged_oci_archives: dict[str, Path],
         index_files: dict[str, Path],
         *,
         tested_configs: dict[str, str],
-    ) -> None:
-        self.require_lease()
-        require(
-            self.release_id is not None and not self.images_pushed,
-            "Images require a fresh draft and have not already been pushed",
-        )
+    ) -> Iterator[PreparedImages]:
+        """Validate and stage all local image sources before reserving a draft."""
+        require(self.prepared_images is None, "Image preparation already active")
         subjects = dict(self.plan.updater_subjects)
         keys = {
             component + "-" + arch
@@ -852,55 +877,104 @@ class GitHubReleaseTransport:
         fields(staged_oci_archives, keys, "staged final images")
         fields(tested_configs, keys, "exact smoke-tested configuration identities")
         fields(index_files, {"backend", "web"}, "staged indexes")
-        # Validate every staged input before the first registry write.
-        staged = {}
-        for key, archive in sorted(staged_oci_archives.items()):
-            require(
-                ":" not in str(archive)
-                and archive.is_file()
-                and not archive.is_symlink(),
-                "Unsafe OCI archive input",
-            )
-            component, architecture = key.split("-")
-            correspondence = inspect_archive(
-                archive,
-                platform="linux/" + architecture,
-                repository=self.plan.binding.repository,
-                version=self.plan.binding.version,
-                commit=self.plan.binding.commit,
-                tested_config=tested_configs[key],
-                component=component,
-            )
-            archive_digest = correspondence["archive_digest"]
-            raw = self.execute(
-                ["skopeo", "inspect", "--raw", "oci-archive:" + str(archive.resolve())],
-                environment=self.command_environment(),
-                timeout=180,
-            )
-            expected = subjects[key].split("@")[1]
-            require(
-                sha256(raw) == expected
-                and correspondence["manifest_digest"] == expected,
-                "Staged OCI archive is not the reviewed final child",
-            )
-            staged[key] = (archive, archive_digest, expected)
-        for component, path in index_files.items():
-            validate_registry_index(
-                read_bounded_file(path), self.plan.manifest["images"][component]
-            )
-        for key, (archive, archive_digest, expected) in staged.items():
-            component = key.split("-")[0]
-
-            def push(
-                archive=archive,
-                archive_digest=archive_digest,
-                expected=expected,
-                component=component,
-            ):
+        # No archive unpack command: OCI exports can contain root-owned entries
+        # without explicit parent directories. Copy bytes into runner-owned files.
+        with tempfile.TemporaryDirectory(prefix="psst-publication-oci-") as temporary:
+            root = Path(temporary)
+            images = []
+            for key, archive in sorted(staged_oci_archives.items()):
                 require(
-                    source_digest(archive) == archive_digest,
-                    "Staged image changed before push",
+                    ":" not in str(archive)
+                    and archive.is_file()
+                    and not archive.is_symlink(),
+                    "Unsafe OCI archive input",
                 )
+                archive = archive.resolve()
+                component, architecture = key.split("-")
+                correspondence = inspect_archive(
+                    archive,
+                    platform="linux/" + architecture,
+                    repository=self.plan.binding.repository,
+                    version=self.plan.binding.version,
+                    commit=self.plan.binding.commit,
+                    tested_config=tested_configs[key],
+                    component=component,
+                )
+                expected = subjects[key].split("@")[1]
+                require(
+                    correspondence["manifest_digest"] == expected,
+                    "Staged OCI archive is not the reviewed final child",
+                )
+                directory = root / key
+                inventory = stage_verified_oci(archive, directory, correspondence)
+                validate_staged_oci(directory, inventory)
+                raw = self.execute(
+                    ["skopeo", "inspect", "--raw", "oci:" + str(directory)],
+                    environment=self.command_environment(),
+                    timeout=180,
+                )
+                require(
+                    sha256(raw) == expected,
+                    "Staged OCI layout is not the reviewed final child",
+                )
+                images.append(
+                    PreparedImage(
+                        key,
+                        archive,
+                        correspondence["archive_digest"],
+                        directory,
+                        inventory,
+                        expected,
+                        tested_configs[key],
+                    )
+                )
+            indexes = []
+            for component, path in sorted(index_files.items()):
+                raw = read_bounded_file(path)
+                validate_registry_index(raw, self.plan.manifest["images"][component])
+                indexes.append(
+                    PreparedIndex(component, path.resolve(), sha256(raw), raw)
+                )
+            prepared = PreparedImages(tuple(images), tuple(indexes))
+            self.prepared_images = prepared
+            try:
+                yield prepared
+            finally:
+                self.prepared_images = None
+
+    def push_images(self, prepared: PreparedImages) -> None:
+        self.require_lease()
+        require(
+            self.release_id is not None and not self.images_pushed,
+            "Images require a fresh draft and have not already been pushed",
+        )
+        require(
+            prepared is self.prepared_images and prepared is not None,
+            "Images require this adapter's active prepared sources",
+        )
+
+        # Revalidate the complete pair before the first registry write, then each
+        # child again immediately before its journal intent.
+        def unchanged(image):
+            require(
+                source_digest(image.archive) == image.archive_digest,
+                "Staged image changed before push",
+            )
+            validate_staged_oci(image.directory, image.inventory)
+
+        for image in prepared.images:
+            unchanged(image)
+        for index in prepared.indexes:
+            require(
+                source_digest(index.original) == index.digest,
+                "Staged index changed before push",
+            )
+        for image in prepared.images:
+            unchanged(image)
+            component = image.key.split("-")[0]
+            expected = image.expected
+
+            def push(image=image, expected=expected, component=component):
                 require(
                     self.absent_or_digest(component, expected) is None,
                     "Existing registry child is not adopted automatically",
@@ -914,7 +988,7 @@ class GitHubReleaseTransport:
                         str(self.authfile()),
                         "--retry-times",
                         "0",
-                        "oci-archive:" + str(archive.resolve()),
+                        "oci:" + str(image.directory),
                         "docker://ghcr.io/"
                         + self.repository(component)
                         + "@"
@@ -929,16 +1003,20 @@ class GitHubReleaseTransport:
                 return {"digest": expected}
 
             self.journal.mutate(
-                "push-" + key,
+                "push-" + image.key,
                 {
-                    "archive_digest": archive_digest,
+                    "archive_digest": image.archive_digest,
                     "expected": expected,
-                    "tested_config": tested_configs[key],
+                    "tested_config": image.tested_config,
                 },
                 push,
             )
-        for component, path in sorted(index_files.items()):
-            raw = read_bounded_file(path)
+        for index in prepared.indexes:
+            component, raw = index.component, index.raw
+            require(
+                source_digest(index.original) == index.digest,
+                "Staged index changed before push",
+            )
             validate_registry_index(raw, self.plan.manifest["images"][component])
             expected = self.plan.manifest["images"][component]["index"].split("@")[1]
 

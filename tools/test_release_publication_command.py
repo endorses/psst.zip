@@ -3,6 +3,7 @@
 import copy
 from contextlib import redirect_stderr, redirect_stdout
 import io
+from pathlib import Path
 import tarfile
 import sys
 from types import SimpleNamespace
@@ -424,6 +425,31 @@ class PublicationCommand(unittest.TestCase):
         self.assertFalse(self.adapter.tags_created)
         self.assertFalse((self.state / "v1.2.3.jsonl").exists())
 
+    def test_real_image_inspection_failure_creates_no_draft_or_journal(self):
+        execute = self.commands.__call__
+        staged_roots = []
+
+        def fail_inspection(args, **kwargs):
+            if args[:3] == ["skopeo", "inspect", "--raw"]:
+                self.assertFalse(self.adapter.held)
+                self.assertEqual(self.api.releases, [])
+                staged_roots.append(Path(args[-1].removeprefix("oci:")).parent)
+                raise InvalidRelease("fixture unprivileged image inspection failed")
+            return execute(args, **kwargs)
+
+        with (
+            patch.object(
+                transport_fixtures.Commands, "__call__", side_effect=fail_inspection
+            ),
+            self.assertRaisesRegex(InvalidRelease, "unprivileged image inspection"),
+        ):
+            self.publish()
+        self.assertEqual(self.api.releases, [])
+        self.assertEqual(self.api.registry, {})
+        self.assertFalse((self.state / "v1.2.3.jsonl").exists())
+        self.assertEqual(len(staged_roots), 1)
+        self.assertFalse(staged_roots[0].exists())
+
     def test_command_reports_safe_prelease_stage_and_category_without_remote_writes(
         self,
     ):
@@ -460,6 +486,14 @@ class PublicationCommand(unittest.TestCase):
                 {},
                 "package-preflight",
                 "io-error",
+            ),
+            (
+                transport.GitHubReleaseTransport,
+                "prepare_images",
+                InvalidRelease(secret),
+                {},
+                "image-transport-preflight",
+                "rejected",
             ),
         )
         for target, attribute, error, changes, stage, category in cases:
