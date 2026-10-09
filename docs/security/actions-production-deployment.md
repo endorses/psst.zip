@@ -7,13 +7,20 @@ image indexes and architecture children using its fixed verification policy.
 The workflow does not build or publish an image. Commits and tags do not trigger
 this production workflow.
 
-The implementation and local SSH input/response tests are available. The
-main-only production environment policy is configured, and the public immutable
-v0.1.6 container release is active on the VPS following its first manual adoption.
-The deployment account/key, host settings and end-to-end Actions connection have
-**not** been provisioned or tested. The
-[release update guide](release-update-recovery.md) describes the required host
-configuration, selected local-only or off-host checkpoint protection and verification gates.
+The main-only production environment and restricted deployment identity are
+configured and tested on the VPS. The installed `runtime-v1` profile activates
+normal updates after bounded deployment checks, with no administrator credentials
+or manual flow prompts. Functional behavior remains covered by CI.
+
+The first end-to-end [Actions deployment](https://github.com/endorses/psst.zip/actions/runs/37928906539)
+reapplied the active immutable v0.1.6 release successfully on 2026-10-09. The job
+took **70 seconds**, including a **65-second SSH deployment request**. Public
+trusted HTTPS, release identity, original ciphertext and all physical volumes
+were independently verified afterward; retention completed. This is a measured
+same-version rehearsal, not a duration guarantee for larger future releases.
+The [release update guide](release-update-recovery.md) describes host configuration
+and recovery. Off-host backups remain explicitly deferred; checkpoints currently
+protect against update failures on the same VPS.
 
 ## Active environment policy
 
@@ -24,10 +31,19 @@ this personal instance. The branch itself requires a PR and all five existing
 GitHub Actions checks, with force pushes and deletion blocked.
 
 Separate API reads verified the environment settings and the single allowed
-branch. The environment currently has no secrets or variables. No SSH identity
-was installed, host key trusted or production update dispatched by this setup.
-Keep the broad deployment verification tasks pending until those actions and the
-first published-release connection have actually passed.
+branch. On 2026-10-09, the environment received `VPS_HOST`, `DEPLOY_SSH_KEY` and
+`VPS_KNOWN_HOSTS`. The key is dedicated to deployment; the maintenance key and
+application credentials are absent from Actions. The pinned Ed25519 host key was
+obtained through the authenticated maintenance connection. Its fingerprint is
+`SHA256:ghxhCIu6hTxBzsObWqDvv8MyNwxLf61xnynwNgZgjZU`.
+
+The installed OpenSSH configuration and its actual Include ordering passed
+validation. Effective settings prohibit password authentication, arbitrary commands,
+TTY, forwarding and tunnels. The account has no Docker group or general sudo
+access. Actual connections accepted `status` and rejected eight forbidden command
+cases, SFTP, PTY allocation and forwarding. A fresh maintenance connection also
+passed, with unchanged effective policy. The successful Actions deployment used
+this same restricted identity and the reviewed helper installed from PR #34.
 
 The environment request payloads are tracked in
 [production.json](../../.github/environments/production.json) and
@@ -176,9 +192,20 @@ the new dedicated key before removing the old key, then update the environment
 secret. Verify changed host keys through the independent trusted path before
 editing `VPS_KNOWN_HOSTS`. Keep maintenance/recovery credentials separate.
 
-- [ ] Validate the effective installed SSH/sudo policy and denial cases on the VPS.
-- [ ] Configure and verify branch/environment restrictions and dedicated secrets.
-- [ ] Exercise a selected published ready release through the installed helper,
-      including pending verification and interrupted connection recovery.
-- [ ] Run a subsequent fully verified production update through manual Actions
-      dispatch and confirm durable completion and persisted application state.
+- [x] Validate the effective installed SSH/sudo policy and denial cases on the VPS.
+- [x] Configure and verify branch/environment restrictions and dedicated secrets.
+- [x] Exercise a selected published ready release through the installed helper.
+      Profile/report rejection, timeout and failure recovery have focused automated
+      coverage; no failure was deliberately injected into the live production site.
+- [x] Run a same-version production update through manual Actions dispatch and
+      confirm durable automatic completion and persisted application state.
+
+Transaction `20261009T121612Z-9393b2aeb816` completed at
+`2026-10-09T12:17:15.237859+00:00`, with `active_version: v0.1.6`,
+`verification_profile: runtime-v1`, `checkpoint_protection: local-only` and
+`cleanup.status: completed`. Its report contains exactly the five runtime checks;
+it makes no authenticated transfer or native decryption claim. The retained
+15,355-byte payload matched the original cold checkpoint byte-for-byte. Both
+services retained `unless-stopped`, the backend published no host port, and Caddy
+published 80/443. After checkpointing and retention, 34,146,754,560 bytes were free
+on the 40 GB disk.
