@@ -3390,7 +3390,7 @@ archives were not downloaded for this review.
       Skopeo `1.24.1` source revision
       `77f3d92f861271c7cb9175afcf876017bcae9202`, with CGO enabled. Both retained
       AMD64 archives fail as an unprivileged user with `chown …/blobs/sha256:
-  operation not permitted`; production suppresses that stderr and reports a
+operation not permitted`; production suppresses that stderr and reports a
       generic rejection. The archives begin with regular blob entries rather
       than directory entries. Skopeo's archive unpacker requests `NoLchown`, but
       its vendored storage code still creates missing parent directories with
@@ -3415,11 +3415,64 @@ archives were not downloaded for this review.
       `--preserve-digests`. Exact child hashes remained unchanged; no registry or
       release writes were used by that probe. No timing-only workflow or new
       broad test suite is needed for this repair.
-- [ ] Format the changed files and merge through the protected pull-request
-      checks. Record the tested head and resulting merge before tagging the
-      corrected source.
-- [ ] Preserve the v0.1.4 tag and stopped draft for explicit reconciliation.
-      Changed publication code needs a fresh unused version and fresh bound
-      review evidence; do not replay the partially started transaction or silently
-      adopt/delete its draft. Actual hosted publication and independent public
-      delivery remain pending; first-package initialization stays enabled.
+- [x] Format the changed files and merge through protected PR #26. Head
+      `9f27e025a456a80c2853a27e476f341e06765d0e` passed all five required contexts
+      and GitGuardian. Merge `69a53d9256080315e688224f4c45ecd032d669e7` has
+      identical tested tree `2f86e4842b6ae405e68335ad338c8266f2de80b2`;
+      main CI `37887861625` passed. Application jobs correctly skipped unrelated
+      builds; security checks still ran. The existing complete release/Compose
+      regression step took 39s, and the main repository-security job took 1m32s.
+      One bounded independent review
+      found no material defects. The actual pinned AMD64 CLI also selected the
+      staged ARM64 child correctly using a tiny local fixture.
+- [x] Preserve the v0.1.4 tag and stopped draft for explicit reconciliation.
+      No partially started transaction was replayed, and its draft was neither
+      adopted nor deleted. First-package initialization stays enabled.
+
+### v0.1.5 rootless publication candidate
+
+- [x] Verify v0.1.5 is unused, create its annotated tag at tested merge
+      `69a53d9256080315e688224f4c45ecd032d669e7`, and start run `37888086205`,
+      attempt 1. The tag preserves every prior version and selects the repaired
+      rootless transfer implementation.
+- [x] Inspect the completed candidate run. Repository security, exact-tag
+      backend/web CI and both native container architecture jobs passed;
+      unrelated mobile jobs skipped. Unsigned release assembly completed in 64s.
+      Job `113685401377` then failed in “Authenticate current native evidence and
+      produce complete source report” after 115.8s. Its only failure diagnostic
+      is `Corresponding-source command failed; publication remains unauthorized.`
+      The exact first exception is not retained; elapsed time does not establish
+      which internal stage failed. No source-review output, recovery run, human
+      approval gate or publisher was reached. No v0.1.5 release draft or image
+      publication was created by this run.
+- [x] Authenticate the retained AMD64 source scan independently with GitHub
+      attestation verification, requiring this exact source, tag, hosted workflow
+      identity and run attempt. Its SHA256 is
+      `0ec44461fefba3999090ada6182c35c60413ada2b40b400db20e919d43ecf680`;
+      the signed invocation is run `37888086205`, attempt 1. Scanner completion
+      is not vulnerability approval: the scan reports 122 unresolved finding
+      rows across eleven Go advisories, including 89 symbol-trace rows, with
+      fixed version `v1.27.2`. Affected imported packages include `net/http`,
+      `crypto/tls`, `mime/multipart`, `net/textproto` and `os`. The npm audit has
+      zero findings. Independently of the opaque assembly exception, these
+      findings cannot pass `aggregate_release_source_scans.py`: package/symbol
+      findings and affected imported source packages require repair and rescan.
+- [x] Record the separate security blocker and stop further release work under
+      the project's unexpected-issues instruction. The backend uses Go 1.27.1;
+      the retained Caddy image uses Go 1.26.8 and `golang.org/x/net` 0.59.0,
+      with findings fixed by updated builds/dependencies. Go 1.27.2 and 1.26.9
+      were released on October 8 with security fixes; see the
+      [official Go release history](https://go.dev/doc/devel/release#go1.27.2).
+      The latest stable pins should have been rechecked before tagging this
+      candidate. The rootless OCI repair remains merged and verified; it does
+      not resolve these newly reported vulnerabilities.
+- [ ] Refresh the backend Go toolchain and Caddy build/dependencies, then rescan
+      the resulting source and images. This separate repair has not started;
+      do not suppress the findings or replay the failed publication transaction.
+- [ ] Complete signed source/scan/smoke/notice assembly and native recovery
+      evidence for a repaired candidate. Prepare a fresh bound distribution
+      presentation only after those actual gates pass.
+- [ ] Obtain both configured fresh human GitHub reviews and verify actual
+      hosted publication, public linked packages, immutable release and fresh
+      anonymous delivery. Earlier v0.1.4 approvals do not authorize this candidate.
+      Production migration and independent off-host recovery remain deferred.
