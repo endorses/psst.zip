@@ -200,9 +200,9 @@ class API:
 
 
 class Commands:
-    def __init__(self, api, raw_children):
+    def __init__(self, api):
         self.api = api
-        self.raw_children = raw_children
+        self.inspect_override = None
         self.calls = []
         self.local_images = {}
         self.fail_copy = False
@@ -213,20 +213,23 @@ class Commands:
         assert "GH_TOKEN" not in environment and "GITHUB_TOKEN" not in environment
         if args[1] == "inspect":
             source = args[-1]
-            if source.startswith("oci-archive:"):
-                return self.raw_children[Path(source.removeprefix("oci-archive:")).stem]
-            return self.local_images[source.removeprefix("oci:")]
+            directory = Path(source.removeprefix("oci:"))
+            if directory.joinpath("index.json").exists():
+                if self.inspect_override and directory.name == "web-arm64":
+                    return self.inspect_override
+                return self.read_layout(directory)
+            return self.local_images[str(directory)]
         assert args[1] == "copy"
         assert (
             "--preserve-digests" in args
             and args[args.index("--retry-times") + 1] == "0"
         )
         source, destination = args[-2:]
-        if source.startswith("oci-archive:"):
+        if destination.startswith("docker://ghcr.io/"):
             auth = Path(args[args.index("--dest-authfile") + 1])
             assert stat.S_IMODE(auth.stat().st_mode) == 0o600
             assert "fixture-workflow-token" not in " ".join(args)
-            raw = self.raw_children[Path(source.removeprefix("oci-archive:")).stem]
+            raw = self.read_layout(Path(source.removeprefix("oci:")))
             repository, digest = destination.removeprefix("docker://ghcr.io/").split(
                 "@"
             )
@@ -244,6 +247,22 @@ class Commands:
                 (repository, digest)
             ]
         return b""
+
+    def read_layout(self, directory):
+        index = json.loads((directory / "index.json").read_bytes())
+        assert len(index["manifests"]) == 1
+        descriptor = index["manifests"][0]
+        raw = (directory / "blobs/sha256" / descriptor["digest"][7:]).read_bytes()
+        assert len(raw) == descriptor["size"]
+        assert publication.sha256(raw) == descriptor["digest"]
+        image = json.loads(raw)
+        for descriptor in [image["config"], *image["layers"]]:
+            payload = (
+                directory / "blobs/sha256" / descriptor["digest"][7:]
+            ).read_bytes()
+            assert len(payload) == descriptor["size"]
+            assert publication.sha256(payload) == descriptor["digest"]
+        return raw
 
 
 class TransportChecks(unittest.TestCase):
@@ -298,7 +317,7 @@ class TransportChecks(unittest.TestCase):
         self.fixture.write_manifest()
         self.plan = self.fixture.prepare()
         self.api = API(self.fixture)
-        self.commands = Commands(self.api, self.children)
+        self.commands = Commands(self.api)
         self.state = self.fixture.folder / "state"
         self.adapter = self.new_adapter()
         self.files = {
@@ -330,11 +349,12 @@ class TransportChecks(unittest.TestCase):
         ]
 
     def stage(self):
-        self.adapter.push_images(
+        with self.adapter.prepare_images(
             self.archives,
             self.fixture.indexes,
             tested_configs=self.tested_configs,
-        )
+        ) as prepared:
+            self.adapter.push_images(prepared)
 
     def stage_tags(self, reservation):
         self.stage()
@@ -513,14 +533,136 @@ class TransportChecks(unittest.TestCase):
             self.fail("Old remote draft adopted")
 
     def test_all_staged_sources_validated_before_first_image_push(self):
-        self.commands.raw_children["web-arm64"] = b"wrong reviewed digest"
+        self.commands.inspect_override = b"wrong reviewed digest"
         with (
             self.assertRaisesRegex(InvalidRelease, "reviewed final child"),
-            publication.reserve_draft(self.plan, self.adapter),
+            self.adapter.prepare_images(
+                self.archives, self.fixture.indexes, tested_configs=self.tested_configs
+            ),
         ):
-            self.stage()
+            self.fail("Wrong local child admitted")
         self.assertEqual(self.api.registry, {})
+        self.assertEqual(self.api.releases, [])
+        self.assertFalse((self.state / "v1.2.3.jsonl").exists())
         self.assertFalse(any(args[1] == "copy" for args in self.commands.calls))
+        for args in self.commands.calls:
+            self.assertFalse(Path(args[-1].removeprefix("oci:")).exists())
+
+    def test_root_owned_nested_exports_become_exact_runner_owned_native_sources(self):
+        originals = {}
+        nested_keys = {"backend-amd64", "web-arm64"}
+        for key in nested_keys:
+            archive = self.archives[key]
+            with tarfile.open(archive, "r:") as source:
+                files = {
+                    member.name: source.extractfile(member).read() for member in source
+                }
+            index = json.loads(files["index.json"])
+            wrapper = files["index.json"]
+            wrapper_digest = publication.sha256(wrapper)
+            files["blobs/sha256/" + wrapper_digest[7:]] = wrapper
+            index["manifests"] = [
+                {
+                    "mediaType": index["mediaType"],
+                    "digest": wrapper_digest,
+                    "size": len(wrapper),
+                }
+            ]
+            files["index.json"] = json_bytes(index)
+            with tarfile.open(archive, "w:") as target:
+                # Buildx may omit explicit parent directory entries entirely.
+                for name, raw in files.items():
+                    member = tarfile.TarInfo(name)
+                    member.size = len(raw)
+                    member.uid = member.gid = 0
+                    member.mode = 0o4777
+                    target.addfile(member, io.BytesIO(raw))
+        originals = {
+            key: publication.source_digest(path) for key, path in self.archives.items()
+        }
+        with self.adapter.prepare_images(
+            self.archives, self.fixture.indexes, tested_configs=self.tested_configs
+        ) as prepared:
+            root = prepared.images[0].directory.parent
+            self.assertFalse(self.adapter.held)
+            self.assertFalse(self.api.calls)
+            for image in prepared.images:
+                with self.subTest(key=image.key):
+                    self.assertEqual(
+                        self.commands.read_layout(image.directory),
+                        self.children[image.key],
+                    )
+                    index = json.loads((image.directory / "index.json").read_bytes())
+                    self.assertEqual(
+                        index["manifests"][0]["platform"]["architecture"],
+                        image.key.split("-")[1],
+                    )
+                    self.assertEqual(len(image.inventory), 5)
+                    for path in image.directory.rglob("*"):
+                        self.assertEqual(path.stat().st_uid, os.getuid())
+                        self.assertEqual(
+                            stat.S_IMODE(path.stat().st_mode),
+                            0o700 if path.is_dir() else 0o600,
+                        )
+            with publication.reserve_draft(self.plan, self.adapter):
+                self.adapter.push_images(prepared)
+        self.assertFalse(root.exists())
+        for key, path in self.archives.items():
+            self.assertEqual(publication.source_digest(path), originals[key])
+        copies = [args for args in self.commands.calls if args[1] == "copy"]
+        self.assertEqual(len(copies), 4)
+        self.assertTrue(all(args[-2].startswith("oci:") for args in copies))
+        self.assertEqual(len(self.api.registry), 6)
+
+    def test_prepared_sources_reject_original_and_derived_tampering_before_any_push(
+        self,
+    ):
+        with self.adapter.prepare_images(
+            self.archives, self.fixture.indexes, tested_configs=self.tested_configs
+        ) as prepared:
+            image = prepared.images[-1]
+            paths = [image.archive, self.fixture.indexes["web"]]
+            paths.extend(image.directory / name for name, _, _ in image.inventory)
+            with publication.reserve_draft(self.plan, self.adapter):
+                for path in paths:
+                    original = path.read_bytes()
+                    with self.subTest(name=path.name):
+                        try:
+                            path.write_bytes(original + b"substitution")
+                            with self.assertRaisesRegex(InvalidRelease, "changed"):
+                                self.adapter.push_images(prepared)
+                            self.assertFalse(self.api.registry)
+                            self.assertFalse(
+                                any(args[1] == "copy" for args in self.commands.calls)
+                            )
+                            self.assertFalse(
+                                any(
+                                    event["operation"].startswith("push-")
+                                    for event in self.events()
+                                )
+                            )
+                        finally:
+                            path.write_bytes(original)
+
+    def test_prepared_sources_expire_with_context_and_reject_symlinks(self):
+        with publication.reserve_draft(self.plan, self.adapter):
+            with self.adapter.prepare_images(
+                self.archives, self.fixture.indexes, tested_configs=self.tested_configs
+            ) as prepared:
+                image = prepared.images[-1]
+                path = image.directory / "index.json"
+                raw = path.read_bytes()
+                path.unlink()
+                path.symlink_to(self.fixture.indexes["web"])
+                with self.assertRaisesRegex(InvalidRelease, "Unsafe staged OCI"):
+                    self.adapter.push_images(prepared)
+                path.unlink()
+                path.write_bytes(raw)
+                path.chmod(0o600)
+            self.assertIsNone(self.adapter.prepared_images)
+            self.assertFalse(image.directory.exists())
+            with self.assertRaisesRegex(InvalidRelease, "active prepared"):
+                self.adapter.push_images(prepared)
 
     def test_interrupted_child_push_is_durable_uncertain_and_read_only_reconciled(self):
         self.commands.fail_copy = True

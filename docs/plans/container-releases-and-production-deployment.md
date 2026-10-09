@@ -3361,9 +3361,65 @@ archives were not downloaded for this review.
       binding, source-report hash, all fourteen subjects, complete coverage and
       committed reviewer policy match. Automated preparation reached the review
       gate in 27m14s. Earlier comments do not apply to this new attempt.
-- [ ] Obtain the configured attempt-2 human distribution and publication reviews.
-      Publication remains unauthorized until both actual GitHub gates complete.
+- [x] Obtain the configured attempt-2 human distribution and publication reviews.
+      Distribution job `113532991409` passed with reviewer `endorses`, exact
+      attempt-2 binding, all fourteen subjects and source-report hash above.
+      The signed review report has SHA256
+      `1cdda782621f378fe9d7e99d01a339c6de58712dcca278b16a3c74c7fcff2ef7`;
+      independently inspected review evidence has SHA256
+      `72f5103b6575b4b2b2a3a22158a0026e2edccccc20c397c9d19baf16e928a668`.
+      The separate publication approval allowed job `113674466824` to start.
 - [ ] Independently verify actual hosted publication, public linked packages,
       immutable release and fresh anonymous delivery before removing first-package
       initialization. Production migration and independent off-host recovery remain
       deferred.
+
+### Rootless OCI transfer repair after v0.1.4 approval
+
+- [x] Inspect the actual stopped publisher and retained diagnostics before any
+      rerun. All signed gates, final OCI checks, hosted attestor initialization,
+      workflow API inspection and package preflight passed. Publication reserved
+      draft `407520072`, then failed before the first image-push intent. The
+      retained diagnostic journal hash is
+      `sha256:e7bf48bf43148888526eafd0019f2d717abfa9801ace8cb35fdc0c39955ad2ae`;
+      its operations are transaction begin, draft intent, draft complete and
+      transaction stopped. Draft readback still matches source/version, is
+      unpublished and has zero assets. This publisher did not reach package
+      visibility, image upload, or public-release verification.
+- [x] Reproduce the local image inspection failure using the exact pinned native
+      Skopeo `1.24.1` source revision
+      `77f3d92f861271c7cb9175afcf876017bcae9202`, with CGO enabled. Both retained
+      AMD64 archives fail as an unprivileged user with `chown …/blobs/sha256:
+  operation not permitted`; production suppresses that stderr and reports a
+      generic rejection. The archives begin with regular blob entries rather
+      than directory entries. Skopeo's archive unpacker requests `NoLchown`, but
+      its vendored storage code still creates missing parent directories with
+      root ownership. This failure occurs before raw-manifest digest inspection.
+- [x] Rule out the suspected nested-index mismatch for the actual AMD64 files:
+      their root descriptors directly select the reviewed children. A disposable
+      runner-owned OCI directory makes the same pinned CLI return those exact
+      backend/web child digests successfully, without changing blob bytes or
+      requiring root privileges.
+- [x] Stage validated OCI payloads as private runner-owned directories, selecting
+      the reviewed child explicitly for both architectures. Use that same source
+      for raw inspection and digest-preserving copy; retain original archive,
+      configuration, layer, platform and readback integrity checks. Run actual
+      transfer preflight before reserving a draft and expose fixed publication
+      stage markers without logging credentials or external exception payloads.
+- [x] Verify focused ownership, source-selection, tamper and pre-draft rejection
+      regressions; repeat the real pinned CLI probe against the implemented
+      staging helper. All 23 transport checks passed in 2.746s; the 21 publication
+      command/OCI checks passed in 2.002s. The real pinned native CLI successfully
+      inspected and copied both retained AMD64 images from the implemented
+      runner-owned layouts into disposable local OCI directories with
+      `--preserve-digests`. Exact child hashes remained unchanged; no registry or
+      release writes were used by that probe. No timing-only workflow or new
+      broad test suite is needed for this repair.
+- [ ] Format the changed files and merge through the protected pull-request
+      checks. Record the tested head and resulting merge before tagging the
+      corrected source.
+- [ ] Preserve the v0.1.4 tag and stopped draft for explicit reconciliation.
+      Changed publication code needs a fresh unused version and fresh bound
+      review evidence; do not replay the partially started transaction or silently
+      adopt/delete its draft. Actual hosted publication and independent public
+      delivery remain pending; first-package initialization stays enabled.

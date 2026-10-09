@@ -93,8 +93,17 @@ PUBLICATION_STAGES = frozenset(
         "transport-initialization",
         "workflow-api-preflight",
         "package-preflight",
+        "image-transport-preflight",
         "snapshot-durability",
         "publication-lease",
+        "registry-publication",
+        "package-visibility",
+        "registry-readback",
+        "provenance-publication",
+        "release-assets",
+        "version-tags",
+        "immutable-publication",
+        "public-readback",
     }
 )
 
@@ -420,6 +429,10 @@ def publish(
         adapter.verify_workflow()
         publication_stage("package-preflight")
         adapter.package_preflight()
+        publication_stage("image-transport-preflight")
+        prepared_images = signer_scope.enter_context(
+            adapter.prepare_images(archive_paths, index_paths, tested_configs=configs)
+        )
         publication_stage("snapshot-durability")
         exclusive_report(private / "snapshot-binding.json", plan.record())
         # File fsync does not persist the containing directory entries. Make
@@ -433,8 +446,11 @@ def publish(
         publication_stage("publication-lease")
         snapshots.retain = True
         with reserve_draft(plan, adapter) as reservation:
-            adapter.push_images(archive_paths, index_paths, tested_configs=configs)
+            publication_stage("registry-publication")
+            adapter.push_images(prepared_images)
+            publication_stage("package-visibility")
             adapter.wait_for_public_packages()
+            publication_stage("registry-readback")
             registry = adapter.inspect_pair()
             anonymous = adapter.anonymous_pull()
             provenance = None
@@ -456,11 +472,13 @@ def publish(
                 )
                 return {"report_sha256": source_digest(provenance)}
 
+            publication_stage("provenance-publication")
             adapter.journal.mutate(
                 "attest-reviewed-subjects",
                 {"subjects": dict(plan.binding.subjects)},
                 attest_subjects,
             )
+            publication_stage("release-assets")
             adapter.upload_assets(reservation, asset_paths)
             assets = adapter.inspect_assets(reservation)
             readback_reports = {"provenance": provenance}
@@ -496,8 +514,11 @@ def publish(
                 )
                 readback_reports[gate] = path
             verify_gates(readback_reports, set(READBACK_GATES), plan.binding, verifier)
+            publication_stage("version-tags")
             adapter.create_version_tags(index_paths)
+            publication_stage("immutable-publication")
             release = adapter.publish(reservation, readback_reports, verifier)
+            publication_stage("public-readback")
             public = adapter.verify_public(reservation)
             result = {
                 "schema_version": 1,
