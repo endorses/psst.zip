@@ -55,12 +55,15 @@ when finished.
 
 `PSST_ANDROID_DEVICE_TEST_BUILD_TYPE` and `PSST_ANDROID_DEVICE_TEST_VERSION_CODE`
 are reserved for private disposable update fixtures. Do not set them in a release
-workflow: fixture versions that disagree with the checked-in file are rejected.
-Release instrumentation fixtures preserve the single `androidx.tracing.Trace`
-runner facade in the target APK: AGP shares that dependency with the test APK,
-while ordinary target shrinking otherwise removes it before the runner starts.
-The fixture still shrinks and optimizes app and crypto code. This harness rule is
-enabled only for the explicit release test build; normal public APKs do not use it.
+workflow: fixture APK metadata carries `deviceFixture=true`, which public
+verification rejects even if its version matches the checked-in version.
+Explicit private builds compile one diagnostic into the target APK so R8 analyzes
+its complete store/crypto call graph. A separate framework-only Java runner invokes
+one retained entry signature, avoiding shared AndroidX/Kotlin test dependencies
+that target optimization can remove. App and crypto optimization remain enabled.
+Public builds omit the diagnostic sources and its keep rule entirely. These
+fixture-modified APKs establish update preservation; public APK runtime smoke is
+checked separately.
 
 ## Signing key custody
 
@@ -149,16 +152,32 @@ Android/security checks once. It does not rerun backend, web or native iOS jobs.
 ## Existing debug installation
 
 The operator's phone runs Android 16, without USB access currently. Android 13+
-supports a private debug-to-production signing bridge. Source review indicates an
-installed-data lineage can preserve the app UID, files and Keystore keys, and a
+supports a private debug-to-production signing bridge. Source review indicates a
+lineage with installed-data and signature-permission continuity can preserve the
+app UID, files and Keystore keys, and a
 subsequent production-only APK can update it. This is **not yet device evidence**.
 
 `tools/android_signing_bridge.py` prepares a local bridge, with both keystores
 outside the checkout. It requires the recorded installed signer and version floor,
-verifies the old APK, allows installed-data capability, disables rollback and
-other legacy-key privileges, and keeps outputs private. It refuses GitHub Actions
+verifies the old APK, enables installed-data and permission capabilities, disables
+shared UID, rollback and auth capabilities, and keeps outputs private. It refuses GitHub Actions
 and public artifact directories. Public release verification rejects rotation
 history, preventing publication of this debug-key bridge.
+
+Permission continuity is required to retain ownership of AndroidX's package-scoped
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. It remains a signature permission;
+removing it or lowering its protection would compromise older-system receiver
+isolation. Android checks the signing history's `PERMISSION` capability even when
+the same package updates its existing permission declaration.
+[AOSP permission ownership checks](https://android.googlesource.com/platform/frameworks/base/+/1406600d75c1a30ebdf45312b7fa0f4a4355194b/services/core/java/com/android/server/pm/InstallPackageHelper.java),
+[AndroidX declaration](https://android.googlesource.com/platform/prebuilts/sdk/+/5c762fb2f6235bbe5d006d3a26063a8e921354b4/current/androidx/manifests/androidx.core_core/AndroidManifest.xml).
+
+The migrated phone can retain historical debug-key trust for signature permissions.
+This trust may remain in Android's stored signing history after a subsequent
+production-only APK; a successful update does not prove its revocation. The
+operator must review and accept this trust before any real-device transition.
+That acceptance and actual device preservation are still pending. Fresh public
+installations use a production-only APK without the debug lineage.
 
 Do not uninstall, clear app data or replace a mismatched package to get around a
 signing error. If a bridge cannot preserve protected state, stop and implement an
@@ -167,6 +186,8 @@ encrypted archive migration on **both Android and iOS** before any reinstall.
 Readiness record, kept privately and containing observations rather than secrets:
 
 - [ ] Confirm the actual phone's installed package, version code and signing identity.
+- [ ] Review and accept the private bridge's retained debug-key permission trust
+      before applying it to the actual phone.
 - [ ] Verify a disposable emulator transition with actual protected stores before
       applying the production bridge to the phone.
 - [ ] Demonstrate production-key recovery from the separate encrypted copy.

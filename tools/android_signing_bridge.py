@@ -166,6 +166,8 @@ def prepare_bridge(
     device_api: int,
     minimum_version_code: int,
     output: Path,
+    *,
+    device_fixture: bool = False,
 ) -> None:
     release.require(
         device_api >= 33, "Private bridge evaluation requires Android 13 or newer"
@@ -181,7 +183,9 @@ def prepare_bridge(
     )
     output = private_output(output)
     old = verify_old_apk(old_apk, sdk_tools, old_fingerprint)
-    candidate = release.verify_apk(unsigned, sdk_tools, None, version_file, revision)
+    candidate = release.verify_apk(
+        unsigned, sdk_tools, None, version_file, revision, device_fixture=device_fixture
+    )
     release.require(
         candidate["versionCode"] > max(old["versionCode"], minimum_version_code),
         "Private bridge version code must exceed every installed/private version",
@@ -283,7 +287,10 @@ def prepare_bridge(
             new_fingerprint,
         )
         release.inspect_apk_assets(
-            signed, release.version_metadata(version_file), revision
+            signed,
+            release.version_metadata(version_file),
+            revision,
+            device_fixture=device_fixture,
         )
         release.command(
             [str(sdk_tools / "zipalign"), "-c", "-P", "16", "4", str(signed)]

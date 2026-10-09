@@ -143,9 +143,25 @@ class AndroidReleaseTest(unittest.TestCase):
         report = release.inspect_apk_assets(self.apk, self.identity, self.revision)
         self.assertEqual(report["nativeAbis"], [])
         self.assertEqual(len(report["legalSha256"]), 3)
+        with self.assertRaises(release.InvalidRelease):
+            release.inspect_apk_assets(
+                self.apk, self.identity, self.revision, device_fixture=True
+            )
         self.make_apk(identity={**self.identity, "sourceRevision": "b" * 40})
         with self.assertRaises(release.InvalidRelease):
             release.inspect_apk_assets(self.apk, self.identity, self.revision)
+        self.make_apk(
+            identity={
+                **self.identity,
+                "sourceRevision": self.revision,
+                "deviceFixture": True,
+            }
+        )
+        with self.assertRaises(release.InvalidRelease):
+            release.inspect_apk_assets(self.apk, self.identity, self.revision)
+        release.inspect_apk_assets(
+            self.apk, self.identity, self.revision, device_fixture=True
+        )
         self.make_apk(extras=[("assets/licenses/THIRD_PARTY_NOTICES.txt", b"changed")])
         with self.assertRaises(release.InvalidRelease):
             release.inspect_apk_assets(self.apk, self.identity, self.revision)

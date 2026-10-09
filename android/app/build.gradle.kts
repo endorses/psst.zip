@@ -98,7 +98,16 @@ android {
         versionCode = androidVersionCode
         versionName = androidVersionName
         buildConfigField("String", "SOURCE_REVISION", "\"$gitSourceRevision\"")
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner =
+            if (deviceTestBuildType != null) "zip.psst.android.fixture.ReleaseUpdateInstrumentation"
+            else "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    if (deviceTestBuildType != null) {
+        // Compile the private diagnostic in the target so R8 sees its complete
+        // store/crypto call graph. Its separate runner uses Android APIs only.
+        sourceSets.getByName("main").java.srcDir("src/deviceFixture/java")
+        sourceSets.getByName("androidTest").java.setSrcDirs(listOf("src/deviceFixtureTest/java"))
     }
 
     buildTypes {
@@ -109,8 +118,8 @@ android {
                 "proguard-rules.pro",
             )
             if (deviceTestBuildType == "release") {
-                // The separate runner shares target dependencies. Preserve its
-                // tracing entry points only in disposable instrumented fixtures.
+                // Only this reflective fixture entry stays named; app/store/
+                // crypto code remains subject to whole-program optimization.
                 proguardFiles("proguard-device-fixture.pro")
             }
         }
@@ -168,6 +177,7 @@ abstract class GeneratePsstReleaseMetadata : DefaultTask() {
     @get:Input abstract val versionName: Property<String>
     @get:Input abstract val versionCode: Property<Int>
     @get:Input abstract val sourceRevision: Property<String>
+    @get:Input abstract val deviceFixture: Property<Boolean>
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
     @TaskAction
@@ -176,11 +186,14 @@ abstract class GeneratePsstReleaseMetadata : DefaultTask() {
         destination.parentFile.mkdirs()
         destination.writeText(
             JsonOutput.toJson(
-                mapOf(
-                    "versionName" to versionName.get(),
-                    "versionCode" to versionCode.get(),
-                    "sourceRevision" to sourceRevision.get(),
-                ),
+                buildMap {
+                    put("versionName", versionName.get())
+                    put("versionCode", versionCode.get())
+                    put("sourceRevision", sourceRevision.get())
+                    // Exact public metadata verification rejects this extra key,
+                    // even if a private fixture uses the normal version code.
+                    if (deviceFixture.get()) put("deviceFixture", true)
+                },
             ) + "\n",
         )
     }
@@ -194,6 +207,7 @@ androidComponents.onVariants { variant ->
             versionName.set(androidVersionName)
             versionCode.set(androidVersionCode)
             sourceRevision.set(gitSourceRevision)
+            deviceFixture.set(deviceTestBuildType != null)
         }
     variant.sources.assets?.addGeneratedSourceDirectory(
         metadata,
@@ -233,8 +247,10 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    androidTestImplementation(libs.android.test.runner)
-    androidTestImplementation(libs.android.test.junit)
+    if (deviceTestBuildType == null) {
+        androidTestImplementation(libs.android.test.runner)
+        androidTestImplementation(libs.android.test.junit)
+    }
 
     testImplementation("junit:junit:4.13.2")
     testImplementation(libs.sqlite.jdbc)

@@ -259,7 +259,7 @@ rules stay enabled. Actual resource-type and configuration-awareness errors were
 fixed rather than suppressed.
 
 Focused tooling checks pass: 34 Android release/workflow/update/signing cases in
-0.040 seconds, 8 bidi boundary cases in 0.015 seconds and 5 CI-selection cases in
+0.042 seconds, 8 bidi boundary cases in 0.015 seconds and 5 CI-selection cases in
 1.645 seconds. Actionlint and Android/iOS localization/source checks pass. Task
 instrumentation uses the supported Gradle completion service in the existing
 build; no extra full test benchmark was added. These timings describe local
@@ -300,13 +300,20 @@ and auth capabilities remain disabled. Accepting historical debug permission tru
 on the real phone is still an operator decision; a later production-only APK does
 not prove that Android discarded that signing history.
 
-The first optimized instrumentation run failed before executing the test because
-R8 removed the test runner's shared `androidx.tracing.Trace` facade. A narrow keep
-rule applies only to explicit disposable release fixtures; public releases do not
-load it. Rebuilt instrumentation and full preservation evidence remain pending.
+The optimized instrumentation runner exposed a systematic shared-dependency
+classpath problem after R8 removed tracing and Kotlin facades. The private fixture
+now compiles one protected-state diagnostic into its target APK and uses a small
+framework-only Java instrumentation runner. R8 analyzes the entire diagnostic call
+graph; only its reflective entry signature stays named. Public builds omit the
+diagnostic and keep rule. A fixture-only metadata marker prevents publication even
+when its version matches the public release. Rebuilt instrumentation and full
+preservation evidence remain pending.
 The unmodified optimized public configuration starts successfully on an owned
 API 26 emulator with the latest stable emulator 37.2.12. This establishes startup,
-not the pending network, crypto, sharing or current-Android smoke checks.
+not the pending crypto or sharing smoke checks. The same public configuration also
+starts on the stable API 37 16 KB image (runtime page size 16384), and successfully
+validates the disposable localhost server and logs in as a synthetic regular user.
+This is not production signing, camera-QR, physical-device or full transfer evidence.
 
 The next prerequisite is proving the private transition with synthetic protected
 state, then checking the actual phone and production-key recovery. Store acceptance, iOS

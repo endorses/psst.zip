@@ -1,19 +1,12 @@
 package zip.psst.android.data
 
+import android.content.Context
 import android.os.Build
+import android.os.Bundle
 import android.os.Process
 import android.util.Base64
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
-import org.junit.runner.RunWith
 import zip.psst.shared.crypto.AndroidReceiveCrypto
 import zip.psst.shared.crypto.CryptoProvider
 
@@ -22,14 +15,17 @@ import zip.psst.shared.crypto.CryptoProvider
  * Android Keystore, Room, guest index and HPKE/AES implementations in the installed target APK.
  * Nothing contacts a server, and no real account, capability or private transfer is used.
  */
-@RunWith(AndroidJUnit4::class)
-class ReleaseUpdateDeviceTest {
-    private val context
-        get() = InstrumentationRegistry.getInstrumentation().targetContext
+object ReleaseUpdateFixture {
+    @JvmStatic
+    fun run(context: Context, arguments: Bundle) {
+        ClientStateFixture(context, arguments).apply {
+            requireDisposableEmulator()
+            preservesClientState()
+        }
+    }
+}
 
-    private val arguments
-        get() = InstrumentationRegistry.getArguments()
-
+private class ClientStateFixture(private val context: Context, private val arguments: Bundle) {
     private val state
         get() = context.getSharedPreferences("release-update-device-fixture", 0)
 
@@ -43,7 +39,6 @@ class ReleaseUpdateDeviceTest {
     private val submissionKey = ByteArray(32) { (it + 80).toByte() }
     private val payload = "Disposable optimized APK update fixture".encodeToByteArray()
 
-    @Before
     fun requireDisposableEmulator() {
         check(arguments.getString("disposableUpdate") == "true") {
             "Explicit disposableUpdate=true is required"
@@ -54,7 +49,6 @@ class ReleaseUpdateDeviceTest {
         check(context.packageName == "zip.psst.android")
     }
 
-    @Test
     fun preservesClientState() = runBlocking {
         val phase = arguments.getString("updatePhase")
         check(phase in setOf("seed", "verify")) { "Choose seed or verify" }
@@ -191,4 +185,22 @@ class ReleaseUpdateDeviceTest {
 
     private fun decode(value: String): ByteArray =
         Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP)
+
+    private fun assertTrue(value: Boolean) {
+        check(value) { "Protected state mismatch" }
+    }
+
+    private fun assertTrue(message: String, value: Boolean) {
+        check(value) { message }
+    }
+
+    private fun assertFalse(value: Boolean) = assertTrue(!value)
+
+    private fun assertEquals(expected: Any?, actual: Any?) = assertTrue(expected == actual)
+
+    private fun assertEquals(message: String, expected: Any?, actual: Any?) =
+        assertTrue(message, expected == actual)
+
+    private fun assertArrayEquals(expected: ByteArray, actual: ByteArray) =
+        assertTrue(expected.contentEquals(actual))
 }

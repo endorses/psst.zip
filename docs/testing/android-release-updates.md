@@ -11,6 +11,15 @@ updates it opens retained AES ciphertext, unwraps a Receive-v2 submission key us
 Tink HPKE, and opens that submission's ciphertext. A successful re-pairing alone
 would not prove any of these properties.
 
+The target APKs are **fixture-modified diagnostics**: the explicit private build
+adds one target-contained scenario, allowing R8 to optimize its complete store and
+crypto call graph. A framework-only Java `Instrumentation` runner invokes one
+kept entry signature. It has no AndroidX, Kotlin or JUnit test runtime dependency
+that can be deduplicated into, then removed from, the optimized target. Public
+builds omit this diagnostic source directory and keep rule entirely. Private
+metadata adds `deviceFixture=true`; ordinary APK publication rejects that marker,
+even if a fixture's version code matches the public version.
+
 The fixture does not replace the operator's real installation transition or the
 separate optimized-app pairing, QR, sharing and transfer smoke. Its report states
 those limits explicitly. Android-only package signing evaluation changes no shared
@@ -41,9 +50,10 @@ verification only; normal publication rejects a private version-code override.
 
 The debug seed is code 1, private bridge code 2 and subsequent production-only
 update code 3. These are disposable test versions, not published version metadata.
-Use matching instrumentation APKs for each target; the release test build must
-apply the corresponding R8 mapping. Do not use a debug test build as evidence that
-a minified target retained its runtime classes.
+Use the matching framework-only instrumentation APKs for each target. They invoke
+the retained diagnostic entry rather than app internals across an R8 mapping.
+Do not use a debug test build as evidence that a minified target retained its
+runtime classes. Public optimized-APK startup and user flows remain separate checks.
 
 ```sh
 export PSST_ANDROID_UNSIGNED_RELEASE=true
@@ -121,11 +131,13 @@ that update does not establish revocation of historical permission trust. Public
 release APKs must still contain only the production signing identity and no
 rotation lineage, so fresh public installations do not acquire debug-key authority.
 
-It executes `ReleaseUpdateDeviceTest#preservesClientState` three times: seed,
+It invokes `ReleaseUpdateFixture#run` through
+`zip.psst.android.fixture.ReleaseUpdateInstrumentation` three times: seed,
 after bridge installation, and after the production-only higher-code installation.
 The target is updated with `adb install -r`; it is never uninstalled or downgraded.
 Only the disposable instrumentation package is replaced to match its target's
-signing certificate and optimized code mapping.
+signing certificate. The target-contained scenario retains every protected-state
+assertion; failures produce a fixed diagnostic without printing stored values.
 
 A JSON report is written only after all three fixture runs succeed. A failed run
 leaves its disposable emulator for inspection, without manufacturing successful

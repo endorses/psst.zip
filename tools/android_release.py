@@ -249,7 +249,9 @@ def verify_elf(data: bytes, abi: str | None = None) -> None:
     require(loads > 0, "Native library has no load segments")
 
 
-def inspect_apk_assets(apk: Path, expected: dict, revision: str) -> dict:
+def inspect_apk_assets(
+    apk: Path, expected: dict, revision: str, *, device_fixture: bool = False
+) -> dict:
     require(
         apk.is_file() and not apk.is_symlink() and 0 < apk.stat().st_size <= MAX_APK,
         "Invalid APK file",
@@ -292,8 +294,11 @@ def inspect_apk_assets(apk: Path, expected: dict, revision: str) -> dict:
             "Release identity exceeds size limit",
         )
         identity = json.loads(archive.read("assets/psst-release.json"))
+        expected_identity = {**expected, "sourceRevision": revision}
+        if device_fixture:
+            expected_identity["deviceFixture"] = True
         require(
-            identity == {**expected, "sourceRevision": revision},
+            identity == expected_identity,
             "Packaged source/version identity mismatch",
         )
         notices = {}
@@ -409,11 +414,17 @@ def reject_public_lineage(apk: Path) -> None:
 
 
 def verify_apk(
-    apk: Path, sdk_tools: Path, signer: str | None, version_file: Path, revision: str
+    apk: Path,
+    sdk_tools: Path,
+    signer: str | None,
+    version_file: Path,
+    revision: str,
+    *,
+    device_fixture: bool = False,
 ) -> dict:
     require(bool(REVISION.fullmatch(revision)), "Invalid source revision")
     expected = version_metadata(version_file)
-    assets = inspect_apk_assets(apk, expected, revision)
+    assets = inspect_apk_assets(apk, expected, revision, device_fixture=device_fixture)
     badging = parse_badging(
         command([str(sdk_tools / "aapt2"), "dump", "badging", str(apk)])
     )

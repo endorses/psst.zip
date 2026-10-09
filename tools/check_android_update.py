@@ -24,8 +24,8 @@ import android_release as release
 import android_signing_bridge as bridge
 
 TEST_PACKAGE = release.PACKAGE + ".test"
-TEST_COMPONENT = TEST_PACKAGE + "/androidx.test.runner.AndroidJUnitRunner"
-TEST_METHOD = "zip.psst.android.data.ReleaseUpdateDeviceTest#preservesClientState"
+TEST_COMPONENT = TEST_PACKAGE + "/zip.psst.android.fixture.ReleaseUpdateInstrumentation"
+TEST_METHOD = "zip.psst.android.data.ReleaseUpdateFixture#run"
 
 
 @contextmanager
@@ -251,6 +251,13 @@ def run_update(args: argparse.Namespace) -> None:
         len({value["versionName"] for value in manifests}) == 1,
         "Fixture version names differ",
     )
+    for apk, manifest in zip(apks, manifests, strict=True):
+        release.inspect_apk_assets(
+            apk,
+            {key: manifest[key] for key in ("versionName", "versionCode")},
+            args.revision,
+            device_fixture=True,
+        )
     with tempfile.TemporaryDirectory(prefix="psst-release-update-") as temporary:
         directory = Path(temporary)
         with environment({"PSST_FIXTURE_PASSWORD": secrets.token_urlsafe(36)}):
@@ -292,6 +299,7 @@ def run_update(args: argparse.Namespace) -> None:
                     api,
                     codes[0],
                     private,
+                    device_fixture=True,
                 )
                 production = directory / "production-only.apk"
                 release.sign_apk(args.next_unsigned, production, args.sdk_tools)
@@ -301,6 +309,7 @@ def run_update(args: argparse.Namespace) -> None:
                     new_fingerprint,
                     fixture_version(directory, codes[2], manifests[2]["versionName"]),
                     args.revision,
+                    device_fixture=True,
                 )
             bridge_test = directory / "bridge-test.apk"
             next_test = directory / "next-test.apk"
@@ -333,6 +342,7 @@ def run_update(args: argparse.Namespace) -> None:
                     "deviceApi": api,
                     "disposableEmulator": True,
                     "disposableSigningKeys": True,
+                    "fixtureModifiedApks": True,
                     "applicationId": release.PACKAGE,
                     "versionCodes": codes,
                     "debugToProductionBridgePassed": True,
