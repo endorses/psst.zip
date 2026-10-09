@@ -55,6 +55,8 @@ CONFIG_PATH = Path("/etc/psst.zip/deployment.json")
 STATE_PATH = Path("/var/lib/psst.zip-deploy")
 BACKUP_PATH = Path("/var/backups/psst.zip")
 ID = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\Z")
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
+MAX_RETENTION_ITEMS = 4096
 NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\Z")
 DOMAIN = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
 FLOW_CHECKS = frozenset(
@@ -486,6 +488,57 @@ class Host:
 
     def inspect(self, *ids: str) -> list[dict]:
         return json.loads(self.run("docker", "inspect", *ids)) if ids else []
+
+    def retention_inventory(self) -> tuple[dict, set]:
+        """Inventory every image and container, including stopped containers."""
+        image_ids = set(
+            self.run("docker", "image", "ls", "-aq", "--no-trunc").decode().split()
+        )
+        container_ids = set(
+            self.run("docker", "ps", "-aq", "--no-trunc").decode().split()
+        )
+        require(
+            len(image_ids) <= MAX_RETENTION_ITEMS
+            and len(container_ids) <= MAX_RETENTION_ITEMS
+            and all(IMAGE_ID.fullmatch(item) for item in image_ids)
+            and all(re.fullmatch(r"[0-9a-f]{64}", item) for item in container_ids),
+            "Docker retention inventory exceeds bounds or is ambiguous",
+        )
+        images, containers = {}, set()
+        for ids, kind in ((image_ids, "image"), (container_ids, "container")):
+            ordered = sorted(ids)
+            for offset in range(0, len(ordered), 128):
+                batch = ordered[offset : offset + 128]
+                records = json.loads(self.run("docker", kind, "inspect", *batch))
+                require(
+                    isinstance(records, list)
+                    and len(records) == len(batch)
+                    and {row.get("Id") for row in records if isinstance(row, dict)}
+                    == set(batch),
+                    "Docker retention inventory changed; retry cleanup",
+                )
+                for row in records:
+                    if kind == "container":
+                        require(
+                            isinstance(row.get("Image"), str)
+                            and IMAGE_ID.fullmatch(row["Image"]),
+                            "Container image identity is ambiguous",
+                        )
+                        containers.add(row["Image"])
+                    else:
+                        for key in ("RepoTags", "RepoDigests"):
+                            values = row.get(key) or []
+                            require(
+                                isinstance(values, list)
+                                and all(isinstance(value, str) for value in values)
+                                and len(values) <= MAX_RETENTION_ITEMS,
+                                "Docker image references are ambiguous",
+                            )
+                        images[row["Id"]] = {
+                            "tags": set(row.get("RepoTags") or []),
+                            "digests": set(row.get("RepoDigests") or []),
+                        }
+        return images, containers
 
     def current(self) -> dict:
         active = STATE_PATH / "active.json"
@@ -1993,6 +2046,10 @@ class Updater:
             return transaction
         except BaseException:
             # KeyboardInterrupt/connection loss is handled like command failure.
+            if transaction["phase"] == "completed":
+                # Retention is after activation; an interrupted cleanup cannot
+                # revoke the independently verified active deployment.
+                raise
             if transaction["mutation_started"]:
                 try:
                     self.host.compose(
@@ -2125,6 +2182,13 @@ class Updater:
             finally:
                 self.write(transaction, "failed-closed")
             raise
+
+        # Cleanup is deliberately outside the activation rollback boundary.
+        try:
+            self.retention()
+        except Exception:
+            pass  # The durable completed transaction reports incomplete cleanup.
+        transaction.update(self.read())
 
     def restore(self) -> dict:
         transaction = self.read()
@@ -2264,34 +2328,200 @@ class Updater:
             raise
 
     def retention(self) -> None:
-        """Explicit local retention; preserve current and last known-good checkpoints."""
+        """Retryable cleanup; deployment completion remains independent."""
         current = self.read()
         require(
             current and current["phase"] == "completed",
             "retention requires a completed deployment",
         )
-        transactions = []
-        for directory in (self.state / "transactions").iterdir():
-            if (
-                ID.fullmatch(directory.name)
-                and (directory / "transaction.json").is_file()
-            ):
-                record = load_json(directory / "transaction.json")
-                if record["phase"] == "completed" and not record.get("restoring"):
-                    transactions.append(record)
-        transactions.sort(key=lambda record: record["id"], reverse=True)
+        current["cleanup"] = {"status": "incomplete"}
+        self.write(current, "completed")
+        try:
+            self.prune_tracked_images(current)
+        except BaseException:
+            current["cleanup"] = {"status": "incomplete"}
+            self.write(current, "completed")
+            raise
+        current["cleanup"] = {"status": "completed"}
+        self.write(current, "completed")
+
+    def prune_tracked_images(self, current: dict) -> None:
+        """Delete only expired updater references, never a global Docker prune."""
+        require(self.config["retention_count"] >= 2, "retain at least two checkpoints")
+        records = {}
+        root = self.state / "transactions"
+        for directory in root.iterdir():
+            require(
+                len(records) < MAX_RETENTION_ITEMS and ID.fullmatch(directory.name),
+                "Transaction retention inventory exceeds bounds or is ambiguous",
+            )
+            protected(directory, directory=True)
+            protected(directory / "transaction.json")
+            record = load_json(directory / "transaction.json")
+            require(
+                record.get("schema_version") == 1
+                and record.get("id") == directory.name
+                and isinstance(record.get("phase"), str)
+                and record.get("checkpoint") == str(self.backups / directory.name),
+                "Transaction retention identity is ambiguous",
+            )
+            records[directory.name] = record
+        require(
+            records.get(current["id"]) == current,
+            "Current retention transaction differs from its history",
+        )
+        for checkpoint in self.backups.iterdir():
+            require(
+                checkpoint.name in records,
+                "Untracked checkpoint requires operator review before retention",
+            )
+        successful = sorted(
+            (
+                record["id"]
+                for record in records.values()
+                if record["phase"] == "completed" and not record.get("restoring")
+            ),
+            reverse=True,
+        )
         keep = {
             current["id"],
-            *(x["id"] for x in transactions[: self.config["retention_count"]]),
+            *successful[: self.config["retention_count"]],
         }
-        for record in transactions[self.config["retention_count"] :]:
-            if record["id"] in keep:
-                continue
-            checkpoint = self.backups / record["id"]
-            if checkpoint.exists():
-                self.host.verify_backup(checkpoint)
+        expired = set(successful) - keep
+        tracked, required, tags = set(), set(), {}
+
+        def references(compose):
+            require(
+                isinstance(compose, dict) and isinstance(compose.get("services"), dict),
+                "Retained deployment configuration is ambiguous",
+            )
+            values = set()
+            for service in compose["services"].values():
+                value = service.get("image") if isinstance(service, dict) else None
+                require(
+                    isinstance(value, str)
+                    and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9./:@_-]{0,511}", value),
+                    "Retained deployment image reference is ambiguous",
+                )
+                values.add(value)
+            return values
+
+        for identity, record in records.items():
+            values = set()
+            adopted = record.get("adopted", {}).get("images", {})
+            require(
+                isinstance(adopted, dict)
+                and all(
+                    isinstance(value, str) and IMAGE_ID.fullmatch(value)
+                    for value in adopted.values()
+                ),
+                "Tracked checkpoint image identities are ambiguous",
+            )
+            values.update(adopted.values())
+            for number, image in enumerate(sorted(set(adopted.values()))):
+                tag = "psst-checkpoint-" + identity.lower() + f":{number}"
+                tags[tag] = (identity, image)
+            for name in ("previous", "public", "private"):
+                path = root / identity / (name + ".compose.json")
+                if path.exists() or path.is_symlink():
+                    protected(path)
+                    values.update(references(load_json(path)))
+            manifest = record.get("manifest", {})
+            for image in manifest.get("images", {}).values():
+                require(
+                    isinstance(image, dict)
+                    and isinstance(image.get("index"), str)
+                    and re.fullmatch(
+                        r"[a-z0-9./_-]+@sha256:[0-9a-f]{64}", image["index"]
+                    ),
+                    "Tracked release image identity is ambiguous",
+                )
+                values.add(image["index"])
+            checkpoint = self.backups / identity
+            if identity in keep and record["phase"] == "completed":
+                require(
+                    checkpoint.exists(),
+                    "Retained successful checkpoint is missing; preserve images",
+                )
+            if identity not in expired and (
+                checkpoint.exists() or checkpoint.is_symlink()
+            ):
+                protected(checkpoint, directory=True)
+                protected(checkpoint / "checkpoint.json")
+                backup = load_json(checkpoint / "checkpoint.json")
+                require(
+                    backup.get("transaction") == identity
+                    and backup.get("images") == adopted,
+                    "Retained checkpoint images differ from transaction history",
+                )
+            tracked.update(values)
+            if identity not in expired:
+                required.update(values)
+        active = self.state / "active.json"
+        protected(active)
+        active_record = load_json(active)
+        require(
+            active_record.get("transaction") == current["id"],
+            "Active deployment identity differs from retention transaction",
+        )
+        active_refs = references(active_record.get("compose"))
+        required.update(active_refs)
+
+        def candidates():
+            images, containers = self.host.retention_inventory()
+            lookup = {}
+            for image, facts in images.items():
+                for ref in {image, *facts["tags"], *facts["digests"]}:
+                    require(ref not in lookup, "Docker image reference is ambiguous")
+                    lookup[ref] = image
+            require(active_refs <= lookup.keys(), "Active Docker images are missing")
+            protected_ids = containers | {
+                lookup[ref] for ref in required if ref in lookup
+            }
+            eligible = {lookup[ref] for ref in tracked if ref in lookup} - protected_ids
+            removable = {}
+            for image in eligible:
+                facts = images[image]
+                owned = {
+                    tag
+                    for tag, (identity, expected) in tags.items()
+                    if identity in expired and expected == image
+                }
+                # Any foreign alias protects the entire shared image.
+                if facts["tags"] - owned or facts["digests"] - tracked:
+                    continue
+                removable[image] = facts["tags"]
+            return removable
+
+        # Resolve every protected/foreign reference before deleting anything.
+        candidates()
+        for identity in sorted(expired):
+            record = records[identity]
+            checkpoint = self.backups / identity
+            if checkpoint.exists() or checkpoint.is_symlink():
+                protected(checkpoint, directory=True)
+                if record.get("checkpoint_prune_started") is not True:
+                    backup = self.host.verify_backup(checkpoint)
+                    require(
+                        backup.get("transaction") == identity
+                        and backup.get("images")
+                        == record.get("adopted", {}).get("images", {}),
+                        "Expired checkpoint images differ from transaction history",
+                    )
+                    record["checkpoint_prune_started"] = True
+                    atomic_json(root / identity / "transaction.json", record)
                 shutil.rmtree(checkpoint)
-        # Partial/failed checkpoints and original/restored volumes are never pruned.
+        for image in sorted(candidates()):
+            fresh = candidates()
+            if image not in fresh:
+                continue
+            for tag in sorted(fresh[image]):
+                if image not in candidates():
+                    break
+                self.host.run("docker", "image", "rm", "--no-prune", tag)
+            if image in candidates():
+                self.host.run("docker", "image", "rm", "--no-prune", image)
+        # Failed/partial/restored state, every container, and volumes are retained.
 
 
 def display(record: dict | None) -> int:
@@ -2306,6 +2536,7 @@ def display(record: dict | None) -> int:
                         "active_version",
                         "previous_version",
                         "phase",
+                        "cleanup",
                         "updated_at",
                     )
                 },

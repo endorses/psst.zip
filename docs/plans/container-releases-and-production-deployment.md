@@ -3624,3 +3624,39 @@ backups remain deferred by the operator.
       the existing public, repository-linked package pair.
 - [ ] Remove this exception when a patched stable official Caddy image becomes
       available; rebuild and rescan before publishing the replacement.
+
+## VPS disk capacity and release image retention (2026-10-09)
+
+The operator requires bounded release storage on the 40 GB VPS. Read-only live
+inspection found about 34.6 GB free before rollout. Existing preflight checks
+reserve checkpoint, image and isolated-restore headroom before and after image
+pulls. However, completed updates did not invoke retention, and the explicit
+retention command removed only older successful checkpoint directories. Exact
+checkpoint image tags and old Docker images could therefore accumulate.
+Backup-provider selection and the production rollout remain pending; no VPS
+containers, images or persistent data have been changed during this inspection.
+
+- [x] Run bounded cleanup automatically after verified activation is durably
+      completed, and preserve an explicit repeatable administrator retention command.
+- [x] Protect active images, retained known-good recovery pairs, every failed,
+      incomplete or restored transaction, and images referenced by any running
+      or stopped container. Preserve unrelated image references and all volumes.
+- [x] Remove only tracked superseded image references with non-forced Docker
+      removal. Persist enough cleanup state to retry after interruption; preserve
+      completed healthy production and report incomplete cleanup on failure.
+- [x] Retain the existing before/after-pull capacity checks and a minimum of two
+      successful recovery checkpoints. Document the retained footprint and why
+      this is not a global Docker or volume prune.
+- [x] Verify meaningful fast regressions and a small disposable real-Docker
+      cleanup exercise without rebuilding application images or extending CI
+      with expensive new workloads. All 65 focused updater tests passed in
+      0.216 seconds. A disposable Docker exercise passed in 3.016 seconds,
+      checking actual expired image/tag removal, stopped-container protection,
+      retained recovery images and repeatable cleanup. Test resources were
+      removed afterward. This exercise used a local Docker daemon and synthetic
+      checkpoints; it does not claim a production backup or restore passed.
+      Read-only inspection also confirmed live container image IDs match the
+      VPS image inventory under its containerd image store.
+- [x] Format the implementation and verified plan checkpoint for commit.
+- [ ] Merge through protected checks, then install the reviewed helper for
+      production adoption after the operator resolves the backup prerequisite.

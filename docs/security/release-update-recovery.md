@@ -217,13 +217,27 @@ privately. A trusted hook's claims are only as good as its actual encryption,
 remote verification and restore implementation. This integration does **not**
 claim that those operator systems have been configured or tested on the VPS.
 
-Use the root-local `retention` command after a completed update. It removes only
-older verified checkpoints from successful transactions beyond the configured
-count (minimum two). It keeps the current and most recent known-good checkpoints;
-failed/partial checkpoints and every original/restored volume require explicit
-administrator review and are never pruned. It never runs `down -v` or Docker
-volume pruning. Off-host retention must independently retain a usable known-good
-checkpoint and recovery keys.
+After verified activation is durably completed, the updater automatically applies
+bounded retention. The root-local `retention` command repeats that cleanup when
+needed. The configured count retains at least two successful recovery checkpoints,
+as well as the current transaction. Older successful checkpoints are verified
+before removal. Failed, incomplete and restored transactions remain protected and
+require administrator review.
+
+Cleanup removes obsolete checkpoint image tags and retired images only when they
+are explicitly tracked by those deployment transactions. It protects the active
+release, retained recovery image pairs, unresolved recovery state, images used by
+any running or stopped container, and unrelated image references. Image removal
+is targeted and non-forced. It never runs host-wide Docker image/system pruning,
+`down -v` or volume pruning; original and restored volumes remain untouched.
+
+Cleanup failure after activation leaves the healthy active deployment completed
+and records incomplete cleanup for a later `retention` retry. Before and after
+pulling a candidate, preflight still requires space for its images, a complete
+stopped checkpoint, an isolated restore and the configured reserve. Automatic
+cleanup bounds successful release history; operator review is still required if
+protected failed checkpoints or application data exhaust the 40 GB disk. Off-host
+retention must independently retain a usable known-good checkpoint and recovery keys.
 
 ## Isolated candidate and verification gates
 
