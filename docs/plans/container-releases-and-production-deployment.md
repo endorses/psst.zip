@@ -3716,9 +3716,24 @@ verification remain deferred and must not be reported as completed.
       images. Initial and post-pull runtime/storage/settings/capacity preflight,
       image ownership compatibility and isolated Caddy syntax passed. Temporary
       preflight/probe files were removed; selected immutable images remain cached.
-      The original application containers remain running. Public activation and
-      complete local checkpoint/recovery have not yet been exercised on this VPS.
-- [ ] Run the first local-checkpoint update and complete actual authenticated
-      candidate checks before reopening public routing. Keep restricted Actions
+      The original application containers remained running throughout preflight.
+- [x] Run the first local-checkpoint update to private candidate startup. Actual
+      transaction `20261009T104935Z-6ac521b2a4c6` selected v0.1.6, stopped the
+      original services, verified the complete local checkpoint and reached
+      `awaiting-verification` at `2026-10-09T10:50:31.807768+00:00`. Checkpoint
+      protection is `local-only`; no off-host receipt exists. The migration
+      boundary has been crossed, so the original binaries must not be restarted
+      against potentially migrated data. Public listeners remain loopback-only.
+- [x] Reverify the actual checkpoint and restart the private candidate under the
+      deployment lock. Repeated automatic checks passed for trusted HTTPS,
+      initialized account, preserved settings/storage, selected release metadata,
+      compiled assets and transfer pause. The local hostname override and port-443
+      SSH tunnel were checked against trusted loopback HTTPS, preserving the
+      existing browser origin, session and retained client keys. These checks do
+      not establish authenticated browser flows or a completed recovery exercise.
+- [ ] Complete actual authenticated candidate checks using the existing browser
+      profile and the installed interactive `verify` command before reopening
+      public routing. Check completed activation, public HTTPS, preserved storage
+      and release image retention afterward. Keep restricted Actions
       installation and independent off-host recovery separately pending until
       their actual setup and verification are complete.
