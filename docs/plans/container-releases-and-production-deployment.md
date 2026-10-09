@@ -3731,9 +3731,31 @@ verification remain deferred and must not be reported as completed.
       SSH tunnel were checked against trusted loopback HTTPS, preserving the
       existing browser origin, session and retained client keys. These checks do
       not establish authenticated browser flows or a completed recovery exercise.
-- [ ] Complete actual authenticated candidate checks using the existing browser
-      profile and the installed interactive `verify` command before reopening
-      public routing. Check completed activation, public HTTPS, preserved storage
-      and release image retention afterward. Keep restricted Actions
+- [x] Run actual administrator authentication and storage/counter/orphan checks
+      through the installed interactive verifier. Both automatic and authenticated
+      checks ran before report validation rejected the empty existing-download
+      entry and two four-character observations. No activation occurred; the
+      transaction remained `awaiting-verification`.
+- [x] Record the operator's request to stop additional manual checks and proceed
+      with the first rollout using completed checks and truthful descriptions of
+      deferred validation. The operator reported browser administrator second-factor
+      login, administrator/member roles and sessions, new-file decryption, transfer
+      revocation/cleanup and transfer pause. This is a first-rollout exception,
+      not permission to describe untested flows as passing or weaken automatic
+      authentication, provenance, storage, HTTPS or pause checks.
+- [x] Verify the actual retained pre-update payload independently of the failed
+      browser report. The cold checkpoint contains one completed receive-associated
+      file record and a 15,355-byte payload; the payload remains present and its
+      ciphertext matches the checkpoint byte-for-byte. This does not prove native
+      decryption. The Android phone is a separate device without the desktop's
+      private SSH route. Copying a Receive invitation is not equivalent to
+      exporting the recipient's private decryption key.
+- [ ] Complete the operator-accepted interactive gate, recording native retained
+      decryption and additional manual policy/Receive-flow checks as deferred
+      rather than passed. Check completed activation, public HTTPS, preserved
+      storage and release image retention afterward. Keep restricted Actions
       installation and independent off-host recovery separately pending until
       their actual setup and verification are complete.
+- [ ] Once public routing is active, check Android login and the retained Receive
+      history/download using the original device and its original keys. Native
+      download validation remains pending until actually exercised.
