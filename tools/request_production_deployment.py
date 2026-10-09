@@ -28,7 +28,7 @@ KEY_TYPES = {
     "ecdsa-sha2-nistp521",
 }
 MAX_OUTPUT = 16384
-TIMEOUT = 2400
+TIMEOUT = 600
 PROCESS_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C"}
 
 

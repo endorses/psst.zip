@@ -9,8 +9,9 @@ this production workflow.
 
 The implementation and local SSH input/response tests are available. The
 main-only production environment policy is configured, and the public immutable
-v0.1.6 container release is available. The deployment account/key, host settings
-and end-to-end connection have **not** been provisioned or tested. The
+v0.1.6 container release is active on the VPS following its first manual adoption.
+The deployment account/key, host settings and end-to-end Actions connection have
+**not** been provisioned or tested. The
 [release update guide](release-update-recovery.md) describes the required host
 configuration, selected local-only or off-host checkpoint protection and verification gates.
 
@@ -98,8 +99,12 @@ With the dedicated key and an independently verified pinned host key, test
 `ssh psst-deploy@YOUR_VPS_HOST status`. Attempts to execute `id`, a shell, SFTP,
 `verify`, `restore`, extra arguments or shell operators must fail. Port forwarding
 and TTY requests must fail. A malformed update version must fail before any
-transaction starts. Run the first real update manually only after a published
-ready release and recoverable checkpoint have been verified.
+transaction starts. Run the first real update only after a published ready release
+and recoverable checkpoint have been verified. The production installation can
+select `verification_profile: runtime-v1` in its root-owned configuration to
+activate normal updates automatically after actual HTTPS/health/version/settings/
+storage and SQLite checks. This mode requires no administrator credentials or
+fixture accounts; functional behavior remains covered by CI.
 
 ## Configure GitHub
 
@@ -145,11 +150,17 @@ Per-production workflow concurrency queues requests without canceling a running
 deployment. The host lock also prevents concurrent updates from other SSH sessions.
 A successful request requires both SSH exit zero and the helper's protected
 response confirming the requested version as active with phase `completed`.
-An exit of 20 means the isolated candidate is awaiting the local administrator's
+The SSH client caps a deployment request at ten minutes and bounds its output.
+Image acquisition and checkpointing still take time proportional to the selected
+images and existing data; runtime validation and activation share a 120-second
+budget.
+
+In the default `full` profile, an exit of 20 means the isolated candidate is awaiting the local administrator's
 verification. Actions reports failure/pending work, rather than declaring
 production successfully deployed; use the maintenance identity to complete that
-gate. Full unattended activation requires an installed protected verification
-hook that supplies the updater's complete flow evidence.
+gate. `runtime-v1` performs normal activation without that interactive step;
+full-flow unattended activation instead requires an installed protected hook.
+Restores always retain full reconciliation and verification.
 
 If the connection times out, is interrupted or reports failure, inspect the
 durable host transaction with the maintenance identity. Do not assume rollback,
