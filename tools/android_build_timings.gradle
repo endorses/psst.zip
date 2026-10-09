@@ -1,0 +1,64 @@
+// Attach to the existing release build; never add tasks or repeat a benchmark.
+// Supported API: https://docs.gradle.org/current/userguide/build_services.html#task_execution_events
+// Each record contains only a public task path, observed duration and success.
+
+import groovy.json.JsonOutput
+import org.gradle.api.Plugin
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.invocation.Gradle
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
+import org.gradle.build.event.BuildEventsListenerRegistry
+import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.OperationCompletionListener
+import org.gradle.tooling.events.task.TaskFailureResult
+import org.gradle.tooling.events.task.TaskFinishEvent
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
+import javax.inject.Inject
+
+abstract class AndroidTaskTimings implements BuildService<AndroidTaskTimings.Parameters>, OperationCompletionListener {
+    interface Parameters extends BuildServiceParameters {
+        RegularFileProperty getDestination()
+    }
+
+    @Override
+    synchronized void onFinish(FinishEvent event) {
+        if (!(event instanceof TaskFinishEvent)) return
+        def path = event.descriptor.taskPath
+        if (!(path ==~ /:[A-Za-z0-9_.:-]{1,240}/)) {
+            throw new IllegalArgumentException('Task timing path is not public metadata')
+        }
+        def result = event.result
+        def duration = result.endTime - result.startTime
+        if (duration < 0) throw new IllegalArgumentException('Task timing duration is negative')
+        def record = [task: path, duration_ms: duration, success: !(result instanceof TaskFailureResult)]
+        def destination = parameters.destination.get().asFile.toPath()
+        Files.createDirectories(destination.parent)
+        Files.write(destination, (JsonOutput.toJson(record) + '\n').getBytes(StandardCharsets.UTF_8),
+            StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    }
+}
+
+abstract class AndroidTaskTimingPlugin implements Plugin<Gradle> {
+    @Inject
+    abstract BuildEventsListenerRegistry getEventsListenerRegistry()
+
+    @Override
+    void apply(Gradle target) {
+        // Init scripts also run in included builds, but the event registry sends
+        // task completions across the whole build tree. Register exactly once on
+        // its root, preserving genuinely distinct included-build task paths.
+        if (target.buildPath != ':') return
+        def output = System.getenv('PSST_ANDROID_TASK_TIMINGS')
+        if (!output) throw new IllegalArgumentException('PSST_ANDROID_TASK_TIMINGS is required')
+        def provider = target.sharedServices.registerIfAbsent('psstAndroidTaskTimings', AndroidTaskTimings) {
+            parameters.destination.fileValue(new File(output).absoluteFile)
+        }
+        eventsListenerRegistry.onTaskCompletion(provider)
+    }
+}
+
+apply plugin: AndroidTaskTimingPlugin

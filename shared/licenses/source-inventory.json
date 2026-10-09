@@ -156,10 +156,10 @@
       "upstream_sha256": "55d92e6755ec97a30e6c4cab93d777ab1392f83ecd3167a391d0c1905ebf5a8d"
     },
     {
-      "file": "slf4j-2.0.16/LICENSE.txt",
-      "component": "SLF4J 2.0.16",
-      "source": "https://raw.githubusercontent.com/qos-ch/slf4j/101086ba359a6a80f275ad090f57d74a34eee8ca/LICENSE.txt",
-      "revision": "101086ba359a6a80f275ad090f57d74a34eee8ca",
+      "file": "slf4j-2.0.19/LICENSE.txt",
+      "component": "SLF4J 2.0.19",
+      "source": "https://raw.githubusercontent.com/qos-ch/slf4j/f0fc3e52a16d5053039495f4f3b64d191508204f/LICENSE.txt",
+      "revision": "f0fc3e52a16d5053039495f4f3b64d191508204f",
       "sha256": "8e0d2e086db1da82238c27929308de11db7453a29bc0da50331379105e5da8fd",
       "upstream_sha256": "6fbe2eaf44b193b8a40eed9208f52848572224ad8d7672dd09418aa174847e73"
     }

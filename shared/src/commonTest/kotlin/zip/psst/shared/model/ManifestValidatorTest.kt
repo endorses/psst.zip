@@ -21,8 +21,8 @@ class ManifestValidatorTest {
 
     @Test
     fun removesAllHiddenDirectionControlsBeforeDisplayAndSave() {
-        for (control in
-            listOf('\u061C', '\u200E', '\u200F', '\u202A', '\u202E', '\u2066', '\u2069')) {
+        for (codepoint in listOf(0x061C, 0x200E, 0x200F, 0x202A, 0x202E, 0x2066, 0x2069)) {
+            val control = codepoint.toChar()
             assertEquals(
                 "photo_.jpg.exe",
                 ManifestValidator.safeFilename("photo${control}.jpg.exe"),
@@ -43,7 +43,7 @@ class ManifestValidatorTest {
                 transfer.copy(files = emptyList()),
                 transfer.copy(files = listOf(file, file)),
                 transfer.copy(
-                    files = listOf(file.copy(id = "11234567-89ab-cdef-0123-456789abcdef"))
+                    files = listOf(file.copy(id = "11234567-89ab-cdef-0123-456789abcdef")),
                 ),
                 transfer.copy(files = listOf(file.copy(size = 71))),
                 transfer.copy(files = listOf(file.copy(downloadCount = -1))),
@@ -131,7 +131,10 @@ class ManifestValidatorTest {
     @Test
     fun sanitizesPortableNamesAndRetainsExtension() {
         assertEquals("hello_world_.txt", ManifestValidator.safeFilename("hello:world?.txt"))
-        assertEquals("hello_world.txt", ManifestValidator.safeFilename("hello\u202Eworld.txt"))
+        assertEquals(
+            "hello_world.txt",
+            ManifestValidator.safeFilename("hello" + 0x202E.toChar() + "world.txt"),
+        )
         val shortened = ManifestValidator.safeFilename("😀".repeat(100) + ".jpg")
         assertTrue(shortened.encodeToByteArray().size <= 200)
         assertTrue(shortened.endsWith(".jpg"))

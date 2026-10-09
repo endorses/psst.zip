@@ -1,7 +1,7 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: preparation complete; implementation and publication
-pending. First deliverable: a signed, optimized **psst.zip** APK published on
+Created: 2026-10-09. Status: release tooling implemented locally; signing, device verification and
+publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
 GitHub, with a verified path from the operator's debug installation and a
 repeatable update process that preserves client-held keys and history.
 
@@ -86,20 +86,21 @@ unsigned release builds and metadata can proceed while it is being resolved.
 
 - [x] Refresh the Android research's project/toolchain snapshot and verify current
       primary signing, Play target/testing and F-Droid reproducibility guidance.
-- [ ] Introduce one checked-in Android version source used by Gradle, release
-      validation and future F-Droid recipes. Choose the first release code above
-      every installed/private bridge version; reject reused or decreasing codes.
+- [x] Introduce one checked-in Android version source used by Gradle and release
+      validation, with rejected reused/decreasing published codes.
+- [ ] Confirm the first public code exceeds the actual phone and private bridge
+      codes; the prepared code `2` only exceeds the observed local debug code `1`.
 - [ ] Use independent `android-vX.Y.Z` release tags. Check exact commit/main ancestry,
       version agreement and source identity; protect this tag namespace against
       updates/deletion. Do not append assets to immutable container releases.
-- [ ] Recheck latest stable dependencies, SDK/tools, runners/actions and compatibility
+- [x] Recheck latest stable dependencies, SDK/tools, runners/actions and compatibility
       before changing pins. Record required upgrades and behavioral implications,
       preserve API 26 unless an explicit support decision changes it, and inspect
       actual Actions warnings/notices. Avoid adding preview tools by default.
 - [ ] Check the packaged native libraries and Android 16 KB compatibility using the
       final APK. Raise compile/target SDK deliberately; Play currently requires
       API 36 for new mobile app submissions, independently of GitHub sideloading.
-- [ ] Add explicit release signing inputs that fail if missing; no fallback to
+- [x] Add explicit release signing inputs that fail if missing; no fallback to
       debug signing. Keep keystores/passwords outside the repository and caches,
       expose only public certificate metadata, and delete temporary material on exit.
 - [ ] Build `:app:assembleRelease` and `:app:lintRelease` once with the selected
@@ -125,7 +126,7 @@ Use an independent Android environment and serialized Android publication.
 Reuse the repository's existing security and native-notice tools where applicable;
 do not copy the container source-replay pipeline into this workflow.
 
-- [ ] Implement read-only source/version validation before credentialed jobs.
+- [x] Implement read-only source/version validation before credentialed jobs.
       Require trusted successful relevant CI for that exact commit and workflow;
       reject skipped, unrelated, stale or failed evidence. If required checks are
       absent, run those checks once without signing secrets rather than rerunning
@@ -157,7 +158,7 @@ Run unit fixtures without sleeps or real production credentials; document the
 observable defect caught by each new case. Release lint/build and one install/update
 scenario do not belong in every documentation or container-only change.
 
-- [ ] Reuse existing app/shared tests for serialization, networking, history and
+- [x] Reuse existing app/shared tests for serialization, networking, history and
       crypto. Add only missing signing/version/artifact-boundary checks; a source
       test passing does not prove R8 preserved runtime behavior.
 - [ ] Execute one compact optimized-APK smoke covering server validation/pairing,
@@ -176,7 +177,7 @@ scenario do not belong in every documentation or container-only change.
       parity app change, run the applicable existing iOS source/portable checks
       locally and native app/extension/XCTest checks on macOS; document unrun checks
       explicitly. Do not call an Android-only APK workflow an iOS verification.
-- [ ] Start release build/verification with a 15-minute job timeout and report
+- [x] Start release build/verification with a 15-minute job timeout and report
       build, shrinking, signing, smoke and cache-transfer timings separately.
       Use real measured timings to tune work, not a higher timeout to hide a stall.
       Human approval wait is separate from machine execution; signing/download
@@ -189,8 +190,8 @@ Implementation commands to adapt once signing/version inputs exist:
 apksigner verify --verbose --print-certs path/to/psst.zip.apk
 ```
 
-These commands have not been run for this plan and do not create a verified
-production artifact by themselves. Device installation uses the selected safe
+Local optimized assembly and lint were exercised during implementation; see the
+verification record below. They do not create a verified production artifact by themselves. Device installation uses the selected safe
 transition; do not run an uninstall command as a prerequisite. Native iOS
 verification for applicable changes uses the existing `xcode-27` CI job's
 `build-for-testing` / `test-without-building` commands from `ci.yml`.
@@ -231,6 +232,63 @@ and [Play publishing API](https://developers.google.com/android-publisher/gettin
       preserved data on the agreed transition and a subsequent same-signer update,
       document operator steps, and mark only actually completed items above.
 
-The first unresolved decision is the operator's existing-installation transition.
-All implementation/device/store checks remain pending. Store acceptance, iOS
+## Implementation and verification record (2026-10-09)
+
+The operator reports Android 16 and no USB access. The local debug APK has package
+`zip.psst.android`, version code `1`, and public signer SHA256
+`bcda0d16e7cdf314aceab34e240e304b53e459ca6370076d31323022353db987`.
+This does not establish the phone's installed signer or older app sandbox.
+
+Implemented locally: [release workflow](../../.github/workflows/android-release.yml),
+[artifact/signing checks](../../tools/android_release.py),
+[exact-source CI reuse](../../tools/android_release_ci.py),
+[private signing bridge](../../tools/android_signing_bridge.py),
+and [actual-storage emulator update fixture](../../docs/testing/android-release-updates.md).
+The workflow defaults to an unsigned preview, reuses relevant executed checks,
+builds/lints once and signs only behind the Android environment. Publication and
+private device evidence remain disabled until readiness is established. There are
+no new backend/web/native iOS release jobs or custom approval-comment strings.
+
+Stable dependencies and API 37 were refreshed with preserved API 26 support.
+The operator approved Kotlin 2.4.20 while SKIE 0.10.15 rejects 2.4.21. Native
+notices must match the final resolution on both platforms. The API 37 LAN
+permission is implemented on Android; iOS already has localized purpose strings.
+The latest lint bidi rule stalled in Kotlin PSI traversal: one rule is replaced by
+[a bounded source scanner](../security/lint-bidi-workaround.md), while other lint
+rules stay enabled. Actual resource-type and configuration-awareness errors were
+fixed rather than suppressed.
+
+Focused tooling checks pass: 33 Android release/workflow/update/signing cases in
+0.053 seconds, 8 bidi boundary cases in 0.015 seconds and 5 CI-selection cases in
+1.645 seconds. Actionlint and Android/iOS localization/source checks pass. Task
+instrumentation uses the supported Gradle completion service in the existing
+build; no extra full test benchmark was added. These timings describe local
+checks, not hosted execution.
+
+Local optimized assembly, release lint and app/shared JVM tests passed in 75
+seconds with cached dependencies. App tests: 163 cases, 0 failures, 8.871 seconds;
+shared Android tests: 175 cases, 0 failures, 7.215 seconds. This is local execution
+evidence, not a hosted timing or a production-signed APK.
+
+Pending: real disposable signing/update run,
+API 26/current Android optimized smoke, the phone's actual transition, production
+key recovery, GitHub environment/tag rules, hosted preview and public delivery.
+Local JDK is Android Studio's Java 25.0.3; the workflow selects Java 27. Native iOS
+app/share-extension/XCTest validation of changed shared dependencies remains
+pending on macOS using the existing `xcode-27` job. No iOS native success is claimed.
+
+The refreshed notice resolution contains 123 Android and 117 iOS artifact
+variants, including the reviewed SLF4J 2.0.19 MIT license. The selected stable AGP
+still emits an upstream deprecated configuration-visibility call warning
+(scheduled removal in Gradle 11); newer Kotlin attributes also expose a dependency
+metadata warning. These warnings are recorded rather than hidden. Linux's disabled
+iOS-target notices reflect the validation boundary above.
+
+The first timing-enabled composite build emitted duplicate task records; a
+minimal composite fixture reproduced and verified the root-only listener fix.
+The 75-second wall time is valid; that build's doubled task aggregates are not.
+The next required fixture build will produce a fresh timing report.
+
+The next prerequisite is proving the private transition with synthetic protected
+state, then checking the actual phone and production-key recovery. Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.

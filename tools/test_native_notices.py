@@ -41,12 +41,18 @@ class NativeNoticeTests(unittest.TestCase):
             )
 
     def test_mit_requires_exact_reviewed_copyright_source(self):
-        mit = [{"name": "MIT License", "url": "https://example.org/MIT"}]
+        mit = [{"name": "MIT", "url": "https://opensource.org/license/mit"}]
         self.assertEqual(
-            native.effective_license("org.slf4j:slf4j-api:2.0.16", mit), "MIT"
+            native.effective_license("org.slf4j:slf4j-api:2.0.19", mit), "MIT"
         )
         with self.assertRaisesRegex(ValueError, "Unreviewed native dependency"):
             native.effective_license("org.slf4j:slf4j-api:2.0.17", mit)
+        with self.assertRaisesRegex(ValueError, "Unreviewed native dependency"):
+            native.effective_license("example:unknown:1", mit)
+        with self.assertRaisesRegex(ValueError, "Unreviewed native dependency"):
+            native.effective_license(
+                "org.slf4j:slf4j-api:2.0.19", [{"name": "MIT License", "url": ""}]
+            )
         with self.assertRaisesRegex(ValueError, "Review multiple"):
             native.effective_license(
                 "example:unknown:1", mit + [{"name": "GPL", "url": ""}]

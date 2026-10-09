@@ -52,6 +52,7 @@ import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.EmbeddedScanner
 import zip.psst.android.ui.components.accountAutofill
 import zip.psst.android.ui.components.loginAutofill
+import zip.psst.android.ui.components.rememberLocalNetworkAccess
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
 import zip.psst.shared.api.PairingCode
@@ -69,6 +70,13 @@ fun ServerConfigScreen(
     val pairing = state.pairingDraft
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var scanningPairing by rememberSaveable { mutableStateOf(false) }
+    val networkAccess = rememberLocalNetworkAccess()
+    fun connect(action: () -> Unit) {
+        val origin = viewModel.uiState.value.url
+        networkAccess.request(origin) {
+            if (viewModel.uiState.value.url == origin) action()
+        }
+    }
 
     pairing?.let { raw ->
         val server = PairingCode.parse(raw).serverUrl
@@ -81,17 +89,21 @@ fun ServerConfigScreen(
                         if (server.startsWith("http://"))
                             tr(
                                 R.string
-                                    .l_http_sends_login_credentials_without_transport_encryption_use_onl_78d775
+                                    .l_http_sends_login_credentials_without_transport_encryption_use_onl_78d775,
                             )
-                        else ""
+                        else "",
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.setPairingDraft(null)
-                        viewModel.pair(raw, onConfigured)
-                    }
+                        networkAccess.request(server) {
+                            if (viewModel.uiState.value.pairingDraft == raw) {
+                                viewModel.setPairingDraft(null)
+                                viewModel.pair(raw, onConfigured)
+                            }
+                        }
+                    },
                 ) {
                     Text(tr(R.string.l_set_up_account_ddd0f7))
                 }
@@ -116,7 +128,7 @@ fun ServerConfigScreen(
                     }
                 },
             )
-        }
+        },
     ) { padding ->
         Column(
             modifier =
@@ -160,7 +172,7 @@ fun ServerConfigScreen(
                         color = MaterialTheme.colorScheme.error,
                     )
                 Button(
-                    onClick = viewModel::replacePassword,
+                    onClick = { connect(viewModel::replacePassword) },
                     enabled =
                         !state.isTesting &&
                             !mismatch &&
@@ -171,7 +183,7 @@ fun ServerConfigScreen(
                     Text(tr(R.string.l_change_password_8c6842))
                 }
                 TextButton(
-                    onClick = { viewModel.signOut(onAccountCleared) },
+                    onClick = { connect { viewModel.signOut(onAccountCleared) } },
                     enabled = !state.isTesting,
                 ) {
                     Text(tr(R.string.l_use_another_account_48a644))
@@ -232,7 +244,8 @@ fun ServerConfigScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 singleLine = true,
                 enabled = !state.isTesting,
-                modifier = Modifier.fillMaxWidth().loginAutofill(false, viewModel::onUsernameChange),
+                modifier =
+                    Modifier.fillMaxWidth().loginAutofill(false, viewModel::onUsernameChange),
             )
             OutlinedTextField(
                 value = state.password,
@@ -264,15 +277,15 @@ fun ServerConfigScreen(
                                     state.username.isNotBlank() &&
                                     state.password.isNotBlank()
                             )
-                                viewModel.signIn(onConfigured)
-                        }
+                                connect { viewModel.signIn(onConfigured) }
+                        },
                     ),
                 singleLine = true,
                 enabled = !state.isTesting,
                 modifier = Modifier.fillMaxWidth().loginAutofill(true, viewModel::onPasswordChange),
             )
             Button(
-                onClick = { viewModel.signIn(onConfigured) },
+                onClick = { connect { viewModel.signIn(onConfigured) } },
                 enabled =
                     !state.isTesting &&
                         state.url.isNotBlank() &&
@@ -283,7 +296,7 @@ fun ServerConfigScreen(
                 Text(stringResource(R.string.ui_sign_in_continue))
             }
             OutlinedButton(
-                onClick = { viewModel.testConnection() },
+                onClick = { connect(viewModel::testConnection) },
                 enabled = !state.isTesting && state.url.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {

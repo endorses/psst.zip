@@ -18,6 +18,7 @@ import zip.psst.android.R
 @Composable
 fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
     val context = LocalContext.current
+    val shareLabel = stringResource(R.string.share)
     val clipboard = LocalClipboardManager.current
     var copied by remember(url) { mutableStateOf(false) }
     var expanded by remember(url) { mutableStateOf(false) }
@@ -44,13 +45,13 @@ fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, url)
                             },
-                            context.getString(R.string.share),
-                        )
+                            shareLabel,
+                        ),
                     )
                 },
                 modifier = Modifier.weight(1f),
             ) {
-                Text(stringResource(R.string.share))
+                Text(shareLabel)
             }
         }
         if (copied)

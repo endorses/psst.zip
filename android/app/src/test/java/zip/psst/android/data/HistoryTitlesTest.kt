@@ -26,7 +26,7 @@ class HistoryTitlesTest {
 
     @Test
     fun untrustedManifestNamesAreSafeInHistoryAndDetailsWithoutChangingIdentity() {
-        val raw = "photo\u061C\u200E\u200F\u202Ejpg.exe"
+        val raw = "photo\u061C\u200E\u200F" + 0x202E.toChar() + "jpg.exe"
         val expected = "photo____jpg.exe"
         assertEquals(expected, receivedFilenameLabel(raw))
         assertEquals("$expected + 1 file", automaticHistoryTitle(raw, 2).english())

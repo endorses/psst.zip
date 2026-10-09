@@ -3,14 +3,14 @@
   "platform": "ios",
   "scope": "iOS arm64, simulator arm64 and x64 compile klibs; Kotlin/Native and SKIE runtime",
   "input_sha256": {
-    "android/app/build.gradle.kts": "92b9de776c13b804aabba4a1c3065a6efb011b51d0f2104f1fd090f74a73870c",
-    "android/gradle/libs.versions.toml": "9044c6d690cc7cd2a021506fb4566148bf9bee70b65ea0eb218e51a95f62f159",
+    "android/app/build.gradle.kts": "a6d8f0e2f27d6adb2d63dea565e1369a34d4fa161ad368b5ce2bdd8d10b6ee55",
+    "android/gradle/libs.versions.toml": "0e024bb98e0b1fefc261f6ca3d1f40c98993b748f30a04464ec697ebbfc0e469",
     "android/settings.gradle.kts": "4dda19369eb32ef11398f4ab258a335fc08b15240a32ddc19b16af72fb25ee1b",
     "shared/build.gradle.kts": "52298a8f3add0a6caa6a3f876801c6866f6aec85a2174f3391d72c9730e78ed4",
-    "shared/gradle/libs.versions.toml": "3168493e2eec45b8f13b8042059c1226200c8b452020f35de463b47569252bb1",
+    "shared/gradle/libs.versions.toml": "66fd1603a35268795d6f324d6ad978f04f2184b4f1ee63259810c3611f173885",
     "shared/settings.gradle.kts": "8da960c499b33f3ca1508d0835f2643f283bcc15f1657ec254134fba410ca413",
-    "shared/licenses/source-inventory.json": "ba00f9efa2d358452cb137f38cc197281eea2aae54eca153619f9935ce1ba25c",
-    "tools/generate_native_notices.py": "742137347e8f460deed763cdef81ecfb88b34c6c64bb63e110587527a1e16821"
+    "shared/licenses/source-inventory.json": "ef37c95d53622f87121212d27616621b5057ba0da2b7c02ac0c321f7939ebb60",
+    "tools/generate_native_notices.py": "c22d348fbabf438f89015b5e084139746d15e2f42010a34a31773f0d3ed23c61"
   },
   "components": [
     {
@@ -581,10 +581,10 @@
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-content-negotiation-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-content-negotiation-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-client-content-negotiation-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "954a20fa256d1fac2cc04ce73af28c65f8b180283fe3c607774a79c7fb0fec41",
+      "artifact": "ktor-client-content-negotiation-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "7cab751f7421c7c3d22bf6b4ee65cb35d71efb50787c56238f232702740c3a93",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -595,17 +595,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-content-negotiation-iosarm64-3.1.1.pom",
-          "sha256": "31513ec16eba87a9c3dbb06db860adf80c5360e77cf9c6c8dea41533a9c02906"
+          "name": "ktor-client-content-negotiation-iosarm64-3.6.0.pom",
+          "sha256": "73ba28bf859bd68ba91d4e20680dcca39995ad8f3cee88e829585b81dbcb5d5b"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-content-negotiation-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-content-negotiation-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-client-content-negotiation-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "b65160b262931f8e16adf04ee0b506b879b434ef932f0bd49f8bd1f2317e83a0",
+      "artifact": "ktor-client-content-negotiation-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "16215ef8f327869e66031adbdf6742d5527d7ec65060f84ade7b9a3c9683f351",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -616,17 +616,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-content-negotiation-iossimulatorarm64-3.1.1.pom",
-          "sha256": "04db76c337cc40c330c1519d22d6daf0839a901ac1aa72fc53ffb5b9a7e354f9"
+          "name": "ktor-client-content-negotiation-iossimulatorarm64-3.6.0.pom",
+          "sha256": "ec0d322be0ed43bba71ae43198f230625aa5bfdaddfffb3f766823263b6ff1f8"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-content-negotiation-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-content-negotiation-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-client-content-negotiation-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "dd0a9ec166996fa36a34c04c0716ec6190dd2b0064dbea3e48287aedd71d6fea",
+      "artifact": "ktor-client-content-negotiation-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "cab21ad900cace04c8ba3545306bee8271cffde15d3eb88b7969991e9f3c3dfe",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -637,17 +637,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-content-negotiation-iosx64-3.1.1.pom",
-          "sha256": "de2198806c1792535b76d5ea0f47bff32b709712bbb7ca0a9bb73b56207b5313"
+          "name": "ktor-client-content-negotiation-iosx64-3.6.0.pom",
+          "sha256": "8e19f3a36873dc87d0ab2194dad975313e75a52e5da3fa7aedaa5a4c7cd629aa"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-core-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-core-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-client-core-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "5a401df9290ebcc138e7177aa745a7fbdf949018c0b78db6c3b14340272ce24d",
+      "artifact": "ktor-client-core-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "aff61fd9079cdd44b947646e4dd8c2f66c2d9891e87bcc1909e7141555d453d2",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -658,17 +658,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-core-iosarm64-3.1.1.pom",
-          "sha256": "e4ed0a7af70e5dd05fd1547627c435c2ddfe24e82a6dafb7a26cc7ae0e916b71"
+          "name": "ktor-client-core-iosarm64-3.6.0.pom",
+          "sha256": "14abf846c530bd361cfd4d0cdfc4c2ab62198522c3ecaa5fe5ffdcea5f88f31d"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-core-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-core-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-client-core-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "58583d1127acba63298e3c2637c8a5b9b2b966788b8682d39499d7642cbb6132",
+      "artifact": "ktor-client-core-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "8f19b3ce68173d8cd35be63efde89e61217238762da0baf2debefcc385546b1f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -679,17 +679,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-core-iossimulatorarm64-3.1.1.pom",
-          "sha256": "f74ce93485fd6a3733cf3173c41a708b67ce09b3eef379e01d32f65da254c1a8"
+          "name": "ktor-client-core-iossimulatorarm64-3.6.0.pom",
+          "sha256": "04e15e1a58206702d10b20dbce025e229f99cab97878882aebd069e363c072ca"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-core-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-core-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-client-core-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "ada19f086a99eef6dae581c612223523781b60cdf3b735aaf9f0f4e63e636d5f",
+      "artifact": "ktor-client-core-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "0c8e350e79f2975aee8337ddbbdfc1f631a0b0fdfbd302cdf77c01e7e2bc99d8",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -700,17 +700,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-core-iosx64-3.1.1.pom",
-          "sha256": "5d55d756edfac7f039e577296b73be46242c482b367ffe5b04986d62597c0568"
+          "name": "ktor-client-core-iosx64-3.6.0.pom",
+          "sha256": "89e8eda2463ce7d258942ef3649ff084a0048c84b1fe960d9685f847b61e4126"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-darwin-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-darwin-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-client-darwin-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "6a6ce3ea12d6e05cc78505dfaed834370e1d095d0cde1998076e6e677f94cbbd",
+      "artifact": "ktor-client-darwin-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "bb70c8f3e6eadc2680613628bcc4b9a4c53cc2481ee96305f6e3436c821e6c90",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -721,17 +721,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-darwin-iosarm64-3.1.1.pom",
-          "sha256": "95dc2bb3a90162cf74ee4121369b028603396c620585ab98cf37875196807af0"
+          "name": "ktor-client-darwin-iosarm64-3.6.0.pom",
+          "sha256": "ae8199e7dd8ee90bef9a961dea758d7b0e014aa7dad544daaac7cbc614f462b1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-darwin-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-darwin-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-client-darwin-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "0d421e6e80021356820996ba7b7b2d53752c3f2d9c232a947cd7a3bd2ac1ee5d",
+      "artifact": "ktor-client-darwin-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "5cda32200752c199a475a665092260263de74f8ce993c5cd1160c18ecda66fb3",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -742,17 +742,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-darwin-iossimulatorarm64-3.1.1.pom",
-          "sha256": "79b020ae58b432924f7cfb540bb23ea2f6dc9a012c312a1d2d702ad6642c7a04"
+          "name": "ktor-client-darwin-iossimulatorarm64-3.6.0.pom",
+          "sha256": "f72752bf7223bd80e8c85b2ef29feef08d81017d92120a9b6ea49d08d006f446"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-client-darwin-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-client-darwin-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-client-darwin-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "d2d6cc31b37f789dd2dbfb625406bd28f1d8057cbb2baf63e7d0ee10427bce97",
+      "artifact": "ktor-client-darwin-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "0f2bf26424a6797b0f5b36bfd401072f741ec5522f61123a3db184c44b548cde",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -763,17 +763,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-client-darwin-iosx64-3.1.1.pom",
-          "sha256": "03f1231263b3a3298b37b98890bc7797e326e95e809ab15faee026daeaff5d15"
+          "name": "ktor-client-darwin-iosx64-3.6.0.pom",
+          "sha256": "f1c5b55f62cecd972fb6d4163d106afe89d76c1820ec12949db43c48290b69e8"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-events-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-events-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-events-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "26da979f739f18a4130eb93e29698b3181907e65430976bcfe859224830487d2",
+      "artifact": "ktor-events-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "328f6675f6a90b6923dadfd005b4b3b0f4141f5f9f6a510759d8a1b1441b1484",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -784,17 +784,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-events-iosarm64-3.1.1.pom",
-          "sha256": "83699cf5254484b97f199616c080fe036758fc9324077821c3edf01e1404d4d5"
+          "name": "ktor-events-iosarm64-3.6.0.pom",
+          "sha256": "c91dffacf5058f990893cc2e241f0346cf4ff7a76c9e476d8c3805892f01c82e"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-events-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-events-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-events-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "c2c3148dce763ec3ff3e8758af6ba58b19d77ceae52b029113c79b2a4ac30fc5",
+      "artifact": "ktor-events-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "bb3ac697887ac0659098740ebf9fd63559ccae5c287252f6bdf1145ecf8b5a58",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -805,17 +805,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-events-iossimulatorarm64-3.1.1.pom",
-          "sha256": "d72fce5fc4c31cdc2a32d62d32057a99d213dd87d8b44ae90faebf643e108a4e"
+          "name": "ktor-events-iossimulatorarm64-3.6.0.pom",
+          "sha256": "32e5011a1999965d33ea76ed7d6b33c0d4388f0a64b331944a54c13065e86e70"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-events-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-events-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-events-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "a846fb189c76def331f2c776ff3f163f5f969518c897c3a6380bf415cae7aeb8",
+      "artifact": "ktor-events-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "5c2a32ac09d106688fc852c4e4ad61b75be16bd8e4c64ff2815a0b516019dfff",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -826,17 +826,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-events-iosx64-3.1.1.pom",
-          "sha256": "cf5c97e2b5871154d5dceea8a6c550ab5d3a5879ea75cd3b92eb275426e419c7"
+          "name": "ktor-events-iosx64-3.6.0.pom",
+          "sha256": "9f604fe1d0cdc6aadc90a5876f04827dd4cb9d7211b73688b1de1d39d82b1aec"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-cio-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-cio-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-http-cio-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "7b928f1432d62e26f3f4677a9a8e0dd4ef54b03334bdb7fb7141f827043fece7",
+      "artifact": "ktor-http-cio-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "e81477518481978a4d4fca4d43696e5156d28a039522d4ab1da281c2a5268dc8",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -847,17 +847,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-cio-iosarm64-3.1.1.pom",
-          "sha256": "7f0e24c57d0babaa9570906891331e01fb6867ec7978136060f29839055f48d1"
+          "name": "ktor-http-cio-iosarm64-3.6.0.pom",
+          "sha256": "8357fab1eb943c3ce317b459318bf81a9e896a0577ca9cd67d44ff5259f30f68"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-cio-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-cio-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-http-cio-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "34dd700866007d0c578059967e0f2d89a4af8ad114b5178d56ea72a1c785c09c",
+      "artifact": "ktor-http-cio-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "ebbafce3fac720ae4c9c1e85fe069da3c8a5f7e32b41c8e8e4d29f6ad954363f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -868,17 +868,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-cio-iossimulatorarm64-3.1.1.pom",
-          "sha256": "45d427281c6c609fe66ff492ac7b7f818866c0f28c0a7893f6650e21c82e9fb6"
+          "name": "ktor-http-cio-iossimulatorarm64-3.6.0.pom",
+          "sha256": "67496baf3e1dcb74f085ea60fcd63c8071ce687076172e73f47d3bee14a5d6b1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-cio-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-cio-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-http-cio-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "062b0f67275f438bfa3e64df83343c5dce930155886d66376a519246176baa2d",
+      "artifact": "ktor-http-cio-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "8824e7ae039c8de2797cb995048b28a89c4bee754513564c00d1b04dffba8356",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -889,17 +889,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-cio-iosx64-3.1.1.pom",
-          "sha256": "439690d31e23690d604660f53b736945d04603a7c92a631305df4150db239e9c"
+          "name": "ktor-http-cio-iosx64-3.6.0.pom",
+          "sha256": "87c8a4e4f1c22bb34e8182298967204b93c9fb99cf609f27b9fc374ee1819864"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-http-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "dd7f7f485303df2e278b71f09c7a2d30d7674dd3e8a747bbbc43153e824aee1e",
+      "artifact": "ktor-http-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "43436819ddabfbd4cbb7754e92199739ba2433014db625887d7a641ad567e4e1",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -910,17 +910,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-iosarm64-3.1.1.pom",
-          "sha256": "894a68db8c7567f7bfa1592cf1db54ea30a10f73610cad6fdc4db5b0fca72495"
+          "name": "ktor-http-iosarm64-3.6.0.pom",
+          "sha256": "899c449e0ed4c8679cc88fe189900492e7ce8e80f06ecd323345a62363dbb5af"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-http-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "98e4f36acbbf8df0991912a0655bdb6534a88488c7fc473b870fbe1c8a0c5253",
+      "artifact": "ktor-http-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "abd2b8036bda6cea74120e22d89600b34220d942b65a33ef949ce3fff1a3b52a",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -931,17 +931,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-iossimulatorarm64-3.1.1.pom",
-          "sha256": "13ae2443b55dc2e1a59124ab2642bdccf0c3b3b95449e25a02d9ddf2137a842b"
+          "name": "ktor-http-iossimulatorarm64-3.6.0.pom",
+          "sha256": "ead470a063dd7fb00882a8cbf72fdc1d154c808e416d8f965d5e053ab0c6fe6a"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-http-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-http-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-http-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "be2e2177babca498bf021e67a125cfe7504a5857c2754c560e6dff7512eb672f",
+      "artifact": "ktor-http-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "6ffb174aa84e0f9db5f62171e0196a4fb598eb5337596c6ae47c51e9ae0d4ef8",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -952,17 +952,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-http-iosx64-3.1.1.pom",
-          "sha256": "f5e10ee25298237d14e257713b8be98759209df54ecaa5aa70c146b4790bd074"
+          "name": "ktor-http-iosx64-3.6.0.pom",
+          "sha256": "f8f3b5230cd1cfb952cb7fc4212c9dbcc22e2b9b29f2ff6a1490e161f4f10ba6"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-io-iosArm64Cinterop-mutexMain-3.1.1.klib",
-      "artifact_sha256": "19f3c2aeaca808eab9b389195204b9104288a23821da2fc0eda73372122a613f",
+      "artifact": "ktor-io-iosArm64Cinterop-mutexMain-3.6.0.klib",
+      "artifact_sha256": "bd483443b42e2f9bc92a754e02c63a2b82b0a9564e2f4cd9eb616659ed096fa9",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -973,17 +973,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iosarm64-3.1.1.pom",
-          "sha256": "78ab879f00bedd5bac62e1b8c07545031fbb6251ce974f5923eb197656820376"
+          "name": "ktor-io-iosarm64-3.6.0.pom",
+          "sha256": "46c1155e5623e8403459d80d169731e34290c0c146669263f2effd33f96c74cd"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-io-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "c96bedd56a9f6e9851346657542d3de59dc816df80950e647edc8ccece6d7ade",
+      "artifact": "ktor-io-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "7f37ea4f5ff4f9e26897905cad3620ba311789c7d1004410ed399b6c7294ed08",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -994,17 +994,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iosarm64-3.1.1.pom",
-          "sha256": "78ab879f00bedd5bac62e1b8c07545031fbb6251ce974f5923eb197656820376"
+          "name": "ktor-io-iosarm64-3.6.0.pom",
+          "sha256": "46c1155e5623e8403459d80d169731e34290c0c146669263f2effd33f96c74cd"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-io-iosSimulatorArm64Cinterop-mutexMain-3.1.1.klib",
-      "artifact_sha256": "388baf063e8735d8eb43f44cdf4936fd0408072d975f0104c0d089235042b4db",
+      "artifact": "ktor-io-iosSimulatorArm64Cinterop-mutexMain-3.6.0.klib",
+      "artifact_sha256": "3e51c970c2a44e29112ea6b366bc508aec2570620b747573136d2731a01826c5",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1015,17 +1015,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iossimulatorarm64-3.1.1.pom",
-          "sha256": "dbdd5dbb814d82320ecf8edb70f1e7cd784e88108032cec645de04c884646fd4"
+          "name": "ktor-io-iossimulatorarm64-3.6.0.pom",
+          "sha256": "6e573bca55e018bcfac2185b69f52e331fd28e53e423baba85dbabf329507348"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-io-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "4934f33fa3e587a2e71038f135c16719906aa09d82e2e7affc6ab9f9c381a109",
+      "artifact": "ktor-io-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "517931cfabe08446d2ae434ad7c8b0e52ed60dd93276e97dfc296c430b260178",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1036,17 +1036,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iossimulatorarm64-3.1.1.pom",
-          "sha256": "dbdd5dbb814d82320ecf8edb70f1e7cd784e88108032cec645de04c884646fd4"
+          "name": "ktor-io-iossimulatorarm64-3.6.0.pom",
+          "sha256": "6e573bca55e018bcfac2185b69f52e331fd28e53e423baba85dbabf329507348"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-io-iosX64Cinterop-mutexMain-3.1.1.klib",
-      "artifact_sha256": "4b36132dda74eeb8415c58ec7aff64bd19feb5b76204e2269856f9ea81208e2b",
+      "artifact": "ktor-io-iosX64Cinterop-mutexMain-3.6.0.klib",
+      "artifact_sha256": "943512968a5875cfd555c0d85531cb5dac0e702644ef9bbfdf05b7ffb5fd7678",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1057,17 +1057,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iosx64-3.1.1.pom",
-          "sha256": "2cf53e229472a7881650874d3b79f9cad0905e291938eaa4bfc59c32cc483d82"
+          "name": "ktor-io-iosx64-3.6.0.pom",
+          "sha256": "b1ef3aedf7011a8beafe1af6d9574409827aae461f95b8b6ac42bdbbb65112d1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-io-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-io-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-io-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "e89b649c14942500f155b10c77e60b04ad6ae76d17e43c2054cc06bd4ca7da64",
+      "artifact": "ktor-io-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "48a9cf84a0d3175bbe9f6061abb757fa5870d5e95f07fa53a467d14a7236a943",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1078,17 +1078,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-io-iosx64-3.1.1.pom",
-          "sha256": "2cf53e229472a7881650874d3b79f9cad0905e291938eaa4bfc59c32cc483d82"
+          "name": "ktor-io-iosx64-3.6.0.pom",
+          "sha256": "b1ef3aedf7011a8beafe1af6d9574409827aae461f95b8b6ac42bdbbb65112d1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-network-iosArm64Cinterop-networkMain-3.1.1.klib",
-      "artifact_sha256": "651d1cced73351a785526f684d1c9b8cc2b8f9431ff80a74eee6a308df4a1eee",
+      "artifact": "ktor-network-iosArm64Cinterop-networkMain-3.6.0.klib",
+      "artifact_sha256": "05c67307d907ae1c83ce94673f9abe45f24e73132c88228e7a76e48a3dae67bd",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1099,17 +1099,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosarm64-3.1.1.pom",
-          "sha256": "27b17bb8cc862e4445fecd26cc5931ed395024d1142623a030741c4c2879f3e3"
+          "name": "ktor-network-iosarm64-3.6.0.pom",
+          "sha256": "96f0070e0e917409ec14c9b54b5858a294ab192b9de7af2ad2d9a3ba4c3c7545"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-network-iosArm64Cinterop-unMain-3.1.1.klib",
-      "artifact_sha256": "24d77418830f90e5f0979e9ab25a483b8163b7ffd48c1559c964e3d95e95d16a",
+      "artifact": "ktor-network-iosArm64Cinterop-unMain-3.6.0.klib",
+      "artifact_sha256": "dda4c536fa5855b101ff6b0754fabe1908a5f673066c5dba81a00f1fd767175e",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1120,17 +1120,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosarm64-3.1.1.pom",
-          "sha256": "27b17bb8cc862e4445fecd26cc5931ed395024d1142623a030741c4c2879f3e3"
+          "name": "ktor-network-iosarm64-3.6.0.pom",
+          "sha256": "96f0070e0e917409ec14c9b54b5858a294ab192b9de7af2ad2d9a3ba4c3c7545"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-network-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "d83e6fe00008b33c4a2b8226c46426ebba9cfc6b416be6c75ea93d978f37b02c",
+      "artifact": "ktor-network-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "c4a02509018587b021a9abd1c39c143dd6364ac2f9bc1a3dec0b370b7d70f0ad",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1141,17 +1141,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosarm64-3.1.1.pom",
-          "sha256": "27b17bb8cc862e4445fecd26cc5931ed395024d1142623a030741c4c2879f3e3"
+          "name": "ktor-network-iosarm64-3.6.0.pom",
+          "sha256": "96f0070e0e917409ec14c9b54b5858a294ab192b9de7af2ad2d9a3ba4c3c7545"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-network-iosSimulatorArm64Cinterop-networkMain-3.1.1.klib",
-      "artifact_sha256": "0fb05740c389cb5670c542b1c937c5a1448897d880993d5548f6e2a81d8a52a7",
+      "artifact": "ktor-network-iosSimulatorArm64Cinterop-networkMain-3.6.0.klib",
+      "artifact_sha256": "cba61746324af350ee782cac0a1feb16550324bc83af4465c479ab4d8628162f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1162,17 +1162,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iossimulatorarm64-3.1.1.pom",
-          "sha256": "5f3d97d2800bb23e962184158d809ad81fe073ef5e5ff66842c48c000440f327"
+          "name": "ktor-network-iossimulatorarm64-3.6.0.pom",
+          "sha256": "3a6e8a8c860184a78adeba7c6a7ca019068410f2c3c8573e0a05b05980ef8f9f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-network-iosSimulatorArm64Cinterop-unMain-3.1.1.klib",
-      "artifact_sha256": "c8c1403d6738d0e9844a094365d326f6cc85aa9b7574ed60cd9e0fa236b94123",
+      "artifact": "ktor-network-iosSimulatorArm64Cinterop-unMain-3.6.0.klib",
+      "artifact_sha256": "cd719be633e46bb52eb8f76627a81ed4d92a3b6ec377fe8fb19d0085e47514c2",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1183,17 +1183,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iossimulatorarm64-3.1.1.pom",
-          "sha256": "5f3d97d2800bb23e962184158d809ad81fe073ef5e5ff66842c48c000440f327"
+          "name": "ktor-network-iossimulatorarm64-3.6.0.pom",
+          "sha256": "3a6e8a8c860184a78adeba7c6a7ca019068410f2c3c8573e0a05b05980ef8f9f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-network-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "a4ec8bd1a95e288044414772be2ba3f5570de86153096f821222573176bfdfb4",
+      "artifact": "ktor-network-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "a3614444714f30de78a0004704eed24f73d23665deedbd82f93fe6772113269c",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1204,17 +1204,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iossimulatorarm64-3.1.1.pom",
-          "sha256": "5f3d97d2800bb23e962184158d809ad81fe073ef5e5ff66842c48c000440f327"
+          "name": "ktor-network-iossimulatorarm64-3.6.0.pom",
+          "sha256": "3a6e8a8c860184a78adeba7c6a7ca019068410f2c3c8573e0a05b05980ef8f9f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-network-iosX64Cinterop-networkMain-3.1.1.klib",
-      "artifact_sha256": "4f802e2608a8aa25863aff4375d8883a770b50b92c8a479253990d24b957b448",
+      "artifact": "ktor-network-iosX64Cinterop-networkMain-3.6.0.klib",
+      "artifact_sha256": "b1ab3e78100975a5be0fd441dc4baa1b777a4eb7ed440ea69a3d60dad1f510e2",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1225,17 +1225,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosx64-3.1.1.pom",
-          "sha256": "c7e202be20460f967e96806a756aaedd8b758d1bad3fc6ab050e065d1d511a8b"
+          "name": "ktor-network-iosx64-3.6.0.pom",
+          "sha256": "3cb59da544907311270b411c551e1c777623343302c831f0c31796b0b4b7b497"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-network-iosX64Cinterop-unMain-3.1.1.klib",
-      "artifact_sha256": "087b83f09dc6085e532078bcffae3b3cb96cf53bcd9d2fb2ee593944f1766a90",
+      "artifact": "ktor-network-iosX64Cinterop-unMain-3.6.0.klib",
+      "artifact_sha256": "8a9f571d9c9344975c3497a94c5f6750663efb31db60fbecbc4ff098f40ff069",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1246,17 +1246,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosx64-3.1.1.pom",
-          "sha256": "c7e202be20460f967e96806a756aaedd8b758d1bad3fc6ab050e065d1d511a8b"
+          "name": "ktor-network-iosx64-3.6.0.pom",
+          "sha256": "3cb59da544907311270b411c551e1c777623343302c831f0c31796b0b4b7b497"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-network-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "687740a76acb0d63c04459e86cf9744a1f105ae800fdc175c767c1f823d80fa3",
+      "artifact": "ktor-network-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "756621f034cc05d460fea330fed7c5c029b7c1b4658580ceddce795e090c6f5e",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1267,17 +1267,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-iosx64-3.1.1.pom",
-          "sha256": "c7e202be20460f967e96806a756aaedd8b758d1bad3fc6ab050e065d1d511a8b"
+          "name": "ktor-network-iosx64-3.6.0.pom",
+          "sha256": "3cb59da544907311270b411c551e1c777623343302c831f0c31796b0b4b7b497"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-tls-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-tls-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-network-tls-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "73c411437910030e240995b36b7b6bd9ac256a08f4d68f8f6683408d3eb0d2b6",
+      "artifact": "ktor-network-tls-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "447ed2e3c12d79f8f3467132b372bdc123e6c9560da523145f67be13cda8994f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1288,17 +1288,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-tls-iosarm64-3.1.1.pom",
-          "sha256": "0bf6a9595d8238294a269c7c2cf98a2e095124f9f772b5a20559eb564d38433c"
+          "name": "ktor-network-tls-iosarm64-3.6.0.pom",
+          "sha256": "aeb4ad9f98414337b9e167a7bfdad6a4e2951621eef091b45877f9e5a10f7ffa"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-tls-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-tls-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-network-tls-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "3286194e7e839414eb6f4d912080b3b3ebe4d6a7502d411c68880f7f6322b330",
+      "artifact": "ktor-network-tls-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "af4b67e1674f71e3eba6df4fc2f9c4bd404f69e80e25b1a05c89dbf1b741bb65",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1309,17 +1309,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-tls-iossimulatorarm64-3.1.1.pom",
-          "sha256": "bbd366947cdbce4a8cbceef3dc4195ffc34f4eeb494b0e43ee369e913987a46e"
+          "name": "ktor-network-tls-iossimulatorarm64-3.6.0.pom",
+          "sha256": "52dcab0efec55a85a856843cf064ab64fad035292954e325c2a5b7a135122029"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-network-tls-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-network-tls-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-network-tls-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "87c8e05789b9a8e1cfe443aa6e55fc7845e4c67adfff7ed414a568f3a06805f0",
+      "artifact": "ktor-network-tls-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "4d4f590fbec1a730c42de493c76c2ed0161e16db8e325666a8d303fd67cba167",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1330,17 +1330,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-network-tls-iosx64-3.1.1.pom",
-          "sha256": "ab8ca270fcebf1fc4c7588b97f98b17c58eedb732f9358b3f22cf1c05b0997ce"
+          "name": "ktor-network-tls-iosx64-3.6.0.pom",
+          "sha256": "f8214ed5863332f92b9ded45d15c1c859d8674ff496f1f00d6fc499e7d00b65b"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-openapi-schema-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-serialization-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "72dee57d8de6437c0cfbf7f3295150c5ece084089b4477851ec4f34980c71d43",
+      "artifact": "ktor-openapi-schema-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "e2ebb38efb2d9d7587692f680fd6951241584bab146a574b5a552c991387cb6f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1351,17 +1351,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-iosarm64-3.1.1.pom",
-          "sha256": "fbda5cbf7a71a29528e188a7a60e33895c48009d1b332a091813d61f1fd57606"
+          "name": "ktor-openapi-schema-iosarm64-3.6.0.pom",
+          "sha256": "faf7a829263c79d8b0f5da7443a2deb13691795a0dcae0e618b9609f4c70e088"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-openapi-schema-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-serialization-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "caa7ea9c2455fe9fa92eb05cff3314713e26e7df42cdde1d32a6442beb5e46b1",
+      "artifact": "ktor-openapi-schema-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "87e74474765db8255b5d15ef9e650faee32c5bb54f320e849e4e9b1111822e72",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1372,17 +1372,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-iossimulatorarm64-3.1.1.pom",
-          "sha256": "f1a6384a7843a2a8e5b0ad10beba683fc567be7959e7135174896bd4593bc2b0"
+          "name": "ktor-openapi-schema-iossimulatorarm64-3.6.0.pom",
+          "sha256": "dc74a46a8a6adbca241be154066752840d0a3ca0921f23ded2e6a36a60d3dfcf"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-openapi-schema-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-serialization-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "2002585c648b7b64062f2cf7d56bdfd5ef010b3b899cc89456bafae35487b552",
+      "artifact": "ktor-openapi-schema-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "b97273fb66aba39e560f6ac05ca579021bdd9e1cc5ad1247f1c74b933787695e",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1393,17 +1393,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-iosx64-3.1.1.pom",
-          "sha256": "efa9d37726962817b18c78a46fb549f8e56e9e1d55a845d1c6840caadf03203c"
+          "name": "ktor-openapi-schema-iosx64-3.6.0.pom",
+          "sha256": "fd74443cbb91acef734fd0a9337564e427fb8af65a61acce83f315cf1089dd99"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "2cd19668232da00f4a1d91ec0174a34a59f4e30b1331c3424b7a91a082afa2d9",
+      "artifact": "ktor-serialization-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "3bd38662cbeea149c2c5b9dc2927880f363b507ee4cb3a7fd8fa7dfec4ae51b8",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1414,17 +1414,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-iosarm64-3.1.1.pom",
-          "sha256": "75f36444d0b7f2ce4d0339f5a9216b6c016b06cf124a18c2cac2f0eeb32ccc8a"
+          "name": "ktor-serialization-iosarm64-3.6.0.pom",
+          "sha256": "f7cd1ed3ca2acfe18e3510a347d6a4ee66de60e79390bc823543cd124ee40e42"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "7e7a331b6fa75b0d6348196f3c67b462fe14d30690678cd58f4ebcbe64c4c8e6",
+      "artifact": "ktor-serialization-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "62d830cb3315ceca4b5d77e0caeaace4c144c7e52407346312007532cdcaead1",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1435,17 +1435,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-iossimulatorarm64-3.1.1.pom",
-          "sha256": "b0c056cd833cccb0797992efe188b4abf4b9b4a8beac97b079dafe8583ebd2ea"
+          "name": "ktor-serialization-iossimulatorarm64-3.6.0.pom",
+          "sha256": "83ac641eab13fa5a93b57450cdf57bb750e6da278dc52bb7096be28f693d7d8d"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "0b8e70e57e6db010b7ab628ac3b5cf096c4b57c64707b1d44cf193f4c0b959f0",
+      "artifact": "ktor-serialization-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "d5b517b46b3f29b85a1c6d0bc797a946f586db9d50ed0193bfba2c5d716aa78a",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1456,17 +1456,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-iosx64-3.1.1.pom",
-          "sha256": "b39de6c55857cd133bb65a244ca715f3521623b75e794cfe291ba012c6b12a70"
+          "name": "ktor-serialization-iosx64-3.6.0.pom",
+          "sha256": "4f5ce187966480a5443d022dfac8a09b22b1a44ae0c7d78f66877b64a0171aec"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-json-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "8772176b39f54def9a152205c408789c5b6f79f0d97f8517cdf73088ca08ac7e",
+      "artifact": "ktor-serialization-kotlinx-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "a8e398f747086605359b02a8d81bc0dc68176e199b88322f475a5356269e0d23",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1477,17 +1477,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-json-iosarm64-3.1.1.pom",
-          "sha256": "d1c228dd28165c266e347269119d7c9986cd64a17774f91ee752c0bc88f99428"
+          "name": "ktor-serialization-kotlinx-iosarm64-3.6.0.pom",
+          "sha256": "bd065038b2432ad6c65c02c69ec7ffdf0828dc3a8e8c2a8be7f6c28e8ae2aa88"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-json-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "a7a15df09b010bc89ec53f5dffb29c416848028657284e2e4f8cc096f25cd188",
+      "artifact": "ktor-serialization-kotlinx-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "08115f3fb881b2cc10f021bb694bacdc00b3917ce944f320650777184c244741",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1498,17 +1498,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-json-iossimulatorarm64-3.1.1.pom",
-          "sha256": "219ad4116339fc2b6352111ab4b2ffe25b43b5a84bfb6feb0095b08c9b8f8b5a"
+          "name": "ktor-serialization-kotlinx-iossimulatorarm64-3.6.0.pom",
+          "sha256": "ce61cc7e7a7550c2ded159fcd509455cf307f2fce4432b04c0c4687e8ec42337"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-serialization-kotlinx-json-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "0da1815dac3896a8aee0a3aeb838bb8c21419d26ca938911020af482681d83a1",
+      "artifact": "ktor-serialization-kotlinx-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "6c1a5dc45406e307fc7bd33a9c1076bffb2712f5499b987dd161555f09463c74",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1519,17 +1519,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-serialization-kotlinx-json-iosx64-3.1.1.pom",
-          "sha256": "1c174a16ea63e8bc7947b6d2bf5622a96ee0c068a3179116aac0de52a164db0b"
+          "name": "ktor-serialization-kotlinx-iosx64-3.6.0.pom",
+          "sha256": "ace5cbc5f397c6b6bbd5b90a61bb32734522a672cf2f439f59519c74c1fd2de3"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-sse-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-sse-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "96be7f2ed63cb8c09206de3893069667d72489180e225015d429d9220a7e25a4",
+      "artifact": "ktor-serialization-kotlinx-json-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "4b6dd10a1a7df852bf2bfdc623033cad93de0ebb960dba78975c97dddb402480",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1540,17 +1540,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-sse-iosarm64-3.1.1.pom",
-          "sha256": "36c4207d6ed71c983926a8da26983cd1d349fca19cded369dae43400f8cfe2ae"
+          "name": "ktor-serialization-kotlinx-json-iosarm64-3.6.0.pom",
+          "sha256": "733850bde5c91819773bdf8760b8ed73593396807aa81bb57a06fab5fae766c1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-sse-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-sse-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "f51b5e4c2f58b83147e70e06b3d8a3fed2b35aa6df4daac535967b4172fe8336",
+      "artifact": "ktor-serialization-kotlinx-json-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "77be374c1da00e89b666445f2888ad693cd86848d160fb5dae8ebe4cd32a5a4f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1561,17 +1561,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-sse-iossimulatorarm64-3.1.1.pom",
-          "sha256": "5efb0de07798841e46eeaeb0232352f2bec9ffbb2815d71e2710fb4da1833ffd"
+          "name": "ktor-serialization-kotlinx-json-iossimulatorarm64-3.6.0.pom",
+          "sha256": "d2e8534b77cc5c72ec897d5ad1d146b31a84b0847b40211dd5943f05f1941bee"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-sse-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-serialization-kotlinx-json-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-sse-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "51f0ee5104186d381ba3589d69930f0852678ea17da1da38a8b11057a1b483e5",
+      "artifact": "ktor-serialization-kotlinx-json-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "dab2fb8fad84232dbcefa8a91ea4380c3c15a0e1d2c151ba7a18e9220594693f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1582,17 +1582,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-sse-iosx64-3.1.1.pom",
-          "sha256": "24fe9a1cbdf73d3c5af922ba52b89256177aa69000c70628b2edb51d65bf94f3"
+          "name": "ktor-serialization-kotlinx-json-iosx64-3.6.0.pom",
+          "sha256": "3cf7036a74b40e0efe4a68ae5ef5825f82e0bb2802fbb0484cbb8ada980f06f1"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-utils-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-sse-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-utils-iosArm64Cinterop-threadUtilsMain-3.1.1.klib",
-      "artifact_sha256": "3fc24779cfac06a47069e3911bc7eabeb8e85b795b3d3cdde4368e05b548caa7",
+      "artifact": "ktor-sse-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "2c8cf88f602b5028226c55d0cadc89a933dfb4f3f41264306cd1277c6bbc2ee6",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1603,38 +1603,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-utils-iosarm64-3.1.1.pom",
-          "sha256": "b280068f5f5eee4f708383a6161b1599642cc1905a8fcb3e511389a53e036dc3"
+          "name": "ktor-sse-iosarm64-3.6.0.pom",
+          "sha256": "6966822dd13daced32bc833ec8769ed873c21953cf7c2335f5735c2ecaf8263b"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-utils-iosarm64:3.1.1",
-      "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-utils-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "8f54304d5057b772997623a78431ed94e5b8ebbb4c4e6bc8507190aa71a3dc78",
-      "license": "Apache-2.0",
-      "declared_licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ],
-      "source": "https://github.com/ktorio/ktor.git",
-      "pom_inputs": [
-        {
-          "name": "ktor-utils-iosarm64-3.1.1.pom",
-          "sha256": "b280068f5f5eee4f708383a6161b1599642cc1905a8fcb3e511389a53e036dc3"
-        }
-      ],
-      "embedded_notices": []
-    },
-    {
-      "coordinate": "io.ktor:ktor-utils-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-sse-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-utils-iosSimulatorArm64Cinterop-threadUtilsMain-3.1.1.klib",
-      "artifact_sha256": "a6d7cbba75c2eb417aed463abce490a1710d91bd8e931501e9daa298446dbd54",
+      "artifact": "ktor-sse-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "6639ecf8fedd87ad5fbd46b35b83572c48e5e2dc858fb66ddeb0e1e515847554",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1645,38 +1624,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-utils-iossimulatorarm64-3.1.1.pom",
-          "sha256": "55fde97059b00cd0c78284a77fa0d27e183f0fc439aafbe42e3677db4e0cddc5"
+          "name": "ktor-sse-iossimulatorarm64-3.6.0.pom",
+          "sha256": "22303fdf5c5b1653a5dbc050ea18829abdd0636e16a8dc3964c4b06b1e199f6f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-utils-iossimulatorarm64:3.1.1",
-      "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-utils-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "f819f67f278b7c86cd1ef89eb1b39440477a828744a117ded549fbd7853ae1ee",
-      "license": "Apache-2.0",
-      "declared_licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ],
-      "source": "https://github.com/ktorio/ktor.git",
-      "pom_inputs": [
-        {
-          "name": "ktor-utils-iossimulatorarm64-3.1.1.pom",
-          "sha256": "55fde97059b00cd0c78284a77fa0d27e183f0fc439aafbe42e3677db4e0cddc5"
-        }
-      ],
-      "embedded_notices": []
-    },
-    {
-      "coordinate": "io.ktor:ktor-utils-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-sse-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-utils-iosX64Cinterop-threadUtilsMain-3.1.1.klib",
-      "artifact_sha256": "5d51d6ded348d9fc20d108b8124686d2741c32e07d9209fa03de2be6699b983b",
+      "artifact": "ktor-sse-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "4394d583de6f858d71081d7f0e8934d9243c4d77b69db1f31d6e61e13a36c9c5",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1687,38 +1645,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-utils-iosx64-3.1.1.pom",
-          "sha256": "07c285f8e6dd912dd9c8839e5f9b02571cf735b270614c5688eef0a07a4b6684"
+          "name": "ktor-sse-iosx64-3.6.0.pom",
+          "sha256": "19453e8e6738e9b1fbfe24b8caa1431055f6d4566afa34cefc0ce9e4e639618f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-utils-iosx64:3.1.1",
-      "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-utils-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "57e1023260d066fdbe9bde186bf8da9e9eae8e1f3a35601436581075d3941d13",
-      "license": "Apache-2.0",
-      "declared_licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ],
-      "source": "https://github.com/ktorio/ktor.git",
-      "pom_inputs": [
-        {
-          "name": "ktor-utils-iosx64-3.1.1.pom",
-          "sha256": "07c285f8e6dd912dd9c8839e5f9b02571cf735b270614c5688eef0a07a4b6684"
-        }
-      ],
-      "embedded_notices": []
-    },
-    {
-      "coordinate": "io.ktor:ktor-websocket-serialization-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-utils-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-websocket-serialization-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "17a95c99d917a3007f5ebf55184fc5708f55962a9fae2940b33f758f452e6e55",
+      "artifact": "ktor-utils-iosArm64Cinterop-threadUtilsMain-3.6.0.klib",
+      "artifact_sha256": "6632fb3b626f59d72e42b514a3c4789810e19fbbb889320c6438584c2d9f3e3f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1729,59 +1666,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-websocket-serialization-iosarm64-3.1.1.pom",
-          "sha256": "95d2360f629d617f988ef8e0aa8667ce68e22d07593df0fa5934912264260cff"
+          "name": "ktor-utils-iosarm64-3.6.0.pom",
+          "sha256": "b69cf0541ce2344abc240ea6006b1493bea03cd12444c416b63122e1b6283fc6"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-websocket-serialization-iossimulatorarm64:3.1.1",
-      "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-websocket-serialization-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "9ac6e5739e149ebfbe41752112bbc302c295ce92fbb860b4e02c0ca602a17b22",
-      "license": "Apache-2.0",
-      "declared_licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ],
-      "source": "https://github.com/ktorio/ktor.git",
-      "pom_inputs": [
-        {
-          "name": "ktor-websocket-serialization-iossimulatorarm64-3.1.1.pom",
-          "sha256": "3fbac7cfb33b4894b7b4014666a5a7f81dbf2ffbeddbd8069a077f6de970ed75"
-        }
-      ],
-      "embedded_notices": []
-    },
-    {
-      "coordinate": "io.ktor:ktor-websocket-serialization-iosx64:3.1.1",
-      "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-websocket-serialization-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "669ccf403258b3618ae66dde77238330112b877d562cd12bdd49405590fff748",
-      "license": "Apache-2.0",
-      "declared_licenses": [
-        {
-          "name": "The Apache Software License, Version 2.0",
-          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
-        }
-      ],
-      "source": "https://github.com/ktorio/ktor.git",
-      "pom_inputs": [
-        {
-          "name": "ktor-websocket-serialization-iosx64-3.1.1.pom",
-          "sha256": "2a0e21ea9d22694b39fb3c965878be712de35b7947e7569523e78ad06e4cea2c"
-        }
-      ],
-      "embedded_notices": []
-    },
-    {
-      "coordinate": "io.ktor:ktor-websockets-iosarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-utils-iosarm64:3.6.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "ktor-websockets-iosArm64Main-3.1.1.klib",
-      "artifact_sha256": "4b3b589d4156a4a50f20a2252ba89e6b2ccf1211a3515a6462b8bcc5b9a658af",
+      "artifact": "ktor-utils-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "ad0ff0f2b411165d6eb8876cc4407c520d67b65b6de9cde0ef96cd826ab0504b",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1792,17 +1687,17 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-websockets-iosarm64-3.1.1.pom",
-          "sha256": "2731e3da8f37aabe1340c1c499251e443d5d7cc3e28ed11dbd0f94de5ca50a3a"
+          "name": "ktor-utils-iosarm64-3.6.0.pom",
+          "sha256": "b69cf0541ce2344abc240ea6006b1493bea03cd12444c416b63122e1b6283fc6"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-websockets-iossimulatorarm64:3.1.1",
+      "coordinate": "io.ktor:ktor-utils-iossimulatorarm64:3.6.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "ktor-websockets-iosSimulatorArm64Main-3.1.1.klib",
-      "artifact_sha256": "44a5ea39fb043fb4211a5dbe6cac585064fa5f7bb7f55d20594a8e370ae83743",
+      "artifact": "ktor-utils-iosSimulatorArm64Cinterop-threadUtilsMain-3.6.0.klib",
+      "artifact_sha256": "491354718e285fc1954463c758e5506b12f311de4f8164789189c0cb1e68e683",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1813,17 +1708,38 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-websockets-iossimulatorarm64-3.1.1.pom",
-          "sha256": "4be0a210efeffcffe6528c0b995c1cadf3eeeb4f67b249154783928b3929eabf"
+          "name": "ktor-utils-iossimulatorarm64-3.6.0.pom",
+          "sha256": "ed5be89cf9aaf5d5e891d5794797211cc15ba7a0acdc9983803124bda5210a06"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "io.ktor:ktor-websockets-iosx64:3.1.1",
+      "coordinate": "io.ktor:ktor-utils-iossimulatorarm64:3.6.0",
+      "configuration": "iosSimulatorArm64CompileKlibraries",
+      "artifact": "ktor-utils-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "25a30481bc387d47367fe89faa9add6b70ad68ceea0025b50ecbcb59e006702c",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-utils-iossimulatorarm64-3.6.0.pom",
+          "sha256": "ed5be89cf9aaf5d5e891d5794797211cc15ba7a0acdc9983803124bda5210a06"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-utils-iosx64:3.6.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "ktor-websockets-iosX64Main-3.1.1.klib",
-      "artifact_sha256": "ab114a689f56837deb414778c10d839488e2ec798b5d08243b9a617ca0d08178",
+      "artifact": "ktor-utils-iosX64Cinterop-threadUtilsMain-3.6.0.klib",
+      "artifact_sha256": "bcc20686b3b8752bc8a2fa682f7778168c1f54991991cebe664e9a1f8fd2357a",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -1834,206 +1750,353 @@
       "source": "https://github.com/ktorio/ktor.git",
       "pom_inputs": [
         {
-          "name": "ktor-websockets-iosx64-3.1.1.pom",
-          "sha256": "cc64fd1510fb25ce494b392172884de9d8f721ee3285721b745c51a45074d3c0"
+          "name": "ktor-utils-iosx64-3.6.0.pom",
+          "sha256": "7bfe8acd97561cb4ac5475782e2dc3859972083c7ad5fea267a2bd45a38e4da7"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosarm64:0.27.0",
-      "configuration": "iosArm64CompileKlibraries",
-      "artifact": "atomicfu-iosArm64Cinterop-interopMain-0.27.0.klib",
-      "artifact_sha256": "140afb047b30ceedf9f0c0050008c00e21682fa4fb98a9742936c1f7dad912a1",
+      "coordinate": "io.ktor:ktor-utils-iosx64:3.6.0",
+      "configuration": "iosX64CompileKlibraries",
+      "artifact": "ktor-utils-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "c788dd2d4f05799696095bc433633e1863fdf5c467b9651cfaed917da0acb176",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
           "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-utils-iosx64-3.6.0.pom",
+          "sha256": "7bfe8acd97561cb4ac5475782e2dc3859972083c7ad5fea267a2bd45a38e4da7"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websocket-serialization-iosarm64:3.6.0",
+      "configuration": "iosArm64CompileKlibraries",
+      "artifact": "ktor-websocket-serialization-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "dcf121f9bc07edbd72166f383edff25092b9c289a385592e3a261997fe89c603",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websocket-serialization-iosarm64-3.6.0.pom",
+          "sha256": "6392d13bcf1520a7b162367b25ff676c3f92758069471888b815e4bf325f4928"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websocket-serialization-iossimulatorarm64:3.6.0",
+      "configuration": "iosSimulatorArm64CompileKlibraries",
+      "artifact": "ktor-websocket-serialization-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "b97c476c0c861a5c9606a1a40bc15c9ab7da241019079bf8644206538329de44",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websocket-serialization-iossimulatorarm64-3.6.0.pom",
+          "sha256": "20a84addfee6caef3f79851177cfdc3106ad89c2fa5b55f3840eb8d16aff6180"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websocket-serialization-iosx64:3.6.0",
+      "configuration": "iosX64CompileKlibraries",
+      "artifact": "ktor-websocket-serialization-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "b85dc858e5858e5f0a787e1877ef308b83f4bbc4d3f63d36a6c5b00ba0f030e9",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websocket-serialization-iosx64-3.6.0.pom",
+          "sha256": "ac44b5939fdd793e0cf2e62f22c42393ac2284d35a18474bf71dbafdd2e29610"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websockets-iosarm64:3.6.0",
+      "configuration": "iosArm64CompileKlibraries",
+      "artifact": "ktor-websockets-iosArm64Main-3.6.0.klib",
+      "artifact_sha256": "6cf096e5ffae0bd0cbd8f3326f31c928fe0956b83591e1791bce29212e9d18d1",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websockets-iosarm64-3.6.0.pom",
+          "sha256": "74ab7299cb46b6af54d2ecb2b8a90ca3feb9a379c5a525d09fec2982e30d74cb"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websockets-iossimulatorarm64:3.6.0",
+      "configuration": "iosSimulatorArm64CompileKlibraries",
+      "artifact": "ktor-websockets-iosSimulatorArm64Main-3.6.0.klib",
+      "artifact_sha256": "3f3b3843e48d6a839f73e25496139d8af60ca483326687cd404ad179013d9714",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websockets-iossimulatorarm64-3.6.0.pom",
+          "sha256": "1d8521523eee86ba6c04f9b2fa1bc803f913bb45f34bf682c4284ddc621ecaf5"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "io.ktor:ktor-websockets-iosx64:3.6.0",
+      "configuration": "iosX64CompileKlibraries",
+      "artifact": "ktor-websockets-iosX64Main-3.6.0.klib",
+      "artifact_sha256": "78181846668f22b2686008678ee12fcbc3010104d7171b5e8011f57f1fc3784c",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "The Apache Software License, Version 2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/ktorio/ktor.git",
+      "pom_inputs": [
+        {
+          "name": "ktor-websockets-iosx64-3.6.0.pom",
+          "sha256": "4726f522019e21a19bebcfe7ea9ad4d0508e55dd13413eb91c0110e276d743b9"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosarm64:0.33.0",
+      "configuration": "iosArm64CompileKlibraries",
+      "artifact": "atomicfu-iosArm64Cinterop-interopMain-0.33.0.klib",
+      "artifact_sha256": "d29fa027f54ec4ec8f0535964ea013b6a3ef1af28b6689d4d4dbe2482df60301",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iosarm64-0.27.0.pom",
-          "sha256": "e7ff9fa67b8f6a45108401f99be33bb7f66ebeb8697859e84b97fae6c9241f80"
+          "name": "atomicfu-iosarm64-0.33.0.pom",
+          "sha256": "3f558f207bc813f98b7ec6cd852593ba54c4c1b28e1e657a2e9537c6e6b70b7f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosarm64:0.27.0",
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosarm64:0.33.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "atomicfu-iosArm64Main-0.27.0.klib",
-      "artifact_sha256": "4f29bb613fc64268d7d14b26a65fb1895f64a0d378f83c2ced70c6d3b1a07bb4",
+      "artifact": "atomicfu-iosArm64Main-0.33.0.klib",
+      "artifact_sha256": "1f34d8ab4f73f427a4704cf0cae1907561ce341568c8a5845dc110c4066ec931",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iosarm64-0.27.0.pom",
-          "sha256": "e7ff9fa67b8f6a45108401f99be33bb7f66ebeb8697859e84b97fae6c9241f80"
+          "name": "atomicfu-iosarm64-0.33.0.pom",
+          "sha256": "3f558f207bc813f98b7ec6cd852593ba54c4c1b28e1e657a2e9537c6e6b70b7f"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.27.0",
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.33.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "atomicfu-iosSimulatorArm64Cinterop-interopMain-0.27.0.klib",
-      "artifact_sha256": "ad8f70f3d7f70c25f74393d5c4ca48b22a2a4815ba73896c0d8b7919377234ec",
+      "artifact": "atomicfu-iosSimulatorArm64Cinterop-interopMain-0.33.0.klib",
+      "artifact_sha256": "e7de2d80b2d7254147750056e317e844bafe0f698c7b983f9bc118d21b74be4f",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iossimulatorarm64-0.27.0.pom",
-          "sha256": "81074ddbeb4b38403103f2eef8532ea2f1955ae98b965d8d41eafd36f2c164f0"
+          "name": "atomicfu-iossimulatorarm64-0.33.0.pom",
+          "sha256": "6766e0ed0fafd5f56227a9c80ac92b02e118241443cc639da2b48477c82aa721"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.27.0",
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.33.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "atomicfu-iosSimulatorArm64Main-0.27.0.klib",
-      "artifact_sha256": "3b43eb770a61853c94db366efca58ca0191dee7fcd8dc135d7ac12e02c823bcf",
+      "artifact": "atomicfu-iosSimulatorArm64Main-0.33.0.klib",
+      "artifact_sha256": "cbb7b7f068b56ed1d539035b022cb9ebe5d18de27ba5f00b19f8f899bf55ee96",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iossimulatorarm64-0.27.0.pom",
-          "sha256": "81074ddbeb4b38403103f2eef8532ea2f1955ae98b965d8d41eafd36f2c164f0"
+          "name": "atomicfu-iossimulatorarm64-0.33.0.pom",
+          "sha256": "6766e0ed0fafd5f56227a9c80ac92b02e118241443cc639da2b48477c82aa721"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosx64:0.27.0",
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosx64:0.33.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "atomicfu-iosX64Cinterop-interopMain-0.27.0.klib",
-      "artifact_sha256": "af1a2d9fc30148774427b3311704ad24429ed08bb5bf851d5506154921bf0a0a",
+      "artifact": "atomicfu-iosX64Cinterop-interopMain-0.33.0.klib",
+      "artifact_sha256": "ae1ae32acc77f95effc76f3c34b998fab4edaffc6e9c8679c3365d1173245898",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iosx64-0.27.0.pom",
-          "sha256": "e21ef5c09833988dd5b6e76710a30f796f1489cd4e0fae0d0dfcb5d2a92bd2c4"
+          "name": "atomicfu-iosx64-0.33.0.pom",
+          "sha256": "3363febc40ffd9d53a753f69038da6a77b62c9265c12e7012f7f5a7cb6219d1d"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosx64:0.27.0",
+      "coordinate": "org.jetbrains.kotlinx:atomicfu-iosx64:0.33.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "atomicfu-iosX64Main-0.27.0.klib",
-      "artifact_sha256": "85651c62c0af74b47256297b437527af2e796b0f62bee8247e1d02e47111c8ed",
+      "artifact": "atomicfu-iosX64Main-0.33.0.klib",
+      "artifact_sha256": "d6b0f8a57374e1ef9f1f082a9693f5d12bec0e53618618ee75c0d23392b41993",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.atomicfu",
       "pom_inputs": [
         {
-          "name": "atomicfu-iosx64-0.27.0.pom",
-          "sha256": "e21ef5c09833988dd5b6e76710a30f796f1489cd4e0fae0d0dfcb5d2a92bd2c4"
+          "name": "atomicfu-iosx64-0.33.0.pom",
+          "sha256": "3363febc40ffd9d53a753f69038da6a77b62c9265c12e7012f7f5a7cb6219d1d"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iosarm64:1.10.1",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iosarm64:1.11.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-coroutines-core-iosArm64Main-1.10.1.klib",
-      "artifact_sha256": "90e986b1c1ba056b5d23da3aad8ef0558061d3e5e1938fee6fb7169a6a0cc709",
+      "artifact": "kotlinx-coroutines-core-iosArm64Main-1.11.0.klib",
+      "artifact_sha256": "9d071a8f57b5bf31487bac7568ec4fd852fc2fd4c2416876df4df3ebb0129ed4",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.coroutines",
       "pom_inputs": [
         {
-          "name": "kotlinx-coroutines-core-iosarm64-1.10.1.pom",
-          "sha256": "0ae0113539c4bd413eeb30c2e33573526fb9b5b8a456828cc4eabd84f67f59f1"
+          "name": "kotlinx-coroutines-core-iosarm64-1.11.0.pom",
+          "sha256": "71df08b0acb2ea32daa1488aa164c4d4d5e15f49bd68bd14af38111488ddaf85"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iossimulatorarm64:1.10.1",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iossimulatorarm64:1.11.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-coroutines-core-iosSimulatorArm64Main-1.10.1.klib",
-      "artifact_sha256": "cfd61abe08a8aa8ae7e2b7e0e4a82118935ddaee8db583e81a6dc82786047ccd",
+      "artifact": "kotlinx-coroutines-core-iosSimulatorArm64Main-1.11.0.klib",
+      "artifact_sha256": "3200d59215e7f4c6ffccc32d30d05e5425d80144a8a7bafb70f99d86b9402379",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.coroutines",
       "pom_inputs": [
         {
-          "name": "kotlinx-coroutines-core-iossimulatorarm64-1.10.1.pom",
-          "sha256": "68a2a00fd30ec6e6c1c996b6918bef97f7e74d4b511561d945433051d50a128d"
+          "name": "kotlinx-coroutines-core-iossimulatorarm64-1.11.0.pom",
+          "sha256": "8c50592e0a02c4a0cc41067fe327ae0f379cc8e5aba176b6a2e53aebc356d4fd"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iosx64:1.10.1",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-iosx64:1.11.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-coroutines-core-iosX64Main-1.10.1.klib",
-      "artifact_sha256": "1b42a0d4a948c9fac5d72c111c56d158550c686113249430e2f55e50142063ea",
+      "artifact": "kotlinx-coroutines-core-iosX64Main-1.11.0.klib",
+      "artifact_sha256": "731e1fd85d143b42e02a0407b69e7642ca773f6a03bec46fc48c5bc6290d467c",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.coroutines",
       "pom_inputs": [
         {
-          "name": "kotlinx-coroutines-core-iosx64-1.10.1.pom",
-          "sha256": "161c120465db4778ac344458c2599c5ba6a8cd2cbd62e49add49539370f1a41a"
+          "name": "kotlinx-coroutines-core-iosx64-1.11.0.pom",
+          "sha256": "2ca14dd6a680857a2da57a513be5fe1c183e5ebbeac1d7cffc4cbc2d373ba6bd"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iosarm64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-datetime-iosarm64:0.8.0-0.6.x-compat",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-io-bytestring-iosArm64Main-0.9.0.klib",
-      "artifact_sha256": "74dca8ba775187563408053063faa390a2afd9ff69103e0f088c960980f54e3d",
+      "artifact": "kotlinx-datetime-iosArm64Main-0.8.0-0.6.x-compat.klib",
+      "artifact_sha256": "2d50c258f888ba199f366b109fbd48a1bd9a4ec698c3d2bd6735155d316378a3",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2041,20 +2104,20 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx-io",
+      "source": "https://github.com/Kotlin/kotlinx-datetime",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-bytestring-iosarm64-0.9.0.pom",
-          "sha256": "b8f7bf70b309825351effa473c29a120c8ce945d4b2522c88a1dee39ecbf40d1"
+          "name": "kotlinx-datetime-iosarm64-0.8.0-0.6.x-compat.pom",
+          "sha256": "f03576235f8695329e64640607b5e45aa6fb9d2b9719d1599a5613485d544faa"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iossimulatorarm64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-datetime-iossimulatorarm64:0.8.0-0.6.x-compat",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-io-bytestring-iosSimulatorArm64Main-0.9.0.klib",
-      "artifact_sha256": "528ae39581d47b27bbbcb394b309e5b5bd6f49ff839be76b265dcc010796b647",
+      "artifact": "kotlinx-datetime-iosSimulatorArm64Main-0.8.0-0.6.x-compat.klib",
+      "artifact_sha256": "7b46934843a1bc151c5ee653e1047ee575c6a658dc8618cc3dad2a2cf0b73761",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2062,20 +2125,20 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx-io",
+      "source": "https://github.com/Kotlin/kotlinx-datetime",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-bytestring-iossimulatorarm64-0.9.0.pom",
-          "sha256": "32a3a8c043ab4983f86a9ee55d94108b5f70cdf8a4822f81b110060e56c1a214"
+          "name": "kotlinx-datetime-iossimulatorarm64-0.8.0-0.6.x-compat.pom",
+          "sha256": "59fa4c81e047e35b15a6b8a23dd57cb423ff7e663953a8cbff28c4182aa73e32"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iosx64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-datetime-iosx64:0.8.0-0.6.x-compat",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-io-bytestring-iosX64Main-0.9.0.klib",
-      "artifact_sha256": "c122136e36cdd30ee1c8934a1965d7ae054400f35c14fc6421e3bdda274ae6a2",
+      "artifact": "kotlinx-datetime-iosX64Main-0.8.0-0.6.x-compat.klib",
+      "artifact_sha256": "d70ef0badf9381578a5e3e6659bf902bab98810db3d229575a0dae353c4d353a",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2083,20 +2146,20 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx-io",
+      "source": "https://github.com/Kotlin/kotlinx-datetime",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-bytestring-iosx64-0.9.0.pom",
-          "sha256": "ff3ce4f45333208c6f0a530e40b620363d40133c43de8f5db6152b0c42f34151"
+          "name": "kotlinx-datetime-iosx64-0.8.0-0.6.x-compat.pom",
+          "sha256": "6d4c1440dcad9e92706e641155811ce040ea49ef6fe23a1c742f788087df73d0"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iosarm64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iosarm64:0.9.1",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-io-core-iosArm64Main-0.9.0.klib",
-      "artifact_sha256": "2b9969d0d2ca25051391ed9f019787c00bdd5a52c993a0b350dce998f4bba7ea",
+      "artifact": "kotlinx-io-bytestring-iosArm64Main-0.9.1.klib",
+      "artifact_sha256": "4c851e6398e67b8836ef6b6563065752758bbd29ab8522f996bc4abaf04d8f56",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2107,17 +2170,17 @@
       "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-core-iosarm64-0.9.0.pom",
-          "sha256": "ba3cc933405a6796e5f724408369151373eceee4b9373521fd67f25ad8c11caa"
+          "name": "kotlinx-io-bytestring-iosarm64-0.9.1.pom",
+          "sha256": "aff0269f88374793a8ece4e5fc026c19a6b486981090bade1213881623942126"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iossimulatorarm64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iossimulatorarm64:0.9.1",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-io-core-iosSimulatorArm64Main-0.9.0.klib",
-      "artifact_sha256": "01dbcf80c33b534e77bf0b224c1da9d27968fc342492e0c459cf5d0a9e0dabe1",
+      "artifact": "kotlinx-io-bytestring-iosSimulatorArm64Main-0.9.1.klib",
+      "artifact_sha256": "d8c64b8cb4403e4e333a3fdf2258edb20c60a035b8120777a6596d230944434e",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2128,17 +2191,17 @@
       "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-core-iossimulatorarm64-0.9.0.pom",
-          "sha256": "9ec6adb81d8de62fa9bc7f5ca5f6b131d4dd655bbfe89d8a3ba4b808844b03a3"
+          "name": "kotlinx-io-bytestring-iossimulatorarm64-0.9.1.pom",
+          "sha256": "db4965a0b1530105f8bcfe498e1df4df2678e6c91b1e0a002f34da5ce4069b3c"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iosx64:0.9.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-bytestring-iosx64:0.9.1",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-io-core-iosX64Main-0.9.0.klib",
-      "artifact_sha256": "cbf4a49743ce2deb13e703f50f8f283d959907480d230784da002f4dbc3c86ee",
+      "artifact": "kotlinx-io-bytestring-iosX64Main-0.9.1.klib",
+      "artifact_sha256": "57eff341ff69670bfc24ecd1e1eba1fced915f1725d6c8ddda2923e1cc5fd243",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2149,17 +2212,17 @@
       "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-io-core-iosx64-0.9.0.pom",
-          "sha256": "3d6c92b21cd167809f36c2e64a95d8ae37d00474a03acac298ec94ff9c5a0ec1"
+          "name": "kotlinx-io-bytestring-iosx64-0.9.1.pom",
+          "sha256": "72ae5a37756832e11015d733e11adc6e9643ffd310a426b30ac70ba69e46928c"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iosarm64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iosarm64:0.9.1",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-core-iosArm64Main-1.10.0.klib",
-      "artifact_sha256": "a879b7a7321480c5d6cd99666cb956de87bff4da5539f896d102ed9aaec5bb98",
+      "artifact": "kotlinx-io-core-iosArm64Main-0.9.1.klib",
+      "artifact_sha256": "b1a294b8fd34ddda087270ee2b9272645f89c8a7cb9953d8ac2a68b82115b156",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2167,20 +2230,20 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-core-iosarm64-1.10.0.pom",
-          "sha256": "18d4a3470fb448e2ddf28fe022b12b345dd9a2cd9a8426951d9657d094773277"
+          "name": "kotlinx-io-core-iosarm64-0.9.1.pom",
+          "sha256": "2209bd658132aa9c217cf66ca4efeed809c5bf351ba3788e480637b4daa50e65"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iossimulatorarm64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iossimulatorarm64:0.9.1",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-core-iosSimulatorArm64Main-1.10.0.klib",
-      "artifact_sha256": "cfad348ed9c6cf80cf9df61a73a69a7c451b105fb7cb83a5075c5caac1f90753",
+      "artifact": "kotlinx-io-core-iosSimulatorArm64Main-0.9.1.klib",
+      "artifact_sha256": "f6a5988e7ace4b3da50dfbe64db3862f0df1a2aaf0399036877d4be3b1afd568",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2188,20 +2251,20 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-core-iossimulatorarm64-1.10.0.pom",
-          "sha256": "080bfa581d351a8bfb867de97e5a91db94b85603d6c88d902015cc5b7a3a4e46"
+          "name": "kotlinx-io-core-iossimulatorarm64-0.9.1.pom",
+          "sha256": "863e12c2a192629845b3a9a00ebec620921552d48e52418ed6dd59810765c5a3"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iosx64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-io-core-iosx64:0.9.1",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-serialization-core-iosX64Main-1.10.0.klib",
-      "artifact_sha256": "d82c0ab0599c161936c5650ddc466bc188a79d797976aa9fce6db9b0e9a86611",
+      "artifact": "kotlinx-io-core-iosX64Main-0.9.1.klib",
+      "artifact_sha256": "cb5757f27ce53e37947e42d9bced762c8e7019f68fd1ba5e5797256af2841e61",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2209,83 +2272,83 @@
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
-      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "source": "https://github.com/Kotlin/kotlinx-io",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-core-iosx64-1.10.0.pom",
-          "sha256": "2ec1686d6edc3db1926f48a9bda5991ac0ff4d5fc2f4616ad81437cd5d4dc8ba"
+          "name": "kotlinx-io-core-iosx64-0.9.1.pom",
+          "sha256": "c6f063d4ff5074435a22c977e007f5fbb4aec38639bdf84c987a9b491e475962"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosarm64:1.8.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iosarm64:1.11.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-io-iosArm64Main-1.8.0.klib",
-      "artifact_sha256": "647dd7b3aea98ae5e2b894e4669ac2dffe4e8d6e1735087d45813eec7fd0b17d",
+      "artifact": "kotlinx-serialization-core-iosArm64Main-1.11.0.klib",
+      "artifact_sha256": "c4231813a585384c493947756ee1ffbbd4d3e0b76ac98d2ed8335909aa1316a2",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-io-iosarm64-1.8.0.pom",
-          "sha256": "2279623883224c139215a8672cf60607eaaba5a84378d0a9521a5ee8ecdb0ddb"
+          "name": "kotlinx-serialization-core-iosarm64-1.11.0.pom",
+          "sha256": "c38e1d9563f156943e559fe5c035c1014ed6ad8f30c79ac29a543b9ed006282d"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iossimulatorarm64:1.8.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iossimulatorarm64:1.11.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-io-iosSimulatorArm64Main-1.8.0.klib",
-      "artifact_sha256": "bb77bb97349f9e2478bca81de2a9ec39b8e455fcf04d34cfab9d4c91e8a6cbce",
+      "artifact": "kotlinx-serialization-core-iosSimulatorArm64Main-1.11.0.klib",
+      "artifact_sha256": "6f4dbb2d2b56a25b8ec0fe620d2f0f6f5c88510d81d8361cf9fc1807c83e57a5",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-io-iossimulatorarm64-1.8.0.pom",
-          "sha256": "9c5515685415a12cd267040c9b8a2f8565ac3cd121cc142e5e0d4b5fe9f411b9"
+          "name": "kotlinx-serialization-core-iossimulatorarm64-1.11.0.pom",
+          "sha256": "be86f8daf5b672024fb18851c7cb45f0e0e9ceca394c2f2c74ef7065fb0c8819"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosx64:1.8.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-iosx64:1.11.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-io-iosX64Main-1.8.0.klib",
-      "artifact_sha256": "e2c55776f240b5c8b61eae5195388037b25affcd9b04eda072df7b7e1c00ba04",
+      "artifact": "kotlinx-serialization-core-iosX64Main-1.11.0.klib",
+      "artifact_sha256": "bb950155a3ecc0a9a7fc68b8220b2266604b718f1fb83af5ea7705153b2e10f5",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
-          "name": "The Apache Software License, Version 2.0",
+          "name": "Apache-2.0",
           "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
         }
       ],
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-io-iosx64-1.8.0.pom",
-          "sha256": "21bad00a14e5a023517b84766c9b3e8c10ae124f973fbb05634f066727c1715f"
+          "name": "kotlinx-serialization-core-iosx64-1.11.0.pom",
+          "sha256": "fbf9be33be6aee39ce3c34c86dfe1dab42b5939ee26cbba2a141d559dc9a5324"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iosarm64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosarm64:1.11.0",
       "configuration": "iosArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-iosArm64Main-1.10.0.klib",
-      "artifact_sha256": "7cf99f6991be371ceaf444e1c7af84e49c112ff39ca5459041ffbc398d6583d2",
+      "artifact": "kotlinx-serialization-json-io-iosArm64Main-1.11.0.klib",
+      "artifact_sha256": "6584fcc76a1ae024695bf387be2f5f97d6dcde1f0d075d59ddadaa8817620078",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2296,17 +2359,17 @@
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-iosarm64-1.10.0.pom",
-          "sha256": "debed774f88c82d6bdfa2a6266aecd0a2a320eca2e7861bcd03a184c46c5d72e"
+          "name": "kotlinx-serialization-json-io-iosarm64-1.11.0.pom",
+          "sha256": "357a66e6cfb8c8fe4e2e2a5072605a24e66570a304bdc74ca22291b5d06dbfcb"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iossimulatorarm64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iossimulatorarm64:1.11.0",
       "configuration": "iosSimulatorArm64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-iosSimulatorArm64Main-1.10.0.klib",
-      "artifact_sha256": "2724f881f6071428588dcd9376adf0b1a12078f9e27132c98017bb0ad9f8d700",
+      "artifact": "kotlinx-serialization-json-io-iosSimulatorArm64Main-1.11.0.klib",
+      "artifact_sha256": "f8f6cf24dae9a2ae208f60349914cfe67c607d049626251e6c1c600f207b53b7",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2317,17 +2380,17 @@
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-iossimulatorarm64-1.10.0.pom",
-          "sha256": "9feb2e6fe7af5aebc2dacf36dd459c1dcbb5be3aafc7b65e56199654e3dcd55b"
+          "name": "kotlinx-serialization-json-io-iossimulatorarm64-1.11.0.pom",
+          "sha256": "3776e203da10d369d5a57371e4c1b1a88022d77f347a6606b2ecc8ef01de54ee"
         }
       ],
       "embedded_notices": []
     },
     {
-      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iosx64:1.10.0",
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosx64:1.11.0",
       "configuration": "iosX64CompileKlibraries",
-      "artifact": "kotlinx-serialization-json-iosX64Main-1.10.0.klib",
-      "artifact_sha256": "4568befc15c43bff8f07a917111d2a46163697a51fd15c1421f62c8663cb2284",
+      "artifact": "kotlinx-serialization-json-io-iosX64Main-1.11.0.klib",
+      "artifact_sha256": "55160f6ae21822fcd0497791885dfffaa796f66e69708d62b2f0330d6344e866",
       "license": "Apache-2.0",
       "declared_licenses": [
         {
@@ -2338,8 +2401,71 @@
       "source": "https://github.com/Kotlin/kotlinx.serialization",
       "pom_inputs": [
         {
-          "name": "kotlinx-serialization-json-iosx64-1.10.0.pom",
-          "sha256": "ab03a2236e2ebd5e7863be99ba7cac4203197b7a15f8ea1cf6b8bb8315c15d2d"
+          "name": "kotlinx-serialization-json-io-iosx64-1.11.0.pom",
+          "sha256": "8e9f75e02caa18431f777dde8522f211c41c7b280962c6fff7fc029d6158a8d9"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iosarm64:1.11.0",
+      "configuration": "iosArm64CompileKlibraries",
+      "artifact": "kotlinx-serialization-json-iosArm64Main-1.11.0.klib",
+      "artifact_sha256": "b6bdde447bac2dc90e9d73a107aedb130cc4bd873227d87ce3009659434f9903",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "Apache-2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "pom_inputs": [
+        {
+          "name": "kotlinx-serialization-json-iosarm64-1.11.0.pom",
+          "sha256": "67b81973bfd0146e72a8a5b1864a647d9cd9d85468dc109e524733ba5c2fed87"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iossimulatorarm64:1.11.0",
+      "configuration": "iosSimulatorArm64CompileKlibraries",
+      "artifact": "kotlinx-serialization-json-iosSimulatorArm64Main-1.11.0.klib",
+      "artifact_sha256": "4083d68d4c3f31b9c30972c3bf5b02a6dc274f3fcafb1637182fa9b6db09bd73",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "Apache-2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "pom_inputs": [
+        {
+          "name": "kotlinx-serialization-json-iossimulatorarm64-1.11.0.pom",
+          "sha256": "117bfff196740bbf38de14d26331a92949fbfc3e4737cf5d1614ad964b80cc29"
+        }
+      ],
+      "embedded_notices": []
+    },
+    {
+      "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-json-iosx64:1.11.0",
+      "configuration": "iosX64CompileKlibraries",
+      "artifact": "kotlinx-serialization-json-iosX64Main-1.11.0.klib",
+      "artifact_sha256": "ba66bcfd319335b3cc9a8ee19cd021ea1c76c7776fef5e07a2bd5471627d3b4e",
+      "license": "Apache-2.0",
+      "declared_licenses": [
+        {
+          "name": "Apache-2.0",
+          "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+        }
+      ],
+      "source": "https://github.com/Kotlin/kotlinx.serialization",
+      "pom_inputs": [
+        {
+          "name": "kotlinx-serialization-json-iosx64-1.11.0.pom",
+          "sha256": "713da112d3c9c24baa3224df2b617759ab5e8b3b01a2ea491b10f751f9634cef"
         }
       ],
       "embedded_notices": []
@@ -2492,7 +2618,7 @@
     }
   ],
   "notices_complete_for_scope": true,
-  "notices_sha256": "090378228b1458b18d0e4393089e61fd72cc8b3db1cc2c1f1e98966f1931c5a3",
+  "notices_sha256": "7121a3c1e1ee6d70c4a757ec3ad583bce630a27438db18d67f7da292aa158a96",
   "project_license_sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
   "excluded": [
     "Project Shared framework (covered by AGPL)",
