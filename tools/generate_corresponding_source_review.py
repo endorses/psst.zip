@@ -15,6 +15,7 @@ import io
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 
 import browser_preferred_source_relationships as preferred
@@ -71,6 +72,35 @@ from release_artifacts import (
     json_bytes,
     require,
 )
+
+# Fixed milestones expose the failing boundary without external error payloads.
+SOURCE_STAGES = frozenset(
+    {
+        "input-validation",
+        "signed-output-verification",
+        "source-ci",
+        "base-authentication",
+        "native-authentication",
+        "source-replay",
+        "source-runtime-replay",
+        "source-application-archive",
+        "source-backend-replay",
+        "source-browser-replay",
+        "source-notice-coverage",
+        "source-evidence-recheck",
+        "native-checks",
+        "source-scanners",
+        "image-scanners",
+        "input-recheck",
+        "output-creation",
+    }
+)
+
+
+def source_stage(stage: str) -> None:
+    require(stage in SOURCE_STAGES, "Unknown corresponding-source stage")
+    print("Corresponding-source stage: " + stage, file=sys.stderr, flush=True)
+
 
 # Same bound as the native source scanner's Git snapshot. No extraction is needed.
 MAX_APPLICATION_SOURCE_BYTES = 256 * 1024**2
@@ -262,6 +292,7 @@ def corresponding_source_report(
     native = aggregate_native_reports(binding, native_measurements, authenticator)[
         "final-image-smoke"
     ]["details"]["native_measurements"]
+    source_stage("source-runtime-replay")
     runtime, snapshots = verify_runtime_source_records(
         binding,
         records=runtime_source_records,
@@ -287,9 +318,11 @@ def corresponding_source_report(
     require(
         application_name in source_assets, "Committed application source asset missing"
     )
+    source_stage("source-application-archive")
     application = verify_application_source_archive(
         binding, root=root, source=source_assets[application_name]
     )
+    source_stage("source-backend-replay")
     backend = verify_backend_source_inputs(
         binding,
         root=root,
@@ -301,6 +334,7 @@ def corresponding_source_report(
         upstream_collection=upstream_collection,
         authenticator=authenticator,
     )
+    source_stage("source-browser-replay")
     browser = verify_browser_source_inputs(
         binding,
         root=root,
@@ -330,6 +364,7 @@ def corresponding_source_report(
         evidence[name] = value
         return {"status": "complete", "evidence_digest": sha256(json_bytes(value))}
 
+    source_stage("source-notice-coverage")
     app_coverage = retain("application", application)
     for platform in PLATFORMS:
         arch = platform.split("/")[1]
@@ -436,6 +471,7 @@ def corresponding_source_report(
         snapshots[native_measurements[platform]] = native[platform][
             "measurement_digest"
         ]
+    source_stage("source-evidence-recheck")
     require(
         covered == set(source_assets),
         "An offered source asset lacks substantive source coverage",
@@ -1408,6 +1444,7 @@ def authenticate_native_inputs(binding, trees, authenticator) -> None:
 
 def run_command(args) -> tuple[dict, dict]:
     """Produce new local gate/evidence files; never sign, publish or rebuild."""
+    source_stage("input-validation")
     repository_name(args.repository)
     matches(args.version, VERSION, "Invalid source command version")
     matches(args.commit, COMMIT, "Invalid source command commit")
@@ -1465,6 +1502,7 @@ def run_command(args) -> tuple[dict, dict]:
         run_attempt=args.run_attempt,
     )
     if verify_only:
+        source_stage("signed-output-verification")
         output_snapshots = {
             args.output / name: read_bounded_file(args.output / name)
             for name in (
@@ -1515,6 +1553,7 @@ def run_command(args) -> tuple[dict, dict]:
         p: t / "native/native-measurement.json" for p, t in trees.items()
     }
     if checks_output is not None:
+        source_stage("source-ci")
         ci_report = source_ci_report(
             binding,
             run_id=args.run_id,
@@ -1524,10 +1563,13 @@ def run_command(args) -> tuple[dict, dict]:
         snapshots.update(
             {path: source_digest(path) for path in native_measurements.values()}
         )
+        source_stage("base-authentication")
         bases_raw = read_bounded_file(resolved_bases)
         authenticator.authenticate(bases_raw, binding)
         snapshots[resolved_bases] = sha256(bases_raw)
+        source_stage("native-authentication")
         authenticate_native_inputs(binding, trees, authenticator)
+    source_stage("source-replay")
     report, evidence = corresponding_source_report(
         binding,
         root=args.root,
@@ -1566,8 +1608,10 @@ def run_command(args) -> tuple[dict, dict]:
     )
     checks_payloads = {}
     if checks_output is not None:
+        source_stage("native-checks")
         checks = aggregate_native_reports(binding, native_measurements, authenticator)
         checks["source-ci"] = ci_report
+        source_stage("source-scanners")
         checks["source-scanners"] = aggregate_source_scans(
             binding,
             native_measurements={
@@ -1578,8 +1622,11 @@ def run_command(args) -> tuple[dict, dict]:
             resolved_bases=resolved_bases,
             authenticator=authenticator,
         )
+        source_stage("image-scanners")
         checks["final-image-scanners"] = aggregate_image_scans(
             binding,
+            repository_root=args.root,
+            resolved_bases=resolved_bases,
             native_measurements=native_measurements,
             runtime_packs={p: t / "native/pack" for p, t in trees.items()},
             scans={
@@ -1615,6 +1662,7 @@ def run_command(args) -> tuple[dict, dict]:
             and sum(map(len, checks_payloads.values())) <= MAX_COMMAND_OUTPUT,
             "Check command evidence exceeds bounds",
         )
+    source_stage("input-recheck")
     require(
         read_bounded_file(args.prepared / "release-inputs.json") == record_raw
         and {path.name for path in args.prepared.iterdir()} == expected_names,
@@ -1633,6 +1681,7 @@ def run_command(args) -> tuple[dict, dict]:
         and sum(map(len, payloads.values())) <= MAX_COMMAND_OUTPUT,
         "Source command evidence exceeds bounds",
     )
+    source_stage("output-creation")
     # Create only after all substantive checks/rechecks finish. Existing or
     # partially written output is never reused or overwritten on a retry.
     browser_inventory.root_directory(args.output.parent)

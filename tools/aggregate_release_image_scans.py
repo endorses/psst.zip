@@ -1,8 +1,8 @@
 """Derive a final image scanner gate from authenticated execution facts.
 
-This cannot accept disposition/reviewer flags. The only implemented dismissal is
-that every authoritative affected Go package is absent from the exact compiled
-dependency graph. Reachability or version-range approximations are not used.
+This cannot accept caller disposition/reviewer flags. Findings either have every
+official affected package absent, or match an expiring exact committed acceptance
+for the official Caddy binary. Reachability approximations are not used.
 The trusted workflow must sign the resulting gate; this module cannot publish.
 """
 
@@ -51,6 +51,7 @@ from verify_caddy_source_signatures import (
     WORKFLOW as CADDY_WORKFLOW,
     verification_arguments,
 )
+from temporary_caddy_acceptance import accept_finding, committed_acceptance
 
 GO_ID = re.compile(r"GO-[0-9]{4}-[0-9]+\Z")
 FILE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}\Z")
@@ -554,7 +555,13 @@ def checked_graph(
 
 
 def derive_absence(
-    row: dict, graph: dict, root: Path, paths: set[str], modules: dict[str, str]
+    row: dict,
+    graph: dict,
+    root: Path,
+    paths: set[str],
+    modules: dict[str, str],
+    *,
+    acceptance=None,
 ) -> dict:
     finding = row["finding"]
     require(
@@ -638,10 +645,23 @@ def derive_absence(
                 "Affected import path is uncertain",
             )
             affected.add(imported["path"])
-    require(
-        affected and not affected.intersection(paths),
-        "Affected/uncertain Go packages are present in the exact compiler graph; repair/rescan required",
-    )
+    require(affected, "Official affected Go packages are missing or uncertain")
+    if affected.intersection(paths):
+        require(
+            acceptance is not None,
+            "Affected/uncertain Go packages are present in the exact compiler graph; repair/rescan required",
+        )
+        return acceptance(
+            row,
+            graph,
+            affected,
+            {
+                "id": identifier,
+                "sha256": entry["sha256"],
+                "origin": entry["origin"],
+                "modified": advisory["modified"],
+            },
+        )
     return {
         **row,
         "disposition": "not-applicable",
@@ -668,6 +688,8 @@ def aggregate_image_scans(
     raw_scans: dict[str, Path],
     compiler_graphs: dict[str, Path],
     authenticator: MeasurementAuthenticator,
+    repository_root: Path | None = None,
+    resolved_bases: Path | None = None,
 ) -> dict:
     """Authenticate all exact facts; return unsigned gate bytes only if proven."""
     subjects = checked_binding(binding)
@@ -684,7 +706,51 @@ def aggregate_image_scans(
         isinstance(compiler_graphs, dict) and set(compiler_graphs) <= targets,
         "Unexpected compiler graph target",
     )
-    reports = []
+    reports, exception_state = [], None
+
+    def accept_current_caddy(row, graph, affected, official, target):
+        nonlocal exception_state
+        require(
+            target in {"web-amd64", "web-arm64"},
+            "Backend findings cannot use Caddy acceptance",
+        )
+        if exception_state is None:
+            node, fact = committed_acceptance(binding, repository_root)
+            bases, bases_digest = load_authenticated(
+                resolved_bases, binding, authenticator
+            )
+            require(
+                bases.get("source_commit") == binding.commit
+                and bases.get("version") == binding.version
+                and bases.get("base_images", {}).get("caddy") == node["base_image"]
+                and bases.get("base_platform_digests", {}).get("caddy")
+                == {p: v["base_digest"] for p, v in node["platforms"].items()},
+                "Resolved Caddy index/architectures differ from committed acceptance",
+            )
+            bases_raw = read_bounded_file(resolved_bases)
+            require(
+                sha256(bases_raw) == bases_digest,
+                "Accepted Caddy base evidence changed after authentication",
+            )
+            exception_state = node, fact, bases_raw
+        node, fact, _ = exception_state
+        original = pack.get("bindings", {}).get("web", {}).get("original_image_id")
+        matches(original, DIGEST, "Accepted Caddy original runtime identity is missing")
+        require(
+            graph.get("signature_verification", {}).get("image_id") == original,
+            "Accepted Caddy upstream proof differs from authenticated runtime inputs",
+        )
+        return accept_finding(
+            row,
+            graph,
+            affected,
+            official,
+            binding=binding,
+            target=target,
+            node=node,
+            fact=fact,
+        )
+
     for platform in PLATFORMS:
         context = NativeSourceContext(
             binding.repository, binding.version, binding.commit, platform
@@ -722,7 +788,23 @@ def aggregate_image_scans(
                     pack=pack,
                 )
                 assessed = [
-                    derive_absence(row, graph, graph_path.parent, paths, modules)
+                    derive_absence(
+                        row,
+                        graph,
+                        graph_path.parent,
+                        paths,
+                        modules,
+                        acceptance=(
+                            (
+                                lambda row, graph, affected, official: accept_current_caddy(
+                                    row, graph, affected, official, target
+                                )
+                            )
+                            if repository_root is not None
+                            and resolved_bases is not None
+                            else None
+                        ),
+                    )
                     for row in findings
                 ]
             reports.append(
@@ -744,6 +826,11 @@ def aggregate_image_scans(
                     "image": image,
                 }
             )
+    if exception_state is not None:
+        require(
+            read_bounded_file(resolved_bases) == exception_state[2],
+            "Accepted Caddy base evidence changed during aggregation",
+        )
     return {
         "schema_version": 1,
         "gate": "final-image-scanners",
@@ -751,6 +838,15 @@ def aggregate_image_scans(
         "passed": True,
         "details": {
             "scans": reports,
-            "derivation_policy": "exact-native-binary-compiler-graph-authoritative-Go-package-absence-v1",
+            "derivation_policy": (
+                "exact-native-binary-compiler-graph-authoritative-Go-package-absence-or-committed-temporary-caddy-acceptance-v2"
+                if exception_state is not None
+                else "exact-native-binary-compiler-graph-authoritative-Go-package-absence-v1"
+            ),
+            **(
+                {"temporary_caddy_exception_policy": exception_state[1]}
+                if exception_state is not None
+                else {}
+            ),
         },
     }

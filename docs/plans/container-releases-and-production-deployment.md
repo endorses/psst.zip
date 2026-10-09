@@ -3390,7 +3390,7 @@ archives were not downloaded for this review.
       Skopeo `1.24.1` source revision
       `77f3d92f861271c7cb9175afcf876017bcae9202`, with CGO enabled. Both retained
       AMD64 archives fail as an unprivileged user with `chown …/blobs/sha256:
-  operation not permitted`; production suppresses that stderr and reports a
+operation not permitted`; production suppresses that stderr and reports a
       generic rejection. The archives begin with regular blob entries rather
       than directory entries. Skopeo's archive unpacker requests `NoLchown`, but
       its vendored storage code still creates missing parent directories with
@@ -3415,11 +3415,177 @@ archives were not downloaded for this review.
       `--preserve-digests`. Exact child hashes remained unchanged; no registry or
       release writes were used by that probe. No timing-only workflow or new
       broad test suite is needed for this repair.
-- [ ] Format the changed files and merge through the protected pull-request
-      checks. Record the tested head and resulting merge before tagging the
-      corrected source.
-- [ ] Preserve the v0.1.4 tag and stopped draft for explicit reconciliation.
-      Changed publication code needs a fresh unused version and fresh bound
-      review evidence; do not replay the partially started transaction or silently
-      adopt/delete its draft. Actual hosted publication and independent public
-      delivery remain pending; first-package initialization stays enabled.
+- [x] Format the changed files and merge through protected PR #26. Head
+      `9f27e025a456a80c2853a27e476f341e06765d0e` passed all five required contexts
+      and GitGuardian. Merge `69a53d9256080315e688224f4c45ecd032d669e7` has
+      identical tested tree `2f86e4842b6ae405e68335ad338c8266f2de80b2`;
+      main CI `37887861625` passed. Application jobs correctly skipped unrelated
+      builds; security checks still ran. The existing complete release/Compose
+      regression step took 39s, and the main repository-security job took 1m32s.
+      One bounded independent review
+      found no material defects. The actual pinned AMD64 CLI also selected the
+      staged ARM64 child correctly using a tiny local fixture.
+- [x] Preserve the v0.1.4 tag and stopped draft for explicit reconciliation.
+      No partially started transaction was replayed, and its draft was neither
+      adopted nor deleted. First-package initialization stays enabled.
+
+### v0.1.5 rootless publication candidate
+
+- [x] Verify v0.1.5 is unused, create its annotated tag at tested merge
+      `69a53d9256080315e688224f4c45ecd032d669e7`, and start run `37888086205`,
+      attempt 1. The tag preserves every prior version and selects the repaired
+      rootless transfer implementation.
+- [x] Inspect the completed candidate run. Repository security, exact-tag
+      backend/web CI and both native container architecture jobs passed;
+      unrelated mobile jobs skipped. Unsigned release assembly completed in 64s.
+      Job `113685401377` then failed in “Authenticate current native evidence and
+      produce complete source report” after 115.8s. Its only failure diagnostic
+      is `Corresponding-source command failed; publication remains unauthorized.`
+      The exact first exception is not retained; elapsed time does not establish
+      which internal stage failed. No source-review output, recovery run, human
+      approval gate or publisher was reached. No v0.1.5 release draft or image
+      publication was created by this run.
+- [x] Authenticate the retained AMD64 source scan independently with GitHub
+      attestation verification, requiring this exact source, tag, hosted workflow
+      identity and run attempt. Its SHA256 is
+      `0ec44461fefba3999090ada6182c35c60413ada2b40b400db20e919d43ecf680`;
+      the signed invocation is run `37888086205`, attempt 1. Scanner completion
+      is not vulnerability approval: the scan reports 122 unresolved finding
+      rows across eleven Go advisories, including 89 symbol-trace rows, with
+      fixed version `v1.27.2`. Affected imported packages include `net/http`,
+      `crypto/tls`, `mime/multipart`, `net/textproto` and `os`. The npm audit has
+      zero findings. Independently of the opaque assembly exception, these
+      findings cannot pass `aggregate_release_source_scans.py`: package/symbol
+      findings and affected imported source packages require repair and rescan.
+- [x] Record the separate security blocker and stop further release work under
+      the project's unexpected-issues instruction. The backend uses Go 1.27.1;
+      the retained Caddy image uses Go 1.26.8 and `golang.org/x/net` 0.59.0,
+      with findings fixed by updated builds/dependencies. Go 1.27.2 and 1.26.9
+      were released on October 8 with security fixes; see the
+      [official Go release history](https://go.dev/doc/devel/release#go1.27.2).
+      The latest stable pins should have been rechecked before tagging this
+      candidate. The rootless OCI repair remains merged and verified; it does
+      not resolve these newly reported vulnerabilities.
+- [ ] Refresh the backend Go toolchain and Caddy build/dependencies, then rescan
+      the resulting source and images. Keep implementation separate from actual
+      source/image scan validation; do not suppress findings or replay the failed
+      publication transaction.
+- [x] Update the backend builder, release base resolver, dependency/source
+      producers and five CI/release toolchain selections to Go `1.27.2`.
+      The live official `golang:1.27.2-alpine3.24` index offers both native
+      architectures. Add complete immutable source pins for Go `1.27.2`
+      (`022c8636110ebac86a9b88724cda168ed713c21f`, archive SHA256
+      `67e7cc3698341f50a19a0c36610d08945cdf841ea82c90fd576ae69ba3df9be5`)
+      and `1.26.9` (`2ae494ef9fb90e0da0073c31800ba38870249994`, SHA256
+      `6f6eeac1b039c4f47d64e4236e676ae23160d3be4f9968f9ea96100eb1449f74`).
+      Existing archive validation checked both complete trees, required compiler
+      and runtime files, actual `VERSION` contents and 38 notices per archive.
+      Historical pins remain available for existing source-policy fixtures.
+      All 88 relevant existing preparation, source-measurement, dependency and
+      runtime replay/packaging tests passed in 4.58s. Black/Prettier formatting
+      and whitespace checks passed; owned temporary downloads were removed.
+      No new tests or timing-only workflows were added.
+- [x] Verify the actual local AMD64 backend build and source scan at repair
+      commit `34c8eb17c121223c302bee80193e25b986e83cd8` using the official Go
+      `1.27.2` Linux AMD64 distribution. Its complete downloaded archive SHA256
+      `ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5`
+      matches the official download metadata. Release-equivalent `CGO_ENABLED=0`
+      compilation passed in 4.327s; the server's build metadata confirms Go
+      `1.27.2`. Rebuild pinned govulncheck `v1.8.0` with that toolchain, verify
+      its expected GoSumDB module sum, and scan the actual backend roots against
+      the official advisory database (last modified October 8 at 22:31:09 UTC).
+      The scan completed in 1.822s with zero package/symbol findings. Its 21
+      module-only findings passed the existing `go_facts` policy against actual
+      all-root/server import graphs and selected module checksums: every official
+      affected package is absent. Raw scanner SHA256 is
+      `35638709c19443c5f6cf641c5c875a8fef6354a47f84039dee304f46f360963a`.
+      This is local source evidence, not an authenticated release gate or a claim
+      about a container image or ARM64 execution. Temporary module downloads,
+      compiler caches, toolchain, scanner and server are removed after inspection.
+- [ ] Validate actual container builds and authenticated native source/image
+      scans with the new toolchain in the eventual repaired candidate. Local
+      source validation above does not prove a rebuilt image is vulnerability-free;
+      Caddy still prevents completing the combined security gates. No candidate
+      tag or release workflow is created while the producer choice is pending.
+- [x] Recheck the upstream Caddy availability blocker on October 9. Latest stable
+      Caddy is still `v2.11.7`, published October 3. The official `caddy:2-alpine`
+      index remains
+      `sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f`;
+      both native images were created October 5, before the Go security fixes.
+      The [official AMD64 SBOM](https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.sbom)
+      has SHA256
+      `0ffe9feaac4a9a5e3fc201e7c8864ad1099e14783fc1c60bda48c74b52e33099`
+      and records Go `1.26.8` and `golang.org/x/net` `0.59.0`. Upstream merged
+      [the x/net update](https://github.com/caddyserver/caddy/commit/1b3838c1fdc052a27effd424ea62124ae0dd09b5)
+      on October 9 at 04:42:01 UTC; it is not yet in a stable release.
+- [x] Resolve the Caddy producer choice with the operator: wait for a patched
+      stable official image, or implement a separately verified build of stable
+      Caddy source with patched stable dependencies. Current source collection
+      requires byte equality with the signed upstream executable and exact
+      vendored module/compiler correspondence. Changing `CADDY_GO_IMAGE` alone
+      patches the analysis compiler, leaves the runtime vulnerable and breaks
+      correspondence. A custom executable needs a reviewed producer/source and
+      provenance contract; upstream development commits are not stable releases.
+      On October 9 the operator instead authorized temporary acceptance of the
+      current official Caddy findings, as bounded below. No replacement Caddy
+      build is required for that decision.
+- [ ] Complete signed source/scan/smoke/notice assembly and native recovery
+      evidence for a repaired candidate. Prepare a fresh bound distribution
+      presentation only after those actual gates pass.
+- [ ] Obtain both configured fresh human GitHub reviews and verify actual
+      hosted publication, public linked packages, immutable release and fresh
+      anonymous delivery. Earlier v0.1.4 approvals do not authorize this candidate.
+      Production migration and independent off-host recovery remain deferred.
+
+## Temporary official Caddy acceptance (2026-10-09)
+
+The operator explicitly authorized proceeding with the current official Caddy
+images while their Go/runtime networking fixes await a stable upstream image.
+This decision supersedes waiting for Caddy before preparing another candidate;
+the backend remains on patched Go 1.27.2. VPS migration and independent off-host
+backups remain deferred by the operator.
+
+- [x] Bind the acceptance to the exact official Caddy `v2.11.7` index and both
+      architecture manifests, actual executable hashes and signed source
+      revision in `tools/container-distribution-policy.json`. Cover only the 18
+      exact scanner/module/version rows across 13 official Go advisories for
+      `stdlib` 1.26.8 and `golang.org/x/net` 0.59.0. Fresh official advisory
+      bytes match their retained compiler evidence hashes on both architectures.
+      The existing affected-package absence path remains separate.
+- [x] Set expiry to `2026-10-23T00:00:00Z`, within fourteen days of authorization.
+      The source gate must still authenticate native measurements, original
+      upstream signatures, source correspondence, actual compiled dependencies
+      and resolved base identities before assigning `temporarily-accepted`.
+      Findings on the backend, OS packages, different binaries/base manifests,
+      altered advisories or unlisted vulnerabilities remain rejected.
+- [x] Bind the policy to the exact source Git blob and source-review receipt,
+      disclose known affected code, identities, advisories and expiry in the
+      distribution presentation, and recheck acceptance before publication
+      admission, first remote mutation, version tags and immutable publication.
+      An expired acceptance stops future publication; it does not invalidate
+      previously published immutable artifacts or their readback verification.
+- [x] Add fixed corresponding-source diagnostic milestones to identify a failing
+      boundary without leaking external exception text. Preserve source replay,
+      scanner and output checks, including late input-substitution rejection.
+- [x] Complete meaningful offline regression checks: seven new exact-policy
+      aggregation/consumer tests pass in 0.887s; four disclosure/publication
+      boundary tests pass in 0.33s. The full existing release/Compose suite plus
+      these regressions passes 404 tests in 27.298s (one existing conditional
+      skip), and 100 repository/native-input/source-packaging checks pass in
+      4.608s (one existing conditional skip). Repository files/history scanning
+      and native notice input freshness also pass. No new compiler, browser,
+      simulator or network-heavy test jobs were added. Black, Prettier and
+      whitespace checks pass. Reviewed release-policy/helper changes select
+      repository security checks rather than unrelated application jobs;
+      workflow/toolchain changes and exact-tag server CI retain their checks.
+- [ ] Push and merge the verified changes through the protected main workflow;
+      preserve all earlier candidate tags and failed publication transactions.
+- [ ] Prepare a fresh exact-source backend/web candidate and inspect actual
+      native build, source, image, notice, correspondence and recovery gates.
+      The accepted Caddy runtime remains affected; a passing gate records the
+      explicit temporary acceptance and does not claim it is patched.
+- [ ] Obtain the configured fresh human distribution and publication approvals,
+      then verify immutable GitHub release assets, public GHCR images and fresh
+      anonymous delivery. Implementation alone does not complete publication.
+- [ ] Remove this exception when a patched stable official Caddy image becomes
+      available; rebuild and rescan before publishing the replacement.

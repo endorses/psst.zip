@@ -182,6 +182,51 @@ class PublicationCommand(unittest.TestCase):
     def events(self):
         return self.real.events()
 
+    def reject_expired_scanner_recheck(self, boundary):
+        original = driver.verify_gates
+        checks = 0
+
+        def verify(reports, gates, binding, verifier):
+            nonlocal checks
+            if set(gates) == {"final-image-scanners"}:
+                checks += 1
+                if checks == boundary:
+                    raise InvalidRelease("Temporary Caddy acceptance has expired")
+            return original(reports, gates, binding, verifier)
+
+        with (
+            patch.object(driver, "verify_gates", side_effect=verify),
+            self.assertRaisesRegex(InvalidRelease, "acceptance has expired"),
+        ):
+            self.publish()
+        self.assertEqual(checks, boundary)
+
+    def test_expiry_after_preflight_prevents_first_remote_mutation(self):
+        self.reject_expired_scanner_recheck(1)
+        self.assertFalse((self.state / "v1.2.3.jsonl").exists())
+        self.assertTrue(all(method == "GET" for method, _, _, _ in self.api.calls))
+
+    def test_expiry_during_readbacks_prevents_version_tags_and_preserves_transaction(
+        self,
+    ):
+        self.reject_expired_scanner_recheck(2)
+        intents = [
+            row["operation"] for row in self.events() if row["phase"] == "intent"
+        ]
+        self.assertIn("attest-asset-readback", intents)
+        self.assertNotIn("tag-backend", intents)
+        self.assertNotIn("publish-release", intents)
+        self.assertTrue(list(self.state.glob("publication-inputs-*")))
+
+    def test_expiry_after_version_tags_prevents_immutable_publication(self):
+        self.reject_expired_scanner_recheck(3)
+        intents = [
+            row["operation"] for row in self.events() if row["phase"] == "intent"
+        ]
+        self.assertIn("tag-backend", intents)
+        self.assertNotIn("publish-release", intents)
+        self.assertTrue(list(self.state.glob("publication-inputs-*")))
+
     def diagnostics(self, outcome):
         return diagnostics.project(
             self.state,
