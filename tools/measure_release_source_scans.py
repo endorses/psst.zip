@@ -32,7 +32,7 @@ from release_artifacts import (
 
 SCANNER_VERSION = "v1.8.0"
 SCANNER_SUM = "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U="
-GO_VERSION = "go1.27.1"
+GO_VERSION = "go1.27.2"
 MAX_RAW = 32 * 1024**2
 SOURCE_LIMIT = 256 * 1024**2
 GO_SCRIPT = r"""set -eu

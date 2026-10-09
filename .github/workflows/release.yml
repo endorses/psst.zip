@@ -684,7 +684,7 @@ jobs:
           path: ${{ runner.temp }}/candidate-assembly/upstream
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: false
       - name: Verify exact retained trees and assemble unsigned candidate inputs
         run: |
@@ -1233,7 +1233,7 @@ jobs:
           PY
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: false
       - name: Build and install stable native Skopeo from pinned upstream source
         run: |

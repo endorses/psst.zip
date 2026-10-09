@@ -3467,8 +3467,48 @@ operation not permitted`; production suppresses that stderr and reports a
       candidate. The rootless OCI repair remains merged and verified; it does
       not resolve these newly reported vulnerabilities.
 - [ ] Refresh the backend Go toolchain and Caddy build/dependencies, then rescan
-      the resulting source and images. This separate repair has not started;
-      do not suppress the findings or replay the failed publication transaction.
+      the resulting source and images. Keep implementation separate from actual
+      source/image scan validation; do not suppress findings or replay the failed
+      publication transaction.
+- [x] Update the backend builder, release base resolver, dependency/source
+      producers and five CI/release toolchain selections to Go `1.27.2`.
+      The live official `golang:1.27.2-alpine3.24` index offers both native
+      architectures. Add complete immutable source pins for Go `1.27.2`
+      (`022c8636110ebac86a9b88724cda168ed713c21f`, archive SHA256
+      `67e7cc3698341f50a19a0c36610d08945cdf841ea82c90fd576ae69ba3df9be5`)
+      and `1.26.9` (`2ae494ef9fb90e0da0073c31800ba38870249994`, SHA256
+      `6f6eeac1b039c4f47d64e4236e676ae23160d3be4f9968f9ea96100eb1449f74`).
+      Existing archive validation checked both complete trees, required compiler
+      and runtime files, actual `VERSION` contents and 38 notices per archive.
+      Historical pins remain available for existing source-policy fixtures.
+      All 88 relevant existing preparation, source-measurement, dependency and
+      runtime replay/packaging tests passed in 4.58s. Black/Prettier formatting
+      and whitespace checks passed; owned temporary downloads were removed.
+      No new tests or timing-only workflows were added.
+- [ ] Validate actual backend compilation and source/image scans with the new
+      toolchain in the eventual repaired candidate. Pin consistency and source
+      validation above do not prove a rebuilt image is vulnerability-free;
+      Caddy still prevents completing the combined security gates.
+- [x] Recheck the upstream Caddy availability blocker on October 9. Latest stable
+      Caddy is still `v2.11.7`, published October 3. The official `caddy:2-alpine`
+      index remains
+      `sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f`;
+      both native images were created October 5, before the Go security fixes.
+      The [official AMD64 SBOM](https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_linux_amd64.sbom)
+      has SHA256
+      `0ffe9feaac4a9a5e3fc201e7c8864ad1099e14783fc1c60bda48c74b52e33099`
+      and records Go `1.26.8` and `golang.org/x/net` `0.59.0`. Upstream merged
+      [the x/net update](https://github.com/caddyserver/caddy/commit/1b3838c1fdc052a27effd424ea62124ae0dd09b5)
+      on October 9 at 04:42:01 UTC; it is not yet in a stable release.
+- [ ] Resolve the Caddy producer choice with the operator: wait for a patched
+      stable official image, or implement a separately verified build of stable
+      Caddy source with patched stable dependencies. Current source collection
+      requires byte equality with the signed upstream executable and exact
+      vendored module/compiler correspondence. Changing `CADDY_GO_IMAGE` alone
+      patches the analysis compiler, leaves the runtime vulnerable and breaks
+      correspondence. A custom executable needs a reviewed producer/source and
+      provenance contract; upstream development commits are not stable releases.
+      No replacement Caddy build, candidate workflow or publication has started.
 - [ ] Complete signed source/scan/smoke/notice assembly and native recovery
       evidence for a repaired candidate. Prepare a fresh bound distribution
       presentation only after those actual gates pass.

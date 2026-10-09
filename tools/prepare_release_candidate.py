@@ -26,7 +26,7 @@ from release_artifacts import (
 )
 
 BASES = {
-    "golang": "docker.io/library/golang:1.27.1-alpine3.24",
+    "golang": "docker.io/library/golang:1.27.2-alpine3.24",
     "alpine": "docker.io/library/alpine:3.24.2",
     "node": "docker.io/library/node:26.10.0-alpine3.24",
     "caddy": "docker.io/library/caddy:2-alpine",

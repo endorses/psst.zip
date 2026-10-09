@@ -11,12 +11,28 @@
       "size": 34443123
     },
     {
+      "version": "go1.26.9",
+      "commit": "2ae494ef9fb90e0da0073c31800ba38870249994",
+      "file": "go-2ae494ef9fb90e0da0073c31800ba38870249994.tar.gz",
+      "url": "https://codeload.github.com/golang/go/tar.gz/2ae494ef9fb90e0da0073c31800ba38870249994",
+      "sha256": "6f6eeac1b039c4f47d64e4236e676ae23160d3be4f9968f9ea96100eb1449f74",
+      "size": 34461313
+    },
+    {
       "version": "go1.27.1",
       "commit": "862c888e612ac346c7c4d99c9392bdfd265f33b0",
       "file": "go-862c888e612ac346c7c4d99c9392bdfd265f33b0.tar.gz",
       "url": "https://codeload.github.com/golang/go/tar.gz/862c888e612ac346c7c4d99c9392bdfd265f33b0",
       "sha256": "70824105ced563617fc78fa7448626f8fc76cce7414c7a02b859c6c5124dfa6d",
       "size": 35495660
+    },
+    {
+      "version": "go1.27.2",
+      "commit": "022c8636110ebac86a9b88724cda168ed713c21f",
+      "file": "go-022c8636110ebac86a9b88724cda168ed713c21f.tar.gz",
+      "url": "https://codeload.github.com/golang/go/tar.gz/022c8636110ebac86a9b88724cda168ed713c21f",
+      "sha256": "67e7cc3698341f50a19a0c36610d08945cdf841ea82c90fd576ae69ba3df9be5",
+      "size": 35527204
     }
   ]
 }
