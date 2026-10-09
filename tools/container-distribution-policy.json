@@ -2,5 +2,175 @@
   "schema_version": 1,
   "kind": "container-distribution-review-policy",
   "environment": "container-release",
-  "reviewers": ["endorses"]
+  "reviewers": ["endorses"],
+  "temporary_caddy_exception": {
+    "schema_version": 1,
+    "kind": "temporary-caddy-vulnerability-acceptance",
+    "id": "caddy-2-11-7-20261009",
+    "repository": "endorses/psst.zip",
+    "authorized_by": "endorses",
+    "authorized_at": "2026-10-09T07:15:59Z",
+    "expires_at": "2026-10-23T00:00:00Z",
+    "reason": "The operator temporarily accepts these exact known Go and x/net findings in the current official Caddy 2.11.7 images to complete the backend/web release. Affected code may remain reachable. Remove this exception and rebuild/rescan when patched stable official Caddy images are available; this acceptance expires on October 23, 2026.",
+    "caddy_version": "v2.11.7",
+    "source_revision": "72dd0fb067f6d7826c7f79907670ba4a713bfe37",
+    "go_version": "go1.26.8",
+    "base_image": "docker.io/library/caddy@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f",
+    "platforms": {
+      "linux/amd64": {
+        "base_digest": "sha256:173b26306d711395accaeba8b67afcaad2a085ccb1e6bf26010bfe8c095a5229",
+        "binary_sha256": "sha256:678ade3bfc088749c81a681adc603333ee0bb023b6a6cfe3c0f58bef8ff854e9"
+      },
+      "linux/arm64": {
+        "base_digest": "sha256:84058f1a0e5beb97664a9b79dcfd267b594c033d5bb88d8463cdfb59c0779197",
+        "binary_sha256": "sha256:0019d864a2cdee41c3675cb2a26185833c5d9540a48f5a6729142c0413461b60"
+      }
+    },
+    "findings": [
+      {
+        "go_id": "GO-2026-6603",
+        "scanner_id": "CVE-2026-78659",
+        "module": "golang.org/x/net",
+        "installed_version": "v0.59.0",
+        "fixed_version": "0.60.0",
+        "advisory_sha256": "sha256:76a1945737d8c2ea4a34d18fd44230946b1185894ea155f9812d1149b2838d3c"
+      },
+      {
+        "go_id": "GO-2026-6610",
+        "scanner_id": "CVE-2026-78660",
+        "module": "golang.org/x/net",
+        "installed_version": "v0.59.0",
+        "fixed_version": "0.60.0",
+        "advisory_sha256": "sha256:2c7881c7945c7c5eadefd3d0caceb1a23b14467373fb28c601141545ff21f190"
+      },
+      {
+        "go_id": "GO-2026-6611",
+        "scanner_id": "CVE-2026-78669",
+        "module": "golang.org/x/net",
+        "installed_version": "v0.59.0",
+        "fixed_version": "0.60.0",
+        "advisory_sha256": "sha256:5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+      },
+      {
+        "go_id": "GO-2026-6612",
+        "scanner_id": "CVE-2026-78663",
+        "module": "golang.org/x/net",
+        "installed_version": "v0.59.0",
+        "fixed_version": "0.60.0",
+        "advisory_sha256": "sha256:76c44a4cbdbc463286fb968abd288a26025b8576fe2aed3dcda542fde9518452"
+      },
+      {
+        "go_id": "GO-2026-6617",
+        "scanner_id": "CVE-2026-97032",
+        "module": "golang.org/x/net",
+        "installed_version": "v0.59.0",
+        "fixed_version": "0.60.0",
+        "advisory_sha256": "sha256:197efc1b2f05e891ab3dad2127b7ea3997dc80dc39b21294ab93e11333c4c08b"
+      },
+      {
+        "go_id": "GO-2026-6599",
+        "scanner_id": "CVE-2026-94448",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:c38e8f1f16170826bdda20a8331b6119661aabfdc0da2a85223afa88884a749e"
+      },
+      {
+        "go_id": "GO-2026-6600",
+        "scanner_id": "CVE-2026-97030",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:7ed76e290b366142cbbaac2c0fb12057ba378c96a102180705fa6c7505269dac"
+      },
+      {
+        "go_id": "GO-2026-6603",
+        "scanner_id": "CVE-2026-78659",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:76a1945737d8c2ea4a34d18fd44230946b1185894ea155f9812d1149b2838d3c"
+      },
+      {
+        "go_id": "GO-2026-6604",
+        "scanner_id": "CVE-2026-56857",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:8b5ef99e9faea517629d07377cb0a47b29980cfa4d6d37fb75038ef893ea16f9"
+      },
+      {
+        "go_id": "GO-2026-6605",
+        "scanner_id": "CVE-2026-56866",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:d49f2ab0c0d4c1c2e854008c2434e132ec422ce378e8a91170169cef30a727f1"
+      },
+      {
+        "go_id": "GO-2026-6607",
+        "scanner_id": "CVE-2026-97031",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:f4bf7540a2b1f5671a55ab2445ed6071036a699dcd9ec215ac73f7a57aadc8d6"
+      },
+      {
+        "go_id": "GO-2026-6608",
+        "scanner_id": "CVE-2026-94440",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:5bbf511ad6cc75190d3661c5d79d705e41e3cd40010c325e5fa3b9183237eb54"
+      },
+      {
+        "go_id": "GO-2026-6609",
+        "scanner_id": "CVE-2026-78667",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:3a47edb3f881a474a00b696392923a6f97a8b84fb8ca90cf440c1b2b32366ea7"
+      },
+      {
+        "go_id": "GO-2026-6610",
+        "scanner_id": "CVE-2026-78660",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:2c7881c7945c7c5eadefd3d0caceb1a23b14467373fb28c601141545ff21f190"
+      },
+      {
+        "go_id": "GO-2026-6611",
+        "scanner_id": "CVE-2026-78669",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:5e89ac4314a24eac41111b71ef4544f22836c7b1baf48747e31c5c1d8282c3de"
+      },
+      {
+        "go_id": "GO-2026-6612",
+        "scanner_id": "CVE-2026-78663",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:76c44a4cbdbc463286fb968abd288a26025b8576fe2aed3dcda542fde9518452"
+      },
+      {
+        "go_id": "GO-2026-6613",
+        "scanner_id": "CVE-2026-94439",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:6c2bd0f788183c22cae14deb2b3c80fdf1552bd12f5f09614b084ed3233967d0"
+      },
+      {
+        "go_id": "GO-2026-6617",
+        "scanner_id": "CVE-2026-97032",
+        "module": "stdlib",
+        "installed_version": "v1.26.8",
+        "fixed_version": "1.26.9, 1.27.2",
+        "advisory_sha256": "sha256:197efc1b2f05e891ab3dad2127b7ea3997dc80dc39b21294ab93e11333c4c08b"
+      }
+    ]
+  }
 }

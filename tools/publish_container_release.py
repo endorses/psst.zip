@@ -36,6 +36,7 @@ from release_artifacts import (
     validate_bundle,
     validate_manifest,
 )
+from temporary_caddy_acceptance import committed_acceptance, verify_finding
 
 WORKFLOW = ".github/workflows/release.yml"
 GATES = frozenset(
@@ -425,7 +426,7 @@ def verify_gates(
     verifier: EvidenceVerifier,
 ) -> dict[str, str]:
     fields(reports, set(gates), "required verification reports")
-    result, source_details = {}, None
+    result, source_details, caddy_acceptance = {}, None, None
     for gate in sorted(gates):
         report = read_bounded_file(reports[gate])
         receipt = verifier.verify(gate, reports[gate], binding)
@@ -484,6 +485,26 @@ def verify_gates(
                     isinstance(findings, list), "Scanner findings were not recorded"
                 )
                 for finding in findings:
+                    if (
+                        isinstance(finding, dict)
+                        and finding.get("disposition") == "temporarily-accepted"
+                    ):
+                        require(
+                            gate == "final-image-scanners",
+                            "Source findings cannot use Caddy acceptance",
+                        )
+                        if caddy_acceptance is None:
+                            caddy_acceptance = committed_acceptance(binding)
+                        node, policy_fact = caddy_acceptance
+                        require(
+                            receipt.details.get("temporary_caddy_exception_policy")
+                            == policy_fact,
+                            "Scanner acceptance is not bound to the committed policy",
+                        )
+                        verify_finding(
+                            finding, binding, scan["target"], node, policy_fact
+                        )
+                        continue
                     require(
                         isinstance(finding, dict)
                         and isinstance(finding.get("disposition"), str)
@@ -534,6 +555,11 @@ def verify_gates(
                 "Distribution review differs from completed source/notice/policy evidence",
             )
         result[gate] = receipt.report_digest
+    if caddy_acceptance is not None and source_details is not None:
+        require(
+            caddy_acceptance[1] == source_details["policy"],
+            "Caddy acceptance differs from reviewed source policy",
+        )
     return result
 
 

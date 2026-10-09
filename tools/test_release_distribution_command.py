@@ -261,6 +261,7 @@ class DistributionCommand(unittest.TestCase):
             evidence_path.write_bytes(raw)
             with self.assertRaises(InvalidRelease):
                 command.run_command(self.args)
+
             self.trusted.add(raw)
             with self.assertRaises(InvalidRelease):
                 command.run_command(self.args)
@@ -366,6 +367,47 @@ class DistributionCommand(unittest.TestCase):
                 token="fixture-token",
                 http=self.http,
             )
+
+    def test_presentation_discloses_exact_temporary_risk_and_expiry(self):
+        exception = {
+            "authorized_by": "fixture-owner",
+            "caddy_version": "v2.11.7",
+            "expires_at": "2026-10-23T00:00:00Z",
+            "reason": "An explicit bounded operator acceptance of known affected code.",
+            "base_image": "docker.io/library/caddy@sha256:" + "a" * 64,
+            "id": "fixture-acceptance",
+            "findings": [
+                {
+                    "scanner_id": "CVE-2026-1234",
+                    "go_id": "GO-2026-1234",
+                    "module": "stdlib",
+                    "installed_version": "v1.26.8",
+                    "advisory_sha256": "sha256:" + "b" * 64,
+                }
+            ],
+        }
+        self.policy["temporary_caddy_exception"] = exception
+        self.cli()
+        presentation = read_json(
+            (self.args.output / "review-presentation.json").read_bytes()
+        )
+        summary = (self.args.output / "review.md").read_text()
+        self.assertEqual(presentation["policy"], self.policy)
+        self.assertIn("Affected code remains present", summary)
+        self.assertIn(
+            "does not establish that these vulnerabilities are fixed or inapplicable",
+            summary,
+        )
+        self.assertIn(exception["expires_at"], summary)
+        self.assertIn(exception["base_image"], summary)
+        for finding in exception["findings"]:
+            self.assertIn(finding["scanner_id"], summary)
+            self.assertIn(finding["advisory_sha256"], summary)
+        # Final application subjects stay under their own heading.
+        self.assertLess(
+            summary.index(next(iter(dict(self.binding.subjects).values()))),
+            summary.index("## Temporary acceptance"),
+        )
 
 
 if __name__ == "__main__":

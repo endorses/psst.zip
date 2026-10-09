@@ -34,6 +34,7 @@ from release_artifacts import (
     read_json,
     require,
 )
+from temporary_caddy_acceptance import validate_policy as validate_caddy_acceptance
 
 PRESENTATION_NAMES = {"review-presentation.json", "review.md"}
 REVIEW_NAMES = {"distribution-review.json", "distribution-review-evidence.json"}
@@ -52,9 +53,13 @@ def committed_policy(root: Path, binding: Binding) -> tuple[dict, dict]:
     require(match is not None, "Review policy must be a regular exact committed file")
     raw = git(root, "cat-file", "blob", binding.commit + ":" + SOURCE_REVIEW_POLICY)
     require(len(raw) <= 16384, "Distribution policy exceeds bounds")
+    value = read_json(raw)
+    expected = {"schema_version", "kind", "environment", "reviewers"}
+    if isinstance(value, dict) and "temporary_caddy_exception" in value:
+        expected.add("temporary_caddy_exception")
     policy = fields(
-        read_json(raw),
-        {"schema_version", "kind", "environment", "reviewers"},
+        value,
+        expected,
         "committed distribution authorization policy",
     )
     require(
@@ -72,6 +77,10 @@ def committed_policy(root: Path, binding: Binding) -> tuple[dict, dict]:
         and len(set(policy["reviewers"])) == len(policy["reviewers"]),
         "Invalid committed distribution authorization policy",
     )
+    if "temporary_caddy_exception" in policy:
+        validate_caddy_acceptance(
+            policy["temporary_caddy_exception"], policy["reviewers"]
+        )
     return policy, {
         "path": SOURCE_REVIEW_POLICY,
         "source_commit": binding.commit,
@@ -387,6 +396,24 @@ def review_presentation(binding, source, source_raw, policy, policy_fact, args):
         "",
     ]
     lines.extend(f"- `{name}`: `{subject}`" for name, subject in binding.subjects)
+    if "temporary_caddy_exception" in policy:
+        exception = policy["temporary_caddy_exception"]
+        lines.extend(
+            [
+                "## Temporary acceptance of known Caddy vulnerabilities",
+                "",
+                f"Operator `{exception['authorized_by']}` accepts the listed findings for official Caddy `{exception['caddy_version']}` until `{exception['expires_at']}`.",
+                "Affected code remains present. This acceptance does not establish that these vulnerabilities are fixed or inapplicable.",
+                exception["reason"],
+                f"Exact base: `{exception['base_image']}`. Acceptance: `{exception['id']}`.",
+                "",
+            ]
+        )
+        lines.extend(
+            f"- `{row['scanner_id']}` / `{row['go_id']}`: `{row['module']} {row['installed_version']}`; official advisory `{row['advisory_sha256']}`."
+            for row in exception["findings"]
+        )
+        lines.append("")
     lines.extend(["", "## Final image notices and complete source coverage", ""])
     for image, notice in source["details"]["images"].items():
         lines.append(

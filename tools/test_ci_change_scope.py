@@ -137,6 +137,8 @@ class ChangeScopeTests(unittest.TestCase):
             "docs/research/study.md": set(),
             "deploy/updater/Dockerfile": set(),
             "tools/publish_verified_release.py": set(),
+            "tools/temporary_caddy_acceptance.py": set(),
+            "tools/container-distribution-policy.json": set(),
             "tools/test_release_transport.py": set(),
             "tools/runtime-legal/verify.py": set(),
             "tools/fixtures/release-updater/controller.py": set(),

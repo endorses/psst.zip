@@ -3518,7 +3518,7 @@ operation not permitted`; production suppresses that stderr and reports a
       and records Go `1.26.8` and `golang.org/x/net` `0.59.0`. Upstream merged
       [the x/net update](https://github.com/caddyserver/caddy/commit/1b3838c1fdc052a27effd424ea62124ae0dd09b5)
       on October 9 at 04:42:01 UTC; it is not yet in a stable release.
-- [ ] Resolve the Caddy producer choice with the operator: wait for a patched
+- [x] Resolve the Caddy producer choice with the operator: wait for a patched
       stable official image, or implement a separately verified build of stable
       Caddy source with patched stable dependencies. Current source collection
       requires byte equality with the signed upstream executable and exact
@@ -3526,7 +3526,9 @@ operation not permitted`; production suppresses that stderr and reports a
       patches the analysis compiler, leaves the runtime vulnerable and breaks
       correspondence. A custom executable needs a reviewed producer/source and
       provenance contract; upstream development commits are not stable releases.
-      No replacement Caddy build, candidate workflow or publication has started.
+      On October 9 the operator instead authorized temporary acceptance of the
+      current official Caddy findings, as bounded below. No replacement Caddy
+      build is required for that decision.
 - [ ] Complete signed source/scan/smoke/notice assembly and native recovery
       evidence for a repaired candidate. Prepare a fresh bound distribution
       presentation only after those actual gates pass.
@@ -3534,3 +3536,56 @@ operation not permitted`; production suppresses that stderr and reports a
       hosted publication, public linked packages, immutable release and fresh
       anonymous delivery. Earlier v0.1.4 approvals do not authorize this candidate.
       Production migration and independent off-host recovery remain deferred.
+
+## Temporary official Caddy acceptance (2026-10-09)
+
+The operator explicitly authorized proceeding with the current official Caddy
+images while their Go/runtime networking fixes await a stable upstream image.
+This decision supersedes waiting for Caddy before preparing another candidate;
+the backend remains on patched Go 1.27.2. VPS migration and independent off-host
+backups remain deferred by the operator.
+
+- [x] Bind the acceptance to the exact official Caddy `v2.11.7` index and both
+      architecture manifests, actual executable hashes and signed source
+      revision in `tools/container-distribution-policy.json`. Cover only the 18
+      exact scanner/module/version rows across 13 official Go advisories for
+      `stdlib` 1.26.8 and `golang.org/x/net` 0.59.0. Fresh official advisory
+      bytes match their retained compiler evidence hashes on both architectures.
+      The existing affected-package absence path remains separate.
+- [x] Set expiry to `2026-10-23T00:00:00Z`, within fourteen days of authorization.
+      The source gate must still authenticate native measurements, original
+      upstream signatures, source correspondence, actual compiled dependencies
+      and resolved base identities before assigning `temporarily-accepted`.
+      Findings on the backend, OS packages, different binaries/base manifests,
+      altered advisories or unlisted vulnerabilities remain rejected.
+- [x] Bind the policy to the exact source Git blob and source-review receipt,
+      disclose known affected code, identities, advisories and expiry in the
+      distribution presentation, and recheck acceptance before publication
+      admission, first remote mutation, version tags and immutable publication.
+      An expired acceptance stops future publication; it does not invalidate
+      previously published immutable artifacts or their readback verification.
+- [x] Add fixed corresponding-source diagnostic milestones to identify a failing
+      boundary without leaking external exception text. Preserve source replay,
+      scanner and output checks, including late input-substitution rejection.
+- [x] Complete meaningful offline regression checks: seven new exact-policy
+      aggregation/consumer tests pass in 0.887s; four disclosure/publication
+      boundary tests pass in 0.33s. The full existing release/Compose suite plus
+      these regressions passes 404 tests in 27.298s (one existing conditional
+      skip), and 100 repository/native-input/source-packaging checks pass in
+      4.608s (one existing conditional skip). Repository files/history scanning
+      and native notice input freshness also pass. No new compiler, browser,
+      simulator or network-heavy test jobs were added. Black, Prettier and
+      whitespace checks pass. Reviewed release-policy/helper changes select
+      repository security checks rather than unrelated application jobs;
+      workflow/toolchain changes and exact-tag server CI retain their checks.
+- [ ] Push and merge the verified changes through the protected main workflow;
+      preserve all earlier candidate tags and failed publication transactions.
+- [ ] Prepare a fresh exact-source backend/web candidate and inspect actual
+      native build, source, image, notice, correspondence and recovery gates.
+      The accepted Caddy runtime remains affected; a passing gate records the
+      explicit temporary acceptance and does not claim it is patched.
+- [ ] Obtain the configured fresh human distribution and publication approvals,
+      then verify immutable GitHub release assets, public GHCR images and fresh
+      anonymous delivery. Implementation alone does not complete publication.
+- [ ] Remove this exception when a patched stable official Caddy image becomes
+      available; rebuild and rescan before publishing the replacement.

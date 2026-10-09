@@ -444,6 +444,12 @@ def publish(
         # Once the publication lease is entered, an interrupted operation may
         # have mutated remote state. Preserve exact inputs for manual inspection.
         publication_stage("publication-lease")
+        verify_gates(
+            {"final-image-scanners": report_paths["final-image-scanners"]},
+            {"final-image-scanners"},
+            plan.binding,
+            verifier,
+        )
         snapshots.retain = True
         with reserve_draft(plan, adapter) as reservation:
             publication_stage("registry-publication")
@@ -514,9 +520,23 @@ def publish(
                 )
                 readback_reports[gate] = path
             verify_gates(readback_reports, set(READBACK_GATES), plan.binding, verifier)
+            # The accepted risk may expire while awaiting package visibility or
+            # remote readbacks. Recheck before exposing immutable version tags.
+            verify_gates(
+                {"final-image-scanners": report_paths["final-image-scanners"]},
+                {"final-image-scanners"},
+                plan.binding,
+                verifier,
+            )
             publication_stage("version-tags")
             adapter.create_version_tags(index_paths)
             publication_stage("immutable-publication")
+            verify_gates(
+                {"final-image-scanners": report_paths["final-image-scanners"]},
+                {"final-image-scanners"},
+                plan.binding,
+                verifier,
+            )
             release = adapter.publish(reservation, readback_reports, verifier)
             publication_stage("public-readback")
             public = adapter.verify_public(reservation)

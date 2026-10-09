@@ -607,6 +607,37 @@ class CorrespondingSourceCommand(unittest.TestCase):
         self.assertFalse(self.args.output.exists())
         self.assertFalse(self.args.checks_output.exists())
 
+    def test_paired_failures_show_fixed_stage_without_sensitive_diagnostics(self):
+        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
+        arguments = [
+            "--" + key.replace("_", "-") + "=" + str(value)
+            for key, value in vars(self.args).items()
+        ]
+        for stage, operation in (
+            ("source-replay", producer),
+            ("source-scanners", source),
+            ("image-scanners", image),
+        ):
+            with self.subTest(stage=stage):
+                operation.side_effect = InvalidRelease(
+                    "https://fixture-token@example.invalid/private scanner payload"
+                )
+                with patch("sys.stderr", new_callable=io.StringIO) as error:
+                    with self.assertRaises(SystemExit) as rejected:
+                        command.main(arguments)
+                self.assertEqual(rejected.exception.code, 1)
+                lines = error.getvalue().splitlines()
+                self.assertEqual(lines[-2], "Corresponding-source stage: " + stage)
+                self.assertEqual(
+                    lines[-1],
+                    "Corresponding-source command failed; publication remains unauthorized.",
+                )
+                self.assertNotIn("fixture-token", error.getvalue())
+                self.assertNotIn("private scanner payload", error.getvalue())
+                self.assertFalse(self.args.output.exists())
+                self.assertFalse(self.args.checks_output.exists())
+                operation.side_effect = None
+
     def test_paired_outputs_generate_and_verify_without_replays(self):
         prepared, auth, producer, ci, native, source, image = self.paired_mocks()
         command.main(
@@ -636,6 +667,8 @@ class CorrespondingSourceCommand(unittest.TestCase):
         )
         image.assert_called_once_with(
             self.binding,
+            repository_root=self.args.root,
+            resolved_bases=self.args.resolved_bases,
             native_measurements=producer.call_args.kwargs["native_measurements"],
             runtime_packs=producer.call_args.kwargs["runtime_packs"],
             **{
