@@ -138,6 +138,9 @@ The target is updated with `adb install -r`; it is never uninstalled or downgrad
 Only the disposable instrumentation package is replaced to match its target's
 signing certificate. The target-contained scenario retains every protected-state
 assertion; failures produce a fixed diagnostic without printing stored values.
+The invocation requests raw instrumentation output and requires Android's final
+`INSTRUMENTATION_CODE: -1` alongside the passing diagnostic. A canceled result or
+an incomplete success stream is rejected.
 
 A JSON report is written only after all three fixture runs succeed. A failed run
 leaves its disposable emulator for inspection, without manufacturing successful

@@ -3,6 +3,23 @@ package zip.psst.android.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import zip.psst.android.PsstApplication
 import zip.psst.android.R
 import zip.psst.android.data.InboxKeyStore
@@ -29,23 +46,6 @@ import zip.psst.shared.model.DropSlot
 import zip.psst.shared.model.FileMetadata
 import zip.psst.shared.model.ServerConfig
 import zip.psst.shared.model.UrlHelper
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 data class ReceiveUiState(
     val page: DropSlot? = null,
@@ -127,7 +127,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 error =
                                     message(
                                         zip.psst.android.R.string
-                                            .ui_your_account_changed_create_a_new_receive_link_to_continue
+                                            .ui_your_account_changed_create_a_new_receive_link_to_continue,
                                     ),
                                 requiresLogin = access.accountId == null,
                             )
@@ -159,8 +159,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             error =
                                 message(
                                     zip.psst.android.R.string
-                                        .ui_this_receive_link_is_unavailable_to_this_account
-                                )
+                                        .ui_this_receive_link_is_unavailable_to_this_account,
+                                ),
                         )
                     return@launch
                 }
@@ -184,7 +184,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             error =
                                 if (restored.keyUnavailable)
                                     message(zip.psst.android.R.string.unavailable_key)
-                                else null
+                                else null,
                         )
                     if (visible) listenForEvents(client, id)
                 } catch (e: CancellationException) {
@@ -241,8 +241,8 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             error =
                                 message(
                                     R.string
-                                        .l_saved_checkpoints_could_not_be_imported_original_records_and_save_a50cc8
-                                )
+                                        .l_saved_checkpoints_could_not_be_imported_original_records_and_save_a50cc8,
+                                ),
                         )
                     }
             }
@@ -282,7 +282,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     it.copy(
                         error =
                             failureText(error)
-                                ?: message(R.string.l_could_not_rename_this_link_retry_229f97)
+                                ?: message(R.string.l_could_not_rename_this_link_retry_229f97),
                     )
                 }
             } finally {
@@ -357,7 +357,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     error =
                         message(
                             zip.psst.android.R.string
-                                .ui_sign_in_under_server_configuration_to_create_receive_links
+                                .ui_sign_in_under_server_configuration_to_create_receive_links,
                         ),
                 )
             }
@@ -443,7 +443,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     sharedTitle = slot.title,
                                     maxFiles = limit,
                                     reservedFiles = 0,
-                                )
+                                ),
                             )
                     }
                     retained = true
@@ -509,7 +509,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 else
                                     message(
                                         zip.psst.android.R.string
-                                            .ui_could_not_create_a_receive_link_check_your_connection_and_retry
+                                            .ui_could_not_create_a_receive_link_check_your_connection_and_retry,
                                     ),
                         )
                     }
@@ -604,7 +604,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                 return
             uiRequire(slot.nextCursor == null || slot.nextCursor !in target.previous) {
                 message(
-                    R.string.l_the_server_repeated_an_inbox_page_return_to_the_first_page_6ce5f7
+                    R.string.l_the_server_repeated_an_inbox_page_return_to_the_first_page_6ce5f7,
                 )
             }
             val snapshot = slot.receivedSnapshot()
@@ -691,6 +691,10 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
 
     fun downloadReceivedFiles() = downloadReceivedFiles(null)
 
+    fun storagePermissionDenied() {
+        _uiState.update { it.storagePermissionDenied() }
+    }
+
     fun confirmDownload() {
         val approved = _uiState.value.downloadConsent ?: return
         downloadReceivedFiles(approved)
@@ -746,7 +750,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             isDownloading = false,
                             error =
                                 message(
-                                    zip.psst.android.R.string.ui_receive_history_entry_is_missing
+                                    zip.psst.android.R.string.ui_receive_history_entry_is_missing,
                                 ),
                         )
                     }
@@ -766,7 +770,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                         if (row.encryptionKey.startsWith("v2."))
                             slot.receiveProtocol == 2 &&
                                 slot.recipientPublicKey == row.encryptionKey.removePrefix("v2.")
-                        else slot.receiveProtocol == 1
+                        else slot.receiveProtocol == 1,
                     ) {
                         message(R.string.l_the_inbox_receive_key_does_not_match_this_device_0a2771)
                     }
@@ -779,7 +783,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                     uiRequire(latest.checkpointState == "ready") {
                         message(
                             R.string
-                                .l_saved_checkpoints_are_still_being_imported_continue_local_checkpo_921dc6
+                                .l_saved_checkpoints_are_still_being_imported_continue_local_checkpo_921dc6,
                         )
                     }
                     val savedChildren = dao.savedChildren(latest, selected.map { it.transferId })
@@ -906,7 +910,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                             savedFileCount =
                                                 savedCount
                                                     .coerceAtMost(Int.MAX_VALUE.toLong())
-                                                    .toInt()
+                                                    .toInt(),
                                         )
                                     }
                             },
@@ -916,7 +920,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                 _uiState.update {
                                     it.copy(
                                         downloadProgress =
-                                            savedFiles.toFloat() / totalFiles.toFloat()
+                                            savedFiles.toFloat() / totalFiles.toFloat(),
                                     )
                                 }
                             },
@@ -977,7 +981,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                                     else
                                         message(
                                             zip.psst.android.R.string
-                                                .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b
+                                                .ui_could_not_save_every_file_retry_saving_files_already_saved_will_b,
                                         ),
                         )
                     }

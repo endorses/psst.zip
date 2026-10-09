@@ -56,6 +56,8 @@ class DisposableUpdateTest(unittest.TestCase):
             "FAILURES!!!",
             "OK (1 test)\nINSTRUMENTATION_FAILED: crash",
             "INSTRUMENTATION_CODE: 0",
+            "OK (1 test)\nINSTRUMENTATION_CODE: 0",
+            "OK (1 test)",
         ):
             with (
                 patch.object(emulator, "run", return_value=result),

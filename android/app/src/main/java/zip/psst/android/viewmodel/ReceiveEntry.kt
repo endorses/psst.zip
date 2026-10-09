@@ -1,8 +1,10 @@
 package zip.psst.android.viewmodel
 
+import zip.psst.android.R
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.decodeInboxKeyMarker
+import zip.psst.android.i18n.message
 import zip.psst.shared.model.UrlHelper
 
 /** Existing links are restored entirely from the scoped local record; this never creates a slot. */
@@ -46,3 +48,11 @@ internal fun ReceiveUiState.retryAction(existingId: String?): ReceiveRetry =
         existingId != null -> ReceiveRetry.REOPEN
         else -> ReceiveRetry.CREATE
     }
+
+internal fun ReceiveUiState.storagePermissionDenied(): ReceiveUiState =
+    copy(
+        error =
+            message(
+                R.string.l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb,
+            ),
+    )

@@ -101,6 +101,7 @@ class DisposableEmulator:
             "am",
             "instrument",
             "-w",
+            "-r",
             "-e",
             "class",
             TEST_METHOD,
@@ -114,6 +115,7 @@ class DisposableEmulator:
         )
         release.require(
             bool(re.search(r"\bOK \(1 test\)", value))
+            and bool(re.search(r"^INSTRUMENTATION_CODE: -1\s*$", value, re.MULTILINE))
             and not any(
                 marker in value
                 for marker in (

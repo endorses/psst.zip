@@ -155,7 +155,9 @@ The operator's phone runs Android 16, without USB access currently. Android 13+
 supports a private debug-to-production signing bridge. Source review indicates a
 lineage with installed-data and signature-permission continuity can preserve the
 app UID, files and Keystore keys, and a
-subsequent production-only APK can update it. This is **not yet device evidence**.
+subsequent production-only APK can update it. The disposable Android 16 diagnostic
+passed both updates with real Keystore, Room and HPKE/AES state. The operator's
+phone has not been verified; this is **not actual-phone evidence**.
 
 `tools/android_signing_bridge.py` prepares a local bridge, with both keystores
 outside the checkout. It requires the recorded installed signer and version floor,
@@ -188,7 +190,7 @@ Readiness record, kept privately and containing observations rather than secrets
 - [ ] Confirm the actual phone's installed package, version code and signing identity.
 - [ ] Review and accept the private bridge's retained debug-key permission trust
       before applying it to the actual phone.
-- [ ] Verify a disposable emulator transition with actual protected stores before
+- [x] Verify a disposable emulator transition with actual protected stores before
       applying the production bridge to the phone.
 - [ ] Demonstrate production-key recovery from the separate encrypted copy.
 - [ ] Perform the real in-place bridge update; confirm retained account/session,

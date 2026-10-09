@@ -59,7 +59,7 @@ encrypted archive export/import capability must precede any reinstall.
 - [ ] Record the operator's Android OS, actual installed package and public signer
       fingerprint privately. Distinguish current and older package sandboxes;
       never infer preserved data from the app's visible name or a fresh pairing.
-- [ ] Evaluate a bounded private signing-lineage transition and its trust/channel
+- [x] Evaluate a bounded private signing-lineage transition and its trust/channel
       implications. Record supported OS versions and verify in-place installation,
       preserved protected state and a later production-signed update. Do not
       publish a lineage that accidentally makes the debug key a public authority.
@@ -232,7 +232,7 @@ and [Play publishing API](https://developers.google.com/android-publisher/gettin
       preserved data on the agreed transition and a subsequent same-signer update,
       document operator steps, and mark only actually completed items above.
 
-## Implementation and verification record (2026-10-09)
+## Implementation and verification record (2026-10-09–10)
 
 The operator reports Android 16 and no USB access. The local debug APK has package
 `zip.psst.android`, version code `1`, and public signer SHA256
@@ -270,9 +270,9 @@ seconds with cached dependencies. App tests: 163 cases, 0 failures, 8.871 second
 shared Android tests: 175 cases, 0 failures, 7.215 seconds. This is local execution
 evidence, not a hosted timing or a production-signed APK.
 
-Pending: real disposable signing/update run,
-API 26/current Android optimized smoke, the phone's actual transition, production
-key recovery, GitHub environment/tag rules, hosted preview and public delivery.
+Pending: remaining camera-QR, Send/document/photo sharing and physical-device
+checks, the phone's actual transition, production-key recovery, GitHub
+environment/tag rules, hosted preview and public delivery.
 Local JDK is Android Studio's Java 25.0.3; the workflow selects Java 27. Native iOS
 app/share-extension/XCTest validation of changed shared dependencies remains
 pending on macOS using the existing `xcode-27` job. No iOS native success is claimed.
@@ -306,8 +306,7 @@ now compiles one protected-state diagnostic into its target APK and uses a small
 framework-only Java instrumentation runner. R8 analyzes the entire diagnostic call
 graph; only its reflective entry signature stays named. Public builds omit the
 diagnostic and keep rule. A fixture-only metadata marker prevents publication even
-when its version matches the public release. Rebuilt instrumentation and full
-preservation evidence remain pending. AGP 9's separate Kotlin source roots are
+when its version matches the public release. AGP 9's separate Kotlin source roots are
 configured explicitly for this diagnostic; its target and framework runner
 compiled successfully in 24 seconds without the source-directory deprecation.
 The unmodified optimized public configuration starts successfully on an owned
@@ -315,8 +314,40 @@ API 26 emulator with the latest stable emulator 37.2.12. This establishes startu
 not the pending crypto or sharing smoke checks. The same public configuration also
 starts on the stable API 37 16 KB image (runtime page size 16384), and successfully
 validates the disposable localhost server and logs in as a synthetic regular user.
-This is not production signing, camera-QR, physical-device or full transfer evidence.
+Android 17's LAN rationale, platform permission denial, recovery and allowed
+connection passed against the disposable gateway. Its public optimized Receive
+flow created a recipient key, received a 32-byte encrypted web upload, opened the
+HPKE/AES envelope and saved plaintext that matched every original byte. The runtime
+smoke APK was built from `02a84baf3f0e029d78532426c15af33c68902187` with a disposable
+signer. This is not production signing, camera-QR or physical-device evidence.
 
-The next prerequisite is proving the private transition with synthetic protected
-state, then checking the actual phone and production-key recovery. Store acceptance, iOS
+The corrected protected-state diagnostic passed on Android 16/API 36 from source
+`1d7f435a38b5de69732d278ebd73838e7d038813`: actual debug code `1` to private bridge
+code `2` to production-only code `3`. All three executions preserved the application
+UID, Keystore session, Room Send history and decryption keys, Receive-v2 private
+keys and HPKE/AES decryption, and guest history/capability. Signing keys were
+temporary and deleted. These are fixture-modified APKs with whole-program R8
+optimization, not public release APKs or the operator's phone. The tool requires
+raw Android instrumentation's explicit success result as well as the one passing
+diagnostic; an apparent success stream with a canceled result cannot pass.
+
+Those three necessary APK/test-pair builds took 19.2, 57.7 and 56.6 seconds.
+The final normal public configuration assembled and passed release lint in 66
+seconds; it contains neither the diagnostic/runner classes nor fixture metadata.
+Unsigned artifact validation confirmed package/version/source, API 26 minimum,
+API 37 target, four native ABIs, 16 KB alignment and current notice bytes. Its
+source is the same `1d7f435` commit. Production-signature verification remains
+pending production-key custody and the first release.
+
+The API 26 public Receive smoke exposed a missing owner-download storage permission
+request: the encrypted upload arrived, but saving to public Downloads failed.
+Receive now gates initial save, confirmation and retry on the legacy API 26–28
+permission, preserving the selected link, private key and saved progress after
+denial. Its four focused state tests passed in 0.023 seconds (20 seconds including
+required compilation). iOS uses sandboxed Documents storage and needs no matching
+legacy Android permission change. Optimized-APK permission and byte verification
+for this fix remain pending.
+
+The next prerequisites are choosing the transition, checking the actual phone and
+production-key recovery. Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.

@@ -1,9 +1,9 @@
 package zip.psst.android.viewmodel
 
-import zip.psst.android.data.*
 import kotlin.io.encoding.Base64
 import org.junit.Assert.*
 import org.junit.Test
+import zip.psst.android.data.*
 
 class ReceiveEntryTest {
     private val key =
@@ -55,6 +55,13 @@ class ReceiveEntryTest {
         assertEquals(ReceiveRetry.SAVE, failed.retryAction("original-slot"))
         assertEquals(restored.slotId, failed.slotId)
         assertEquals(restored.encryptionKey, failed.encryptionKey)
+        val storageDenied = restored.copy(savedFileCount = 1).storagePermissionDenied()
+        assertEquals(ReceiveRetry.SAVE, storageDenied.retryAction("original-slot"))
+        assertEquals(restored.slotId, storageDenied.slotId)
+        assertEquals(restored.encryptionKey, storageDenied.encryptionKey)
+        assertEquals(1, storageDenied.savedFileCount)
+        assertNotNull(storageDenied.error)
+        assertFalse(storageDenied.isDownloading)
         assertEquals(
             ReceiveRetry.REOPEN,
             ReceiveUiState(error = zip.psst.android.i18n.userText("Offline"))

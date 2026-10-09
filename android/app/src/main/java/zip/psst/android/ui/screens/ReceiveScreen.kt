@@ -1,7 +1,12 @@
 package zip.psst.android.ui.screens
 
+import android.Manifest
 import android.app.DownloadManager
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +22,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -42,6 +48,31 @@ fun ReceiveScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var pendingStorageSlot by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingStorageConfirmation by rememberSaveable { mutableStateOf(false) }
+    val storage =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val sameSlot = pendingStorageSlot != null && state.slotId == pendingStorageSlot
+            pendingStorageSlot = null
+            if (sameSlot) {
+                if (!granted) viewModel.storagePermissionDenied()
+                else if (pendingStorageConfirmation) viewModel.confirmDownload()
+                else viewModel.downloadReceivedFiles()
+            }
+        }
+    fun saveAllowed(confirm: Boolean = false) {
+        if (
+            Build.VERSION.SDK_INT <= 28 &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingStorageSlot = state.slotId
+            pendingStorageConfirmation = confirm
+            storage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else if (confirm) viewModel.confirmDownload() else viewModel.downloadReceivedFiles()
+    }
     var freshCreation by rememberSaveable(existingId) { mutableStateOf(false) }
     val activeExistingId = existingId.takeUnless { freshCreation }
     var showQR by rememberSaveable(state.slotId) { mutableStateOf(false) }
@@ -67,7 +98,7 @@ fun ReceiveScreen(
                     onClick = {
                         viewModel.renameShared(renameDraft)
                         renaming = false
-                    }
+                    },
                 ) {
                     Text(tr(R.string.l_save_efc007))
                 }
@@ -108,11 +139,11 @@ fun ReceiveScreen(
                             consent.remainingBytes,
                             UiStrings.context().resources.configuration.locales[0],
                         ),
-                    )
+                    ),
                 )
             },
             confirmButton = {
-                TextButton(onClick = viewModel::confirmDownload) {
+                TextButton(onClick = { saveAllowed(confirm = true) }) {
                     Text(tr(R.string.l_download_and_save_392089))
                 }
             },
@@ -152,7 +183,7 @@ fun ReceiveScreen(
                             }
                         } else if (canSave)
                             Button(
-                                onClick = viewModel::downloadReceivedFiles,
+                                onClick = { saveAllowed() },
                                 enabled = !state.isPaging && state.downloadConsent == null,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
@@ -163,7 +194,7 @@ fun ReceiveScreen(
                                 onClick = {
                                     runCatching {
                                         context.startActivity(
-                                            Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
+                                            Intent(DownloadManager.ACTION_VIEW_DOWNLOADS),
                                         )
                                     }
                                 },
@@ -198,8 +229,8 @@ fun ReceiveScreen(
                 Text(
                     tr(
                         R.string
-                            .l_create_a_private_inbox_link_for_others_to_send_files_to_you_3a7e52
-                    )
+                            .l_create_a_private_inbox_link_for_others_to_send_files_to_you_3a7e52,
+                    ),
                 )
                 OutlinedTextField(
                     value = state.localName,
@@ -219,7 +250,7 @@ fun ReceiveScreen(
                     help =
                         tr(
                             R.string
-                                .l_incomplete_uploads_use_an_allowance_too_deleting_files_does_not_r_cdd215
+                                .l_incomplete_uploads_use_an_allowance_too_deleting_files_does_not_r_cdd215,
                         ),
                     onEnabledChange = viewModel::setFileLimitEnabled,
                     onValueChange = viewModel::setMaxFiles,
@@ -245,7 +276,7 @@ fun ReceiveScreen(
                         onClick = {
                             renameDraft = state.localName
                             renaming = true
-                        }
+                        },
                     ) {
                         Text(tr(R.string.l_rename_d3f4cb))
                     }
@@ -264,13 +295,13 @@ fun ReceiveScreen(
                 Text(
                     tr(
                         R.string
-                            .l_this_older_inbox_is_read_only_save_its_existing_files_and_create__b83329
-                    )
+                            .l_this_older_inbox_is_read_only_save_its_existing_files_and_create__b83329,
+                    ),
                 )
             if (state.slotId != null && state.maxFiles > 0)
                 Text(
                     state.remainingFiles?.let { plural(R.plurals.files_remaining, it, it) }
-                        ?: tr(R.string.ui_unknown_files_remaining)
+                        ?: tr(R.string.ui_unknown_files_remaining),
                 )
             if (state.slotId != null || state.isCreatingSlot)
                 Text(
@@ -282,7 +313,7 @@ fun ReceiveScreen(
                             state.downloadComplete -> R.string.saved_downloads
                             state.slotStatus == "has_uploads" -> R.string.files_received
                             else -> R.string.waiting_files
-                        }
+                        },
                     ),
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     style = MaterialTheme.typography.titleMedium,
@@ -297,7 +328,7 @@ fun ReceiveScreen(
                     TextButton(onClick = { showQR = !showQR }) {
                         Text(
                             if (showQR) tr(R.string.l_hide_qr_b7a2f4)
-                            else tr(R.string.l_show_qr_share_link_e63fb8)
+                            else tr(R.string.l_show_qr_share_link_e63fb8),
                         )
                     }
             }
@@ -362,18 +393,18 @@ fun ReceiveScreen(
                         onClick = {
                             when (state.retryAction(activeExistingId)) {
                                 ReceiveRetry.SIGN_IN -> onSignIn()
-                                ReceiveRetry.SAVE -> viewModel.downloadReceivedFiles()
+                                ReceiveRetry.SAVE -> saveAllowed()
                                 ReceiveRetry.REOPEN -> viewModel.openExisting(activeExistingId!!)
                                 ReceiveRetry.CREATE -> viewModel.createSlot()
                             }
-                        }
+                        },
                     ) {
                         Text(
                             stringResource(
                                 if (state.requiresLogin) R.string.sign_in
                                 else if (state.slotId != null) R.string.retry_saving
-                                else R.string.retry
-                            )
+                                else R.string.retry,
+                            ),
                         )
                     }
             }
@@ -382,13 +413,13 @@ fun ReceiveScreen(
                     if (state.checkpointState == "recovery")
                         tr(
                             R.string
-                                .l_an_older_saved_checkpoint_contains_invalid_or_unsupported_data_or_084a28
+                                .l_an_older_saved_checkpoint_contains_invalid_or_unsupported_data_or_084a28,
                         )
                     else
                         tr(
                             R.string
-                                .l_importing_saved_file_checkpoints_saved_files_remain_on_this_devic_3acb84
-                        )
+                                .l_importing_saved_file_checkpoints_saved_files_remain_on_this_devic_3acb84,
+                        ),
                 )
                 TextButton(
                     onClick = viewModel::continueCheckpointImport,
@@ -397,7 +428,7 @@ fun ReceiveScreen(
                     Text(
                         if (state.checkpointState == "recovery")
                             tr(R.string.l_retry_checkpoint_import_78098d)
-                        else tr(R.string.l_continue_checkpoint_import_291d65)
+                        else tr(R.string.l_continue_checkpoint_import_291d65),
                     )
                 }
                 TextButton(
@@ -405,7 +436,7 @@ fun ReceiveScreen(
                         runCatching {
                             context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
                         }
-                    }
+                    },
                 ) {
                     Text(stringResource(R.string.open_downloads))
                 }
@@ -416,14 +447,14 @@ fun ReceiveScreen(
                         R.plurals.files_saved_local,
                         state.savedFileCount.toLong(),
                         state.savedFileCount,
-                    )
+                    ),
                 )
                 OutlinedButton(
                     onClick = {
                         runCatching {
                             context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
                         }
-                    }
+                    },
                 ) {
                     Text(stringResource(R.string.open_downloads))
                 }
