@@ -389,6 +389,16 @@ the generated QR through the emulator's image-file camera mode, without using th
 image picker. This is emulator evidence; real-device optics, OEM signing behavior
 and NetGuard remain separate physical checks. No production signing key was used.
 
+Read-only GitHub inspection on October 10 confirmed protected `main` and enabled
+immutable releases. The existing `version-tags` ruleset covers only `refs/tags/v*`;
+there is no `android-release` environment yet. Android-specific configuration
+therefore remains pending. Publication preflight now also verifies an explicit
+custom environment policy permitting only the `main` branch, rejecting an
+unrestricted environment, wildcards, additional branches, a tag named `main` or a
+missing branch type. Its actual API response shape was checked against the
+existing container environment using GitHub API version `2026-03-10`. The 35
+focused release/signing/update/policy cases passed in 0.035 seconds; Ruff passed.
+
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.

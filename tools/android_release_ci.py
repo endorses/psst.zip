@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
 REQUIRED = {
     "Repository security": {
@@ -32,7 +32,10 @@ def require(condition: bool, message: str) -> None:
 
 def gh_json(endpoint: str) -> object:
     result = subprocess.run(
-        ["gh", "api", endpoint], capture_output=True, timeout=45, check=False
+        ["gh", "api", "-H", "X-GitHub-Api-Version: 2026-03-10", endpoint],
+        capture_output=True,
+        timeout=45,
+        check=False,
     )
     require(result.returncode == 0, "GitHub evidence inspection failed")
     require(len(result.stdout) <= 8 * 1024 * 1024, "GitHub response exceeds bounds")
@@ -144,6 +147,23 @@ def protected_publication(repository: str, tag: str) -> None:
             for rule in environment.get("protection_rules", [])
         ),
         "Android environment requires a configured reviewer",
+    )
+    branch_policy = environment.get("deployment_branch_policy") or {}
+    require(
+        branch_policy.get("protected_branches") is False
+        and branch_policy.get("custom_branch_policies") is True,
+        "Android environment requires an explicit main-only branch policy",
+    )
+    branches = gh_json(
+        f"repos/{repository}/environments/android-release/deployment-branch-policies?per_page=100"
+    )
+    allowed = branches.get("branch_policies", [])
+    require(
+        branches.get("total_count") == 1
+        and len(allowed) == 1
+        and allowed[0].get("name") == "main"
+        and allowed[0].get("type") == "branch",
+        "Android environment must allow only the main branch",
     )
     rules = gh_json(f"repos/{repository}/rulesets?includes_parents=true&per_page=100")
     protected = set()

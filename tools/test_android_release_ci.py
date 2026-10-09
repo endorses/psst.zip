@@ -105,9 +105,9 @@ class AndroidEvidenceTests(unittest.TestCase):
         with (
             patch.dict(os.environ, {}, clear=True),
             patch.object(release, "gh_json") as api,
+            self.assertRaisesRegex(ValueError, "readiness"),
         ):
-            with self.assertRaisesRegex(ValueError, "readiness"):
-                release.protected_publication(self.repository, "android-v0.1.0")
+            release.protected_publication(self.repository, "android-v0.1.0")
         api.assert_not_called()
 
     def test_no_reviewer_or_mutable_tag_blocks_publication(self):
@@ -119,11 +119,25 @@ class AndroidEvidenceTests(unittest.TestCase):
         protected = {
             "protection_rules": [
                 {"type": "required_reviewers", "reviewers": [{"id": 1}]}
-            ]
+            ],
+            "deployment_branch_policy": {
+                "protected_branches": False,
+                "custom_branch_policies": True,
+            },
         }
         for responses, error in [
             ([{"protection_rules": []}], "reviewer"),
-            ([protected, []], "immutable"),
+            (
+                [
+                    protected,
+                    {
+                        "total_count": 1,
+                        "branch_policies": [{"name": "main", "type": "branch"}],
+                    },
+                    [],
+                ],
+                "immutable",
+            ),
         ]:
             with (
                 self.subTest(error=error),
@@ -134,16 +148,18 @@ class AndroidEvidenceTests(unittest.TestCase):
                     side_effect=[{"name": "main", "protected": True}, {"enabled": True}]
                     + responses,
                 ),
+                self.assertRaisesRegex(ValueError, error),
             ):
-                with self.assertRaisesRegex(ValueError, error):
-                    release.protected_publication(self.repository, "android-v0.1.0")
+                release.protected_publication(self.repository, "android-v0.1.0")
 
     def test_unprotected_main_is_rejected_before_source_or_key_use(self):
-        with patch.object(
-            release, "gh_json", return_value={"name": "main", "protected": False}
+        with (
+            patch.object(
+                release, "gh_json", return_value={"name": "main", "protected": False}
+            ),
+            self.assertRaisesRegex(ValueError, "protected main"),
         ):
-            with self.assertRaisesRegex(ValueError, "protected main"):
-                release.protected_main(self.repository)
+            release.protected_main(self.repository)
 
     def test_missing_or_nonempty_bypass_policy_is_not_assumed_empty(self):
         ready = {
@@ -170,7 +186,15 @@ class AndroidEvidenceTests(unittest.TestCase):
                         {
                             "protection_rules": [
                                 {"type": "required_reviewers", "reviewers": [{"id": 1}]}
-                            ]
+                            ],
+                            "deployment_branch_policy": {
+                                "protected_branches": False,
+                                "custom_branch_policies": True,
+                            },
+                        },
+                        {
+                            "total_count": 1,
+                            "branch_policies": [{"name": "main", "type": "branch"}],
                         },
                         [{"enforcement": "active", "target": "tag", "id": 4}],
                         {**ruleset, **bypass},
@@ -201,9 +225,68 @@ class AndroidEvidenceTests(unittest.TestCase):
                         immutable,
                     ],
                 ),
+                self.assertRaisesRegex(ValueError, "immutable releases"),
             ):
-                with self.assertRaisesRegex(ValueError, "immutable releases"):
-                    release.protected_publication(self.repository, "android-v0.1.0")
+                release.protected_publication(self.repository, "android-v0.1.0")
+
+    def test_reviewer_does_not_authorize_unrestricted_branches_or_main_tag(self):
+        ready = {
+            "ANDROID_RELEASE_PUBLICATION_READY": "true",
+            "ANDROID_RELEASE_DEVICE_EVIDENCE": "private reviewed device record",
+            "ANDROID_RELEASE_SIGNER_SHA256": "a" * 64,
+        }
+        environment = {
+            "protection_rules": [
+                {"type": "required_reviewers", "reviewers": [{"id": 1}]}
+            ],
+            "deployment_branch_policy": {
+                "protected_branches": False,
+                "custom_branch_policies": True,
+            },
+        }
+        cases = [
+            ({**environment, "deployment_branch_policy": None}, None),
+            (
+                environment,
+                {
+                    "total_count": 1,
+                    "branch_policies": [{"name": "main", "type": "tag"}],
+                },
+            ),
+            (
+                environment,
+                {
+                    "total_count": 1,
+                    "branch_policies": [{"name": "*", "type": "branch"}],
+                },
+            ),
+            (
+                environment,
+                {
+                    "total_count": 2,
+                    "branch_policies": [
+                        {"name": "main", "type": "branch"},
+                        {"name": "unreviewed", "type": "branch"},
+                    ],
+                },
+            ),
+            (environment, {"total_count": 1, "branch_policies": [{"name": "main"}]}),
+        ]
+        for configured, branches in cases:
+            responses = [
+                {"name": "main", "protected": True},
+                {"enabled": True},
+                configured,
+            ]
+            if branches is not None:
+                responses.append(branches)
+            with (
+                self.subTest(configured=configured, branches=branches),
+                patch.dict(os.environ, ready, clear=True),
+                patch.object(release, "gh_json", side_effect=responses),
+                self.assertRaisesRegex(ValueError, "main"),
+            ):
+                release.protected_publication(self.repository, "android-v0.1.0")
 
 
 if __name__ == "__main__":

@@ -109,6 +109,9 @@ Complete implementation review and actual device checks before enabling
 publication. Configure one `android-release` environment with a required reviewer
 and deployment branches restricted to `main`; this gives one normal GitHub
 approval per publication, without custom evidence-comment strings.
+Select custom deployment branches and allow exactly the `main` branch, rather than
+all protected branches, a wildcard or a tag named `main`. The publication preflight
+inspects both the environment setting and its actual branch-policy list.
 
 Environment secrets:
 
@@ -149,6 +152,8 @@ protection and exact tag ancestry before running selected-tag tooling. The job
 reuses exact-commit source CI only when its trusted definition agrees and its
 required steps actually executed successfully; otherwise it runs the relevant
 Android/security checks once. It does not rerun backend, web or native iOS jobs.
+The existing container `refs/tags/v*` rule does not cover Android tags; preserve it
+when adding the independent Android namespace.
 
 ## Existing debug installation
 
@@ -224,6 +229,8 @@ the newer APK over the existing app. Do not repeat the debug transition. Keep
 release-specific optimized smoke checks compact and reuse relevant passing CI.
 The first real same-signer preservation check is a prerequisite; routine CI is not
 a claim that an untested migration works.
+The [compact public-APK smoke](../testing/android-release-smoke.md) describes the
+disposable optimized-app checks separately from the private signing diagnostic.
 
 Google Play and F-Droid are later milestones. Play App Signing uses a separate
 upload key, with signer custody chosen before enrollment for intended channel
