@@ -3658,5 +3658,46 @@ containers, images or persistent data have been changed during this inspection.
       Read-only inspection also confirmed live container image IDs match the
       VPS image inventory under its containerd image store.
 - [x] Format the implementation and verified plan checkpoint for commit.
-- [ ] Merge through protected checks, then install the reviewed helper for
-      production adoption after the operator resolves the backup prerequisite.
+- [x] Merge through protected checks. PR #30 merged as
+      `85a3516a04687da2414c3315388a5e6e351c4b44`; repository security passed in
+      1 minute 35 seconds, with application builds selected out for this tooling change.
+- [ ] Install the reviewed helper for production adoption under the operator's
+      selected checkpoint policy.
+
+## Operator-authorized local checkpoint rollout (2026-10-09)
+
+The operator explicitly requests proceeding without off-host backups for now.
+This supersedes the earlier requirement to wait for backup-provider selection
+before the first VPS rollout. No backup storage purchase or provider configuration
+is required for this temporary deployment policy. Complete stopped local
+checkpoints remain part of the update transaction; they support recovery from a
+failed update while the VPS disk remains available, but do not protect against
+losing the VPS or its disk. Independent encrypted off-host backup and restore
+verification remain deferred and must not be reported as completed.
+
+- [x] Add an explicit protected `checkpoint_protection: local-only` setting,
+      retaining the strict off-host default for existing configurations and
+      preventing restricted SSH requests from changing the policy.
+- [x] Record the actual checkpoint protection in transaction/status and checkpoint
+      metadata. Preserve all stopped archive, checksum and SQLite checks, and
+      apply the recorded policy during recovery/retention without inventing a
+      remote-export receipt or downgrading legacy checkpoints.
+- [x] Verify focused fast local-only/off-host regressions and format the
+      implementation and plan for commit. All 73 focused updater/retention tests
+      passed in 0.238 seconds, including small actual archive and SQLite checks,
+      local checkpoint recovery/retention after switching the host policy, and
+      rejection of missing/malformed off-host evidence for legacy checkpoints.
+      The GitHub subprocess environment fixes `GH_HOST` to `github.com`, allowing
+      anonymous public reads without inheriting caller credentials or weakening
+      any provenance policy. Latest stable official GitHub CLI 2.102.0 was
+      installed on the VPS from its checksum-verified standalone distribution,
+      avoiding an extra Git package dependency. Anonymous release-by-tag metadata
+      access passed on that host; application containers remain unchanged.
+- [ ] Pass protected GitHub checks and install only the reviewed source.
+- [ ] Install the reviewed helper/parser and prepare the VPS's explicit physical
+      storage mappings. Verify provenance, image pairing, settings, capacity and
+      ownership before interrupting the current service.
+- [ ] Run the first local-checkpoint update and complete actual authenticated
+      candidate checks before reopening public routing. Keep restricted Actions
+      installation and independent off-host recovery separately pending until
+      their actual setup and verification are complete.
