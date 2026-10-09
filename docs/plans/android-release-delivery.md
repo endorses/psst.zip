@@ -345,8 +345,15 @@ Receive now gates initial save, confirmation and retry on the legacy API 26–28
 permission, preserving the selected link, private key and saved progress after
 denial. Its four focused state tests passed in 0.023 seconds (20 seconds including
 required compilation). iOS uses sandboxed Documents storage and needs no matching
-legacy Android permission change. Optimized-APK permission and byte verification
-for this fix remain pending.
+legacy Android permission change. The normal optimized APK from `7e06e4b` assembled
+and passed lint in 70 seconds. On API 26, denial preserved the link and received
+file; granting permission then saved all 32 decrypted bytes correctly. The smoke
+used a disposable signer, not the production key.
+
+Background inbox refresh initially erased the denied-permission message. Refresh
+now retains that specific message while continuing to clear recovered transient
+errors. The same four focused tests passed (17 seconds including compilation).
+Runtime verification of this final message-retention correction remains pending.
 
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS

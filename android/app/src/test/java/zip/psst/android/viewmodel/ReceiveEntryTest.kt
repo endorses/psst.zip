@@ -62,6 +62,8 @@ class ReceiveEntryTest {
         assertEquals(1, storageDenied.savedFileCount)
         assertNotNull(storageDenied.error)
         assertFalse(storageDenied.isDownloading)
+        assertEquals(storageDenied.error, storageDenied.storagePermissionErrorAfterRefresh())
+        assertNull(failed.storagePermissionErrorAfterRefresh())
         assertEquals(
             ReceiveRetry.REOPEN,
             ReceiveUiState(error = zip.psst.android.i18n.userText("Offline"))

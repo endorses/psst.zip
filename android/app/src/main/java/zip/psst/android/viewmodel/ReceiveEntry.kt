@@ -4,6 +4,7 @@ import zip.psst.android.R
 import zip.psst.android.data.HistoryAccess
 import zip.psst.android.data.TransferHistoryEntity
 import zip.psst.android.data.decodeInboxKeyMarker
+import zip.psst.android.i18n.UiText
 import zip.psst.android.i18n.message
 import zip.psst.shared.model.UrlHelper
 
@@ -56,3 +57,9 @@ internal fun ReceiveUiState.storagePermissionDenied(): ReceiveUiState =
                 R.string.l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb,
             ),
     )
+
+/** A fresh inbox response cannot resolve a denied device storage permission. */
+internal fun ReceiveUiState.storagePermissionErrorAfterRefresh(): UiText? = error?.takeIf {
+    it.resource ==
+        R.string.l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb
+}

@@ -634,7 +634,7 @@ class ReceiveViewModel(application: Application) : AndroidViewModel(application)
                             pager = target,
                             isPaging = false,
                             connectionError = false,
-                            error = null,
+                            error = it.storagePermissionErrorAfterRefresh(),
                             slotStatus = row.status,
                             downloadComplete = false,
                             shownSaved =
