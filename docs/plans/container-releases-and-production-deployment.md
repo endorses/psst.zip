@@ -3661,8 +3661,8 @@ containers, images or persistent data have been changed during this inspection.
 - [x] Merge through protected checks. PR #30 merged as
       `85a3516a04687da2414c3315388a5e6e351c4b44`; repository security passed in
       1 minute 35 seconds, with application builds selected out for this tooling change.
-- [ ] Install the reviewed helper for production adoption under the operator's
-      selected checkpoint policy.
+- [x] Install the reviewed helper for production adoption under the operator's
+      selected local-only checkpoint policy, as verified below.
 
 ## Operator-authorized local checkpoint rollout (2026-10-09)
 
@@ -3693,10 +3693,31 @@ verification remain deferred and must not be reported as completed.
       installed on the VPS from its checksum-verified standalone distribution,
       avoiding an extra Git package dependency. Anonymous release-by-tag metadata
       access passed on that host; application containers remain unchanged.
-- [ ] Pass protected GitHub checks and install only the reviewed source.
-- [ ] Install the reviewed helper/parser and prepare the VPS's explicit physical
+- [x] Pass protected GitHub checks and install only the reviewed source. PR #31
+      merged as `9cc7bbd2689131ff40b1be7fa38a35379436a9e4`, including source
+      commit `8f74f21b32ccaef93dea18742a931c3bdb33cf17`. Repository security
+      passed in 1 minute 41 seconds; application builds were selected out.
+      Installed helper SHA256 is
+      `c55f02a3c0979c6b7ce7873de9f93913a7648bddcb2b0148f130de3311ede19b`
+      and parser SHA256 is
+      `4bc63b4b476dc5487ab425bc741f7b9ab39c5c632433ec06fa56b7f07c7d69c9`.
+      Root-owned protected installation/configuration records matched the reviewed
+      source; the installed helper reported `no-transaction` before migration.
+- [x] Install the reviewed helper/parser and prepare the VPS's explicit physical
       storage mappings. Verify provenance, image pairing, settings, capacity and
-      ownership before interrupting the current service.
+      ownership before interrupting the current service. Preserve the original
+      private environment as `.env.before-managed-deployment`, carry explicit
+      backend volume/database overrides into the managed environment, and retain
+      both original Caddy volumes. Remove group-write permission from the original
+      public Compose/Caddy files. The protected configuration explicitly selects
+      local-only checkpoints with null export hook and null GitHub token.
+      Actual anonymous acquisition and exact cryptographic verification passed
+      for the v0.1.6 manifest, bundle, both image indexes and all four native
+      images. Initial and post-pull runtime/storage/settings/capacity preflight,
+      image ownership compatibility and isolated Caddy syntax passed. Temporary
+      preflight/probe files were removed; selected immutable images remain cached.
+      The original application containers remain running. Public activation and
+      complete local checkpoint/recovery have not yet been exercised on this VPS.
 - [ ] Run the first local-checkpoint update and complete actual authenticated
       candidate checks before reopening public routing. Keep restricted Actions
       installation and independent off-host recovery separately pending until
