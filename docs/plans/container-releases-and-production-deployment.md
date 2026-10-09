@@ -1393,23 +1393,23 @@ implemented adapters and the still-pending source/legal review and live gates.
       published release version. Execute the trusted workflow from the protected
       branch and resolve the selected version to its verified manifest/digests;
       deploying arbitrary branch builds is outside this workflow.
-- [ ] Configure a `production` environment with an allowed deployment branch,
+- [x] Configure a `production` environment with an allowed deployment branch,
       VPS host/user variables, a separate deployment SSH private-key secret, and
       an independently verified pinned SSH host key. Required reviewers are
       optional for this personal instance; manual dispatch is the normal gate.
       See [GitHub deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
-- [ ] Provision a dedicated deployment SSH identity constrained to the approved
+- [x] Provision a dedicated deployment SSH identity constrained to the approved
       update command, with no general shell access. If sudo is necessary, allow
       only the root-owned helper. Docker group membership grants broad host
       control and is not a substitute for this restriction. Retain the user's
       separate interactive SSH key for maintenance and recovery.
-- [ ] Verify the pinned host key on every CI connection. Do not disable host-key
+- [x] Verify the pinned host key on every CI connection. Do not disable host-key
       checking or establish trust from an unverified `ssh-keyscan` during a run.
-- [ ] Use GitHub-hosted runners, minimum token permissions, and per-production
+- [x] Use GitHub-hosted runners, minimum token permissions, and per-production
       concurrency with no cancellation halfway through a deployment. Handle
       connection loss using the durable host transaction record. Do not install
       a public-project self-hosted runner on the production VPS.
-- [ ] Ensure fork/PR workflows cannot obtain environment secrets or invoke the
+- [x] Ensure fork/PR workflows cannot obtain environment secrets or invoke the
       deployment helper. Document key rotation/revocation and recovery access.
       Follow [GitHub's secure Actions guidance](https://docs.github.com/en/actions/reference/security/secure-use).
 
@@ -1432,8 +1432,9 @@ the nonmatching maintenance user did not inherit those restrictions. Sudoers
 syntax passed with visudo 1.9.17p2. The local visudo also warned about unrelated
 ownership of `/etc/sudo.conf`; this check did not modify that file or validate
 the local machine's installed sudo policy. All temporary keys/configs were
-removed. Installed VPS Includes, account/PAM policy, sudo grants and actual
-connection/denial behavior remain pending, as do production secrets and rollout.
+removed. At that checkpoint, installed VPS policy, production secrets and
+rollout remained pending. These passed on 2026-10-09 as recorded in the automatic
+normal-update section below and the production Actions guide.
 
 Source dependency review is recorded in
 [the dependency review](../security/container-dependency-review.md). Pinned
@@ -1483,13 +1484,16 @@ reviews remain pending; this source result does not approve publication.
       No server files, containers or data were changed; final stopped-backup and
       migration-time reinspection remain pending.
 - [ ] Configure and verify protected encrypted off-host backups, including a
-      restore exercise, before enabling production deployment automation.
+      restore exercise. The operator explicitly deferred this independent recovery
+      work on 2026-10-09; it is no longer a prerequisite for the authorized
+      local-only rollout or normal deployment automation.
 - [ ] Publish and test the first release, perform a manual migration using the
       shared update command, and verify existing accounts, settings, files, links,
       and TLS state survive. Do not recreate the administrator.
-- [ ] Configure the environment and restricted deployment key, then exercise the
-      Actions deployment path with a subsequent tested release. Never upload the
-      VPS `.env`, data volumes, or personal maintenance key to GitHub.
+- [x] Configure the environment and restricted deployment key, then exercise the
+      Actions deployment path with a selected tested release. The same-version
+      v0.1.6 rehearsal passed on 2026-10-09. Neither the VPS `.env`, data volumes,
+      nor personal maintenance key was uploaded to GitHub.
 
 Read-only live inspection on 2026-10-07 confirmed `/opt/psst.zip`, project
 `psst-zip`, two source-built services, a private backend and the existing named
@@ -3770,11 +3774,11 @@ verification remain deferred and must not be reported as completed.
 - [ ] Once public routing is active, check Android login and the retained Receive
       history/download using the original device and its original keys. Native
       download validation remains pending until actually exercised.
-- [ ] Install and measure the protected `runtime-v1` profile described below.
+- [x] Install and measure the protected `runtime-v1` profile described below.
       This supersedes requiring a second functional transfer suite and production
       authentication credentials for normal updates. Restore/recovery retains its
       separate full-flow reconciliation requirement.
-- [ ] Provision and exercise the restricted Actions deployment identity and
+- [x] Provision and exercise the restricted Actions deployment identity and
       environment secrets. Keep independent off-host recovery separately deferred
       under the selected local-only checkpoint policy.
 
@@ -3807,16 +3811,59 @@ supersedes the proposed production credential/fixture hook for normal updates.
       activation deadline propagation followed by fail-closed stop. The broader
       release tools passed 449 tests in 26.092 seconds before the final focused
       deadline changes; the final focused regressions cover those changes.
-- [ ] Format, commit and pass protected GitHub checks for the installed helper
+- [x] Format, commit and pass protected GitHub checks for the installed helper
       source and guides. Bound the SSH deployment request to ten minutes; the
       checkpoint/image acquisition and failure-recovery budgets remain distinct
       from the 120-second candidate validation/activation budget.
-- [ ] Install only the reviewed helper/parser and opt the VPS into `runtime-v1`
+- [x] Install only the reviewed helper/parser and opt the VPS into `runtime-v1`
       with no verification hook or production authentication secrets. Preserve
       all physical volumes, local-only checkpoint policy and release provenance.
-- [ ] Measure a real same-version v0.1.6 rehearsal using the shared installed
+- [x] Measure a real same-version v0.1.6 rehearsal using the shared installed
       update path, confirm automatic completion with no prompts and check public
       HTTPS/release identity, preserved storage/ciphertext and completed retention.
-- [ ] Provision the dedicated restricted SSH identity and production environment
+- [x] Provision the dedicated restricted SSH identity and production environment
       secrets, verify allowed/denied commands and execute the manual GitHub Actions
       deployment path. Commits and release publication still do not deploy the VPS.
+
+### Verified automatic deployment result
+
+The normal-update scope is **closed**. Protected PR #34 merged the reviewed
+helper as `8f89920dd4bfced8461a5ff66fe9cd6763e060ba` after required checks passed;
+repository security took 76 seconds, and app suites were correctly scoped out.
+The VPS helper hash is
+`85fdb21ace5fbec22f571bc85822d4ce89d7803925cc52edde19bfe9e97521e5`.
+Its unchanged parser hash and reviewed source are recorded privately on the VPS.
+The protected configuration selects `runtime-v1` with no verification hook or
+application credentials.
+
+The dedicated deployment account received only the exact forced helper command
+and sudo grant, with its public authorization outside its writable home. Actual
+status access, eight forbidden-command cases, SFTP, PTY and forwarding denials
+passed. The maintenance policy remained unchanged and a fresh connection passed.
+The production environment permits only `main`; deployment secrets are separate
+from maintenance and application credentials. No firewall change was required.
+
+[Actions run 37928906539](https://github.com/endorses/psst.zip/actions/runs/37928906539)
+reapplied v0.1.6 using the installed updater. Its job completed in **70 seconds**;
+the version-only SSH request took **65 seconds**. The transaction was
+`20261009T121612Z-9393b2aeb816`, automatically completed at
+`2026-10-09T12:17:15.237859+00:00`, with the selected runtime report, active v0.1.6
+and completed retention. There were no cookie prompts, manual flow descriptions
+or additional fixture accounts. Checkpointing, release provenance and image
+verification remained active; the timing is an observation for this same-version
+rehearsal, not a guarantee for larger releases.
+
+Independent public-IP HTTPS checks verified health and the original v0.1.6 source
+identity. All backend/Caddy volumes and selected immutable images were preserved,
+as were both `unless-stopped` restart policies. The backend has no public port;
+Caddy serves 80/443. The original 15,355-byte ciphertext matched its first cold
+checkpoint. Disk availability after retention was 34,146,754,560 bytes. Temporary
+installation files were removed; prior helper/configuration receipts remain in
+protected operator recovery storage.
+
+Normal updates now require only selecting a published ready version and running
+**Deploy published container release** on `main`. Commits, tags and publication
+still do not deploy production. Full verification remains the default for other
+installations and mandatory for restores. Off-host backups, retained native
+client decryption and operator-owned desktop tunnel/hosts cleanup remain separate
+explicit follow-ups; none is described as tested by the runtime profile.
