@@ -83,6 +83,7 @@ example schema, **not** the VPS's discovered mapping:
   "disk_reserve_bytes": 1073741824,
   "image_reserve_bytes": 1073741824,
   "verification_hook": null,
+  "checkpoint_protection": "off-host",
   "checkpoint_hook": "/usr/local/libexec/psst-checkpoint-export",
   "github_token_file": null,
   "retention_count": 3
@@ -117,7 +118,10 @@ AMD64/ARM64. GitHub CLI must support the complete
 Use its normal protected root-owned CLI configuration, or place a narrowly scoped
 GitHub read token in the protected `github_token_file`; never put a token in a
 command argument, repository file or Actions deployment input. Public GHCR image
-pulls need no publishing credential. If anonymous attestation access is unavailable,
+pulls need no publishing credential. The helper fixes GitHub CLI's `GH_HOST` to
+`github.com` so public release and attestation reads can run anonymously without
+an interactive login. It never imports credentials from the invoking environment.
+If anonymous attestation access is unavailable,
 configure only the required read access; it does not grant package write permission.
 
 ## Update transaction and provenance
@@ -190,9 +194,11 @@ unsupported archive entries, truncated content, failed checksums or SQLite
 integrity/foreign-key failures abort before candidate startup. No journal is
 deleted to force validation.
 
-Local archives contain plaintext credentials/certificates. Configure and exercise
-the root-owned `checkpoint_hook` **before** an update. A missing hook fails
-preflight. The hook runs with only `--checkpoint` and the protected path, must
+Local archives contain plaintext credentials/certificates. The default
+`checkpoint_protection` is `off-host`, including configurations that omit the
+field. In this mode, configure and exercise the root-owned `checkpoint_hook`
+**before** an update. A missing hook fails preflight. The hook runs with only
+`--checkpoint` and the protected path, must
 complete the site's encrypted authenticated off-host export, verify its stored
 objects/receipt, and provide evidence of the protected restore exercise. It may
 use the site's backup provider and keys; the updater does not select a provider
@@ -239,9 +245,29 @@ cleanup bounds successful release history; operator review is still required if
 protected failed checkpoints or application data exhaust the 40 GB disk. Off-host
 retention must independently retain a usable known-good checkpoint and recovery keys.
 
+An operator can explicitly defer off-host backups in the protected configuration:
+
+```json
+{
+  "checkpoint_protection": "local-only",
+  "checkpoint_hook": null
+}
+```
+
+These two fields replace their entries in the full configuration above; this
+fragment is not a complete configuration. Local-only mode still requires the
+complete stopped checkpoint, archive/checksum validation and SQLite integrity
+checks before candidate startup. It records the actual protection mode in the
+checkpoint and transaction/status and does not create an off-host receipt. This
+allows recovery from a failed update while the VPS disk remains available; it
+does not protect against losing the VPS or its disk. Restore and retention use
+the checkpoint's recorded protection mode. Legacy checkpoints retain the off-host
+requirement, and enabling off-host protection later does not upgrade old local
+checkpoints. The restricted SSH request cannot change this administrator setting.
+
 ## Isolated candidate and verification gates
 
-Only after the complete checkpoint and off-host receipt pass does the helper
+Only after the complete checkpoint and the configured protection checks pass does the helper
 persist `mutation_started: true` and `migration-starting`. This happens **before**
 the first ordinary candidate backend launch because startup automatically runs
 schema migrations and recovery workers. A launch failure is therefore treated as

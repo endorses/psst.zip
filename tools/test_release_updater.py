@@ -535,6 +535,22 @@ class Transactions(unittest.TestCase):
 
 
 class Boundaries(unittest.TestCase):
+    def test_checkpoint_protection_defaults_strict_and_requires_explicit_enum(self):
+        good = config(Path("/opt/psst.zip"))
+        self.assertEqual(
+            update.checkpoint_protection(update.validate_config(good)), "off-host"
+        )
+        for policy in ("off-host", "local-only"):
+            self.assertEqual(
+                update.validate_config({**good, "checkpoint_protection": policy})[
+                    "checkpoint_protection"
+                ],
+                policy,
+            )
+        for policy in (None, True, False, 0, "local", "", {}):
+            with self.subTest(policy=policy), self.assertRaises(update.UpdateError):
+                update.validate_config({**good, "checkpoint_protection": policy})
+
     def test_configuration_requires_explicit_storage_and_trusted_repository(self):
         good = config(Path("/opt/psst.zip"))
         self.assertEqual(update.validate_config(good), good)
@@ -577,6 +593,32 @@ class Boundaries(unittest.TestCase):
         ):
             with self.subTest(command=command), self.assertRaises(update.UpdateError):
                 update.ssh_command(command)
+
+    def test_public_github_commands_fix_host_without_inheriting_credentials(self):
+        with tempfile.TemporaryDirectory(prefix="psst-public-release-") as directory:
+            host = update.Host(config(Path(directory)))
+            with patch.dict(
+                update.os.environ,
+                {"GH_HOST": "unexpected.example", "GH_TOKEN": "not-a-real-token"},
+            ), patch.object(
+                update.subprocess,
+                "run",
+                return_value=SimpleNamespace(returncode=0, stdout=b"public metadata"),
+            ) as command:
+                host.run("gh", "api", "public-release", gh=True)
+                environment = command.call_args.kwargs["env"]
+                self.assertEqual(environment["GH_HOST"], "github.com")
+                self.assertNotIn("GH_TOKEN", environment)
+            with patch.object(
+                update.subprocess,
+                "Popen",
+                side_effect=OSError("fixture does not execute CLI"),
+            ) as download:
+                with self.assertRaises(OSError):
+                    host.download_asset(1, Path(directory) / "manifest.json")
+                environment = download.call_args.kwargs["env"]
+                self.assertEqual(environment["GH_HOST"], "github.com")
+                self.assertNotIn("GH_TOKEN", environment)
 
     def test_atomic_record_and_host_lock_prevent_partial_or_simultaneous_work(self):
         with tempfile.TemporaryDirectory(prefix="psst-update-unit-") as directory:
@@ -1065,6 +1107,16 @@ class ConcreteHostBoundaries(unittest.TestCase):
                 any(command[:3] == ("docker", "volume", "create") for command in calls)
             )
 
+    def test_only_explicit_local_policy_permits_preflight_without_export_hook(self):
+        with self.fixture() as data:
+            host, root, current, candidate, selected, *_ = data
+            host.config["checkpoint_hook"] = None
+            with self.assertRaisesRegex(update.UpdateError, "off-host"):
+                host.preflight(current, candidate, selected, root / "checkpoint")
+            host.config["checkpoint_protection"] = "local-only"
+            adoption = host.preflight(current, candidate, selected, root / "checkpoint")
+            self.assertEqual(len(adoption["volumes"]), 3)
+
     def test_source_build_adoption_uses_the_running_binary_without_rendered_image_field(
         self,
     ):
@@ -1350,6 +1402,246 @@ class ConcreteHostBoundaries(unittest.TestCase):
             self.assertFalse(
                 any(command[:3] == ("gh", "attestation", "verify") for command in calls)
             )
+
+
+class CheckpointProtection(unittest.TestCase):
+    @contextmanager
+    def fixture(self, mode="local-only"):
+        import sqlite3
+
+        with tempfile.TemporaryDirectory(prefix="psst-local-checkpoint-") as directory:
+            root = Path(directory)
+            policy = config(root)
+            if mode is not None:
+                policy["checkpoint_protection"] = mode
+            if mode != "local-only":
+                policy["checkpoint_hook"] = "/protected/checkpoint-export"
+            host = update.Host(policy)
+            database = root / "existing.db"
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute("CREATE TABLE fixture(id INTEGER PRIMARY KEY)")
+                connection.commit()
+            inputs = [root / ".env", root / "compose.yml"]
+            for path in inputs:
+                path.write_text("protected fixture configuration")
+            host.protected_inputs = lambda: inputs
+            calls = []
+
+            def run(*args, output=None, **kwargs):
+                calls.append(args)
+                if args[0] == "/protected/checkpoint-export":
+                    return json.dumps(
+                        {
+                            "checkpoint_sha256": update.fingerprint(
+                                Path(args[-1]) / "checkpoint.json"
+                            ),
+                            "encrypted_off_host_receipt": "verified encrypted fixture",
+                            "restore_exercise": "verified isolated fixture",
+                            "verified_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    ).encode()
+                if output:
+                    payloads = {"fixture": b"saved image or state"}
+                    if (
+                        args[:2] == ("docker", "run")
+                        and "type=volume,src=old_backend,dst=/snapshot,readonly" in args
+                    ):
+                        payloads = {"existing.db": database.read_bytes()}
+                    with tarfile.open(
+                        output, "w", format=tarfile.USTAR_FORMAT
+                    ) as archive:
+                        for name, contents in payloads.items():
+                            item = tarfile.TarInfo(name)
+                            item.size = len(contents)
+                            archive.addfile(item, io.BytesIO(contents))
+                elif args[:3] == ("docker", "volume", "create"):
+                    (root / args[-1]).mkdir()
+                elif args[:3] == ("docker", "volume", "inspect"):
+                    return json.dumps([{"Mountpoint": str(root / args[-1])}]).encode()
+                elif args[0] == "tar":
+                    mount = Path(args[args.index("-C") + 1])
+                    with tarfile.open(args[-1], "r:") as archive:
+                        for item in archive:
+                            (mount / item.name).write_bytes(
+                                archive.extractfile(item).read()
+                            )
+                return b""
+
+            host.run = run
+            host.incident = lambda *args: calls.append(("incident", "pause"))
+            images = {"backend": "sha256:" + "a" * 64, "caddy": "sha256:" + "b" * 64}
+            adopted = {
+                "images": images,
+                "volumes": {
+                    name: {"image": images["backend"]}
+                    for name in policy["volume_names"].values()
+                },
+                "database": str(database),
+            }
+            current = compose()
+            for name, identity in images.items():
+                current["services"][name]["image"] = identity
+            identity = "20261009T000000Z-000000000000"
+            backups = root / "backups"
+            backups.mkdir()
+            checkpoint = backups / identity
+            transaction = {"id": identity, "prior_pause": False}
+            with patch.object(update, "protected"):
+                host.backup(current, adopted, checkpoint, transaction)
+                yield host, root, checkpoint, transaction, adopted, current, calls
+
+    def test_local_backup_is_complete_verified_and_records_actual_policy_without_receipt(
+        self,
+    ):
+        with self.fixture() as (
+            host,
+            root,
+            checkpoint,
+            transaction,
+            adopted,
+            current,
+            calls,
+        ):
+            backup = host.verify_backup(checkpoint)
+            self.assertEqual(backup["checkpoint_protection"], "local-only")
+            self.assertEqual(transaction["checkpoint_protection"], "local-only")
+            self.assertEqual(backup["images"], adopted["images"])
+            self.assertEqual(
+                sum(row["kind"] == "volume" for row in backup["records"].values()), 3
+            )
+            self.assertEqual(
+                sum(row["kind"] == "image" for row in backup["records"].values()), 2
+            )
+            self.assertEqual(
+                sum(
+                    row["kind"] == "configuration" for row in backup["records"].values()
+                ),
+                3,
+            )
+            self.assertFalse((checkpoint / "off-host-receipt.json").exists())
+            # The real checksum verifier still rejects corruption in local-only mode.
+            (checkpoint / "image-0.tar").write_bytes(b"corrupt")
+            with self.assertRaisesRegex(update.UpdateError, "checksum"):
+                host.verify_backup(checkpoint)
+
+    def test_local_checkpoint_restores_under_later_offhost_host_policy(self):
+        with self.fixture() as (host, root, checkpoint, transaction, *_):
+            host.config["checkpoint_protection"] = "off-host"
+            restored = host.restore(checkpoint, root, transaction)
+            self.assertEqual(len(transaction["restored_volumes"]), 3)
+            self.assertTrue(
+                all(
+                    value.startswith("psst-restore-")
+                    for value in transaction["restored_volumes"].values()
+                )
+            )
+            self.assertEqual(
+                restored["services"]["backend"]["image"], "sha256:" + "a" * 64
+            )
+            self.assertEqual(
+                update.load_json(checkpoint / "checkpoint.json")[
+                    "checkpoint_protection"
+                ],
+                "local-only",
+            )
+
+    def test_default_backup_still_exports_and_requires_real_bound_receipt(self):
+        with self.fixture(mode=None) as (host, _, checkpoint, transaction, *_):
+            self.assertEqual(transaction["checkpoint_protection"], "off-host")
+            self.assertEqual(
+                host.verify_backup(checkpoint)["checkpoint_protection"], "off-host"
+            )
+            self.assertTrue((checkpoint / "off-host-receipt.json").is_file())
+            (checkpoint / "off-host-receipt.json").unlink()
+            with self.assertRaises(
+                (update.UpdateError, update._release.InvalidRelease)
+            ):
+                host.verify_backup(checkpoint)
+
+    def test_local_checkpoint_retention_preserves_creation_policy(self):
+        with self.fixture() as (
+            host,
+            root,
+            checkpoint,
+            transaction,
+            adopted,
+            current,
+            _,
+        ):
+            state = root / "state"
+            (state / "transactions").mkdir(parents=True)
+            updater = update.Updater(host.config, host, state, checkpoint.parent)
+            for number in range(4):
+                identity = f"20261009T00000{number}Z-{number:012x}"
+                path = checkpoint.parent / identity
+                if path != checkpoint:
+                    shutil.copytree(checkpoint, path)
+                    backup = update.load_json(path / "checkpoint.json")
+                    backup["transaction"] = identity
+                    update.atomic_json(path / "checkpoint.json", backup)
+                (state / "transactions" / identity).mkdir()
+                record = {
+                    "schema_version": 1,
+                    "id": identity,
+                    "phase": "completed",
+                    "checkpoint": str(path),
+                    "checkpoint_protection": "local-only",
+                    "adopted": adopted,
+                }
+                update.atomic_json(
+                    state / "transactions" / identity / "transaction.json", record
+                )
+            update.atomic_json(updater.record, record)
+            update.atomic_json(
+                state / "active.json", {"transaction": identity, "compose": current}
+            )
+            inventory = {
+                value: {"tags": set(), "digests": set()}
+                for value in adopted["images"].values()
+            }
+            host.retention_inventory = lambda: (inventory, set())
+            host.config["checkpoint_protection"] = "off-host"
+            updater.retention()
+            self.assertEqual(len(list(checkpoint.parent.iterdir())), 2)
+            self.assertEqual(updater.read()["cleanup"]["status"], "completed")
+            self.assertEqual(updater.read()["checkpoint_protection"], "local-only")
+
+    def test_legacy_default_and_explicit_strict_verification_never_downgrade(self):
+        with self.fixture() as (host, _, checkpoint, *_):
+            with self.assertRaises(
+                (update.UpdateError, update._release.InvalidRelease)
+            ):
+                host.verify_backup(checkpoint, require_off_host=True)
+            path = checkpoint / "checkpoint.json"
+            backup = update.load_json(path)
+            for policy in ("legacy", "off-host"):
+                if policy == "legacy":
+                    backup.pop("checkpoint_protection", None)
+                else:
+                    backup["checkpoint_protection"] = policy
+                update.atomic_json(path, backup)
+                with self.subTest(policy=policy), self.assertRaises(
+                    (update.UpdateError, update._release.InvalidRelease)
+                ):
+                    host.verify_backup(checkpoint)
+            receipt = {
+                "checkpoint_sha256": update.fingerprint(path),
+                "encrypted_off_host_receipt": "verified encrypted fixture",
+                "restore_exercise": "verified isolated fixture",
+                "verified_at": "2020-01-01T00:00:00Z",
+            }
+            receipt_path = checkpoint / "off-host-receipt.json"
+            update.atomic_json(receipt_path, receipt)
+            host.verify_backup(checkpoint)
+            for field, wrong in (
+                ("checkpoint_sha256", "0" * 64),
+                ("encrypted_off_host_receipt", True),
+                ("restore_exercise", ""),
+                ("verified_at", "invalid"),
+            ):
+                update.atomic_json(receipt_path, {**receipt, field: wrong})
+                with self.subTest(field=field), self.assertRaises(update.UpdateError):
+                    host.verify_backup(checkpoint)
 
 
 if __name__ == "__main__":

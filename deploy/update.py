@@ -172,6 +172,15 @@ def fingerprint(path: Path) -> str:
     return digest.hexdigest()
 
 
+def checkpoint_protection(value: dict) -> str:
+    policy = value.get("checkpoint_protection", "off-host")
+    require(
+        isinstance(policy, str) and policy in {"off-host", "local-only"},
+        "invalid checkpoint protection policy",
+    )
+    return policy
+
+
 def validate_config(value: dict) -> dict:
     fields = {
         "repository",
@@ -194,8 +203,10 @@ def validate_config(value: dict) -> dict:
         "retention_count",
     }
     require(
-        set(value) == fields, "deployment configuration has missing or unknown fields"
+        set(value) - {"checkpoint_protection"} == fields,
+        "deployment configuration has missing or unknown fields",
     )
+    checkpoint_protection(value)
     _release.repository_name(value["repository"])
     require(
         value["signer_workflow"]
@@ -452,6 +463,9 @@ class Host:
         timeout: int = 900,
     ) -> bytes:
         environment = self.env.copy()
+        if gh:
+            # Fix the public host explicitly; public reads also work without a token.
+            environment["GH_HOST"] = "github.com"
         if gh and self.config["github_token_file"]:
             token = Path(self.config["github_token_file"])
             protected(token)
@@ -695,6 +709,7 @@ class Host:
 
     def download_asset(self, identity: int, destination: Path) -> None:
         environment = self.env.copy()
+        environment["GH_HOST"] = "github.com"
         if self.config["github_token_file"]:
             token = Path(self.config["github_token_file"])
             protected(token)
@@ -825,7 +840,8 @@ class Host:
         self, current: dict, candidate: dict, manifest: dict, checkpoint: Path
     ) -> dict:
         require(
-            self.config["checkpoint_hook"] is not None,
+            checkpoint_protection(self.config) == "local-only"
+            or self.config["checkpoint_hook"] is not None,
             "configure and exercise encrypted off-host checkpoint protection before production updates",
         )
         docker = (
@@ -1387,6 +1403,8 @@ class Host:
     def backup(
         self, current: dict, adopted: dict, checkpoint: Path, transaction: dict
     ) -> None:
+        policy = checkpoint_protection(self.config)
+        transaction["checkpoint_protection"] = policy
         checkpoint.mkdir(mode=0o700)
         records = {}
         for number, (volume, facts) in enumerate(sorted(adopted["volumes"].items())):
@@ -1465,6 +1483,7 @@ class Host:
             checkpoint / "checkpoint.json",
             {
                 "schema_version": 1,
+                "checkpoint_protection": policy,
                 "transaction": transaction["id"],
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "prior_pause": transaction["prior_pause"],
@@ -1474,7 +1493,8 @@ class Host:
         )
         self.verify_backup(checkpoint, require_off_host=False)
         self.sqlite_integrity(Path(adopted["database"]))
-        self.export_checkpoint(checkpoint)
+        if policy == "off-host":
+            self.export_checkpoint(checkpoint)
         self.verify_backup(checkpoint)
 
     def export_checkpoint(self, checkpoint: Path) -> None:
@@ -1484,6 +1504,13 @@ class Host:
         )
         protected(Path(hook), executable=True)
         report = _release.read_json(self.run(hook, "--checkpoint", str(checkpoint)))
+        self.verify_checkpoint_receipt(checkpoint, report, fresh=True)
+        atomic_json(checkpoint / "off-host-receipt.json", report)
+
+    @staticmethod
+    def verify_checkpoint_receipt(
+        checkpoint: Path, report: dict, *, fresh: bool = False
+    ) -> None:
         require(
             isinstance(report, dict)
             and set(report)
@@ -1508,13 +1535,18 @@ class Host:
                 isinstance(report[name], str) and 12 <= len(report[name]) <= 1000,
                 "off-host encryption/restore evidence is required",
             )
-        stamp = datetime.fromisoformat(report["verified_at"].replace("Z", "+00:00"))
+        try:
+            stamp = datetime.fromisoformat(report["verified_at"].replace("Z", "+00:00"))
+        except ValueError:
+            raise UpdateError("off-host receipt timestamp is invalid") from None
         require(
             stamp.tzinfo is not None
-            and abs((datetime.now(timezone.utc) - stamp).total_seconds()) < 900,
+            and (
+                not fresh
+                or abs((datetime.now(timezone.utc) - stamp).total_seconds()) < 900
+            ),
             "off-host checkpoint receipt is stale",
         )
-        atomic_json(checkpoint / "off-host-receipt.json", report)
 
     @staticmethod
     def sqlite_integrity(database: Path) -> None:
@@ -1532,10 +1564,17 @@ class Host:
             )
 
     @staticmethod
-    def verify_backup(checkpoint: Path, *, require_off_host: bool = True) -> dict:
+    def verify_backup(
+        checkpoint: Path, *, require_off_host: bool | None = None
+    ) -> dict:
         protected(checkpoint, directory=True)
         protected(checkpoint / "checkpoint.json")
         value = load_json(checkpoint / "checkpoint.json")
+        policy = checkpoint_protection(value)
+        require(
+            require_off_host is None or type(require_off_host) is bool,
+            "invalid checkpoint verification policy",
+        )
         require(
             value.get("schema_version") == 1
             and ID.fullmatch(value.get("transaction", ""))
@@ -1562,15 +1601,14 @@ class Host:
             and any(x["kind"] == "volume" for x in value["records"].values()),
             "checkpoint is missing images or storage",
         )
-        if require_off_host:
+        off_host = (
+            policy == "off-host" if require_off_host is None else require_off_host
+        )
+        if off_host:
             receipt = checkpoint / "off-host-receipt.json"
             protected(receipt)
             evidence = load_json(receipt)
-            require(
-                evidence.get("checkpoint_sha256")
-                == fingerprint(checkpoint / "checkpoint.json"),
-                "off-host receipt does not authenticate the selected checkpoint",
-            )
+            Host.verify_checkpoint_receipt(checkpoint, evidence)
         return value
 
     def https(
@@ -1960,6 +1998,7 @@ class Updater:
             "version": version,
             "phase": "preparing",
             "checkpoint": str(self.backups / identity),
+            "checkpoint_protection": checkpoint_protection(self.config),
             "previous_version": (
                 load_json(self.state / "active.json")["version"]
                 if (self.state / "active.json").exists()
@@ -2537,6 +2576,7 @@ def display(record: dict | None) -> int:
                         "previous_version",
                         "phase",
                         "cleanup",
+                        "checkpoint_protection",
                         "updated_at",
                     )
                 },

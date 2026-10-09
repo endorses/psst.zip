@@ -8,11 +8,11 @@ The workflow does not build or publish an image. Commits and tags do not trigger
 this production workflow.
 
 The implementation and local SSH input/response tests are available. The
-main-only production environment policy is configured; the deployment account/key,
-host settings, published ready release and end-to-end connection have **not** been
-provisioned or tested. The
+main-only production environment policy is configured, and the public immutable
+v0.1.6 container release is available. The deployment account/key, host settings
+and end-to-end connection have **not** been provisioned or tested. The
 [release update guide](release-update-recovery.md) describes the required host
-configuration, encrypted off-host checkpoint hook and verification gates.
+configuration, selected local-only or off-host checkpoint protection and verification gates.
 
 ## Active environment policy
 
