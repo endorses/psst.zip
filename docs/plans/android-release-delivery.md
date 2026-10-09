@@ -89,7 +89,8 @@ unsigned release builds and metadata can proceed while it is being resolved.
 - [x] Introduce one checked-in Android version source used by Gradle and release
       validation, with rejected reused/decreasing published codes.
 - [ ] Confirm the first public code exceeds the actual phone and private bridge
-      codes; the prepared code `2` only exceeds the observed local debug code `1`.
+      codes; prepared public code `3` exceeds the observed local debug code `1`
+      and tested private bridge code `2`, but the actual phone remains unchecked.
 - [ ] Use independent `android-vX.Y.Z` release tags. Check exact commit/main ancestry,
       version agreement and source identity; protect this tag namespace against
       updates/deletion. Do not append assets to immutable container releases.
@@ -360,6 +361,11 @@ passed with a disposable signer. Compilation/shrinking took 66 seconds; completi
 the explicitly opted-in unsigned packaging and lint used cached tasks in two
 seconds. This is local evidence; production signing and physical-phone checks
 remain pending.
+
+The planned first public version code is now `3`, above the synthetic private
+bridge's `2`. This also permits a normal, unmodified public-APK code `2` to code
+`3` same-signer update check, independently of the private diagnostic. The actual
+phone's version/signature remains a prerequisite before applying either APK.
 
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS

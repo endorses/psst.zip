@@ -10,8 +10,9 @@ it does not publish an APK, create a signing key or update an installed app.
 `android/release-version.properties` is the single checked-in version source.
 Keep the application ID `zip.psst.android` stable and increase `versionCode` above
 all public releases and any private bridge installed on the operator's device.
-The first planned APK is version `0.1.0`, code `2`; this is above the observed local
-debug APK's code `1`, but the phone's installed code/signature still need checking.
+The first planned APK is version `0.1.0`, code `3`; this exceeds both the observed
+local debug APK's code `1` and the tested private bridge's code `2`. The phone's
+installed code/signature still need checking before either transition or release.
 Container tags retain their independent `vX.Y.Z` namespace.
 
 The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tools
