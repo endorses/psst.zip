@@ -313,9 +313,10 @@ scheme-specific certificates and Android API ranges, while public APK verificati
 still rejects signing rotation, including v3.2 blocks. An actual Android 16 private
 bridge installation exposed AndroidX's signature-permission ownership requirement:
 the lineage needs installed-data and permission continuity. Shared-UID, rollback
-and auth capabilities remain disabled. Accepting historical debug permission trust
-on the real phone is still an operator decision; a later production-only APK does
-not prove that Android discarded that signing history.
+and auth capabilities remain disabled. The operator accepted historical debug
+permission trust on October 10; applying the bridge to the actual phone still
+requires its installed identity and preservation checks. A later production-only
+APK does not prove that Android discarded that signing history.
 
 The optimized instrumentation runner exposed a systematic shared-dependency
 classpath problem after R8 removed tracing and Kotlin facades. The private fixture
@@ -447,6 +448,6 @@ used only with an inert non-key file to verify environment-reference arguments,
 not a signing credential. The full-history repository secret scan passed; the
 GitGuardian false-positive disposition is still pending with the operator.
 
-The next prerequisites are choosing the transition, checking the actual phone and
-production-key recovery. Store acceptance, iOS
+The private bridge is selected. The next prerequisites are checking the actual
+phone and production-key recovery. Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.
