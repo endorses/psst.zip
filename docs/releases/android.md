@@ -101,10 +101,15 @@ keytool -list -v -keystore "$HOME/.local/share/psst-signing/android.p12" \
 
 Enter the password only in the terminal prompt. Record the **public certificate's
 SHA256** fingerprint. Retain an independently stored encrypted keystore copy and
-its password in a password manager. Demonstrate recovery by decrypting the backup
-into a private temporary directory, checking the public fingerprint with
-`keytool`, then deleting the recovered file. A copy on the same computer alone is
-not independent recovery.
+its password in a password manager. Demonstrate recovery by opening the separate
+backup with `keytool` and checking its public fingerprint. Also run `keytool
+-certreq -keystore BACKUP_PATH -alias psst-android -file /dev/null`, entering the
+password interactively: creating the disposable request proves that the recovered
+private key is usable, whereas listing the certificate alone does not. This reads
+the backup without changing it or retaining the request. If restoring from an
+additional encrypted archive, restore into a private temporary directory and
+delete the restored copy afterward. A copy on the same computer alone is not
+independent recovery. See the [keytool certificate-request documentation](https://docs.oracle.com/en/java/javase/25/docs/specs/man/keytool.html#commands-for-generating-a-certificate-request).
 
 R8 mappings use a separate age encryption recipient. Generate its identity
 privately with stable `age-keygen`, retain the identity offline, and use only the

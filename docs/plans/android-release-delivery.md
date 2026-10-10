@@ -85,6 +85,14 @@ installation. Encrypted export/import is not the selected prerequisite. The actu
 phone identity is now verified; production-key recovery and in-place preservation
 remain unverified.
 
+The operator created the production keystore and reported a backup on an external
+drive. Its public certificate SHA256 is
+`6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15`.
+Backup recovery remains pending: the separate copy must expose the same certificate
+and successfully create a disposable certificate request using its private key.
+No private key or password was supplied in chat, and GitHub signing inputs remain
+unconfigured.
+
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
 
