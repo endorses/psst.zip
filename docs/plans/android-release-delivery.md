@@ -179,7 +179,7 @@ scenario do not belong in every documentation or container-only change.
 - [x] Check API 26 behavior and the current stable Android version, including
       packaged native library compatibility. Use an emulator/device only for
       release-specific behavior that JVM tests cannot establish.
-- [ ] Keep Android publication independent of native iOS CI. For any shared or
+- [x] Keep Android publication independent of native iOS CI. For any shared or
       parity app change, run the applicable existing iOS source/portable checks
       locally and native app/extension/XCTest checks on macOS; document unrun checks
       explicitly. Do not call an Android-only APK workflow an iOS verification.
@@ -247,7 +247,10 @@ This does not establish the phone's installed signer or older app sandbox.
 
 Preparation is published in [draft PR #36](https://github.com/endorses/psst.zip/pull/36).
 Its [hosted validation](https://github.com/endorses/psst.zip/actions/runs/38026753127)
-is running against `8c0fe3c`; native iOS completion is not yet established.
+passed all five CI jobs against `8c0fe3c`, including native iOS app, extension and
+XCTest validation. Android/shared completed in 5m50s, repository security in
+1m13s, backend in 6m30s, web in 7m7s and native iOS in 18m14s. These are hosted
+job durations, not isolated test execution times or Android release build timings.
 The operator approved this preparation push and the private bridge on October 10.
 [Read-only Wireless debugging instructions](../releases/android.md#read-the-installed-identity-without-usb)
 are available for the actual phone check; no phone inspection or update has run.
@@ -285,10 +288,11 @@ evidence, not a hosted timing or a production-signed APK.
 
 Pending: physical-device checks, the phone's actual transition, production-key
 recovery, GitHub
-environment/tag rules, hosted preview and public delivery.
-Local JDK is Android Studio's Java 25.0.3; the workflow selects Java 27. Native iOS
-app/share-extension/XCTest validation of changed shared dependencies remains
-pending on macOS using the existing `xcode-27` job. No iOS native success is claimed.
+signing inputs, hosted preview and public delivery.
+Local JDK is Android Studio's Java 25.0.3; hosted Android CI passed with Java 27.
+Native iOS app/share-extension/XCTest validation of the changed shared dependencies
+passed in the existing `xcode-27` job against `8c0fe3c`; this does not establish an
+iOS production signing or store release.
 
 The refreshed notice resolution contains 123 Android and 117 iOS artifact
 variants, including the reviewed SLF4J 2.0.19 MIT license. The selected stable AGP
@@ -402,14 +406,40 @@ image picker. This is emulator evidence; real-device optics, OEM signing behavio
 and NetGuard remain separate physical checks. No production signing key was used.
 
 Read-only GitHub inspection on October 10 confirmed protected `main` and enabled
-immutable releases. The existing `version-tags` ruleset covers only `refs/tags/v*`;
-there is no `android-release` environment yet. Android-specific configuration
-therefore remains pending. Publication preflight now also verifies an explicit
+immutable releases. The existing `version-tags` ruleset covers only `refs/tags/v*`.
+The separate `android-release` environment is now configured with `endorses` as
+reviewer and exactly the `main` branch policy. Active ruleset `24830721`,
+`android-version-tags`, protects `refs/tags/android-v*` from updates/deletion with
+no bypass actors. Readback verified both configurations. The environment has no
+signing secrets or enabled publication readiness; no Android tag/release exists.
+Publication preflight also verifies an explicit
 custom environment policy permitting only the `main` branch, rejecting an
 unrestricted environment, wildcards, additional branches, a tag named `main` or a
 missing branch type. Its actual API response shape was checked against the
 existing container environment using GitHub API version `2026-03-10`. The 35
 focused release/signing/update/policy cases passed in 0.035 seconds; Ruff passed.
+
+Hosted warning inspection identified project-owned legacy Compose autofill APIs.
+They now use stable content-type semantics and the text fields' existing value
+callbacks; iOS already uses equivalent native username/password/new-password hints.
+SQLite's native-access flag is scoped to the app's host unit-test JVMs. Optimized
+assembly, release lint and the two affected SQL test classes passed in 71 seconds;
+their five cases took 0.305 seconds. Neither the deprecated autofill diagnostics
+nor SQLite native-access warning appeared. Credential-provider autofill on a
+physical phone is not claimed from compilation. These Android-only follow-ups
+still need the draft PR's hosted validation after push.
+
+JourneyApps [4.3.0](https://github.com/journeyapps/zxing-android-embedded/releases/tag/v4.3.0)
+is still its latest published stable scanner and uses legacy Camera integer IDs
+and parameter callbacks. That compatibility boundary remains documented and
+visible; substituting Camera2 IDs would not modernize its backend. The earlier
+optimized camera smoke remains evidence for the unchanged scanner behavior.
+The upstream Gradle visibility/native-attribute warnings remain visible as well.
+
+GitGuardian separately flagged a dummy password in the bridge unit test. It is
+used only with an inert non-key file to verify environment-reference arguments,
+not a signing credential. The full-history repository secret scan passed; the
+GitGuardian false-positive disposition is still pending with the operator.
 
 The next prerequisites are choosing the transition, checking the actual phone and
 production-key recovery. Store acceptance, iOS

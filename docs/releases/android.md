@@ -19,7 +19,8 @@ The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tool
 37.0.0. Kotlin stays at 2.4.20: the operator approved this compatibility exception
 because latest stable SKIE 0.10.15 rejects Kotlin 2.4.21. Recheck SKIE compatibility
 before upgrading; do not disable it to make Android compile at iOS's expense.
-The shared module's iOS native validation still requires macOS.
+The shared module's iOS native validation passed on the draft PR's macOS
+`xcode-27` job at `8c0fe3c`; future shared changes still require native validation.
 
 The dependency refresh uses Compose BOM 2026.09.00, Activity 1.13.0, Lifecycle
 2.11.0, Navigation 2.10.2, Room 2.8.5, coroutines 1.11.0, Ktor 3.6.0 and
@@ -28,7 +29,12 @@ public server connections do not request that permission. Android 16 and earlier
 keep the existing network behavior. iOS already declares its local-network purpose.
 See the [bounded lint workaround](../security/lint-bidi-workaround.md) for the
 single stalled bidi rule and its replacement source check; other lint checks remain
-active.
+active. Login/password fields use stable Compose autofill content-type semantics;
+iOS already provides matching native credential hints. SQLite JNI permission is
+enabled only in the app's host unit-test JVMs. JourneyApps 4.3.0 is its latest
+published stable scanner but still uses legacy Camera IDs/parameters; this
+documented compatibility boundary remains until its backend can be migrated and
+verified. Upstream Gradle plugin deprecation warnings remain visible.
 
 Version evidence: [official Compose BOM](https://dl.google.com/dl/android/maven2/androidx/compose/compose-bom/2026.09.00/compose-bom-2026.09.00.pom),
 [AndroidX releases](https://developer.android.com/jetpack/androidx/versions),

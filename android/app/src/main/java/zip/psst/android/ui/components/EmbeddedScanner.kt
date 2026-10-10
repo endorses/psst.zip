@@ -21,8 +21,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import zip.psst.android.R
-import zip.psst.android.i18n.*
 import com.google.zxing.*
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.multi.qrcode.QRCodeMultiReader
@@ -30,6 +28,8 @@ import com.journeyapps.barcodescanner.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import zip.psst.android.R
+import zip.psst.android.i18n.*
 
 /** Camera lifetime is bounded by this visible composable and the navigation entry lifecycle. */
 @Composable
@@ -42,7 +42,7 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
     var granted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
+                PackageManager.PERMISSION_GRANTED,
         )
     }
     val permissionPreferences = remember {
@@ -54,17 +54,19 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
     var detected by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf(false) }
     var processingImage by remember { mutableStateOf(false) }
+    // JourneyApps 4.3.0 opens Camera's integer IDs and supplies Camera.Parameters.
+    // Keep enumeration in that same API; Camera2 string IDs are not interchangeable.
     val cameraCount = remember { runCatching { Camera.getNumberOfCameras() }.getOrDefault(0) }
     val cameraId = remember {
         selectScannerCamera(
             (0 until cameraCount).mapNotNull { id ->
                 runCatching {
-                        val info = Camera.CameraInfo()
-                        Camera.getCameraInfo(id, info)
-                        id to (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK)
-                    }
+                    val info = Camera.CameraInfo()
+                    Camera.getCameraInfo(id, info)
+                    id to (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK)
+                }
                     .getOrNull()
-            }
+            },
         )
     }
     var cameraGeneration by remember { mutableIntStateOf(0) }
@@ -104,7 +106,7 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                     camera.cameraInstance?.changeCameraParameters { parameters ->
                         torchSupported =
                             parameters.supportedFlashModes?.contains(
-                                Camera.Parameters.FLASH_MODE_TORCH
+                                Camera.Parameters.FLASH_MODE_TORCH,
                             ) == true
                         parameters
                     }
@@ -119,8 +121,8 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                     latestError(
                         message(
                             R.string
-                                .l_camera_unavailable_try_again_or_choose_an_image_or_paste_a_link_96df6c
-                        )
+                                .l_camera_unavailable_try_again_or_choose_an_image_or_paste_a_link_96df6c,
+                        ),
                     )
                 }
             }
@@ -148,7 +150,7 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                         }
 
                         override fun possibleResultPoints(points: MutableList<ResultPoint>?) {}
-                    }
+                    },
                 )
                 camera.resume()
             } else stop()
@@ -185,8 +187,8 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                         latestError(
                             message(
                                 R.string
-                                    .l_choose_an_image_containing_exactly_one_readable_qr_code_5102b7
-                            )
+                                    .l_choose_an_image_containing_exactly_one_readable_qr_code_5102b7,
+                            ),
                         )
                     } finally {
                         processingImage = false
@@ -215,11 +217,11 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                         onClick = {
                             torch = !torch
                             camera.setTorch(torch)
-                        }
+                        },
                     ) {
                         Text(
                             if (torch) tr(R.string.l_torch_off_29a2dd)
-                            else tr(R.string.l_torch_on_83015b)
+                            else tr(R.string.l_torch_on_83015b),
                         )
                     }
             }
@@ -228,8 +230,8 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
             Text(
                 tr(
                     R.string
-                        .l_camera_access_is_off_you_can_still_choose_a_qr_image_or_paste_a_l_268a42
-                )
+                        .l_camera_access_is_off_you_can_still_choose_a_qr_image_or_paste_a_l_268a42,
+                ),
             )
             TextButton(
                 onClick = {
@@ -237,9 +239,9 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                         Intent(
                             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                             Uri.parse("package:${context.packageName}"),
-                        )
+                        ),
                     )
-                }
+                },
             ) {
                 Text(tr(R.string.l_open_app_settings_6f0a71))
             }
@@ -248,7 +250,10 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
         else {
             if (cameraError)
                 Text(
-                    tr(R.string.l_camera_unavailable_retry_choose_a_qr_image_or_paste_a_link_7cf984)
+                    tr(
+                        R.string
+                            .l_camera_unavailable_retry_choose_a_qr_image_or_paste_a_link_7cf984,
+                    ),
                 )
             TextButton(
                 onClick = {
@@ -256,11 +261,11 @@ fun EmbeddedScanner(onCode: (String) -> Unit, onError: (UiText) -> Unit) {
                     cameraGeneration++
                     cameraError = false
                     detected = false
-                }
+                },
             ) {
                 Text(
                     if (cameraError) tr(R.string.l_retry_camera_d662d0)
-                    else tr(R.string.l_scan_again_f6ab55)
+                    else tr(R.string.l_scan_again_f6ab55),
                 )
             }
         }

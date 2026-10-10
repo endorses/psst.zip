@@ -36,9 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -244,8 +243,7 @@ fun ServerConfigScreen(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 singleLine = true,
                 enabled = !state.isTesting,
-                modifier =
-                    Modifier.fillMaxWidth().loginAutofill(false, viewModel::onUsernameChange),
+                modifier = Modifier.fillMaxWidth().loginAutofill(false),
             )
             OutlinedTextField(
                 value = state.password,
@@ -282,7 +280,7 @@ fun ServerConfigScreen(
                     ),
                 singleLine = true,
                 enabled = !state.isTesting,
-                modifier = Modifier.fillMaxWidth().loginAutofill(true, viewModel::onPasswordChange),
+                modifier = Modifier.fillMaxWidth().loginAutofill(true),
             )
             Button(
                 onClick = { connect { viewModel.signIn(onConfigured) } },
@@ -322,7 +320,6 @@ fun ServerConfigScreen(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun PasswordEntry(
     label: String,
@@ -340,9 +337,8 @@ private fun PasswordEntry(
         modifier =
             Modifier.fillMaxWidth()
                 .accountAutofill(
-                    if (label == tr(R.string.l_temporary_password_62d606)) AutofillType.Password
-                    else AutofillType.NewPassword,
-                    onChange,
+                    if (label == tr(R.string.l_temporary_password_62d606)) ContentType.Password
+                    else ContentType.NewPassword,
                 ),
         visualTransformation =
             if (visible) VisualTransformation.None else PasswordVisualTransformation(),

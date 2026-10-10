@@ -268,4 +268,8 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
 
+// SQLite JDBC loads JNI in host SQL tests. Grant access only to those test JVMs,
+// not the Gradle daemon, shared tests or the production Android application.
+tasks.withType<Test>().configureEach { jvmArgs("--enable-native-access=ALL-UNNAMED") }
+
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
