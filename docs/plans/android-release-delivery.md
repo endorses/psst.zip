@@ -56,7 +56,7 @@ encrypted archive export/import capability must precede any reinstall.
 
 - [x] Inspect signing/version configuration and confirm the absence of a portable
       key/history migration flow on both platforms.
-- [ ] Record the operator's Android OS, actual installed package and public signer
+- [x] Record the operator's Android OS, actual installed package and public signer
       fingerprint privately. Distinguish current and older package sandboxes;
       never infer preserved data from the app's visible name or a fresh pairing.
 - [x] Evaluate a bounded private signing-lineage transition and its trust/channel
@@ -81,8 +81,9 @@ encrypted archive export/import capability must precede any reinstall.
 
 On October 10, the operator selected the private signing bridge and accepted the
 retained debug-certificate trust for signature permissions on the migrated
-installation. Encrypted export/import is not the selected prerequisite; actual
-phone identity, production-key recovery and in-place preservation remain unverified.
+installation. Encrypted export/import is not the selected prerequisite. The actual
+phone identity is now verified; production-key recovery and in-place preservation
+remain unverified.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
@@ -93,9 +94,9 @@ unsigned release builds and metadata can proceed while it is being resolved.
       primary signing, Play target/testing and F-Droid reproducibility guidance.
 - [x] Introduce one checked-in Android version source used by Gradle and release
       validation, with rejected reused/decreasing published codes.
-- [ ] Confirm the first public code exceeds the actual phone and private bridge
-      codes; prepared public code `3` exceeds the observed local debug code `1`
-      and tested private bridge code `2`, but the actual phone remains unchecked.
+- [x] Confirm the first public code exceeds the actual phone and private bridge
+      codes; prepared public code `3` exceeds the actual phone's debug code `1`
+      and tested private bridge code `2`.
 - [ ] Use independent `android-vX.Y.Z` release tags. Check exact commit/main ancestry,
       version agreement and source identity; protect this tag namespace against
       updates/deletion. Do not append assets to immutable container releases.
@@ -243,7 +244,12 @@ and [Play publishing API](https://developers.google.com/android-publisher/gettin
 The operator reports Android 16 and no USB access. The local debug APK has package
 `zip.psst.android`, version code `1`, and public signer SHA256
 `bcda0d16e7cdf314aceab34e240e304b53e459ca6370076d31323022353db987`.
-This does not establish the phone's installed signer or older app sandbox.
+Read-only Wireless debugging inspection on October 10 verified that the actual
+Android 16 phone has the same package, code `1` and certificate. A private identity
+record retains its profile/UID and verification result outside tracked files.
+Only its base APK was read and verified; the temporary copy was deleted. This
+establishes the current installation, not protected-state preservation or an older
+package sandbox. No phone update or private-data read has occurred.
 
 Preparation is published in [draft PR #36](https://github.com/endorses/psst.zip/pull/36).
 Its [hosted validation](https://github.com/endorses/psst.zip/actions/runs/38026753127)
@@ -258,7 +264,7 @@ backend 4m16s, web 6m51s and native iOS 20m30s. This native result predates the
 event-reader API migration recorded below; that new shared change still needs
 its own hosted native validation.
 [Read-only Wireless debugging instructions](../releases/android.md#read-the-installed-identity-without-usb)
-are available for the actual phone check; no phone inspection or update has run.
+were used for the actual phone check; no phone update has run.
 
 Implemented: [release workflow](../../.github/workflows/android-release.yml),
 [artifact/signing checks](../../tools/android_release.py),
@@ -291,7 +297,7 @@ seconds with cached dependencies. App tests: 163 cases, 0 failures, 8.871 second
 shared Android tests: 175 cases, 0 failures, 7.215 seconds. This is local execution
 evidence, not a hosted timing or a production-signed APK.
 
-Pending: physical-device checks, the phone's actual transition, production-key
+Pending: physical-device flow checks, the phone's actual transition, production-key
 recovery, GitHub
 signing inputs, hosted preview and public delivery.
 Local JDK is Android Studio's Java 25.0.3; hosted Android CI passed with Java 27.
@@ -319,8 +325,8 @@ still rejects signing rotation, including v3.2 blocks. An actual Android 16 priv
 bridge installation exposed AndroidX's signature-permission ownership requirement:
 the lineage needs installed-data and permission continuity. Shared-UID, rollback
 and auth capabilities remain disabled. The operator accepted historical debug
-permission trust on October 10; applying the bridge to the actual phone still
-requires its installed identity and preservation checks. A later production-only
+permission trust on October 10; the installed identity check is complete. Applying
+the bridge still requires production-key recovery and preservation checks. A later production-only
 APK does not prove that Android discarded that signing history.
 
 The optimized instrumentation runner exposed a systematic shared-dependency
@@ -387,7 +393,8 @@ remain pending.
 The planned first public version code is now `3`, above the synthetic private
 bridge's `2`. This also permits a normal, unmodified public-APK code `2` to code
 `3` same-signer update check, independently of the private diagnostic. The actual
-phone's version/signature remains a prerequisite before applying either APK.
+phone's version/signature is now verified; production-key recovery and actual
+preservation remain prerequisites before replacing its APK.
 
 The [compact public-APK smoke](../testing/android-release-smoke.md) passed on the
 stable API 37 16 KB image with unmodified optimized APKs: source `ce31312`, code `2`,
@@ -460,14 +467,22 @@ propagation; no second transfer suite was added. All ten reader cases passed in
 Optimized assembly and release lint completed; after correcting the test fixture's
 error injection, the combined cached build/lint/test invocation passed in two
 seconds. Native notice input freshness, bidi scanning and iOS source gates passed.
-These new changes still need hosted Android and native iOS validation; clipboard
-device interaction is not claimed from JVM tests or compilation.
+Hosted [run 38029537217](https://github.com/endorses/psst.zip/actions/runs/38029537217)
+passed all five jobs at `12722a6`: Android/shared 5m44s, security 1m39s, backend
+6m28s, web 7m49s and native iOS app/extension/XCTest 13m27s. Android logs confirm
+the line-reader, clipboard and Parcelable deprecation warnings are gone. The
+remaining scanner/plugin compatibility warnings stay visible. Clipboard device
+interaction is not claimed from JVM tests or compilation.
 
 GitGuardian separately flagged a dummy password in the bridge unit test. It is
 used only with an inert non-key file to verify environment-reference arguments,
 not a signing credential. The full-history repository secret scan passed; the
 GitGuardian false-positive disposition is still pending with the operator.
+Readback after the final preparation CI run confirmed that the `android-release`
+environment still has no secret or variable entries; signing and publication
+readiness have not been enabled.
 
-The private bridge is selected. The next prerequisites are checking the actual
-phone and production-key recovery. Store acceptance, iOS
+The private bridge is selected and the installed phone identity is verified. The
+next prerequisites are production-key recovery and the actual in-place transition.
+Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.

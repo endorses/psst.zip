@@ -12,7 +12,8 @@ Keep the application ID `zip.psst.android` stable and increase `versionCode` abo
 all public releases and any private bridge installed on the operator's device.
 The first planned APK is version `0.1.0`, code `3`; this exceeds both the observed
 local debug APK's code `1` and the tested private bridge's code `2`. The phone's
-installed code/signature still need checking before either transition or release.
+installed code `1` and matching debug certificate were verified read-only on
+October 10. Production-key recovery and actual preservation remain pending.
 Container tags retain their independent `vX.Y.Z` namespace.
 
 The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tools
@@ -172,7 +173,8 @@ lineage with installed-data and signature-permission continuity can preserve the
 app UID, files and Keystore keys, and a
 subsequent production-only APK can update it. The disposable Android 16 diagnostic
 passed both updates with real Keystore, Room and HPKE/AES state. The operator's
-phone has not been verified; this is **not actual-phone evidence**.
+phone's package/code/certificate have now been verified read-only, but its update
+preservation has not. The emulator result is **not actual-phone preservation evidence**.
 
 ### Read the installed identity without USB
 
@@ -251,7 +253,7 @@ encrypted archive migration on **both Android and iOS** before any reinstall.
 
 Readiness record, kept privately and containing observations rather than secrets:
 
-- [ ] Confirm the actual phone's installed package, version code and signing identity.
+- [x] Confirm the actual phone's installed package, version code and signing identity.
 - [x] Review and accept the private bridge's retained debug-key permission trust
       before applying it to the actual phone.
 - [x] Verify a disposable emulator transition with actual protected stores before
