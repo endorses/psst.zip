@@ -1,7 +1,7 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: release tooling prepared in a draft PR; signing, device verification and
-publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
+Created: 2026-10-09. Status: release tooling merged in PR #36; production signing, in-place device
+verification and publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
 GitHub, with a verified path from the operator's debug installation and a
 repeatable update process that preserves client-held keys and history.
 
@@ -476,8 +476,12 @@ interaction is not claimed from JVM tests or compilation.
 
 GitGuardian separately flagged a dummy password in the bridge unit test. It is
 used only with an inert non-key file to verify environment-reference arguments,
-not a signing credential. The full-history repository secret scan passed; the
-GitGuardian false-positive disposition is still pending with the operator.
+not a signing credential. The full-history repository secret scan passed. The
+operator ignored incident `38067040` as a test credential and reran its GitGuardian
+check; the check passed at 06:45 UTC on October 10. Under the operator's conditional
+merge approval, [PR #36](https://github.com/endorses/psst.zip/pull/36) merged at
+06:46 UTC as `144cd60c61d6b6ed086583865b0782fcc1a74661`, preserving its commits.
+The normal main-branch CI run started afterward; its result is still pending.
 Readback after the final preparation CI run confirmed that the `android-release`
 environment still has no secret or variable entries; signing and publication
 readiness have not been enabled.
