@@ -252,6 +252,11 @@ XCTest validation. Android/shared completed in 5m50s, repository security in
 1m13s, backend in 6m30s, web in 7m7s and native iOS in 18m14s. These are hosted
 job durations, not isolated test execution times or Android release build timings.
 The operator approved this preparation push and the private bridge on October 10.
+The [follow-up run](https://github.com/endorses/psst.zip/actions/runs/38028319836)
+at `b69ecc7` also passed all five CI jobs: Android/shared 5m49s, security 1m40s,
+backend 4m16s, web 6m51s and native iOS 20m30s. This native result predates the
+event-reader API migration recorded below; that new shared change still needs
+its own hosted native validation.
 [Read-only Wireless debugging instructions](../releases/android.md#read-the-installed-identity-without-usb)
 are available for the actual phone check; no phone inspection or update has run.
 
@@ -427,8 +432,8 @@ SQLite's native-access flag is scoped to the app's host unit-test JVMs. Optimize
 assembly, release lint and the two affected SQL test classes passed in 71 seconds;
 their five cases took 0.305 seconds. Neither the deprecated autofill diagnostics
 nor SQLite native-access warning appeared. Credential-provider autofill on a
-physical phone is not claimed from compilation. These Android-only follow-ups
-still need the draft PR's hosted validation after push.
+physical phone is not claimed from compilation. Hosted Android/shared validation
+at `b69ecc7` passed in 5m49s under Java 27, without either warning.
 
 The follow-up run at `acbbbef` caught stale build-input hashes in the native notice
 inventories after the test JVM configuration changed. Actual offline dependency
@@ -442,6 +447,21 @@ and parameter callbacks. That compatibility boundary remains documented and
 visible; substituting Camera2 IDs would not modernize its backend. The earlier
 optimized camera smoke remains evidence for the unchanged scanner behavior.
 The upstream Gradle visibility/native-attribute warnings remain visible as well.
+
+Further hosted warning inspection identified deprecated clipboard, Parcelable
+share-intent and shared event-line APIs. Clipboard writes now use suspendable
+`LocalClipboard` and show feedback after the write; share extraction uses
+`IntentCompat` with API 26 support. iOS already has equivalent native clipboard
+and share-extension behavior. The shared reader uses Ktor's stable line API with
+the pinned 3.6.0 byte bound, lenient line endings and partial-EOF behavior preserved.
+Four boundary cases protect non-ASCII byte limits, bare CR/partial EOF and error
+propagation; no second transfer suite was added. All ten reader cases passed in
+0.209 seconds; eight existing share-history cases passed in 0.127 seconds.
+Optimized assembly and release lint completed; after correcting the test fixture's
+error injection, the combined cached build/lint/test invocation passed in two
+seconds. Native notice input freshness, bidi scanning and iOS source gates passed.
+These new changes still need hosted Android and native iOS validation; clipboard
+device interaction is not claimed from JVM tests or compilation.
 
 GitGuardian separately flagged a dummy password in the bridge unit test. It is
 used only with an inert non-key file to verify environment-reference arguments,

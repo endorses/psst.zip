@@ -1,12 +1,12 @@
 package zip.psst.shared.api
 
-import zip.psst.shared.model.ServerConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.writeStringUtf8
 import kotlin.test.Test
@@ -26,17 +26,19 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.io.EOFException
+import zip.psst.shared.model.ServerConfig
 
 class SlotEventsTest {
     private val slot = "11111111-1111-1111-1111-111111111111"
 
-    private fun client(channel: ByteChannel): HttpClient =
+    private fun client(channel: ByteReadChannel): HttpClient =
         HttpClient(
             MockEngine { request ->
                 assertEquals("/api/v1/slots/$slot/events", request.url.encodedPath)
                 assertEquals("Bearer owner-token", request.headers[HttpHeaders.Authorization])
                 respond(channel, headers = headersOf(HttpHeaders.ContentType, "text/event-stream"))
-            }
+            },
         )
 
     private fun api(http: HttpClient) =
@@ -66,6 +68,10 @@ class SlotEventsTest {
     @Test
     fun rejectsOversizedUnterminatedLine() =
         rejectsWithoutWaitingForEof("data: " + "x".repeat(8192))
+
+    @Test
+    fun lineLimitCountsUtf8BytesInsteadOfDecodedCharacters() =
+        rejectsWithoutWaitingForEof("data: " + "é".repeat(2046))
 
     @Test
     fun rejectsOversizedUnterminatedMultilineEvent() =
@@ -98,6 +104,68 @@ class SlotEventsTest {
             }
         }
     }
+
+    @Test
+    fun bareCrDelimitersAndPartialFinalLineRetainSemantics() = runTest {
+        withContext(Dispatchers.Default) {
+            val channel = ByteChannel(autoFlush = true)
+            val http = client(channel)
+            val reader = async { api(http).events(slot).toList() }
+            try {
+                channel.writeStringUtf8(
+                    "event: connected\rdata: $slot\r\rdata: next\r\rignored: partial",
+                )
+                channel.flushAndClose()
+                assertEquals(
+                    listOf(SlotEvent("connected", slot), SlotEvent("message", "next")),
+                    withTimeout(5_000) { reader.await() },
+                )
+            } finally {
+                reader.cancelAndJoin()
+                channel.cancel()
+                http.close()
+            }
+        }
+    }
+
+    private fun readFailureIsPropagated(cause: Throwable) = runTest {
+        withContext(Dispatchers.Default) {
+            supervisorScope {
+                val channel = ByteChannel(autoFlush = true)
+                val reading = CompletableDeferred<Unit>()
+                val readFailure = CompletableDeferred<Throwable>()
+                val observed =
+                    object : ByteReadChannel by channel {
+                        override suspend fun awaitContent(min: Int): Boolean {
+                            reading.complete(Unit)
+                            throw readFailure.await()
+                        }
+                    }
+                val http = client(observed)
+                val reader = async { api(http).events(slot).collect() }
+                try {
+                    withTimeout(5_000) { reading.await() }
+                    readFailure.complete(cause)
+                    val failure = assertFails { withTimeout(5_000) { reader.await() } }
+                    assertFalse(failure is TimeoutCancellationException)
+                    assertEquals(cause.message, failure.message)
+                    assertTrue(channel.isClosedForWrite)
+                } finally {
+                    reader.cancelAndJoin()
+                    channel.cancel()
+                    http.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun unrelatedEofExceptionIsPropagated() =
+        readFailureIsPropagated(EOFException("Injected channel failure"))
+
+    @Test
+    fun channelErrorIsPropagated() =
+        readFailureIsPropagated(IllegalStateException("Injected channel failure"))
 
     @Test
     fun cancellingBlockedReadClosesResponse() = runTest {

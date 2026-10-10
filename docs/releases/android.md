@@ -34,7 +34,10 @@ iOS already provides matching native credential hints. SQLite JNI permission is
 enabled only in the app's host unit-test JVMs. JourneyApps 4.3.0 is its latest
 published stable scanner but still uses legacy Camera IDs/parameters; this
 documented compatibility boundary remains until its backend can be migrated and
-verified. Upstream Gradle plugin deprecation warnings remain visible.
+verified. Clipboard writes use `LocalClipboard`, and share extras use `IntentCompat`
+to retain API 26 support. The shared event reader uses the stable Ktor line API
+while preserving byte limits, line endings and EOF/error behavior on both platforms.
+Upstream Gradle plugin deprecation warnings remain visible.
 
 Version evidence: [official Compose BOM](https://dl.google.com/dl/android/maven2/androidx/compose/compose-bom/2026.09.00/compose-bom-2026.09.00.pom),
 [AndroidX releases](https://developer.android.com/jetpack/androidx/versions),
