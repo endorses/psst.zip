@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 
 JOBS = frozenset({"backend", "web", "android", "ios"})
 NATIVE_JOBS = frozenset({"android", "ios"})
@@ -22,9 +22,15 @@ SHA = re.compile(r"[0-9a-fA-F]{40}\Z")
 SECURITY_ONLY_TOOLS = frozenset(
     "tools/" + name
     for name in (
+        "android_build_timings.gradle",
+        "android_release.py",
+        "android_release_ci.py",
+        "android_signing_bridge.py",
+        "check_android_update.py",
         "backend_preferred_source_relationships.py",
         "browser_preferred_source_relationships.py",
         "check_repository.py",
+        "check_source_bidi.py",
         "collect_caddy_sources.py",
         "collect_runtime_notices.py",
         "container-distribution-policy.json",
@@ -48,11 +54,16 @@ SECURITY_ONLY_TOOLS = frozenset(
         "sqlite_vendoring_test.go",
         "temporary_caddy_acceptance.py",
         "test_caddy_source_signatures.py",
+        "test_android_release.py",
+        "test_android_release_ci.py",
+        "test_android_signing_bridge.py",
+        "test_android_update.py",
         "test_external_proxy.py",
         "test_native_browser_inputs.py",
         "test_native_notices.py",
         "test_native_release_preparation.py",
         "test_repository_checks.py",
+        "test_source_bidi.py",
         "test_runtime_notices.py",
         "test_runtime_source_packaging.py",
         "test_runtime_source_replay.py",
@@ -86,7 +97,10 @@ class Selection:
 def classify_path(path: str) -> frozenset[str]:
     # Reviewed release orchestration is covered by repository security checks.
     # Tags/dispatch/full-validation still force every application check in select().
-    if path == ".github/workflows/release.yml":
+    if path in {
+        ".github/workflows/release.yml",
+        ".github/workflows/android-release.yml",
+    }:
         return frozenset()
     if path.startswith(
         (

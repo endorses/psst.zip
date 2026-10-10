@@ -1,11 +1,13 @@
 package zip.psst.android.i18n
 
 import android.content.Context
+import androidx.annotation.AnyRes
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 
 /** Stable resource identity and arguments; never retain the rendered language in UI state. */
 data class UiText(
-    @StringRes val resource: Int,
+    @AnyRes val resource: Int,
     val arguments: List<Any?> = emptyList(),
     val quantity: Int? = null,
     val literal: String? = null,
@@ -83,10 +85,10 @@ object UiStrings {
 fun tr(@StringRes resource: Int, vararg arguments: Any?): String =
     message(resource, *arguments).resolve(UiStrings.context())
 
-fun plural(resource: Int, count: Long, vararg arguments: Any?): String =
+fun plural(@PluralsRes resource: Int, count: Long, vararg arguments: Any?): String =
     pluralMessage(resource, count, *arguments).resolve(UiStrings.context())
 
-fun pluralMessage(resource: Int, count: Long, vararg arguments: Any?): UiText =
+fun pluralMessage(@PluralsRes resource: Int, count: Long, vararg arguments: Any?): UiText =
     UiText(resource, arguments.toList(), count.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
 
 fun String.text(): String = this

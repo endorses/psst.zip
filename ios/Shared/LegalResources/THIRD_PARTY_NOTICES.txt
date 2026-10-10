@@ -137,423 +137,453 @@ Artifact: cryptography-serialization-pem-iosX64Main-0.6.0.klib
 License: Apache-2.0
 Source: https://github.com/whyoleg/cryptography-kotlin
 
-io.ktor:ktor-client-content-negotiation-iosarm64:3.1.1
-Artifact: ktor-client-content-negotiation-iosArm64Main-3.1.1.klib
+io.ktor:ktor-client-content-negotiation-iosarm64:3.6.0
+Artifact: ktor-client-content-negotiation-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-content-negotiation-iossimulatorarm64:3.1.1
-Artifact: ktor-client-content-negotiation-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-client-content-negotiation-iossimulatorarm64:3.6.0
+Artifact: ktor-client-content-negotiation-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-content-negotiation-iosx64:3.1.1
-Artifact: ktor-client-content-negotiation-iosX64Main-3.1.1.klib
+io.ktor:ktor-client-content-negotiation-iosx64:3.6.0
+Artifact: ktor-client-content-negotiation-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-core-iosarm64:3.1.1
-Artifact: ktor-client-core-iosArm64Main-3.1.1.klib
+io.ktor:ktor-client-core-iosarm64:3.6.0
+Artifact: ktor-client-core-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-core-iossimulatorarm64:3.1.1
-Artifact: ktor-client-core-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-client-core-iossimulatorarm64:3.6.0
+Artifact: ktor-client-core-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-core-iosx64:3.1.1
-Artifact: ktor-client-core-iosX64Main-3.1.1.klib
+io.ktor:ktor-client-core-iosx64:3.6.0
+Artifact: ktor-client-core-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-darwin-iosarm64:3.1.1
-Artifact: ktor-client-darwin-iosArm64Main-3.1.1.klib
+io.ktor:ktor-client-darwin-iosarm64:3.6.0
+Artifact: ktor-client-darwin-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-darwin-iossimulatorarm64:3.1.1
-Artifact: ktor-client-darwin-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-client-darwin-iossimulatorarm64:3.6.0
+Artifact: ktor-client-darwin-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-client-darwin-iosx64:3.1.1
-Artifact: ktor-client-darwin-iosX64Main-3.1.1.klib
+io.ktor:ktor-client-darwin-iosx64:3.6.0
+Artifact: ktor-client-darwin-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-events-iosarm64:3.1.1
-Artifact: ktor-events-iosArm64Main-3.1.1.klib
+io.ktor:ktor-events-iosarm64:3.6.0
+Artifact: ktor-events-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-events-iossimulatorarm64:3.1.1
-Artifact: ktor-events-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-events-iossimulatorarm64:3.6.0
+Artifact: ktor-events-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-events-iosx64:3.1.1
-Artifact: ktor-events-iosX64Main-3.1.1.klib
+io.ktor:ktor-events-iosx64:3.6.0
+Artifact: ktor-events-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-cio-iosarm64:3.1.1
-Artifact: ktor-http-cio-iosArm64Main-3.1.1.klib
+io.ktor:ktor-http-cio-iosarm64:3.6.0
+Artifact: ktor-http-cio-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-cio-iossimulatorarm64:3.1.1
-Artifact: ktor-http-cio-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-http-cio-iossimulatorarm64:3.6.0
+Artifact: ktor-http-cio-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-cio-iosx64:3.1.1
-Artifact: ktor-http-cio-iosX64Main-3.1.1.klib
+io.ktor:ktor-http-cio-iosx64:3.6.0
+Artifact: ktor-http-cio-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-iosarm64:3.1.1
-Artifact: ktor-http-iosArm64Main-3.1.1.klib
+io.ktor:ktor-http-iosarm64:3.6.0
+Artifact: ktor-http-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-iossimulatorarm64:3.1.1
-Artifact: ktor-http-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-http-iossimulatorarm64:3.6.0
+Artifact: ktor-http-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-http-iosx64:3.1.1
-Artifact: ktor-http-iosX64Main-3.1.1.klib
+io.ktor:ktor-http-iosx64:3.6.0
+Artifact: ktor-http-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iosarm64:3.1.1
-Artifact: ktor-io-iosArm64Cinterop-mutexMain-3.1.1.klib
+io.ktor:ktor-io-iosarm64:3.6.0
+Artifact: ktor-io-iosArm64Cinterop-mutexMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iosarm64:3.1.1
-Artifact: ktor-io-iosArm64Main-3.1.1.klib
+io.ktor:ktor-io-iosarm64:3.6.0
+Artifact: ktor-io-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iossimulatorarm64:3.1.1
-Artifact: ktor-io-iosSimulatorArm64Cinterop-mutexMain-3.1.1.klib
+io.ktor:ktor-io-iossimulatorarm64:3.6.0
+Artifact: ktor-io-iosSimulatorArm64Cinterop-mutexMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iossimulatorarm64:3.1.1
-Artifact: ktor-io-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-io-iossimulatorarm64:3.6.0
+Artifact: ktor-io-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iosx64:3.1.1
-Artifact: ktor-io-iosX64Cinterop-mutexMain-3.1.1.klib
+io.ktor:ktor-io-iosx64:3.6.0
+Artifact: ktor-io-iosX64Cinterop-mutexMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-io-iosx64:3.1.1
-Artifact: ktor-io-iosX64Main-3.1.1.klib
+io.ktor:ktor-io-iosx64:3.6.0
+Artifact: ktor-io-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosarm64:3.1.1
-Artifact: ktor-network-iosArm64Cinterop-networkMain-3.1.1.klib
+io.ktor:ktor-network-iosarm64:3.6.0
+Artifact: ktor-network-iosArm64Cinterop-networkMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosarm64:3.1.1
-Artifact: ktor-network-iosArm64Cinterop-unMain-3.1.1.klib
+io.ktor:ktor-network-iosarm64:3.6.0
+Artifact: ktor-network-iosArm64Cinterop-unMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosarm64:3.1.1
-Artifact: ktor-network-iosArm64Main-3.1.1.klib
+io.ktor:ktor-network-iosarm64:3.6.0
+Artifact: ktor-network-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iossimulatorarm64:3.1.1
-Artifact: ktor-network-iosSimulatorArm64Cinterop-networkMain-3.1.1.klib
+io.ktor:ktor-network-iossimulatorarm64:3.6.0
+Artifact: ktor-network-iosSimulatorArm64Cinterop-networkMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iossimulatorarm64:3.1.1
-Artifact: ktor-network-iosSimulatorArm64Cinterop-unMain-3.1.1.klib
+io.ktor:ktor-network-iossimulatorarm64:3.6.0
+Artifact: ktor-network-iosSimulatorArm64Cinterop-unMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iossimulatorarm64:3.1.1
-Artifact: ktor-network-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-network-iossimulatorarm64:3.6.0
+Artifact: ktor-network-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosx64:3.1.1
-Artifact: ktor-network-iosX64Cinterop-networkMain-3.1.1.klib
+io.ktor:ktor-network-iosx64:3.6.0
+Artifact: ktor-network-iosX64Cinterop-networkMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosx64:3.1.1
-Artifact: ktor-network-iosX64Cinterop-unMain-3.1.1.klib
+io.ktor:ktor-network-iosx64:3.6.0
+Artifact: ktor-network-iosX64Cinterop-unMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-iosx64:3.1.1
-Artifact: ktor-network-iosX64Main-3.1.1.klib
+io.ktor:ktor-network-iosx64:3.6.0
+Artifact: ktor-network-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-tls-iosarm64:3.1.1
-Artifact: ktor-network-tls-iosArm64Main-3.1.1.klib
+io.ktor:ktor-network-tls-iosarm64:3.6.0
+Artifact: ktor-network-tls-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-tls-iossimulatorarm64:3.1.1
-Artifact: ktor-network-tls-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-network-tls-iossimulatorarm64:3.6.0
+Artifact: ktor-network-tls-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-network-tls-iosx64:3.1.1
-Artifact: ktor-network-tls-iosX64Main-3.1.1.klib
+io.ktor:ktor-network-tls-iosx64:3.6.0
+Artifact: ktor-network-tls-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-iosarm64:3.1.1
-Artifact: ktor-serialization-iosArm64Main-3.1.1.klib
+io.ktor:ktor-openapi-schema-iosarm64:3.6.0
+Artifact: ktor-openapi-schema-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-iossimulatorarm64:3.1.1
-Artifact: ktor-serialization-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-openapi-schema-iossimulatorarm64:3.6.0
+Artifact: ktor-openapi-schema-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-iosx64:3.1.1
-Artifact: ktor-serialization-iosX64Main-3.1.1.klib
+io.ktor:ktor-openapi-schema-iosx64:3.6.0
+Artifact: ktor-openapi-schema-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-iosarm64:3.1.1
-Artifact: ktor-serialization-kotlinx-iosArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-iosarm64:3.6.0
+Artifact: ktor-serialization-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-iossimulatorarm64:3.1.1
-Artifact: ktor-serialization-kotlinx-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-iossimulatorarm64:3.6.0
+Artifact: ktor-serialization-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-iosx64:3.1.1
-Artifact: ktor-serialization-kotlinx-iosX64Main-3.1.1.klib
+io.ktor:ktor-serialization-iosx64:3.6.0
+Artifact: ktor-serialization-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-json-iosarm64:3.1.1
-Artifact: ktor-serialization-kotlinx-json-iosArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-iosarm64:3.6.0
+Artifact: ktor-serialization-kotlinx-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-json-iossimulatorarm64:3.1.1
-Artifact: ktor-serialization-kotlinx-json-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-iossimulatorarm64:3.6.0
+Artifact: ktor-serialization-kotlinx-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-serialization-kotlinx-json-iosx64:3.1.1
-Artifact: ktor-serialization-kotlinx-json-iosX64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-iosx64:3.6.0
+Artifact: ktor-serialization-kotlinx-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-sse-iosarm64:3.1.1
-Artifact: ktor-sse-iosArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-json-iosarm64:3.6.0
+Artifact: ktor-serialization-kotlinx-json-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-sse-iossimulatorarm64:3.1.1
-Artifact: ktor-sse-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-json-iossimulatorarm64:3.6.0
+Artifact: ktor-serialization-kotlinx-json-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-sse-iosx64:3.1.1
-Artifact: ktor-sse-iosX64Main-3.1.1.klib
+io.ktor:ktor-serialization-kotlinx-json-iosx64:3.6.0
+Artifact: ktor-serialization-kotlinx-json-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iosarm64:3.1.1
-Artifact: ktor-utils-iosArm64Cinterop-threadUtilsMain-3.1.1.klib
+io.ktor:ktor-sse-iosarm64:3.6.0
+Artifact: ktor-sse-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iosarm64:3.1.1
-Artifact: ktor-utils-iosArm64Main-3.1.1.klib
+io.ktor:ktor-sse-iossimulatorarm64:3.6.0
+Artifact: ktor-sse-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iossimulatorarm64:3.1.1
-Artifact: ktor-utils-iosSimulatorArm64Cinterop-threadUtilsMain-3.1.1.klib
+io.ktor:ktor-sse-iosx64:3.6.0
+Artifact: ktor-sse-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iossimulatorarm64:3.1.1
-Artifact: ktor-utils-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-utils-iosarm64:3.6.0
+Artifact: ktor-utils-iosArm64Cinterop-threadUtilsMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iosx64:3.1.1
-Artifact: ktor-utils-iosX64Cinterop-threadUtilsMain-3.1.1.klib
+io.ktor:ktor-utils-iosarm64:3.6.0
+Artifact: ktor-utils-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-utils-iosx64:3.1.1
-Artifact: ktor-utils-iosX64Main-3.1.1.klib
+io.ktor:ktor-utils-iossimulatorarm64:3.6.0
+Artifact: ktor-utils-iosSimulatorArm64Cinterop-threadUtilsMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websocket-serialization-iosarm64:3.1.1
-Artifact: ktor-websocket-serialization-iosArm64Main-3.1.1.klib
+io.ktor:ktor-utils-iossimulatorarm64:3.6.0
+Artifact: ktor-utils-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websocket-serialization-iossimulatorarm64:3.1.1
-Artifact: ktor-websocket-serialization-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-utils-iosx64:3.6.0
+Artifact: ktor-utils-iosX64Cinterop-threadUtilsMain-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websocket-serialization-iosx64:3.1.1
-Artifact: ktor-websocket-serialization-iosX64Main-3.1.1.klib
+io.ktor:ktor-utils-iosx64:3.6.0
+Artifact: ktor-utils-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websockets-iosarm64:3.1.1
-Artifact: ktor-websockets-iosArm64Main-3.1.1.klib
+io.ktor:ktor-websocket-serialization-iosarm64:3.6.0
+Artifact: ktor-websocket-serialization-iosArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websockets-iossimulatorarm64:3.1.1
-Artifact: ktor-websockets-iosSimulatorArm64Main-3.1.1.klib
+io.ktor:ktor-websocket-serialization-iossimulatorarm64:3.6.0
+Artifact: ktor-websocket-serialization-iosSimulatorArm64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-io.ktor:ktor-websockets-iosx64:3.1.1
-Artifact: ktor-websockets-iosX64Main-3.1.1.klib
+io.ktor:ktor-websocket-serialization-iosx64:3.6.0
+Artifact: ktor-websocket-serialization-iosX64Main-3.6.0.klib
 License: Apache-2.0
 Source: https://github.com/ktorio/ktor.git
 
-org.jetbrains.kotlinx:atomicfu-iosarm64:0.27.0
-Artifact: atomicfu-iosArm64Cinterop-interopMain-0.27.0.klib
+io.ktor:ktor-websockets-iosarm64:3.6.0
+Artifact: ktor-websockets-iosArm64Main-3.6.0.klib
+License: Apache-2.0
+Source: https://github.com/ktorio/ktor.git
+
+io.ktor:ktor-websockets-iossimulatorarm64:3.6.0
+Artifact: ktor-websockets-iosSimulatorArm64Main-3.6.0.klib
+License: Apache-2.0
+Source: https://github.com/ktorio/ktor.git
+
+io.ktor:ktor-websockets-iosx64:3.6.0
+Artifact: ktor-websockets-iosX64Main-3.6.0.klib
+License: Apache-2.0
+Source: https://github.com/ktorio/ktor.git
+
+org.jetbrains.kotlinx:atomicfu-iosarm64:0.33.0
+Artifact: atomicfu-iosArm64Cinterop-interopMain-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:atomicfu-iosarm64:0.27.0
-Artifact: atomicfu-iosArm64Main-0.27.0.klib
+org.jetbrains.kotlinx:atomicfu-iosarm64:0.33.0
+Artifact: atomicfu-iosArm64Main-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.27.0
-Artifact: atomicfu-iosSimulatorArm64Cinterop-interopMain-0.27.0.klib
+org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.33.0
+Artifact: atomicfu-iosSimulatorArm64Cinterop-interopMain-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.27.0
-Artifact: atomicfu-iosSimulatorArm64Main-0.27.0.klib
+org.jetbrains.kotlinx:atomicfu-iossimulatorarm64:0.33.0
+Artifact: atomicfu-iosSimulatorArm64Main-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:atomicfu-iosx64:0.27.0
-Artifact: atomicfu-iosX64Cinterop-interopMain-0.27.0.klib
+org.jetbrains.kotlinx:atomicfu-iosx64:0.33.0
+Artifact: atomicfu-iosX64Cinterop-interopMain-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:atomicfu-iosx64:0.27.0
-Artifact: atomicfu-iosX64Main-0.27.0.klib
+org.jetbrains.kotlinx:atomicfu-iosx64:0.33.0
+Artifact: atomicfu-iosX64Main-0.33.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.atomicfu
 
-org.jetbrains.kotlinx:kotlinx-coroutines-core-iosarm64:1.10.1
-Artifact: kotlinx-coroutines-core-iosArm64Main-1.10.1.klib
+org.jetbrains.kotlinx:kotlinx-coroutines-core-iosarm64:1.11.0
+Artifact: kotlinx-coroutines-core-iosArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.coroutines
 
-org.jetbrains.kotlinx:kotlinx-coroutines-core-iossimulatorarm64:1.10.1
-Artifact: kotlinx-coroutines-core-iosSimulatorArm64Main-1.10.1.klib
+org.jetbrains.kotlinx:kotlinx-coroutines-core-iossimulatorarm64:1.11.0
+Artifact: kotlinx-coroutines-core-iosSimulatorArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.coroutines
 
-org.jetbrains.kotlinx:kotlinx-coroutines-core-iosx64:1.10.1
-Artifact: kotlinx-coroutines-core-iosX64Main-1.10.1.klib
+org.jetbrains.kotlinx:kotlinx-coroutines-core-iosx64:1.11.0
+Artifact: kotlinx-coroutines-core-iosX64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.coroutines
 
-org.jetbrains.kotlinx:kotlinx-io-bytestring-iosarm64:0.9.0
-Artifact: kotlinx-io-bytestring-iosArm64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-datetime-iosarm64:0.8.0-0.6.x-compat
+Artifact: kotlinx-datetime-iosArm64Main-0.8.0-0.6.x-compat.klib
+License: Apache-2.0
+Source: https://github.com/Kotlin/kotlinx-datetime
+
+org.jetbrains.kotlinx:kotlinx-datetime-iossimulatorarm64:0.8.0-0.6.x-compat
+Artifact: kotlinx-datetime-iosSimulatorArm64Main-0.8.0-0.6.x-compat.klib
+License: Apache-2.0
+Source: https://github.com/Kotlin/kotlinx-datetime
+
+org.jetbrains.kotlinx:kotlinx-datetime-iosx64:0.8.0-0.6.x-compat
+Artifact: kotlinx-datetime-iosX64Main-0.8.0-0.6.x-compat.klib
+License: Apache-2.0
+Source: https://github.com/Kotlin/kotlinx-datetime
+
+org.jetbrains.kotlinx:kotlinx-io-bytestring-iosarm64:0.9.1
+Artifact: kotlinx-io-bytestring-iosArm64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-io-bytestring-iossimulatorarm64:0.9.0
-Artifact: kotlinx-io-bytestring-iosSimulatorArm64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-io-bytestring-iossimulatorarm64:0.9.1
+Artifact: kotlinx-io-bytestring-iosSimulatorArm64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-io-bytestring-iosx64:0.9.0
-Artifact: kotlinx-io-bytestring-iosX64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-io-bytestring-iosx64:0.9.1
+Artifact: kotlinx-io-bytestring-iosX64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-io-core-iosarm64:0.9.0
-Artifact: kotlinx-io-core-iosArm64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-io-core-iosarm64:0.9.1
+Artifact: kotlinx-io-core-iosArm64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-io-core-iossimulatorarm64:0.9.0
-Artifact: kotlinx-io-core-iosSimulatorArm64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-io-core-iossimulatorarm64:0.9.1
+Artifact: kotlinx-io-core-iosSimulatorArm64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-io-core-iosx64:0.9.0
-Artifact: kotlinx-io-core-iosX64Main-0.9.0.klib
+org.jetbrains.kotlinx:kotlinx-io-core-iosx64:0.9.1
+Artifact: kotlinx-io-core-iosX64Main-0.9.1.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx-io
 
-org.jetbrains.kotlinx:kotlinx-serialization-core-iosarm64:1.10.0
-Artifact: kotlinx-serialization-core-iosArm64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-core-iosarm64:1.11.0
+Artifact: kotlinx-serialization-core-iosArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-core-iossimulatorarm64:1.10.0
-Artifact: kotlinx-serialization-core-iosSimulatorArm64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-core-iossimulatorarm64:1.11.0
+Artifact: kotlinx-serialization-core-iosSimulatorArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-core-iosx64:1.10.0
-Artifact: kotlinx-serialization-core-iosX64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-core-iosx64:1.11.0
+Artifact: kotlinx-serialization-core-iosX64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosarm64:1.8.0
-Artifact: kotlinx-serialization-json-io-iosArm64Main-1.8.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosarm64:1.11.0
+Artifact: kotlinx-serialization-json-io-iosArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-io-iossimulatorarm64:1.8.0
-Artifact: kotlinx-serialization-json-io-iosSimulatorArm64Main-1.8.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-io-iossimulatorarm64:1.11.0
+Artifact: kotlinx-serialization-json-io-iosSimulatorArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosx64:1.8.0
-Artifact: kotlinx-serialization-json-io-iosX64Main-1.8.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-io-iosx64:1.11.0
+Artifact: kotlinx-serialization-json-io-iosX64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-iosarm64:1.10.0
-Artifact: kotlinx-serialization-json-iosArm64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-iosarm64:1.11.0
+Artifact: kotlinx-serialization-json-iosArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-iossimulatorarm64:1.10.0
-Artifact: kotlinx-serialization-json-iosSimulatorArm64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-iossimulatorarm64:1.11.0
+Artifact: kotlinx-serialization-json-iosSimulatorArm64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 
-org.jetbrains.kotlinx:kotlinx-serialization-json-iosx64:1.10.0
-Artifact: kotlinx-serialization-json-iosX64Main-1.10.0.klib
+org.jetbrains.kotlinx:kotlinx-serialization-json-iosx64:1.11.0
+Artifact: kotlinx-serialization-json-iosX64Main-1.11.0.klib
 License: Apache-2.0
 Source: https://github.com/Kotlin/kotlinx.serialization
 

@@ -16,7 +16,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import kotlinx.coroutines.CancellationException
 import zip.psst.android.PsstApplication
+import zip.psst.android.ui.components.rememberLocalNetworkAccess
 import zip.psst.android.ui.screens.HistoryScreen
 import zip.psst.android.ui.screens.HomeScreen
 import zip.psst.android.ui.screens.ReceiveScreen
@@ -30,7 +32,6 @@ import zip.psst.android.viewmodel.HistoryViewModel
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.ServerConfig
-import kotlinx.coroutines.CancellationException
 
 object Routes {
     const val SERVER_CONFIG = "server_config"
@@ -65,6 +66,7 @@ fun PsstNavGraph(
     val serverHistory: HistoryViewModel = viewModel(key = "serverHistory")
     val downloadedHistory: HistoryViewModel = viewModel(key = "downloadedHistory")
     val prefs = (LocalContext.current.applicationContext as PsstApplication).prefs
+    val networkAccess = rememberLocalNetworkAccess()
     var intendedRoute by remember {
         mutableStateOf(if (sharedUris.isNotEmpty()) Routes.SEND else Routes.HOME)
     }
@@ -281,12 +283,14 @@ fun PsstNavGraph(
                         else serverHistory,
                     initialFilter = if (route == Routes.DOWNLOADED_HISTORY) "downloaded" else "all",
                     onDownloadClick = { record ->
-                        if (guestDownloads.open(record))
-                            navController.navigate(Routes.DOWNLOAD_DETAIL)
+                        networkAccess.request(record.origin) {
+                            if (guestDownloads.open(record))
+                                navController.navigate(Routes.DOWNLOAD_DETAIL)
+                        }
                     },
                     onTransferClick = { entity ->
                         navController.navigate(
-                            Routes.transferDetail(entity.id, entity.encryptionKey, entity.type)
+                            Routes.transferDetail(entity.id, entity.encryptionKey, entity.type),
                         )
                     },
                     onBack = { navController.popBackStack() },

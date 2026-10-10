@@ -1,8 +1,7 @@
 import Foundation
+@testable import Psst
 import Shared
 import XCTest
-
-@testable import Psst
 
 @MainActor
 final class GuestDownloadTests: XCTestCase {
@@ -19,7 +18,8 @@ final class GuestDownloadTests: XCTestCase {
             files: [
                 GuestFile(id: "one", name: "same.txt", size: 3, mime: "text/plain"),
                 GuestFile(id: "two", name: "same.txt", size: 3, mime: "text/plain"),
-            ])
+            ]
+        )
     }
 
     func testDownloadCountersKeepUnknownDistinctFromExhaustedAndSavedCopyOpenable() throws {
@@ -37,8 +37,8 @@ final class GuestDownloadTests: XCTestCase {
         XCTAssertFalse(restored.receiptPending)
     }
 
-    func testDisplayNamesRemoveDirectionControlsWithoutRewritingStoredNames() {
-        let raw = "photo\u{061C}\u{200E}\u{200F}\u{202E}jpg.exe"
+    func testDisplayNamesRemoveDirectionControlsWithoutRewritingStoredNames() throws {
+        let raw = try "photo\u{061C}\u{200E}\u{200F}" + String(XCTUnwrap(UnicodeScalar(0x202E))) + "jpg.exe"
         var entry = record()
         entry.files[0].name = raw
         XCTAssertEqual(GuestFiles.displayName(entry.files[0].name), "photo____jpg.exe")
@@ -234,11 +234,12 @@ final class GuestDownloadTests: XCTestCase {
 
     func testLargeSnapshotMigrationPagesAndRetainsOriginalAndIndependentReceipt() async throws {
         let root = try directory()
-        let rows = (0..<130).map { index in
+        let rows = (0 ..< 130).map { index in
             let transfer = "transfer-" + String(index)
             return GuestDownload(
                 id: GuestDownload.identity(origin: "https://one.example", transferID: transfer), origin: "https://one.example", transferID: transfer,
-                createdAt: Date(timeIntervalSince1970: Double(index)))
+                createdAt: Date(timeIntervalSince1970: Double(index))
+            )
         }
         struct LegacyReceipt: Encodable {
             let origin: String
@@ -286,7 +287,7 @@ final class GuestDownloadTests: XCTestCase {
     func testReceiptRetriesAreBoundedFairAndSuccessSurvivesStaleCheckpoint() async throws {
         let store = try GuestDownloadStore(root: directory())
         var entries: [GuestDownload] = []
-        for index in 0..<9 {
+        for index in 0 ..< 9 {
             let transfer = "queued-" + String(index)
             var entry = GuestDownload(id: GuestDownload.identity(origin: "https://one.example", transferID: transfer), origin: "https://one.example", transferID: transfer)
             entry.receiptPending = true

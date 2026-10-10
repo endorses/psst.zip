@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import select_ci_checks as selector
@@ -98,6 +98,12 @@ class ChangeScopeTests(unittest.TestCase):
     def test_docs_skip_but_explicit_release_validation_runs_all(self) -> None:
         self.write("docs/plans/ci.md")
         self.write(".github/workflows/release.yml")
+        self.write(".github/workflows/android-release.yml")
+        self.write("tools/android_build_timings.gradle")
+        self.write("tools/check_android_update.py")
+        self.write("tools/test_android_update.py")
+        self.write("tools/android_release.py")
+        self.write("tools/android_signing_bridge.py")
         self.commit()
         self.push_event()
         for job in sorted(selector.JOBS):

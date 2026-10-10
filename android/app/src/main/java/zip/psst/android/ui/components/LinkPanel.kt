@@ -1,5 +1,6 @@
 package zip.psst.android.ui.components
 
+import android.content.ClipData
 import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -7,18 +8,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import zip.psst.android.R
 
 @Composable
 fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val shareLabel = stringResource(R.string.share)
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     var copied by remember(url) { mutableStateOf(false) }
     var expanded by remember(url) { mutableStateOf(false) }
     Column(
@@ -29,8 +33,10 @@ fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
                 onClick = {
-                    clipboard.setText(AnnotatedString(url))
-                    copied = true
+                    scope.launch {
+                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", url)))
+                        copied = true
+                    }
                 },
                 modifier = Modifier.weight(1f),
             ) {
@@ -44,13 +50,13 @@ fun LinkPanel(url: String, details: @Composable () -> Unit = {}) {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, url)
                             },
-                            context.getString(R.string.share),
-                        )
+                            shareLabel,
+                        ),
                     )
                 },
                 modifier = Modifier.weight(1f),
             ) {
-                Text(stringResource(R.string.share))
+                Text(shareLabel)
             }
         }
         if (copied)

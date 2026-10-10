@@ -50,6 +50,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tools -p 'test_repository_checks.py' -v
           python3 -m unittest discover -s tools -p 'test_ci_change_scope.py' -v
+          python3 tools/check_source_bidi.py
+          python3 -m unittest discover -s tools -p 'test_source_bidi.py' -v
 
       - name: Release artifact and Compose regression tests
         run: |
@@ -57,6 +59,7 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
           python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
+          python3 -m unittest discover -s tools -p 'test_android*.py' -v
 
       - name: SQLite vendoring syntax regressions
         # Two tiny standard-library cases; no dependency downloads or generators.
@@ -236,7 +239,7 @@ jobs:
           packages: ""
       - name: Install Android SDK packages
         if: steps.scope.outputs.run == 'true'
-        run: android --no-metrics --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-35
+        run: android --no-metrics --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-37.0 build-tools/37.0.0
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         if: steps.scope.outputs.run == 'true'
         with:
@@ -286,7 +289,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           brew install xcodegen
-          android --no-metrics --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-35
+          android --no-metrics --sdk="$ANDROID_HOME" sdk install platform-tools platforms/android-37.0 build-tools/37.0.0
           xcode_version=$(xcodebuild -version)
           printf '%s\n' "$xcode_version"
           xcode_key=$(printf '%s\n' "$xcode_version" | shasum -a 256)

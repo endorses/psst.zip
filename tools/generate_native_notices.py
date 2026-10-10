@@ -224,7 +224,7 @@ def effective_license(coordinate: str, licenses: list[dict]) -> str:
         "The Apache Software License, Version 2.0",
     }:
         return "Apache-2.0"
-    if coordinate == "org.slf4j:slf4j-api:2.0.16" and name == "MIT License":
+    if coordinate == "org.slf4j:slf4j-api:2.0.19" and name == "MIT":
         return "MIT"
     raise ValueError(
         f"Unreviewed native dependency license/copyright: {coordinate}: {name}"
@@ -295,7 +295,7 @@ def generate(root: Path, platform: str, records: list[dict]) -> dict[str, bytes]
         if spdx == "MIT":
             notices += [
                 "Full upstream MIT license and copyright:",
-                source_texts["slf4j-2.0.16/LICENSE.txt"].decode(),
+                source_texts["slf4j-2.0.19/LICENSE.txt"].decode(),
             ]
         components.append(component)
     notices += [

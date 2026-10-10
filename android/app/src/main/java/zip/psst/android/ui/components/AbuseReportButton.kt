@@ -1,5 +1,6 @@
 package zip.psst.android.ui.components
 
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
@@ -11,17 +12,18 @@ import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import zip.psst.android.R
 import zip.psst.android.i18n.*
 import zip.psst.shared.api.ApiClient
 import zip.psst.shared.model.AbuseContact
 import zip.psst.shared.model.AbuseReportReference
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.withTimeout
 
 /** Fetches only public configuration, with a fresh anonymous client for this reference's origin. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,7 +36,8 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
     var open by remember(reference.text) { mutableStateOf(false) }
     var notice by remember(reference.text) { mutableStateOf<UiText?>(null) }
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     LaunchedEffect(origin) {
         val client = ApiClient.anonymous(origin)
         try {
@@ -67,32 +70,38 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
                 Text(
                     tr(
                         R.string
-                            .l_contact_this_server_s_operator_nothing_is_sent_until_you_send_an__d5e9c9
-                    )
+                            .l_contact_this_server_s_operator_nothing_is_sent_until_you_send_an__d5e9c9,
+                    ),
                 )
                 SelectionContainer { Text(email) }
                 SelectionContainer { Text(reference.text) }
                 Text(
                     tr(
                         R.string
-                            .l_the_reference_contains_the_server_address_and_when_available_the__d426a8
+                            .l_the_reference_contains_the_server_address_and_when_available_the__d426a8,
                     ),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = {
-                            clipboard.setText(AnnotatedString(email))
-                            notice = message(R.string.l_contact_copied_fd82dc)
-                        }
+                            scope.launch {
+                                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", email)))
+                                notice = message(R.string.l_contact_copied_fd82dc)
+                            }
+                        },
                     ) {
                         Text(tr(R.string.l_copy_contact_afe9a1))
                     }
                     TextButton(
                         onClick = {
-                            clipboard.setText(AnnotatedString(reference.text))
-                            notice = message(R.string.l_reference_copied_d8ac62)
-                        }
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("", reference.text)),
+                                )
+                                notice = message(R.string.l_reference_copied_d8ac62)
+                            }
+                        },
                     ) {
                         Text(tr(R.string.l_copy_reference_955753))
                     }
@@ -115,7 +124,7 @@ fun AbuseReportButton(reference: AbuseReportReference?) {
                             notice =
                                 message(
                                     R.string
-                                        .l_no_email_app_is_available_copy_the_contact_and_reference_to_send__a3e1b1
+                                        .l_no_email_app_is_available_copy_the_contact_and_reference_to_send__a3e1b1,
                                 )
                         }
                     },

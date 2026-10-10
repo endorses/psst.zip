@@ -618,4 +618,9 @@
         <item quantity="one">Limit: %1$d Datei akzeptiert · unvollständige Uploads zählen mit</item>
         <item quantity="other">Limit: %1$d Dateien akzeptiert · unvollständige Uploads zählen mit</item>
     </plurals>
+    <string name="local_network_permission_title">Mit einem lokalen Server verbinden</string>
+    <string name="local_network_permission_reason">Dein gewählter Server befindet sich in einem lokalen Netzwerk. Erlaube den Zugriff auf Geräte in der Nähe, damit psst.zip sich verbinden kann. Für öffentliche Internetserver ist diese Berechtigung nicht erforderlich.</string>
+    <string name="local_network_permission_denied">Der Zugriff auf den lokalen Server wurde nicht erlaubt. Aktiviere Geräte in der Nähe in den App-Einstellungen und versuche es erneut. Dein gespeichertes Konto, deine Dateien und Schlüssel bleiben auf diesem Gerät; der Offline-Verlauf ist weiterhin verfügbar.</string>
+    <string name="local_network_open_settings">App-Einstellungen öffnen</string>
+    <string name="local_network_allow">Verbindung erlauben</string>
 </resources>

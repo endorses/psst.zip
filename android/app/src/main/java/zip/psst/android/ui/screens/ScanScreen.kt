@@ -38,9 +38,11 @@ import zip.psst.android.i18n.*
 import zip.psst.android.i18n.ScanStage
 import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.EmbeddedScanner
+import zip.psst.android.ui.components.rememberLocalNetworkAccess
 import zip.psst.android.viewmodel.ScanViewModel
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
+import zip.psst.shared.model.ScanInputClassifier
 import zip.psst.shared.model.ScanInputKind
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +57,7 @@ fun ScanScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val accountState by account.uiState.collectAsState()
+    val networkAccess = rememberLocalNetworkAccess()
 
     var secondary by rememberSaveable { mutableStateOf(false) }
     val paste = state.inputDraft
@@ -69,11 +72,11 @@ fun ScanScreen(
                 viewModel.error(
                     message(
                         R.string
-                            .l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb
-                    )
+                            .l_storage_access_is_required_to_save_in_downloads_psst_zip_on_this__32debb,
+                    ),
                 )
         }
-    fun receive(missing: Boolean = false) {
+    fun receiveAllowed(missing: Boolean = false) {
         redownload = missing
         if (
             Build.VERSION.SDK_INT <= 28 &&
@@ -85,15 +88,26 @@ fun ScanScreen(
             storage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         else viewModel.receive(missing)
     }
-    fun accept(raw: String) {
+    fun receive(missing: Boolean = false) {
+        val origin = viewModel.state.value.origin
+        networkAccess.request(origin) {
+            if (viewModel.state.value.origin == origin) receiveAllowed(missing)
+        }
+    }
+    fun acceptAllowed(raw: String) {
         if (!accountState.isTesting && viewModel.classify(raw)) {
             viewModel.setInputDraft("")
             when (viewModel.state.value.kind) {
-                ScanInputKind.DOWNLOAD -> receive()
+                ScanInputKind.DOWNLOAD -> receiveAllowed()
                 ScanInputKind.PAIRING -> pairingConfirmation = true
                 else -> Unit
             }
         }
+    }
+    fun accept(raw: String) {
+        val parsed = ScanInputClassifier.classify(raw)
+        if (parsed == null || parsed.kind == ScanInputKind.PAIRING) acceptAllowed(raw)
+        else networkAccess.request(requireNotNull(parsed.link).origin) { acceptAllowed(raw) }
     }
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
@@ -138,8 +152,8 @@ fun ScanScreen(
             viewModel.error(
                 message(
                     R.string
-                        .l_this_saved_file_is_missing_you_can_explicitly_redownload_it_while_845b63
-                )
+                        .l_this_saved_file_is_missing_you_can_explicitly_redownload_it_while_845b63,
+                ),
             )
             return
         }
@@ -156,14 +170,14 @@ fun ScanScreen(
             intent.clipData = ClipData.newRawUri(receivedFilenameLabel(file.name), uri)
             context.startActivity(
                 if (share) Intent.createChooser(intent, tr(R.string.l_share_saved_file_81dfc4))
-                else intent
+                else intent,
             )
         } catch (_: Exception) {
             viewModel.error(
                 message(
                     R.string
-                        .l_no_app_could_open_this_file_try_share_or_find_it_in_downloads_pss_8bf749
-                )
+                        .l_no_app_could_open_this_file_try_share_or_find_it_in_downloads_pss_8bf749,
+                ),
             )
         }
     }
@@ -174,7 +188,7 @@ fun ScanScreen(
                     Text(
                         if (state.kind == ScanInputKind.UPLOAD) tr(R.string.l_send_files_ea4b35)
                         else if (historical) tr(R.string.l_downloaded_files_a9609f)
-                        else tr(R.string.l_scan_qr_code_e7d8c3)
+                        else tr(R.string.l_scan_qr_code_e7d8c3),
                     )
                 },
                 actions = {
@@ -189,7 +203,7 @@ fun ScanScreen(
                     }
                 },
             )
-        }
+        },
     ) { padding ->
         if (state.kind == ScanInputKind.UPLOAD) {
             ScannedSendContent(
@@ -216,8 +230,8 @@ fun ScanScreen(
                 Text(
                     tr(
                         R.string
-                            .l_interrupted_uploads_need_server_cleanup_each_retry_processes_a_bo_0d10d5
-                    )
+                            .l_interrupted_uploads_need_server_cleanup_each_retry_processes_a_bo_0d10d5,
+                    ),
                 )
                 TextButton(onClick = viewModel::retryCleanup) {
                     Text(tr(R.string.l_retry_upload_cleanup_532a80))
@@ -240,7 +254,11 @@ fun ScanScreen(
                                 state.record!!.files.size,
                             )
                         else
-                            tr(R.string.l_file_1_s_2_s_62e558, state.fileIndex.coerceAtLeast(1), "")
+                            tr(
+                                R.string.l_file_1_s_2_s_62e558,
+                                state.fileIndex.coerceAtLeast(1),
+                                "",
+                            ),
                     )
                     if (
                         state.stage == ScanStage.DOWNLOADING || state.stage == ScanStage.UPLOADING
@@ -257,7 +275,7 @@ fun ScanScreen(
                     Text(
                         tr(
                             R.string
-                                .l_keep_this_app_in_the_foreground_leaving_pauses_receiving_saved_fi_e2c7a1
+                                .l_keep_this_app_in_the_foreground_leaving_pauses_receiving_saved_fi_e2c7a1,
                         ),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -314,7 +332,7 @@ fun ScanScreen(
                                     colors =
                                         CardDefaults.cardColors(
                                             containerColor =
-                                                MaterialTheme.colorScheme.surfaceVariant
+                                                MaterialTheme.colorScheme.surfaceVariant,
                                         ),
                                 ) {
                                     Column(Modifier.padding(12.dp)) {
@@ -334,8 +352,8 @@ fun ScanScreen(
                                 Text(
                                     tr(
                                         R.string
-                                            .l_download_limit_reached_saved_local_copies_can_still_be_opened_or__04af1b
-                                    )
+                                            .l_download_limit_reached_saved_local_copies_can_still_be_opened_or__04af1b,
+                                    ),
                                 )
                             else if (availability?.partiallyExhausted == true)
                                 Text(
@@ -343,7 +361,7 @@ fun ScanScreen(
                                         R.plurals.files_exhausted_missing,
                                         availability.exhausted.toLong(),
                                         availability.exhausted,
-                                    )
+                                    ),
                                 )
                             val canDownload =
                                 availability?.allMissingExhausted != true &&
@@ -353,7 +371,7 @@ fun ScanScreen(
                                     Text(
                                         if (availability?.partiallyExhausted == true)
                                             tr(R.string.l_redownload_available_missing_files_4f0301)
-                                        else tr(R.string.l_redownload_missing_files_677f43)
+                                        else tr(R.string.l_redownload_missing_files_677f43),
                                     )
                                 }
                             else if (record?.complete != true)
@@ -361,7 +379,7 @@ fun ScanScreen(
                                     Text(
                                         if (availability?.partiallyExhausted == true)
                                             tr(R.string.l_download_available_files_1fc1f3)
-                                        else tr(R.string.l_resume_receiving_bcb430)
+                                        else tr(R.string.l_resume_receiving_bcb430),
                                     )
                                 }
                             if (record?.files?.isNotEmpty() == true)
@@ -372,15 +390,15 @@ fun ScanScreen(
                                     Text(
                                         if (state.refreshingAvailability)
                                             tr(R.string.l_checking_availability_24f241)
-                                        else tr(R.string.l_refresh_availability_812724)
+                                        else tr(R.string.l_refresh_availability_812724),
                                     )
                                 }
                             if (record?.receiptPending == true) {
                                 Text(
                                     tr(
                                         R.string
-                                            .l_files_are_saved_the_sender_s_delivery_receipt_is_pending_8c3671
-                                    )
+                                            .l_files_are_saved_the_sender_s_delivery_receipt_is_pending_8c3671,
+                                    ),
                                 )
                                 TextButton(onClick = viewModel::retryReceipt) {
                                     Text(tr(R.string.l_retry_receipt_78de8a))
@@ -397,21 +415,21 @@ fun ScanScreen(
                                 Text(
                                     tr(
                                         R.string
-                                            .l_choose_files_deliberately_to_send_to_the_server_above_its_file_li_bd9395
-                                    )
+                                            .l_choose_files_deliberately_to_send_to_the_server_above_its_file_li_bd9395,
+                                    ),
                                 )
                                 Text(
                                     pluralStringResource(
                                         R.plurals.files_selected_count,
                                         state.uploadFiles.size,
                                         state.uploadFiles.size,
-                                    )
+                                    ),
                                 )
                                 if (state.maxUploadFiles > 0)
                                     Text(
                                         state.remainingUploadFiles?.let {
                                             plural(R.plurals.allocations_remaining, it, it)
-                                        } ?: tr(R.string.ui_unknown_files_remaining)
+                                        } ?: tr(R.string.ui_unknown_files_remaining),
                                     )
                                 Text(state.uploadCapacityMessage.text())
                                 state.uploadFiles.forEach { uri ->
@@ -447,8 +465,8 @@ fun ScanScreen(
                             Text(
                                 tr(
                                     R.string
-                                        .l_this_replaces_your_current_app_login_only_after_you_confirm_dc01cc
-                                )
+                                        .l_this_replaces_your_current_app_login_only_after_you_confirm_dc01cc,
+                                ),
                             )
                             (accountState.testResult as? TestResult.Error)?.let {
                                 Text(it.message.text(), color = MaterialTheme.colorScheme.error)
@@ -484,7 +502,7 @@ fun ScanScreen(
                             Text(
                                 tr(
                                     R.string
-                                        .l_transfers_up_to_100_mib_start_automatically_larger_transfers_ask__621d73
+                                        .l_transfers_up_to_100_mib_start_automatically_larger_transfers_ask__621d73,
                                 ),
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -557,7 +575,7 @@ fun ScanScreen(
                             (if (consent.totalBytes > 100L * 1024 * 1024)
                                 tr(
                                     R.string
-                                        .l_this_transfer_exceeds_100_mib_and_may_use_mobile_data_c67f5a
+                                        .l_this_transfer_exceeds_100_mib_and_may_use_mobile_data_c67f5a,
                                 )
                             else "") +
                             (if (consent.skippedBlobIds.isNotEmpty())
@@ -597,8 +615,8 @@ fun ScanScreen(
                 Text(
                     tr(
                         R.string
-                            .l_files_already_saved_stay_in_downloads_psst_zip_receiving_can_be_r_93f4a0
-                    )
+                            .l_files_already_saved_stay_in_downloads_psst_zip_receiving_can_be_r_93f4a0,
+                    ),
                 )
             },
             confirmButton = {
@@ -606,7 +624,7 @@ fun ScanScreen(
                     onClick = {
                         stopConfirmation = false
                         leave()
-                    }
+                    },
                 ) {
                     Text(tr(R.string.l_stop_transfer_d0b705))
                 }
@@ -627,17 +645,22 @@ fun ScanScreen(
                         R.string
                             .l_connect_to_1_s_and_replace_your_current_login_your_local_received_295f40,
                         (state.origin),
-                    )
+                    ),
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         pairingConfirmation = false
-                        viewModel.pairingPayload()?.let {
-                            account.pair(it) { viewModel.accountConnected() }
+                        viewModel.pairingPayload()?.let { raw ->
+                            val origin =
+                                requireNotNull(ScanInputClassifier.classify(raw)?.pairing).serverUrl
+                            networkAccess.request(origin) {
+                                if (viewModel.pairingPayload() == raw)
+                                    account.pair(raw) { viewModel.accountConnected() }
+                            }
                         }
-                    }
+                    },
                 ) {
                     Text(tr(R.string.l_set_up_account_ddd0f7))
                 }
@@ -679,7 +702,7 @@ private fun ScannedSendContent(
             ) +
                 (state.remainingUploadFiles?.let {
                     " · " + plural(R.plurals.files_remaining, it, it)
-                } ?: "")
+                } ?: ""),
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

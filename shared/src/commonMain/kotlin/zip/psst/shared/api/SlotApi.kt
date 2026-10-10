@@ -1,11 +1,5 @@
 package zip.psst.shared.api
 
-import zip.psst.shared.model.DropSlot
-import zip.psst.shared.model.LinkTitle
-import zip.psst.shared.model.ServerConfig
-import zip.psst.shared.model.SlotAvailability
-import zip.psst.shared.model.Transfer
-import zip.psst.shared.model.UrlHelper
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.expectSuccess
 import io.ktor.client.request.bearerAuth
@@ -18,13 +12,22 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.LineEnding
 import io.ktor.utils.io.cancel
-import io.ktor.utils.io.readUTF8Line
+import io.ktor.utils.io.readLineStrictTo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeout
+import kotlinx.io.EOFException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import zip.psst.shared.model.DropSlot
+import zip.psst.shared.model.LinkTitle
+import zip.psst.shared.model.ServerConfig
+import zip.psst.shared.model.SlotAvailability
+import zip.psst.shared.model.Transfer
+import zip.psst.shared.model.UrlHelper
 
 @Serializable
 private data class CreateReceiveRequest(
@@ -37,10 +40,25 @@ private data class CreateReceiveRequest(
 /** Represents a Server-Sent Event from the slot events endpoint. */
 data class SlotEvent(val event: String, val data: String)
 
-// Notifications carry small identities, not manifests or file contents. Bound decoded characters
-// both per line and across an event, including ignored fields, before retaining any server input.
-private const val MAX_EVENT_LINE_CHARS = 4096
+// Notifications carry small identities, not manifests or file contents. Bound UTF-8 bytes per line
+// and decoded characters across an event, including ignored fields, before retaining server input.
+private const val MAX_EVENT_LINE_BYTES = 4096L
 private const val MAX_EVENT_CHARS = 16 * 1024
+
+private suspend fun ByteReadChannel.readEventLine(): String? {
+    val line = StringBuilder()
+    val completed =
+        try {
+            readLineStrictTo(line, limit = MAX_EVENT_LINE_BYTES, lineEnding = LineEnding.Lenient) >=
+                0
+        } catch (cause: EOFException) {
+            // Preserve Ktor 3.6.0 readUTF8Line's acceptance of a partial final line only.
+            if (cause.message?.startsWith("Unexpected end of stream after reading") != true)
+                throw cause
+            true
+        }
+    return if (completed) line.toString() else null
+}
 
 /** API operations for drop slots (receive flow). */
 class SlotApi(
@@ -90,7 +108,7 @@ class SlotApi(
                         recipient_public_key = recipientPublicKey,
                         max_files = maxFiles,
                         title = LinkTitle.normalize(title),
-                    )
+                    ),
                 )
             }
         response.checkAuthenticatedWrite()
@@ -151,7 +169,7 @@ class SlotApi(
         return response.readControlJson<Transfer>(4096).also {
             require(
                 UrlHelper.isResourceId(it.id) &&
-                    it.deleteToken?.matches(Regex("[A-Za-z0-9_-]{32,128}")) == true
+                    it.deleteToken?.matches(Regex("[A-Za-z0-9_-]{32,128}")) == true,
             ) {
                 "The server returned an invalid upload capability"
             }
@@ -210,7 +228,7 @@ class SlotApi(
 
                 try {
                     while (!channel.isClosedForRead) {
-                        val line = channel.readUTF8Line(MAX_EVENT_LINE_CHARS) ?: break
+                        val line = channel.readEventLine() ?: break
                         require(line.length < MAX_EVENT_CHARS - eventChars) {
                             "Inbox notification is too large"
                         }
@@ -231,7 +249,7 @@ class SlotApi(
                                         SlotEvent(
                                             event = currentEvent.ifEmpty { "message" },
                                             data = currentData.toString(),
-                                        )
+                                        ),
                                     )
                                     currentEvent = ""
                                     currentData = StringBuilder()

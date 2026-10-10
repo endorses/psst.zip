@@ -8,15 +8,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import zip.psst.android.data.restorePendingShares
+import zip.psst.android.ui.components.rememberLocalNetworkAccess
 import zip.psst.android.ui.navigation.PsstNavGraph
 import zip.psst.android.ui.navigation.Routes
 import zip.psst.android.ui.theme.PsstTheme
@@ -55,16 +64,31 @@ class MainActivity : AppCompatActivity() {
                     val uris = incomingUris
 
                     val startDestination = Routes.HOME
-
-                    PsstNavGraph(
-                        navController = navController,
-                        startDestination = startDestination,
-                        sharedUris = uris.toList(),
-                        onSharedUrisConsumed = {
-                            incomingUris.clear()
-                            clearShareIntent()
-                        },
-                    )
+                    val networkAccess = rememberLocalNetworkAccess()
+                    var initialNetworkReady by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        networkAccess.request(
+                            app.prefs.getServerUrl(),
+                            { initialNetworkReady = true },
+                            { initialNetworkReady = true },
+                        )
+                    }
+                    // Give retained LAN accounts access before their first API request.
+                    // Declining still allows offline history and changing the server.
+                    if (initialNetworkReady)
+                        PsstNavGraph(
+                            navController = navController,
+                            startDestination = startDestination,
+                            sharedUris = uris.toList(),
+                            onSharedUrisConsumed = {
+                                incomingUris.clear()
+                                clearShareIntent()
+                            },
+                        )
+                    else
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
                 }
             }
         }
@@ -99,7 +123,7 @@ class MainActivity : AppCompatActivity() {
                 clipData = null
                 action = Intent.ACTION_MAIN
                 data = null
-            }
+            },
         )
     }
 
@@ -108,11 +132,16 @@ class MainActivity : AppCompatActivity() {
 
         return when (intent.action) {
             Intent.ACTION_SEND -> {
-                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                val uri =
+                    IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
                 listOfNotNull(uri)
             }
             Intent.ACTION_SEND_MULTIPLE -> {
-                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: emptyList()
+                IntentCompat.getParcelableArrayListExtra(
+                    intent,
+                    Intent.EXTRA_STREAM,
+                    Uri::class.java,
+                ) ?: emptyList()
             }
             else -> emptyList()
         }

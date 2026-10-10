@@ -17,6 +17,7 @@ import zip.psst.android.i18n.*
 import zip.psst.android.ui.components.AbuseReportButton
 import zip.psst.android.ui.components.AppearancePicker
 import zip.psst.android.ui.components.LanguagePicker
+import zip.psst.android.ui.components.rememberLocalNetworkAccess
 import zip.psst.android.viewmodel.ServerConfigViewModel
 import zip.psst.android.viewmodel.TestResult
 import zip.psst.shared.model.AbuseReportReference
@@ -36,6 +37,7 @@ fun SettingsScreen(
     val access by prefs.historyAccess.collectAsState()
     val state by viewModel.uiState.collectAsState()
     val traffic by trafficViewModel.state.collectAsState()
+    val networkAccess = rememberLocalNetworkAccess()
     LaunchedEffect(access) {
         viewModel.refreshSavedSession()
         trafficViewModel.refresh()
@@ -50,7 +52,7 @@ fun SettingsScreen(
                     }
                 },
             )
-        }
+        },
     ) { padding ->
         Column(
             Modifier.fillMaxSize()
@@ -67,14 +69,14 @@ fun SettingsScreen(
             Text(
                 if (access.accountId != null)
                     tr(R.string.l_signed_in_as_1_s_aff3e2, (prefs.getUsername()))
-                else tr(R.string.l_not_signed_in_848d80)
+                else tr(R.string.l_not_signed_in_848d80),
             )
             if (prefs.getServerUrl().isNotBlank())
                 Text(prefs.getServerUrl(), style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = onAccount, enabled = !state.isTesting) {
                 Text(
                     if (access.accountId != null) tr(R.string.l_change_server_or_account_d2bed2)
-                    else tr(R.string.l_sign_in_to_a_server_3c5b36)
+                    else tr(R.string.l_sign_in_to_a_server_3c5b36),
                 )
             }
             if (access.accountId != null && !access.isAdmin) {
@@ -89,7 +91,7 @@ fun SettingsScreen(
                                         R.string.l_1_s_remaining_28d5ba,
                                         (displayBytes(it.usage.remainingBytes)),
                                     )
-                                } ?: "")
+                                } ?: ""),
                     )
                 }
             }
@@ -102,10 +104,12 @@ fun SettingsScreen(
                     prefs.getServerUrl().startsWith("https://") ->
                         tr(R.string.l_https_encrypted_connection_b789f2)
                     else -> tr(R.string.l_http_unencrypted_connection_7ad9ab)
-                }
+                },
             )
             TextButton(
-                onClick = viewModel::testConnection,
+                onClick = {
+                    networkAccess.request(prefs.getServerUrl(), viewModel::testConnection)
+                },
                 enabled = !state.isTesting && prefs.getServerUrl().isNotBlank(),
             ) {
                 Text(tr(R.string.l_test_connection_ccf66f))

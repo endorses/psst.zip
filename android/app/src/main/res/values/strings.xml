@@ -618,4 +618,9 @@
         <item quantity="one">Limit: %1$d file accepted · unfinished uploads also count</item>
         <item quantity="other">Limit: %1$d files accepted · unfinished uploads also count</item>
     </plurals>
+    <string name="local_network_permission_title">Connect to a local server</string>
+    <string name="local_network_permission_reason">Your chosen server is on a local network. Allow nearby-device access so psst.zip can connect. Public internet servers do not need this permission.</string>
+    <string name="local_network_permission_denied">Local-server access was not allowed. Enable Nearby devices in app settings, then retry. Your saved account, files and keys remain on this device; offline history is still available.</string>
+    <string name="local_network_open_settings">Open app settings</string>
+    <string name="local_network_allow">Allow connection</string>
 </resources>

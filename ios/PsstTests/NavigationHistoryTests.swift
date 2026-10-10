@@ -1,9 +1,8 @@
 import AVFoundation
 import Foundation
+@testable import Psst
 import UIKit
 import XCTest
-
-@testable import Psst
 
 @MainActor
 final class NavigationHistoryTests: XCTestCase {
@@ -21,7 +20,8 @@ final class NavigationHistoryTests: XCTestCase {
 
     private let session = DeviceSession(
         serverURL: "https://one.example", userID: "user", username: "name", token: "token", sessionID: "session",
-        expiresAt: "later")
+        expiresAt: "later"
+    )
     private func owned(_ id: String, slot: Bool = false, date: TimeInterval = 10) -> TransferRecord {
         TransferRecord(
             id: id, direction: slot ? .received : .sent, state: .complete, createdAt: Date(timeIntervalSince1970: date),
@@ -33,7 +33,8 @@ final class NavigationHistoryTests: XCTestCase {
     private func local(_ origin: String = "https://one.example", date: TimeInterval = 20) -> GuestDownload {
         GuestDownload(
             id: GuestDownload.identity(origin: origin, transferID: "same"), origin: origin, transferID: "same",
-            createdAt: Date(timeIntervalSince1970: date))
+            createdAt: Date(timeIntervalSince1970: date)
+        )
     }
 
     func testMixedHistoryOrdersFiltersAndPreservesBothMeanings() {
@@ -45,28 +46,34 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(Set(all.map(\.id)).count, 3)
         for filter in [HistoryFilter.sent, .receive, .downloaded] {
             XCTAssertEqual(
-                HistoryEntry.combine(account: account, downloads: downloads, session: session, filter: filter).count, 1)
+                HistoryEntry.combine(account: account, downloads: downloads, session: session, filter: filter).count, 1
+            )
         }
     }
 
     func testSignedOutAndChangedAccountKeepLocalHistoryOnly() {
         let downloads = [local()]
         XCTAssertEqual(
-            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: nil, filter: .all).count, 1)
+            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: nil, filter: .all).count, 1
+        )
         let other = DeviceSession(
             serverURL: "https://two.example", userID: "other", username: "other", token: "other", sessionID: "other",
-            expiresAt: "later")
+            expiresAt: "later"
+        )
         XCTAssertEqual(
-            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: other, filter: .all).count, 1)
+            HistoryEntry.combine(account: [owned("same")], downloads: downloads, session: other, filter: .all).count, 1
+        )
     }
 
     func testEqualIDsAcrossOriginsAndTypesDoNotCollideAndSortStably() {
         let downloads = [local(), local("https://two.example")]
         let first = HistoryEntry.combine(
-            account: [owned("same"), owned("same", slot: true)], downloads: downloads, session: session, filter: .all)
+            account: [owned("same"), owned("same", slot: true)], downloads: downloads, session: session, filter: .all
+        )
         let second = HistoryEntry.combine(
             account: [owned("same", slot: true), owned("same")], downloads: downloads.reversed(), session: session,
-            filter: .all)
+            filter: .all
+        )
         XCTAssertEqual(Set(first.map(\.id)).count, 4)
         XCTAssertEqual(first.map(\.id), second.map(\.id))
     }
@@ -92,9 +99,9 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(record.displayTitle, "夏の写真📷.jpeg + 3 files")
     }
 
-    func testLegacyReceivedTitleIsSanitizedOnlyForDisplayAndCustomLabelIsPreserved() {
+    func testLegacyReceivedTitleIsSanitizedOnlyForDisplayAndCustomLabelIsPreserved() throws {
         var record = owned("received", slot: true)
-        record.title = "photo\u{061C}\u{200E}\u{200F}\u{202E}jpg.exe"
+        record.title = try "photo\u{061C}\u{200E}\u{200F}" + String(XCTUnwrap(UnicodeScalar(0x202E))) + "jpg.exe"
         record.fileCount = 2
         let original = record.title
         XCTAssertEqual(record.safeDisplayTitle, "photo____jpg.exe + 1 file")
@@ -146,13 +153,15 @@ final class NavigationHistoryTests: XCTestCase {
         let relaunched = TransferHistoryStore(defaults: defaults, fileURL: file)
         XCTAssertEqual(relaunched.visible(for: session).count, 2)
         XCTAssertEqual(
-            relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document")
+            relaunched.visible(for: session).first(where: { $0.isSlot != true })?.customTitle, "Private document"
+        )
         XCTAssertNil(relaunched.visible(for: session).first(where: { $0.isSlot == true })?.customTitle)
         XCTAssertEqual(relaunched.visible(for: session).first(where: { $0.isSlot != true })?.title, "report.pdf")
-        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey))  // Migration retains its original source.
+        XCTAssertNotNil(defaults.data(forKey: AppConstants.transferHistoryKey)) // Migration retains its original source.
         let another = DeviceSession(
             serverURL: session.serverURL, userID: "other", username: "other", token: "other", sessionID: "other",
-            expiresAt: "later")
+            expiresAt: "later"
+        )
         XCTAssertTrue(relaunched.visible(for: another).isEmpty)
     }
 
@@ -176,7 +185,8 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertEqual(restored.visible(for: session).count, 2)
         XCTAssertEqual(restored.visible(for: session).first(where: { $0.id == "refreshed" })?.fileCount, 250)
         XCTAssertEqual(
-            restored.visible(for: session).first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name")
+            restored.visible(for: session).first(where: { $0.id == "refreshed" })?.customTitle, "Keep this local name"
+        )
         XCTAssertNotNil(restored.visible(for: session).first(where: { $0.id == "another" }))
     }
 
@@ -223,9 +233,11 @@ final class NavigationHistoryTests: XCTestCase {
         let secondWriter = TransferHistoryStore(defaults: defaults, fileURL: file)
         let updated = local
         _ = try secondWriter.saveReceivedFile(
-            parent: updated, transferID: "child", blobID: "file", path: "Received/file", size: 3, title: "file")
+            parent: updated, transferID: "child", blobID: "file", path: "Received/file", size: 3, title: "file"
+        )
         try secondWriter.completeReceivedTransfer(
-            parent: updated, transferID: "child", blobIDs: ["file"], fileExists: { _, _ in true })
+            parent: updated, transferID: "child", blobIDs: ["file"], fileExists: { _, _ in true }
+        )
         // Incoming status updates preserve persisted local names. Write the local
         // edit through the coordinated mutation used for explicit device edits.
         try secondWriter.mutate(ids: [updated.localID]) { records in
@@ -244,17 +256,20 @@ final class NavigationHistoryTests: XCTestCase {
         XCTAssertNil(merged.savedTransfers)
         XCTAssertTrue(
             try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?
-                .isSaved(fileCount: 1) == true)
+                .isSaved(fileCount: 1) == true
+        )
         XCTAssertEqual(merged.customTitle, "Concurrent local name")
         XCTAssertEqual(store.visible(for: session).first { $0.id == "unloaded" }?.state, .complete)
         let ready = unknown.replacingOccurrences(of: "null", with: "1").replacingOccurrences(
-            of: "updating", with: "ready")
+            of: "updating", with: "ready"
+        )
         try store.mergeResourcePage(JSONDecoder().decode(ResourceList.self, from: Data(ready.utf8)), session: session)
         XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.fileCount, 1)
         XCTAssertEqual(store.visible(for: session).first { $0.id == id }?.customTitle, "Concurrent local name")
         XCTAssertTrue(
             try store.receiveCheckpoints(parent: merged, transferIDs: ["child"], fileExists: { _, _ in true })["child"]?
-                .isSaved(fileCount: 1) == true)
+                .isSaved(fileCount: 1) == true
+        )
     }
 
     func testIndexedHistoryImportAndPagesPreserveEveryRecord() async throws {
@@ -265,7 +280,7 @@ final class NavigationHistoryTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let file = directory.appendingPathComponent("history.json")
-        let original = (0..<130).map { owned("old-" + String($0)) }
+        let original = (0 ..< 130).map { owned("old-" + String($0)) }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let originalData = try encoder.encode(original)
@@ -300,7 +315,8 @@ final class NavigationHistoryTests: XCTestCase {
             XCTAssertFalse(blocked.canTransfer)
             XCTAssertEqual(
                 HistoryEntry.combine(account: [owned("same")], downloads: [local()], session: blocked, filter: .all)
-                    .count, 1)
+                    .count, 1
+            )
         }
     }
 
@@ -315,19 +331,26 @@ final class NavigationHistoryTests: XCTestCase {
     func testPasswordConfirmationAndBytePolicy() {
         XCTAssertTrue(
             PasswordReplacementPolicy.valid(
-                current: "temporary password", replacement: "new secure password", confirmation: "new secure password"))
-        XCTAssertFalse(
-            PasswordReplacementPolicy.valid(
-                current: "temporary password", replacement: "temporary password", confirmation: "temporary password"))
-        XCTAssertFalse(
-            PasswordReplacementPolicy.valid(
-                current: "temporary password", replacement: "new secure password", confirmation: "new secure password ")
+                current: "temporary password", replacement: "new secure password", confirmation: "new secure password"
+            )
         )
         XCTAssertFalse(
-            PasswordReplacementPolicy.valid(current: "temporary password", replacement: "short", confirmation: "short"))
+            PasswordReplacementPolicy.valid(
+                current: "temporary password", replacement: "temporary password", confirmation: "temporary password"
+            )
+        )
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(
+                current: "temporary password", replacement: "new secure password", confirmation: "new secure password "
+            )
+        )
+        XCTAssertFalse(
+            PasswordReplacementPolicy.valid(current: "temporary password", replacement: "short", confirmation: "short")
+        )
         let long = String(repeating: "🔐", count: 19)
         XCTAssertFalse(
-            PasswordReplacementPolicy.valid(current: "temporary password", replacement: long, confirmation: long))
+            PasswordReplacementPolicy.valid(current: "temporary password", replacement: long, confirmation: long)
+        )
     }
 
     func testCameraSelectionPrefersRearAndKeepsFrontOnlyAndNoCameraCases() {
@@ -383,7 +406,8 @@ final class NavigationHistoryTests: XCTestCase {
         let padding: CGFloat = 40
         let size = CGSize(
             width: images[0].size.width + images[1].size.width + padding * 3,
-            height: max(images[0].size.height, images[1].size.height) + padding * 2)
+            height: max(images[0].size.height, images[1].size.height) + padding * 2
+        )
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true

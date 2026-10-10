@@ -6667,5 +6667,65 @@
       "android/app/src/main/java/zip/psst/android/ui/components/SourceLicenses.kt"
     ],
     "translator_note": "Legal/source discovery labels. Preserve positional placeholders; source revisions, URLs and license text are not translated."
+  },
+  "local_network_permission_title": {
+    "english": {
+      "string": "Connect to a local server"
+    },
+    "purpose": "Connect to a local server",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/LocalNetworkAccess.kt"
+    ],
+    "translator_note": "Use informal du. Describe access to the operator-selected local server; keep psst.zip unchanged."
+  },
+  "local_network_permission_reason": {
+    "english": {
+      "string": "Your chosen server is on a local network. Allow nearby-device access so psst.zip can connect. Public internet servers do not need this permission."
+    },
+    "purpose": "Your chosen server is on a local network. Allow nearby-device access so psst.zip can connect. Public internet servers do not need this permission.",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/LocalNetworkAccess.kt"
+    ],
+    "translator_note": "Use informal du. Describe access to the operator-selected local server; keep psst.zip unchanged."
+  },
+  "local_network_permission_denied": {
+    "english": {
+      "string": "Local-server access was not allowed. Enable Nearby devices in app settings, then retry. Your saved account, files and keys remain on this device; offline history is still available."
+    },
+    "purpose": "Local-server access was not allowed. Enable Nearby devices in app settings, then retry. Your saved account, files and keys remain on this device; offline history is still available.",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/LocalNetworkAccess.kt"
+    ],
+    "translator_note": "Use informal du. Describe access to the operator-selected local server; keep psst.zip unchanged."
+  },
+  "local_network_open_settings": {
+    "english": {
+      "string": "Open app settings"
+    },
+    "purpose": "Open app settings",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/LocalNetworkAccess.kt"
+    ],
+    "translator_note": "Use informal du. Describe access to the operator-selected local server; keep psst.zip unchanged."
+  },
+  "local_network_allow": {
+    "english": {
+      "string": "Allow connection"
+    },
+    "purpose": "Allow connection",
+    "arguments": [],
+    "plural": false,
+    "locations": [
+      "android/app/src/main/java/zip/psst/android/ui/components/LocalNetworkAccess.kt"
+    ],
+    "translator_note": "Use informal du. Describe access to the operator-selected local server; keep psst.zip unchanged."
   }
 }
