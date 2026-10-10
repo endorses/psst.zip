@@ -1,6 +1,6 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: release tooling implemented locally; signing, device verification and
+Created: 2026-10-09. Status: release tooling prepared in a draft PR; signing, device verification and
 publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
 GitHub, with a verified path from the operator's debug installation and a
 repeatable update process that preserves client-held keys and history.
@@ -245,7 +245,14 @@ The operator reports Android 16 and no USB access. The local debug APK has packa
 `bcda0d16e7cdf314aceab34e240e304b53e459ca6370076d31323022353db987`.
 This does not establish the phone's installed signer or older app sandbox.
 
-Implemented locally: [release workflow](../../.github/workflows/android-release.yml),
+Preparation is published in [draft PR #36](https://github.com/endorses/psst.zip/pull/36).
+Its [hosted validation](https://github.com/endorses/psst.zip/actions/runs/38026753127)
+is running against `8c0fe3c`; native iOS completion is not yet established.
+The operator approved this preparation push and the private bridge on October 10.
+[Read-only Wireless debugging instructions](../releases/android.md#read-the-installed-identity-without-usb)
+are available for the actual phone check; no phone inspection or update has run.
+
+Implemented: [release workflow](../../.github/workflows/android-release.yml),
 [artifact/signing checks](../../tools/android_release.py),
 [exact-source CI reuse](../../tools/android_release_ci.py),
 [private signing bridge](../../tools/android_signing_bridge.py),

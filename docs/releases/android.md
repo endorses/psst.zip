@@ -165,6 +165,55 @@ subsequent production-only APK can update it. The disposable Android 16 diagnost
 passed both updates with real Keystore, Room and HPKE/AES state. The operator's
 phone has not been verified; this is **not actual-phone evidence**.
 
+### Read the installed identity without USB
+
+Android 16 supports [Wireless debugging](https://developer.android.com/tools/adb#connect-to-a-device-over-wi-fi).
+Connect the phone and computer to the same Wi-Fi, enable Developer options →
+Wireless debugging, then choose **Pair device with pairing code**. In your private
+terminal, run `adb pair IP:PAIRING_PORT` and enter the code at its prompt. Keep the
+code out of chat. If the device does not connect automatically, use
+`adb connect IP:CONNECTION_PORT`; the main Wireless debugging screen's connection
+port is different from the pairing dialog's port. Use current SDK Platform Tools
+and check `adb devices -l` before selecting a device.
+
+With `ANDROID_HOME` set and a working JDK on `PATH`, run this read-only inspection
+in Bash. It reads the currently active Android profile's installed APK, not its
+private app data, and removes the temporary APK afterward:
+
+```sh
+(
+  set -euo pipefail
+  umask 077
+  psst_adb="$ANDROID_HOME/platform-tools/adb"
+  read -r -p 'Connected device serial from adb devices: ' psst_device
+  psst_inspection=$(mktemp -d "${TMPDIR:-/tmp}/psst-installed-apk.XXXXXX")
+  trap 'rm -rf -- "$psst_inspection"' EXIT
+  psst_user=$("$psst_adb" -s "$psst_device" shell am get-current-user | tr -d '\r')
+  psst_apk_path=$("$psst_adb" -s "$psst_device" shell pm path --user "$psst_user" \
+    zip.psst.android | tr -d '\r' | sed -n 's/^package:\(.*\/base\.apk\)$/\1/p')
+  test -n "$psst_apk_path"
+  "$psst_adb" -s "$psst_device" shell getprop ro.build.version.sdk
+  "$psst_adb" -s "$psst_device" shell cmd package list packages -U \
+    --user "$psst_user" zip.psst.android
+  "$psst_adb" -s "$psst_device" pull "$psst_apk_path" "$psst_inspection/base.apk"
+  "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging \
+    "$psst_inspection/base.apk" | rg '^(package:|sdkVersion:|targetSdkVersion:)'
+  "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs \
+    "$psst_inspection/base.apk"
+)
+```
+
+Privately record the profile, package/UID, version code, API level and public
+certificate SHA256. Compare the certificate with the retained local debug APK;
+do not assume they match because the visible app name matches. These commands do
+not install, uninstall, clear data or demonstrate key preservation. If the package
+is missing, stop and identify the actual installation before proceeding. Turn off
+Wireless debugging when finished; optionally forget this computer in its paired
+device list. Signature verification uses the official
+[apksigner tool](https://developer.android.com/tools/apksigner).
+
+### Prepare the private transition
+
 `tools/android_signing_bridge.py` prepares a local bridge, with both keystores
 outside the checkout. It requires the recorded installed signer and version floor,
 verifies the old APK, enables installed-data and permission capabilities, disables
