@@ -429,6 +429,12 @@ nor SQLite native-access warning appeared. Credential-provider autofill on a
 physical phone is not claimed from compilation. These Android-only follow-ups
 still need the draft PR's hosted validation after push.
 
+The follow-up run at `acbbbef` caught stale build-input hashes in the native notice
+inventories after the test JVM configuration changed. Actual offline dependency
+resolution regenerated both inventories in 10 seconds: the same 123 Android and
+117 iOS variants and unchanged license payloads. Only the Gradle input hash changed
+in each inventory; the input freshness check now passes. The guard remains enabled.
+
 JourneyApps [4.3.0](https://github.com/journeyapps/zxing-android-embedded/releases/tag/v4.3.0)
 is still its latest published stable scanner and uses legacy Camera integer IDs
 and parameter callbacks. That compatibility boundary remains documented and

@@ -3,7 +3,7 @@
   "platform": "android",
   "scope": "Android release runtime",
   "input_sha256": {
-    "android/app/build.gradle.kts": "bd967d796ed5eff89af40acc2255b2b6f00e67d27a3da0979363e704e631d705",
+    "android/app/build.gradle.kts": "779389fd0e5d453f53896f86cefd4c995ba3e1fb5abd90ccd82d86b652cb6be5",
     "android/gradle/libs.versions.toml": "0e024bb98e0b1fefc261f6ca3d1f40c98993b748f30a04464ec697ebbfc0e469",
     "android/settings.gradle.kts": "4dda19369eb32ef11398f4ab258a335fc08b15240a32ddc19b16af72fb25ee1b",
     "shared/build.gradle.kts": "52298a8f3add0a6caa6a3f876801c6866f6aec85a2174f3391d72c9730e78ed4",
