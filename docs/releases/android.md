@@ -183,8 +183,8 @@ the same package updates its existing permission declaration.
 The migrated phone can retain historical debug-key trust for signature permissions.
 This trust may remain in Android's stored signing history after a subsequent
 production-only APK; a successful update does not prove its revocation. The
-operator must review and accept this trust before any real-device transition.
-That acceptance and actual device preservation are still pending. Fresh public
+operator reviewed and accepted this trust on October 10, selecting the private
+bridge. Actual device preservation remains pending. Fresh public
 installations use a production-only APK without the debug lineage.
 
 Do not uninstall, clear app data or replace a mismatched package to get around a
@@ -194,7 +194,7 @@ encrypted archive migration on **both Android and iOS** before any reinstall.
 Readiness record, kept privately and containing observations rather than secrets:
 
 - [ ] Confirm the actual phone's installed package, version code and signing identity.
-- [ ] Review and accept the private bridge's retained debug-key permission trust
+- [x] Review and accept the private bridge's retained debug-key permission trust
       before applying it to the actual phone.
 - [x] Verify a disposable emulator transition with actual protected stores before
       applying the production bridge to the phone.

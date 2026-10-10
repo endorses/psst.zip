@@ -63,7 +63,7 @@ encrypted archive export/import capability must precede any reinstall.
       implications. Record supported OS versions and verify in-place installation,
       preserved protected state and a later production-signed update. Do not
       publish a lineage that accidentally makes the debug key a public authority.
-- [ ] Choose and record the transition. If an archive is needed, first specify
+- [x] Choose and record the transition. If an archive is needed, first specify
       authenticated encryption, ownership, version/size bounds, interrupted import,
       duplicate handling and atomic activation. Cover Send keys, Receive-v2 private
       keys, guest capabilities and history; exclude reusable sessions by default.
@@ -78,6 +78,11 @@ encrypted archive export/import capability must precede any reinstall.
 - [ ] Create the production key privately, record its public certificate fingerprint,
       verify recovery from a separately retained encrypted copy, and document
       custody/rotation. No signing passwords or private key values belong in chat.
+
+On October 10, the operator selected the private signing bridge and accepted the
+retained debug-certificate trust for signature permissions on the migrated
+installation. Encrypted export/import is not the selected prerequisite; actual
+phone identity, production-key recovery and in-place preservation remain unverified.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
