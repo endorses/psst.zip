@@ -281,6 +281,18 @@ artifact-ID input was checked against its actual action definition and
 The new sparse signing checkout and failed-job-only retry still require execution
 in GitHub; no application suite or new benchmark was added for this repair.
 
+[PR #39](https://github.com/endorses/psst.zip/pull/39) passed its required checks
+with application build/test steps skipped and merged the diagnostic/retry repair.
+[Run 39030999139](https://github.com/endorses/psst.zip/actions/runs/39030999139)
+uses that dispatcher with the unchanged Android tag. Its source and optimized-build
+gates passed, reusing exact-source Android/security CI; assembly/lint took 3m24s
+and notice verification 11s. Independent verification of the downloaded candidate
+passed and its bytes match the phone-tested unsigned APK exactly. This run's
+encrypted map and public source/checksum metadata were separately retained and
+verified on the selected external drive. The protected signing job awaits the
+configured operator review without a special comment. The original signing
+failure remains unclassified until the newly instrumented protected job runs.
+
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
 treats that exact Markdown guide as documentation, while unknown release paths
