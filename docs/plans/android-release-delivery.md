@@ -1,9 +1,14 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: release tooling merged in PR #36 and the real-phone signing
-transition and hosted release preview verified; protected publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
-GitHub, with a verified path from the operator's debug installation and a
-repeatable update process that preserves client-held keys and history.
+Created: 2026-10-09. Status: **first GitHub APK milestone complete** on
+2026-10-17. [Android 0.1.0](https://github.com/endorses/psst.zip/releases/tag/android-v0.1.0)
+(code `3`) is published as an immutable, production-signed release. The actual
+phone transition and subsequent production update preserved the recorded account,
+history and existing transfer. F-Droid, Play and custom-repository milestones
+below remain later work.
+
+The preparation narrative records each step's state at the time. Earlier pending
+statements are superseded by the final successful publication record below.
 
 ## Scope and starting point
 
@@ -67,7 +72,7 @@ encrypted archive export/import capability must precede any reinstall.
       authenticated encryption, ownership, version/size bounds, interrupted import,
       duplicate handling and atomic activation. Cover Send keys, Receive-v2 private
       keys, guest capabilities and history; exclude reusable sessions by default.
-- [ ] Implement any selected export/import capability on Android and iOS using
+- [ ] If selected in future, implement export/import on Android and iOS using
       native file pickers and protected stores. Shared archive/protocol changes
       preserve parity; include extension access where relevant. A local-only
       signing bridge does not require an iOS store workflow.
@@ -81,7 +86,8 @@ encrypted archive export/import capability must precede any reinstall.
 
 On October 10, the operator selected the private signing bridge and accepted the
 retained debug-certificate trust for signature permissions on the migrated
-installation. Encrypted export/import is not the selected prerequisite. The actual
+installation. The export/import checkbox is conditional and outside this completed
+milestone because the private signing bridge was selected. The actual
 phone identity, production-key backup recovery and in-place preservation are now
 verified within the observed scope recorded below.
 
@@ -289,18 +295,17 @@ gates passed, reusing exact-source Android/security CI; assembly/lint took 3m24s
 and notice verification 11s. Independent verification of the downloaded candidate
 passed and its bytes match the phone-tested unsigned APK exactly. This run's
 encrypted map and public source/checksum metadata were separately retained and
-verified on the selected external drive. The protected signing job awaits the
-configured operator review without a special comment. The operator approved it.
+verified on the selected external drive. The operator approved the
+configured protected signing review without a special comment.
 The protected job successfully downloaded the candidate by immutable artifact ID,
 reverified its unsigned bytes and checked out the trusted dispatcher helper.
 Alignment succeeded, then the signer failed with fixed diagnostic
 `apk-sign (exit 2) [category=key-password]`: it could not decrypt the private key
 with the configured signing input. No Android release exists. This narrows the
 failure to private-key unlocking; it does not reveal the supplied value or prove
-how it became inconsistent. The operator must privately correct the existing
-PKCS12 password inputs in the protected Android environment before retrying only
-the failed publication job. The app source, tag and successful build remain
-unchanged. Failed-job-only reuse across attempts still needs actual execution.
+how it became inconsistent. The operator then privately re-entered both existing PKCS12 password secrets.
+Only the failed publication job was retried; the app source, tag and successful
+build remained unchanged. Its successful outcome is recorded below.
 
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
@@ -310,8 +315,48 @@ selector regressions include this guide and the fail-closed unknown-path case;
 they passed in about 1.1 seconds. Ruff formatting/checks passed. No new application
 test suite was added for the documentation change.
 
-The decision above gates replacing the operator's installation. Preparation of
-unsigned release builds and metadata can proceed while it is being resolved.
+The selected preservation gate is complete. Routine releases keep the production
+signer and package stable, increase the version code, and use the documented
+protected workflow; they do not repeat the one-time private bridge.
+
+## Final publication and milestone closure (2026-10-17)
+
+[Run 39030999139, attempt 2](https://github.com/endorses/psst.zip/actions/runs/39030999139/attempts/2)
+passed after the operator privately updated the two password secrets and approved
+the protected environment. It reran only signing/publication: the original
+successful build was reused by immutable artifact ID. The trusted dispatcher
+helper signed successfully on JDK 27; the tag's verifier and packager validated
+the signed APK. This establishes that the corrected configuration works, without
+claiming what the earlier hidden secret value contained.
+
+The public [immutable Android release](https://github.com/endorses/psst.zip/releases/tag/android-v0.1.0)
+contains the signed APK, `SHA256SUMS`, `android-release.json`, `INSTALL.md`,
+corresponding `source.tar.gz` and `third-party-notices.tar.gz`. Its exact source is
+`144cd60c61d6b6ed086583865b0782fcc1a74661`, version `0.1.0`, code `3`, package
+`zip.psst.android`. The production certificate SHA256 is
+`6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15`.
+
+Both CI and an independent local check downloaded every asset anonymously.
+All six API asset digests and the published checksum manifest matched. Independent
+APK verification passed the actual manifest, source, notices, supported native
+ABIs, ELF/ZIP 16 KB alignment and cryptographic signature checks. The signed APK's
+SHA256 is `37c85af0caa61a55478cee86964269a6c6396f711cde9f383a045c1b282a2075`:
+its exact bytes match the production APK already installed and successfully checked
+on the phone. No further installation or repeated manual transfer matrix is needed.
+The final run's encrypted mapping and public source/checksum metadata were retained
+on the selected external drive before artifact expiry; production-key and mapping
+identity recovery had already been verified privately.
+
+One bounded closure review, including one independent code reviewer, found no
+material blockers across preservation, release identity, optimized APK validation,
+protected publication, retry/build identity and key/mapping custody. Outcome:
+**CLOSED for the first GitHub APK milestone**. The independent reviewer relied on
+the supplied successful hosted/public verification because its own API refresh
+was unavailable. Actual-phone observations remain limited to the recorded account,
+history and unspecified existing transfer; broader synthetic store coverage is
+recorded separately. The unselected archive path and later store milestones are
+not claimed as implemented. No new benchmark or full application test run was
+added for closure.
 
 ## Release build and metadata
 
@@ -329,19 +374,19 @@ unsigned release builds and metadata can proceed while it is being resolved.
       before changing pins. Record required upgrades and behavioral implications,
       preserve API 26 unless an explicit support decision changes it, and inspect
       actual Actions warnings/notices. Avoid adding preview tools by default.
-- [ ] Check the packaged native libraries and Android 16 KB compatibility using the
+- [x] Check the packaged native libraries and Android 16 KB compatibility using the
       final APK. Raise compile/target SDK deliberately; Play currently requires
       API 36 for new mobile app submissions, independently of GitHub sideloading.
 - [x] Add explicit release signing inputs that fail if missing; no fallback to
       debug signing. Keep keystores/passwords outside the repository and caches,
       expose only public certificate metadata, and delete temporary material on exit.
-- [ ] Build `:app:assembleRelease` and `:app:lintRelease` once with the selected
+- [x] Build `:app:assembleRelease` and `:app:lintRelease` once with the selected
       stable toolchain. Inspect R8 warnings and necessary keep rules; preserve
       resolved dependency notices, corresponding source and license obligations.
-- [ ] Verify package ID, version name/code, minimum/target SDK, release/debuggable
+- [x] Verify package ID, version name/code, minimum/target SDK, release/debuggable
       flags, signer, supported native ABIs, exact source revision and notices from
       the final signed APK. Compute checksum only after final signing.
-- [ ] Preserve the exact APK, public metadata, source tag and build instructions
+- [x] Preserve the exact APK, public metadata, source tag and build instructions
       for publication; retain the shrinker mapping and any native symbols with
       deliberate private retention. Keep intermediate signing material excluded.
 
@@ -363,7 +408,7 @@ do not copy the container source-replay pipeline into this workflow.
       reject skipped, unrelated, stale or failed evidence. If required checks are
       absent, run those checks once without signing secrets rather than rerunning
       all server and iOS jobs solely for Android publication.
-- [ ] Build/check once on Linux, then sign the selected artifact with protected
+- [x] Build/check once on Linux, then sign the selected artifact with protected
       credentials and verify it again. Ensure protected jobs execute only approved
       source, have minimal permissions, preserve failure status and never expose
       passwords, keystore contents or private client data.
@@ -374,11 +419,11 @@ do not copy the container source-replay pipeline into this workflow.
       the implementation is reviewable. Separate it from container-release and
       production deployment credentials. State any GitHub reviewer requirement
       explicitly; do not introduce repeated custom evidence-comment prompts.
-- [ ] Publish a new Android GitHub release with the APK, checksum, public release
+- [x] Publish a new Android GitHub release with the APK, checksum, public release
       metadata, corresponding source/notices, release notes and install/update
       instructions. Reject conflicting existing assets; do not overwrite prior
       signed releases or silently replace tags on retry.
-- [ ] Verify anonymous exact-byte download and APK signature/source metadata from
+- [x] Verify anonymous exact-byte download and APK signature/source metadata from
       the public URL. Complete the first real update preservation check and record
       the supported transition, without claiming F-Droid or Play availability.
 
@@ -458,9 +503,9 @@ and [Play publishing API](https://developers.google.com/android-publisher/gettin
       through the repository guard; keep both store research drafts uncommitted
       under the earlier instruction. No app build, key creation, tag or publication
       is implied by completing this planning step.
-- [ ] Complete the selected transition, production key recovery and release
+- [x] Complete the selected transition, production key recovery and release
       implementation, with applicable local and hosted validation recorded.
-- [ ] Publish and anonymously verify the first signed Android APK, demonstrate
+- [x] Publish and anonymously verify the first signed Android APK, demonstrate
       preserved data on the agreed transition and a subsequent same-signer update,
       document operator steps, and mark only actually completed items above.
 

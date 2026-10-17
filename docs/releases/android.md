@@ -5,12 +5,19 @@ The `Android release` workflow runs only by manual dispatch on protected `main`,
 selecting an existing `android-vX.Y.Z` tag. Its default is an **unsigned preview**;
 it does not publish an APK, create a signing key or update an installed app.
 
+The first production-signed release is available as
+[Android 0.1.0](https://github.com/endorses/psst.zip/releases/tag/android-v0.1.0),
+code `3`, published on October 17. Its public APK is byte-for-byte identical to the
+production APK already installed and checked on the operator's phone. Anonymous
+checksums, source/notices and the expected production signature were verified.
+This is GitHub APK distribution; Play and F-Droid are later milestones.
+
 ## Version and build
 
 `android/release-version.properties` is the single checked-in version source.
 Keep the application ID `zip.psst.android` stable and increase `versionCode` above
 all public releases and any private bridge installed on the operator's device.
-The first planned APK is version `0.1.0`, code `3`; this exceeds both the observed
+The first published APK is version `0.1.0`, code `3`; this exceeds both the observed
 local debug APK's code `1` and the tested private bridge's code `2`. The phone's
 installed code `1` and matching debug certificate were verified read-only on
 October 10. Production-key and encrypted mapping-backup recovery were confirmed on
