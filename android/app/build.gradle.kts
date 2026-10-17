@@ -40,50 +40,21 @@ require(androidVersionCode in 1..2100000000) {
     "Android versionCode is outside the supported range"
 }
 
-val noUntrackedMobileSource =
+// The helper accepts only F-Droid's exact unstaged wrapper deletions, while
+// preserving an empty identity for modified or untracked build inputs.
+val gitSourceRevision =
     providers
         .exec {
             workingDir(rootProject.projectDir.parentFile)
-            commandLine(
-                "git",
-                "ls-files",
-                "--others",
-                "--exclude-standard",
-                "--",
-                "android",
-                "shared",
-            )
+            commandLine("python3", "tools/android_release.py", "source-revision")
             isIgnoreExitValue = true
         }
         .standardOutput
         .asText
         .get()
-        .isBlank()
-val sourceTreeClean =
-    providers
-        .exec {
-            workingDir(rootProject.projectDir.parentFile)
-            commandLine("git", "diff", "--quiet", "HEAD", "--", "android", "shared", "LICENSE")
-            isIgnoreExitValue = true
-        }
-        .result
-        .get()
-        .exitValue == 0 && noUntrackedMobileSource
-val gitSourceRevision =
-    if (sourceTreeClean)
-        providers
-            .exec {
-                workingDir(rootProject.projectDir.parentFile)
-                commandLine("git", "rev-parse", "HEAD")
-                isIgnoreExitValue = true
-            }
-            .standardOutput
-            .asText
-            .get()
-            .trim()
-            .takeIf { it.matches(Regex("[a-f0-9]{40}")) }
-            .orEmpty()
-    else ""
+        .trim()
+        .takeIf { it.matches(Regex("[a-f0-9]{40}")) }
+        .orEmpty()
 
 android {
     namespace = "zip.psst.android"
@@ -164,14 +135,17 @@ tasks
 
 // Signing is a separate, protected step. Gradle never reads a signing keystore
 // or substitutes the debug key; an optimized APK must be requested explicitly.
-val allowUnsignedRelease = providers.environmentVariable("PSST_ANDROID_UNSIGNED_RELEASE")
+val allowUnsignedRelease =
+    providers
+        .environmentVariable("PSST_ANDROID_UNSIGNED_RELEASE")
+        .orElse(providers.gradleProperty("psst.unsignedRelease"))
 
 tasks
     .matching { it.name == "packageRelease" }
     .configureEach {
         onlyIf {
             check(allowUnsignedRelease.orNull == "true") {
-                "Set PSST_ANDROID_UNSIGNED_RELEASE=true to build the unsigned APK for separate signing"
+                "Set PSST_ANDROID_UNSIGNED_RELEASE=true or -Ppsst.unsignedRelease=true to build the unsigned APK for separate signing"
             }
             true
         }

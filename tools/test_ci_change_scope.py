@@ -103,7 +103,6 @@ class ChangeScopeTests(unittest.TestCase):
         self.write("tools/android_build_timings.gradle")
         self.write("tools/check_android_update.py")
         self.write("tools/test_android_update.py")
-        self.write("tools/android_release.py")
         self.write("tools/android_signing_bridge.py")
         self.commit()
         self.push_event()
@@ -127,6 +126,7 @@ class ChangeScopeTests(unittest.TestCase):
             "ios/Shared/LegalResources/notice.txt": {"android", "ios"},
             "ios/PsstShare/ShareViewController.swift": {"ios"},
             "tools/generate_native_notices.py": {"android", "ios"},
+            "tools/android_release.py": {"android"},
             "assets/brand/logo.svg": selector.JOBS,
             "LICENSE": selector.JOBS,
             "docs/protocol/chunked-files.md": selector.JOBS,
