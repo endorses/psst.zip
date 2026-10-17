@@ -12,7 +12,11 @@ Keep the application ID `zip.psst.android` stable and increase `versionCode` abo
 all public releases and any private bridge installed on the operator's device.
 The first planned APK is version `0.1.0`, code `3`; this exceeds both the observed
 local debug APK's code `1` and the tested private bridge's code `2`. The phone's
-installed code/signature still need checking before either transition or release.
+installed code `1` and matching debug certificate were verified read-only on
+October 10. Production-key and encrypted mapping-backup recovery were confirmed on
+October 17. The actual phone then completed the private bridge and production-only
+updates with its UID preserved; the operator confirmed the existing account/history
+and the same transfer remained usable after both updates.
 Container tags retain their independent `vX.Y.Z` namespace.
 
 The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tools
@@ -100,10 +104,15 @@ keytool -list -v -keystore "$HOME/.local/share/psst-signing/android.p12" \
 
 Enter the password only in the terminal prompt. Record the **public certificate's
 SHA256** fingerprint. Retain an independently stored encrypted keystore copy and
-its password in a password manager. Demonstrate recovery by decrypting the backup
-into a private temporary directory, checking the public fingerprint with
-`keytool`, then deleting the recovered file. A copy on the same computer alone is
-not independent recovery.
+its password in a password manager. Demonstrate recovery by opening the separate
+backup with `keytool` and checking its public fingerprint. Also run `keytool
+-certreq -keystore BACKUP_PATH -alias psst-android -file /dev/null`, entering the
+password interactively: creating the disposable request proves that the recovered
+private key is usable, whereas listing the certificate alone does not. This reads
+the backup without changing it or retaining the request. If restoring from an
+additional encrypted archive, restore into a private temporary directory and
+delete the restored copy afterward. A copy on the same computer alone is not
+independent recovery. See the [keytool certificate-request documentation](https://docs.oracle.com/en/java/javase/25/docs/specs/man/keytool.html#commands-for-generating-a-certificate-request).
 
 R8 mappings use a separate age encryption recipient. Generate its identity
 privately with stable `age-keygen`, retain the identity offline, and use only the
@@ -172,7 +181,10 @@ lineage with installed-data and signature-permission continuity can preserve the
 app UID, files and Keystore keys, and a
 subsequent production-only APK can update it. The disposable Android 16 diagnostic
 passed both updates with real Keystore, Room and HPKE/AES state. The operator's
-phone has not been verified; this is **not actual-phone evidence**.
+phone's package/code/certificate were verified read-only, and both real updates
+preserved its UID. The operator confirmed their existing account/history and the
+same transfer worked after both updates. Full per-store synthetic coverage remains
+separate from this bounded physical observation.
 
 ### Read the installed identity without USB
 
@@ -242,7 +254,7 @@ The migrated phone can retain historical debug-key trust for signature permissio
 This trust may remain in Android's stored signing history after a subsequent
 production-only APK; a successful update does not prove its revocation. The
 operator reviewed and accepted this trust on October 10, selecting the private
-bridge. Actual device preservation remains pending. Fresh public
+bridge. The real updates and their observed preservation checks passed. Fresh public
 installations use a production-only APK without the debug lineage.
 
 Do not uninstall, clear app data or replace a mismatched package to get around a
@@ -251,27 +263,39 @@ encrypted archive migration on **both Android and iOS** before any reinstall.
 
 Readiness record, kept privately and containing observations rather than secrets:
 
-- [ ] Confirm the actual phone's installed package, version code and signing identity.
+- [x] Confirm the actual phone's installed package, version code and signing identity.
 - [x] Review and accept the private bridge's retained debug-key permission trust
       before applying it to the actual phone.
 - [x] Verify a disposable emulator transition with actual protected stores before
       applying the production bridge to the phone.
-- [ ] Demonstrate production-key recovery from the separate encrypted copy.
-- [ ] Perform the real in-place bridge update; confirm retained account/session,
+- [x] Demonstrate production-key recovery from the separate encrypted copy.
+- [x] Perform the real in-place bridge update; confirm retained account/session,
       history, Send decryption keys, Receive-v2 private keys and guest capabilities
       remain usable.
-- [ ] Install a subsequent production-only APK with a higher version code and
+- [x] Install a subsequent production-only APK with a higher version code and
       repeat the compact preservation check. A bridge at code `2` needs a later
       production-only code above `2`.
-- [ ] Verify a fresh optimized production install, API 26 and current Android
+- [x] Verify a fresh optimized production install, API 26 and current Android
       release-specific behavior, including pairing, transfer/decryption, Receive,
       guest access, QR scanning and document/photo sharing using disposable files.
+
+Class-level protected-store coverage comes from the disposable fixture and normal
+optimized-APK smoke. The physical phone check observed its existing account/history
+and one existing transfer before and after both updates; its transfer category
+was not recorded. No separate physical test of every store is claimed. Relevant
+storage/crypto/ProGuard code is unchanged from the full fixture/smoke sources.
 
 ## Publication and routine updates
 
 After readiness, commit the version change and validated source, create the
 independent protected Android tag, then dispatch `Android release` from `main`
-with that tag. Preview first; select `publish=true` only for the reviewed release.
+with that tag. For initial setup, `publish=false` provides an unsigned dry run.
+For routine releases, dispatch once with `publish=true`: the build creates the
+preview before the protected signing job requests approval. Review that preview,
+then approve the job; the same unsigned artifact proceeds to signing without a
+second build. There is one configured environment approval and no custom review
+comment. The operator's private bridge is a one-time migration, not a routine
+release prerequisite.
 The build/lint job starts with a 15-minute budget and reports execution timing.
 Approval waiting time is separate.
 

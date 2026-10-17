@@ -26,7 +26,7 @@ class ChangeScopeTests(unittest.TestCase):
         self.repo.mkdir()
         self.env = os.environ.copy()
         for key in tuple(self.env):
-            if key.startswith("GIT_") or key.startswith("GITHUB_"):
+            if key.startswith(("GIT_", "GITHUB_")):
                 del self.env[key]
         self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
         self.git("init", "-q", "-b", "main")
@@ -97,6 +97,7 @@ class ChangeScopeTests(unittest.TestCase):
 
     def test_docs_skip_but_explicit_release_validation_runs_all(self) -> None:
         self.write("docs/plans/ci.md")
+        self.write("docs/releases/android.md")
         self.write(".github/workflows/release.yml")
         self.write(".github/workflows/android-release.yml")
         self.write("tools/android_build_timings.gradle")
@@ -141,6 +142,8 @@ class ChangeScopeTests(unittest.TestCase):
             "AGENTS.md": set(),
             "docs/security/guide.md": set(),
             "docs/research/study.md": set(),
+            "docs/releases/android.md": set(),
+            "docs/releases/new-guide.md": selector.JOBS,
             "deploy/updater/Dockerfile": set(),
             "tools/publish_verified_release.py": set(),
             "tools/temporary_caddy_acceptance.py": set(),
