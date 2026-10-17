@@ -23,7 +23,6 @@ SECURITY_ONLY_TOOLS = frozenset(
     "tools/" + name
     for name in (
         "android_build_timings.gradle",
-        "android_release.py",
         "android_release_ci.py",
         "android_signing_bridge.py",
         "check_android_update.py",
@@ -121,6 +120,9 @@ def classify_path(path: str) -> frozenset[str]:
         return frozenset({"backend", "web"})
     if path.startswith("web/") or path == "tools/measure_browser_source_inventory.py":
         return frozenset({"web"})
+    if path == "tools/android_release.py":
+        # Gradle executes source-revision to embed the APK's source identity.
+        return frozenset({"android"})
     if path.startswith("shared/") or path in {"tools/generate_native_notices.py"}:
         return NATIVE_JOBS
     if path.startswith("android/app/src/main/assets/licenses/"):

@@ -31,6 +31,11 @@ PACKAGE = "zip.psst.android"
 ABIS = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
 MAX_APK = 1024**3
 MAX_MEMBER = 256 * 1024**2
+SCANNER_WRAPPER_DELETIONS = {
+    f"{project}/{wrapper}"
+    for project in ("android", "shared")
+    for wrapper in ("gradlew", "gradlew.bat", "gradle/wrapper/gradle-wrapper.jar")
+}
 
 
 class InvalidRelease(ValueError):
@@ -206,6 +211,43 @@ def version_metadata(path: Path) -> dict:
     code = int(values["versionCode"])
     require(code <= 2_100_000_000, "Version code exceeds Android limit")
     return {"versionName": values["versionName"], "versionCode": code}
+
+
+def source_revision() -> str:
+    """Identify clean build inputs, allowing F-Droid's wrapper-only cleanup.
+
+    Porcelain's two status columns distinguish unstaged deletion (" D") from
+    staged deletion, modification and rename. Never exempt wrapper contents or
+    other source changes. Include this helper because Gradle executes it.
+    """
+    try:
+        revision = command(["git", "rev-parse", "--verify", "HEAD^{commit}"]).strip()
+        if not REVISION.fullmatch(revision):
+            return ""
+        status = command(
+            [
+                "git",
+                "--no-optional-locks",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--",
+                "android",
+                "shared",
+                "LICENSE",
+                "tools/android_release.py",
+            ]
+        )
+        for entry in status.split("\0"):
+            if entry and (
+                entry[:3] != " D " or entry[3:] not in SCANNER_WRAPPER_DELETIONS
+            ):
+                return ""
+        return revision
+    except (InvalidRelease, UnicodeError):
+        # Debug builds without valid Git metadata retain an empty identity.
+        return ""
 
 
 def validate_source(
@@ -656,6 +698,10 @@ def sign_apk(unsigned: Path, output: Path, sdk_tools: Path) -> None:
                     "env:ANDROID_RELEASE_STORE_PASSWORD",
                     "--key-pass",
                     "env:ANDROID_RELEASE_KEY_PASSWORD",
+                    # zipalign already established 16 KB alignment. Preserve its
+                    # padding so F-Droid can copy the v2/v3 signature exactly.
+                    "--alignment-preserved",
+                    "true",
                     "--v4-signing-enabled",
                     "false",
                     "--debuggable-apk-permitted",
@@ -863,6 +909,7 @@ def timing_summary(report: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("source-revision")
     source = sub.add_parser("validate-source")
     source.add_argument("--tag", required=True)
     source.add_argument("--expected-commit", required=True)
@@ -904,7 +951,9 @@ def main() -> None:
     timings.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        if args.command == "validate-source":
+        if args.command == "source-revision":
+            print(source_revision())
+        elif args.command == "validate-source":
             write_json(
                 args.output,
                 validate_source(

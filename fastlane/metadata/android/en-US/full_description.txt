@@ -1,0 +1,9 @@
+psst.zip lets you send files and create receive links using a self-hosted psst.zip server.
+
+Choose files and share a link or QR code. Files and filenames are encrypted on your device before upload and decrypted on the recipient's device. The server still stores operational metadata such as file sizes, expiry and ownership. Optional shared link titles are visible to the server and people using the link.
+
+Create a receive link so other people can send files to you without an account. Scan a QR code or paste a download link to save files without signing in. History brings together your sent links, receive links and saved downloads. Saved files can be opened and shared offline.
+
+Configure your own server address and sign in with an account provided by its administrator. Creating transfers and receive links requires a regular account; there is no public registration. Recipients need network access to the server. Receive private keys stay on the device that created the link and are not copied when pairing another device.
+
+Includes Android sharing integration, English and German interfaces, and system, light and dark appearances. Keep the app in the foreground while receiving files.

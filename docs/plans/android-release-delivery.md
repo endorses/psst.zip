@@ -473,6 +473,93 @@ transition; do not run an uninstall command as a prerequisite. Native iOS
 verification for applicable changes uses the existing `xcode-27` CI job's
 `build-for-testing` / `test-without-building` commands from `ci.yml`.
 
+## F-Droid inclusion implementation (started 2026-10-17)
+
+The operator selected official F-Droid inclusion as the next phase after the first
+GitHub APK release. Preserve `zip.psst.android` and the existing production signer;
+use upstream developer-signed publication after F-Droid's independent comparison.
+The existing `android-v0.1.0` tag and its public artifacts remain immutable. Play
+and a custom F-Droid repository are outside this phase. Existing store research
+drafts remain untracked; this section is the implementation contract. The operator
+subsequently requested **submission packet first**, without a GitLab account or
+submission. Candidate 0.1.1 / code 4 is prepared; publication remains separate.
+
+- [x] Audit Android/runtime dependencies, licenses, native libraries and source
+      blobs against current official inclusion/scanner rules; record concrete gaps.
+- [x] Resolve exact-source provenance after F-Droid's documented wrapper cleanup
+      without accepting arbitrary source changes, restoring scanned binaries or
+      blanking the release revision. Cover this concrete boundary with a small
+      regression. If a source/build change is necessary, use a new release/version
+      rather than modifying an existing tag.
+- [x] Prepare the official `fdroiddata` recipe with the composite Android/shared
+      build, pinned compatible toolchain, current production signing fingerprint,
+      upstream APK URL, Android-only tag detection and version-properties parsing.
+      Use current stable F-Droid tools; document actual compatibility boundaries.
+- [x] Run official metadata lint/source scanning and a clean recipe build plus
+      binary scan. Independently build in the official image and compare actual
+      unsigned bytes across JDKs/paths. Do not add repeated full app/browser/iOS
+      suites or new long-running CI jobs for packaging-only work.
+- [x] Exercise official signature copying with a disposable certificate and reject
+      changed payloads. Resolve current signer padding and Python runtime
+      compatibility without downgrading the SDK or bypassing cryptographic checks.
+- [ ] Publish the final new Android tag/APK, then compare that actual upstream
+      production-signed release with the unmodified official recipe and signer pin.
+- [x] Add accurate English/German upstream descriptions, release notes and the
+      existing brand icon. Do not publish credentials, live private links or
+      fabricated application states.
+- [ ] Add real screenshots from disposable app data when capture is available;
+      hardware acceleration is unavailable here. Optional listing polish remains
+      separate from the completed text/icon packet.
+- [x] Prepare a reviewable F-Droid submission packet with recipe, source/version,
+      dependency/scanner results, measured build evidence and reproduction commands.
+- [ ] Submit to the official project when authenticated access is available and
+      the operator is ready; distinguish preparation from independent acceptance.
+- [x] Update the release guide and this plan with actual results, format and commit
+      implementation, and retain any external review/build work explicitly pending.
+
+Initial read-only audit: the captured Android graph contains 123 FLOSS runtime
+artifacts (122 Apache-2.0 and one MIT). No Firebase, Play Services, analytics/ad SDK
+or proprietary service dependency was found. AndroidX graphics native libraries
+come from trusted Google Maven AARs; they are not committed application blobs or
+an independently source-built native dependency graph. The two wrapper JARs and
+OFL-licensed Nunito font are the identified tracked binary inputs. Final admission
+still requires actual official scanning/build review.
+
+The concrete provenance interaction is in `android/app/build.gradle.kts`: its
+clean-tree check includes wrapper files that F-Droid's scanner removes. Leaving
+that unchanged would produce an empty source revision and fail comparison with
+the upstream APK. No broad scanner exemption or weakening of the real-source
+cleanliness check is accepted as a fix. No Android/iOS app feature or protocol
+change is currently needed; any applicable feature change must preserve parity.
+
+The packet is in [fdroid/README.md](../../fdroid/README.md), with actual results in
+[validation.md](../../fdroid/validation.md) and a draft submission description.
+Official fdroidserver 2.4.5 lint and source/binary scans passed. At preparation
+commit `9713d29`, the JDK 25 host recipe build and isolated official-image JDK 21
+build produced byte-identical 3,803,375-byte APKs; the full local recipe run took
+86 seconds and the clean container assembly 2m36s. These are preparation hashes,
+not evidence for a later tagged commit. Forty-five focused Android tooling tests
+and five scope tests completed in under two seconds combined.
+
+The signature-copy check exposed two concrete compatibility boundaries: current
+apksigner rewrites ZIP padding unless the signer passes `--alignment-preserved
+true`, and fdroidserver 2.4.5's bundled copier changes ZIP flags on Python 3.14.
+The current Build Tools 37 signer now preserves alignment; official signature
+copying/verification passed with Python 3.13.12 and a disposable key, while changed
+payloads were rejected. No production signing key was accessed. Final comparison
+against a public 0.1.1 release, optional screenshots and GitLab admission remain
+pending; the packet does not claim otherwise.
+
+[Preparation PR #41](https://github.com/endorses/psst.zip/pull/41) is open. Its first
+CI run caught stale native-inventory build fingerprints; regenerating both
+platform inventories resolved the exact dependency graphs and changed only the
+Android build-script fingerprint. Required CI and final publication remain pending.
+
+References: [inclusion policy](https://f-droid.org/en/docs/Inclusion_Policy/),
+[submission guide](https://f-droid.org/en/docs/Submitting_to_F-Droid_Quick_Start_Guide/),
+[metadata reference](https://f-droid.org/en/docs/Build_Metadata_Reference/), and
+[developer-signed reproducible builds](https://f-droid.org/en/docs/Reproducible_Builds/).
+
 ## Later store milestones
 
 - [ ] Demonstrate clean independent reproducible APK builds, audit dependency/assets

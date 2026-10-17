@@ -1,5 +1,7 @@
 """Small release-boundary regressions; no Gradle, sleeps, network or secrets."""
 
+import contextlib
+import io
 import json
 import os
 import struct
@@ -12,6 +14,118 @@ from pathlib import Path
 from unittest.mock import patch
 
 import android_release as release
+
+
+class AndroidSourceRevisionTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="psst-source-revision-test-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.paths = sorted(release.SCANNER_WRAPPER_DELETIONS) + [
+            "android/app/src/main/Main.kt",
+            "android/gradle/wrapper/gradle-wrapper.properties",
+            "shared/src/commonMain/Shared.kt",
+            "LICENSE",
+            "tools/android_release.py",
+        ]
+        for name in self.paths:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("tracked fixture\n")
+        self.git("init", "-q")
+        self.git("add", ".")
+        self.git(
+            "-c",
+            "user.name=Source Test",
+            "-c",
+            "user.email=source-test@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "fixture",
+        )
+        self.revision = self.git("rev-parse", "HEAD").strip()
+        root_patch = patch.object(release, "ROOT", self.root)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+
+    def git(self, *arguments):
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    def test_pristine_and_exact_unstaged_scanner_deletions_retain_head(self):
+        self.assertEqual(release.source_revision(), self.revision)
+        # Each deletion, and the cumulative six-file scanner cleanup, is allowed.
+        for name in sorted(release.SCANNER_WRAPPER_DELETIONS):
+            with self.subTest(path=name):
+                (self.root / name).unlink()
+                self.assertEqual(release.source_revision(), self.revision)
+
+    def test_modified_or_deleted_source_and_helper_have_no_identity(self):
+        for name in self.paths:
+            for action in ("modify", "delete"):
+                with self.subTest(path=name, action=action):
+                    self.git("reset", "--hard", "HEAD")
+                    path = self.root / name
+                    if action == "modify":
+                        path.write_text("changed\n")
+                    else:
+                        path.unlink()
+                    expected = (
+                        self.revision
+                        if action == "delete"
+                        and name in release.SCANNER_WRAPPER_DELETIONS
+                        else ""
+                    )
+                    self.assertEqual(release.source_revision(), expected)
+
+    def test_staged_deletions_modifications_and_renames_have_no_identity(self):
+        for name in sorted(release.SCANNER_WRAPPER_DELETIONS):
+            for action in ("delete", "modify", "rename"):
+                with self.subTest(path=name, action=action):
+                    self.git("reset", "--hard", "HEAD")
+                    path = self.root / name
+                    if action == "delete":
+                        self.git("rm", name)
+                    elif action == "modify":
+                        path.write_text("changed\n")
+                        self.git("add", name)
+                    else:
+                        self.git("mv", name, name + ".renamed")
+                    self.assertEqual(release.source_revision(), "")
+
+    def test_untracked_mobile_source_and_unstaged_rename_have_no_identity(self):
+        for name in ("android/untracked\nsource.kt", "shared/untracked.kt"):
+            with self.subTest(path=name):
+                path = self.root / name
+                path.write_text("untracked\n")
+                self.assertEqual(release.source_revision(), "")
+                path.unlink()
+        (self.root / "android/gradlew").rename(self.root / "android/gradlew.renamed")
+        self.assertEqual(release.source_revision(), "")
+
+    def test_unrelated_files_do_not_dirty_mobile_build_inputs(self):
+        (self.root / "notes.txt").write_text("unrelated\n")
+        self.assertEqual(release.source_revision(), self.revision)
+
+    def test_cli_returns_only_revision_or_empty_for_missing_git_metadata(self):
+        for expected in (self.revision, ""):
+            with self.subTest(expected=expected):
+                output = io.StringIO()
+                with (
+                    patch("sys.argv", ["android_release.py", "source-revision"]),
+                    contextlib.redirect_stdout(output),
+                ):
+                    release.main()
+                self.assertEqual(output.getvalue(), expected + "\n")
+                if expected:
+                    (self.root / ".git").rename(self.root / ".git-unavailable")
 
 
 class AndroidCommandDiagnosticsTest(unittest.TestCase):

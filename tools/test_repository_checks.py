@@ -3,15 +3,14 @@
 
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "tools/check_repository.py"
@@ -221,6 +220,36 @@ class RepositoryChecks(unittest.TestCase):
         self.assertEqual(self.check().returncode, 0)
         self.git("add", "web/src/example.ts")
         target.write_text("export const value = 1;\n")
+        self.assertNotEqual(self.check().returncode, 0)
+
+    @unittest.skipUnless(
+        REAL_SCANNER, "Gitleaks is needed for public-certificate policy integration"
+    )
+    def test_public_fdroid_certificate_exception_stays_narrow(self) -> None:
+        (self.bin / "gitleaks").unlink()
+        (self.bin / "gitleaks").symlink_to(REAL_SCANNER)
+        self.write(".gitleaks.toml", (ROOT / ".gitleaks.toml").read_bytes())
+        recipe = "fdroid/metadata/zip.psst.android.yml"
+        content = (ROOT / recipe).read_text()
+        line = next(
+            line
+            for line in content.splitlines()
+            if line.startswith("AllowedAPKSigningKeys: ")
+        )
+        self.write(recipe, content)
+        self.git("add", ".gitleaks.toml", recipe)
+        self.assertEqual(self.check().returncode, 0)
+
+        # A different value in the same field must still be detected.
+        altered = line[:-1] + ("0" if line[-1] != "0" else "1")
+        self.write(recipe, content.replace(line, altered))
+        self.git("add", recipe)
+        self.assertNotEqual(self.check().returncode, 0)
+
+        # Even the public digest is exempt only in the reviewed package recipe.
+        self.write(recipe, content)
+        self.write("other.yml", line + "\n")
+        self.git("add", recipe, "other.yml")
         self.assertNotEqual(self.check().returncode, 0)
 
     @unittest.skipUnless(
