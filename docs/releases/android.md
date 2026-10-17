@@ -10,9 +10,13 @@ The first production-signed release is available as
 code `3`, published on October 17. Its public APK is byte-for-byte identical to the
 production APK already installed and checked on the operator's phone. Anonymous
 checksums, source/notices and the expected production signature were verified.
-This is GitHub APK distribution. The [F-Droid submission packet](../../fdroid/README.md)
-prepares candidate 0.1.1 / code 4; it has not been submitted or published.
-Play remains a later milestone.
+The current release is [Android 0.1.1](https://github.com/endorses/psst.zip/releases/tag/android-v0.1.1),
+code `4`, published on October 17. The unchanged F-Droid recipe rebuilt its public
+source and successfully compared against the actual production-signed APK; see
+the [completion record below](#verified-upstream-f-droid-comparison).
+The [F-Droid packet](../../fdroid/README.md) is ready for submission, which remains
+deferred until the operator has a GitLab account and requests submission. Play
+remains a later milestone.
 
 ## Version and build
 
@@ -340,7 +344,57 @@ a claim that an untested migration works.
 The [compact public-APK smoke](../testing/android-release-smoke.md) describes the
 disposable optimized-app checks separately from the private signing diagnostic.
 
-Google Play and F-Droid are later milestones. Play App Signing uses a separate
+Google Play remains a later milestone. Play App Signing uses a separate
 upload key, with signer custody chosen before enrollment for intended channel
 compatibility. This GitHub workflow does not enroll in either store or upload an
 AAB, and no Play publishing credentials are needed yet.
+
+## Verified upstream F-Droid comparison
+
+Android `0.1.1` / code `4` is an immutable GitHub release (ID `415882536`) at source
+`351cb91bbe2126577524e60dcb5377b07e3ed5ff`. Both
+[PR #41](https://github.com/endorses/psst.zip/pull/41) and the
+[exact merged-source CI](https://github.com/endorses/psst.zip/actions/runs/39044199372)
+passed every job. The
+[release workflow](https://github.com/endorses/psst.zip/actions/runs/39044606117)
+reused its executed Android/security checks, built and linted the optimized APK,
+then signed/published after the operator's environment approval. Anonymous
+readback verified all six public assets and the final APK signature. The encrypted
+R8 mapping was retained on the existing external drive and checksum-verified.
+
+| Artifact                              | SHA256                                                             |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| Unsigned APK, 3,803,375 bytes         | `fb02176dedaa680f35e449e2bf937cd44eba692686fbae8e8c52f5b1ce8e9993` |
+| Published signed APK, 3,853,522 bytes | `67fa990b5279058a01bcd98bd1c07f3ae0ed645471f3206a32fa6ff4ea321100` |
+| Production certificate                | `6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15` |
+
+Official fdroidserver **2.4.5**, Python **3.13.12**, JDK **25.0.3**, Gradle
+**9.8.1** and the recipe's SDK components were used in a disposable checkout.
+The recipe was byte-identical to the committed file: `Binaries` and
+`AllowedAPKSigningKeys` remained enabled, with no source patch or scanner exemption.
+The installed Gradle distribution was selected through local F-Droid configuration;
+the earlier independent JDK 21 image build remains separate compatibility evidence.
+
+```sh
+fdroid checkupdates --allow-dirty zip.psst.android
+fdroid build --test --scan-binary --refresh-scanner --stop zip.psst.android:4
+```
+
+Update detection selected the exact published tag. The complete recipe command
+took **72 seconds**, including SDK prebuild, clean assembly, refreshed source
+scan, source archive, binary scans, reference download and signature-copy
+verification. Its unsigned output also matched the GitHub preview byte-for-byte.
+The final official-tool results were:
+
+```text
+compared built binary to supplied reference binary successfully
+supplied reference binary has allowed signer 6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15
+1 build succeeded
+```
+
+This completion record supersedes the preparation packet's pending upstream-release
+status and earlier candidate hashes. It is a successful local comparison using
+official tools, not F-Droid's own hosted build, review or admission. Local
+verification used no private signing key; protected CI performed production signing.
+No new phone installation or device-flow check is claimed for this packaging-only
+update. GitLab submission and optional disposable-data screenshots remain pending.
