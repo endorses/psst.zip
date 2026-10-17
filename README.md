@@ -307,8 +307,11 @@ locations, terminology and verification guidance.
 
 ## Native builds and verification
 
-Android uses Gradle 9.8.1, Kotlin 2.4.20, AGP 9.4.0, KSP 2.3.12,
-SKIE 0.10.15, and Room 2.8.4. CI runs Gradle on Temurin 27+35 while the app
+For signed APK delivery, signing-key custody and safe in-place updates, see
+[Android APK releases](docs/releases/android.md).
+
+Android uses Gradle 9.8.1, Kotlin 2.4.20, AGP 9.4.1, KSP 2.3.12,
+SKIE 0.10.15, and Room 2.8.5. CI runs Gradle on Temurin 27+35 while the app
 continues targeting Java 17 bytecode. Set `JAVA_HOME` to your JDK and
 `ANDROID_HOME` to the Android SDK, then run from the repository root:
 

@@ -1,7 +1,7 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: release tooling merged in PR #36 and private APKs signed;
-in-place device verification and hosted publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
+Created: 2026-10-09. Status: release tooling merged in PR #36 and the real-phone signing
+transition verified; hosted release preview/publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
 GitHub, with a verified path from the operator's debug installation and a
 repeatable update process that preserves client-held keys and history.
 
@@ -71,7 +71,7 @@ encrypted archive export/import capability must precede any reinstall.
       native file pickers and protected stores. Shared archive/protocol changes
       preserve parity; include extension access where relevant. A local-only
       signing bridge does not require an iOS store workflow.
-- [ ] Verify the transition with synthetic data first, then the operator's actual
+- [x] Verify the transition with synthetic data first, then the operator's actual
       installation without sending keys, tokens, private links or archives to chat,
       GitHub artifacts or CI logs. Leave any old installation/data intact until
       recovery has been demonstrated.
@@ -82,8 +82,8 @@ encrypted archive export/import capability must precede any reinstall.
 On October 10, the operator selected the private signing bridge and accepted the
 retained debug-certificate trust for signature permissions on the migrated
 installation. Encrypted export/import is not the selected prerequisite. The actual
-phone identity and production-key backup recovery are now verified; in-place
-preservation remains unverified.
+phone identity, production-key backup recovery and in-place preservation are now
+verified within the observed scope recorded below.
 
 The operator created the production keystore and reported a backup on an external
 drive. Its public certificate SHA256 is
@@ -177,10 +177,48 @@ bridge. After checking the bridge identity and exact selected production artifac
 `adb install -r` successfully applied the production-only code `3` APK. Installed
 APK readback confirmed the exact expected checksum/source, production certificate,
 no embedded debug lineage, and unchanged UID/profile. Its temporary inspection
-copy was removed and the app cold-launched successfully in 145 ms. The final
-operator functional confirmation is pending; UID/signature/launch success alone
-does not prove client-held key preservation. No revocation of Android's historical
-debug-certificate permission trust is claimed.
+copy was removed and the app cold-launched successfully in 145 ms. The operator
+confirmed the same account/history and existing transfer still worked after this
+production-only update. The physical observation covers that existing transfer,
+whose category was not recorded; separate physical tests of each store are not
+claimed. No revocation of Android's historical debug-certificate permission trust
+is claimed.
+
+Read-only source comparison confirms protected stores, crypto implementations,
+fixture code and ProGuard rules are unchanged between the full storage fixture
+baseline `1d7f435`, normal optimized smoke sources `ce31312`/`ea6d57b`, and merged
+source `144cd60`. Session, Receive and guest Keystore aliases are fixed and reused;
+their encryption policies and AAD do not depend on signing fingerprints. Room
+uses its existing database and explicit non-destructive migrations. There is no
+certificate-triggered cleanup hook. Thus full disposable class coverage remains
+applicable alongside the preserved physical UID/profile and successful observed
+phone flows, without asking for another manual storage matrix.
+
+The first immutable Android tag, `android-v0.1.0`, identifies merged source
+`144cd60c61d6b6ed086583865b0782fcc1a74661` (version `0.1.0`, code `3`). Active
+Android tag rules were rechecked: updates/deletion prohibited and no bypass actors.
+Unsigned [preview run 39024534200](https://github.com/endorses/psst.zip/actions/runs/39024534200)
+passed from `main` with `publish=false`. Source validation accepted exact-source
+Android/security CI reuse; the timing report confirms zero source-test tasks.
+Assembly/lint took 6m49s and actual resolved-notice verification another 42s;
+the complete initial dry run took 8m17s. Observed task sums include 3m30s R8 and
+4m37s lint, with parallel overlap, rather than an additional test suite.
+No backend/web/iOS suite or publication job ran in this preview.
+
+The downloaded hosted unsigned APK passed independent verification and is
+byte-for-byte identical to the local unsigned artifact used for the successfully
+phone-tested production APK. Its SHA256 is
+`5f4333b0f8168cb2cc57dc8d02c4b032c4c313fa1b275f1d34660a13fbcb8734`.
+The expected production certificate remains
+`6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15`.
+The source/verification/timing artifacts and encrypted map were retained privately.
+Read-only publication-policy preflight passed. Completed device evidence is now
+referenced by the Android environment and publication readiness is enabled.
+[Publication run 39025363994](https://github.com/endorses/psst.zip/actions/runs/39025363994)
+was then dispatched with `publish=true`; its protected signing/publication job
+requires the configured `endorses` environment review. No public Android release
+has been created yet. Routine releases need only this single dispatch/build and
+review; the separate unsigned run above was initial configuration verification.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
@@ -194,7 +232,7 @@ unsigned release builds and metadata can proceed while it is being resolved.
 - [x] Confirm the first public code exceeds the actual phone and private bridge
       codes; prepared public code `3` exceeds the actual phone's debug code `1`
       and tested private bridge code `2`.
-- [ ] Use independent `android-vX.Y.Z` release tags. Check exact commit/main ancestry,
+- [x] Use independent `android-vX.Y.Z` release tags. Check exact commit/main ancestry,
       version agreement and source identity; protect this tag namespace against
       updates/deletion. Do not append assets to immutable container releases.
 - [x] Recheck latest stable dependencies, SDK/tools, runners/actions and compatibility
@@ -239,10 +277,10 @@ do not copy the container source-replay pipeline into this workflow.
       credentials and verify it again. Ensure protected jobs execute only approved
       source, have minimal permissions, preserve failure status and never expose
       passwords, keystore contents or private client data.
-- [ ] Add a preview that presents tag/commit, version code, signer, checksum and
+- [x] Add a preview that presents tag/commit, version code, signer, checksum and
       verification results. Keep credentials and actual publication disabled until
       the artifact and first-install/update evidence are ready for review.
-- [ ] Configure the Android environment and its signing material privately after
+- [x] Configure the Android environment and its signing material privately after
       the implementation is reviewable. Separate it from container-release and
       production deployment credentials. State any GitHub reviewer requirement
       explicitly; do not introduce repeated custom evidence-comment prompts.
@@ -269,10 +307,10 @@ scenario do not belong in every documentation or container-only change.
       encrypted send/download, Receive-v2 private-key use, guest access, QR scanning
       and document/photo sharing. Use disposable resources and modest files;
       preserve existing coverage rather than adding another exhaustive transfer suite.
-- [ ] Verify a fresh production install and then a newer same-signer release
+- [x] Verify a fresh production install and then a newer same-signer release
       installed over it: keys/history/accounts remain usable, application ID stays
       stable, and no uninstall or renewed NetGuard rule is required for a normal update.
-- [ ] Separately verify the existing debug-to-production transition. Keep first
+- [x] Separately verify the existing debug-to-production transition. Keep first
       migration checks distinct from routine same-signer update verification.
 - [x] Check API 26 behavior and the current stable Android version, including
       packaged native library compatibility. Use an emulator/device only for
@@ -585,6 +623,6 @@ environment still has no secret or variable entries; signing and publication
 readiness have not been enabled.
 
 The private bridge is selected and the installed phone identity is verified. The
-next prerequisites are the pre-update functional baseline and actual in-place transition.
+next gates are the hosted preview, protected signing/publication and anonymous readback.
 Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.

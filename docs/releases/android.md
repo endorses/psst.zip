@@ -14,7 +14,9 @@ The first planned APK is version `0.1.0`, code `3`; this exceeds both the observ
 local debug APK's code `1` and the tested private bridge's code `2`. The phone's
 installed code `1` and matching debug certificate were verified read-only on
 October 10. Production-key and encrypted mapping-backup recovery were confirmed on
-October 17; actual device preservation remains pending.
+October 17. The actual phone then completed the private bridge and production-only
+updates with its UID preserved; the operator confirmed the existing account/history
+and the same transfer remained usable after both updates.
 Container tags retain their independent `vX.Y.Z` namespace.
 
 The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tools
@@ -179,8 +181,10 @@ lineage with installed-data and signature-permission continuity can preserve the
 app UID, files and Keystore keys, and a
 subsequent production-only APK can update it. The disposable Android 16 diagnostic
 passed both updates with real Keystore, Room and HPKE/AES state. The operator's
-phone's package/code/certificate have now been verified read-only, but its update
-preservation has not. The emulator result is **not actual-phone preservation evidence**.
+phone's package/code/certificate were verified read-only, and both real updates
+preserved its UID. The operator confirmed their existing account/history and the
+same transfer worked after both updates. Full per-store synthetic coverage remains
+separate from this bounded physical observation.
 
 ### Read the installed identity without USB
 
@@ -250,7 +254,7 @@ The migrated phone can retain historical debug-key trust for signature permissio
 This trust may remain in Android's stored signing history after a subsequent
 production-only APK; a successful update does not prove its revocation. The
 operator reviewed and accepted this trust on October 10, selecting the private
-bridge. Actual device preservation remains pending. Fresh public
+bridge. The real updates and their observed preservation checks passed. Fresh public
 installations use a production-only APK without the debug lineage.
 
 Do not uninstall, clear app data or replace a mismatched package to get around a
@@ -265,21 +269,33 @@ Readiness record, kept privately and containing observations rather than secrets
 - [x] Verify a disposable emulator transition with actual protected stores before
       applying the production bridge to the phone.
 - [x] Demonstrate production-key recovery from the separate encrypted copy.
-- [ ] Perform the real in-place bridge update; confirm retained account/session,
+- [x] Perform the real in-place bridge update; confirm retained account/session,
       history, Send decryption keys, Receive-v2 private keys and guest capabilities
       remain usable.
-- [ ] Install a subsequent production-only APK with a higher version code and
+- [x] Install a subsequent production-only APK with a higher version code and
       repeat the compact preservation check. A bridge at code `2` needs a later
       production-only code above `2`.
-- [ ] Verify a fresh optimized production install, API 26 and current Android
+- [x] Verify a fresh optimized production install, API 26 and current Android
       release-specific behavior, including pairing, transfer/decryption, Receive,
       guest access, QR scanning and document/photo sharing using disposable files.
+
+Class-level protected-store coverage comes from the disposable fixture and normal
+optimized-APK smoke. The physical phone check observed its existing account/history
+and one existing transfer before and after both updates; its transfer category
+was not recorded. No separate physical test of every store is claimed. Relevant
+storage/crypto/ProGuard code is unchanged from the full fixture/smoke sources.
 
 ## Publication and routine updates
 
 After readiness, commit the version change and validated source, create the
 independent protected Android tag, then dispatch `Android release` from `main`
-with that tag. Preview first; select `publish=true` only for the reviewed release.
+with that tag. For initial setup, `publish=false` provides an unsigned dry run.
+For routine releases, dispatch once with `publish=true`: the build creates the
+preview before the protected signing job requests approval. Review that preview,
+then approve the job; the same unsigned artifact proceeds to signing without a
+second build. There is one configured environment approval and no custom review
+comment. The operator's private bridge is a one-time migration, not a routine
+release prerequisite.
 The build/lint job starts with a 15-minute budget and reports execution timing.
 Approval waiting time is separate.
 
