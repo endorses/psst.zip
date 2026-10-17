@@ -246,7 +246,13 @@ additional manual app test is required.
 after repository security and GitGuardian passed; unchanged application builds
 were skipped. Corrected [run 39026963710](https://github.com/endorses/psst.zip/actions/runs/39026963710)
 was dispatched from repaired `main` for the unchanged Android tag. Its exact-source
-gate passed; the optimized build and protected publication remain pending.
+and optimized-build gates passed: assembly/lint took 5m59s and resolved-notice
+verification 44s, with the existing Android/security source CI reused. The actual
+downloaded candidate passed independent verification and matches the phone-tested
+unsigned APK byte-for-byte. This run's encrypted R8 map was separately retained
+on the selected external drive with a verified ciphertext checksum and public
+source/run metadata. The configured `android-release` review is now pending;
+signing, public release creation and anonymous readback remain unrun.
 
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
