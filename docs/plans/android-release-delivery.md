@@ -125,11 +125,23 @@ plaintext mappings removed. Mapping decryption/recovery is not yet verified.
 A private Bash signing helper was prepared and syntax-checked in the operator's
 local preparation directory. It prompts for existing local keystore passwords,
 uses environment-reference signing arguments, refuses existing outputs, and runs
-the matching bridge and production verification tools. It has not been executed;
-no private keystore/password was read, no APK signed, and no app installed or
-published. Source worktrees and encrypted mappings remain private for the pending
-operator signing step. Wireless ADB currently reports no connected phone, so a
-fresh read-only installed-identity check is still needed before installation.
+the matching bridge and production verification tools. The operator subsequently
+executed it in their private terminal. Both signed APKs and their reports exist,
+and their actual checksums match the reports. Independent verification confirmed
+the bridge's code `2`, exact old/new certificate lineage and accepted capabilities,
+plus the production-only code `3` signature, source, notices and native alignment.
+The production APK SHA256 is
+`37c85af0caa61a55478cee86964269a6c6396f711cde9f383a045c1b282a2075`;
+its signer matches the recorded production certificate. The agent did not access
+either private key or password. No app has been installed or published.
+
+Both expected external backup files exist. A separate private recovery helper was
+prepared and syntax-checked to open the external keystore, sign a disposable CSR,
+restore the passphrase-encrypted mapping identity, and decrypt/check both retained
+maps; it has not been executed. Source worktrees and encrypted mappings remain
+private for the pending recovery and phone checks. Wireless ADB currently reports
+neither a connected phone nor an advertised debugging service, so reconnection and
+a fresh read-only installed-identity check are needed before installation.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
