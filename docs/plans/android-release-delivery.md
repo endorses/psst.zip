@@ -165,8 +165,15 @@ installed version code `1`, expected debug certificate and unchanged UID. Its
 installed APK was pulled only for public metadata/signature inspection and the
 temporary copy removed. The new private pre-update identity record explicitly
 keeps update and protected-state preservation false. No app data was read or
-changed. Both external-backup recovery checks are complete. The phone is connected;
-the operator's pre-update functional baseline remains pending before installation.
+changed. Both external-backup recovery checks are complete. The operator then
+confirmed the existing account/history and an existing transfer worked before
+updating. After rechecking the current phone profile/API/UID/version and bridge
+checksum, `adb install -r` successfully applied the selected private code `2`
+bridge. Readback of the installed APK confirmed its exact expected checksum,
+production certificate, code `2` and original UID/profile. The temporary inspection
+APK was removed. The app cold-launched successfully in 151 ms. Operator functional
+confirmation is pending before applying the subsequent production-only code `3`
+APK; UID/signature/launch success alone does not prove client-held key preservation.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
