@@ -87,6 +87,14 @@ file keys, sessions and production deployment credentials never enter this job.
 GitHub encrypts secrets at rest; the signing process necessarily accesses the
 private key while running.
 
+Signing uses the reviewed dispatcher helper from a separate sparse checkout;
+the app payload, source checks and packaging remain tied to the immutable tag.
+Failures report fixed operation/error categories without raw tool output or
+credential values. If signing fails before any release is created, correct the
+identified input privately and rerun only the failed publication job: its build
+artifact ID is retained across attempts, so the successful build is reused.
+Workflow code repairs require a new dispatch from updated `main`.
+
 Create a dedicated production key privately, outside the checkout. Keep the debug
 key local for the one-time private transition; it is never a public release key.
 These commands are instructions for an interactive private terminal, not work

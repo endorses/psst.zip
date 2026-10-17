@@ -251,8 +251,35 @@ verification 44s, with the existing Android/security source CI reused. The actua
 downloaded candidate passed independent verification and matches the phone-tested
 unsigned APK byte-for-byte. This run's encrypted R8 map was separately retained
 on the selected external drive with a verified ciphertext checksum and public
-source/run metadata. The configured `android-release` review is now pending;
-signing, public release creation and anonymous readback remain unrun.
+source/run metadata. The operator approved the configured `android-release`
+review. This attempt passed policy inspection, artifact transfer and unsigned APK
+reverification, then failed in the signing helper with its generic subprocess
+error. No public release exists. The old diagnostic does not distinguish alignment
+from signing or prove a credential problem; local signing used JDK 25 while this
+job used JDK 27 and separately uploaded credentials.
+
+The dispatcher now uses its own reviewed signing helper from a separate sparse
+checkout, leaving the immutable tag, app source and unsigned payload unchanged.
+Source/asset verification and packaging still execute from the selected tag.
+The helper reports only fixed operation/error categories and exit status, never
+raw tool output, arguments, aliases or credential values. The build also exports
+its immutable artifact ID to publication, so a failed signing job can reuse the
+original successful build even when the run attempt number changes. Actual
+signing/publication remain pending until the next protected job establishes the
+failure category or succeeds.
+
+Validation of the diagnostic repair: all 39 existing/extended Android tooling
+cases passed in 0.036s and Ruff formatting/checks passed. A real local CLI check
+used a disposable PKCS12 key with the exact unsigned payload: signing and APK
+signature verification succeeded; deliberately wrong store/key passwords and a
+missing alias produced the expected fixed categories without exposing the injected
+values or leaving partial APKs. The temporary key/APKs were removed. This used
+local JDK 25 and does not establish that the GitHub credentials or JDK 27 work.
+All 18 workflow shell scripts passed syntax checks; the pinned download action's
+artifact-ID input was checked against its actual action definition and
+[official usage](https://github.com/actions/download-artifact#download-artifacts-by-id).
+The new sparse signing checkout and failed-job-only retry still require execution
+in GitHub; no application suite or new benchmark was added for this repair.
 
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
