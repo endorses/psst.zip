@@ -171,9 +171,16 @@ updating. After rechecking the current phone profile/API/UID/version and bridge
 checksum, `adb install -r` successfully applied the selected private code `2`
 bridge. Readback of the installed APK confirmed its exact expected checksum,
 production certificate, code `2` and original UID/profile. The temporary inspection
-APK was removed. The app cold-launched successfully in 151 ms. Operator functional
-confirmation is pending before applying the subsequent production-only code `3`
-APK; UID/signature/launch success alone does not prove client-held key preservation.
+APK was removed. The app cold-launched successfully in 151 ms. The operator
+confirmed the same existing account/history and transfer still worked after the
+bridge. After checking the bridge identity and exact selected production artifact,
+`adb install -r` successfully applied the production-only code `3` APK. Installed
+APK readback confirmed the exact expected checksum/source, production certificate,
+no embedded debug lineage, and unchanged UID/profile. Its temporary inspection
+copy was removed and the app cold-launched successfully in 145 ms. The final
+operator functional confirmation is pending; UID/signature/launch success alone
+does not prove client-held key preservation. No revocation of Android's historical
+debug-certificate permission trust is claimed.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
