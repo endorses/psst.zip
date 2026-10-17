@@ -514,7 +514,7 @@ submission. Candidate 0.1.1 / code 4 is prepared; publication remains separate.
       dependency/scanner results, measured build evidence and reproduction commands.
 - [ ] Submit to the official project when authenticated access is available and
       the operator is ready; distinguish preparation from independent acceptance.
-- [ ] Update the release guide and this plan with actual results, format and commit
+- [x] Update the release guide and this plan with actual results, format and commit
       implementation, and retain any external review/build work explicitly pending.
 
 Initial read-only audit: the captured Android graph contains 123 FLOSS runtime
