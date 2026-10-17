@@ -237,7 +237,7 @@ jobs:
           unset ANDROID_RELEASE_INSPECTION_TOKEN
           python3 tools/android_release.py validate-source --tag "$ANDROID_TAG" --expected-commit "$REVISION" --output "$RUNNER_TEMP/source.json"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq 'add' > "$RUNNER_TEMP/releases.json"
+            | jq 'add // []' > "$RUNNER_TEMP/releases.json"
           python3 tools/android_release.py check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -318,7 +318,7 @@ jobs:
             --repository "$GITHUB_REPOSITORY" --tag "$ANDROID_TAG"
           unset ANDROID_RELEASE_INSPECTION_TOKEN
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq 'add' > "$RUNNER_TEMP/releases.json"
+            | jq 'add // []' > "$RUNNER_TEMP/releases.json"
           python3 tools/android_release.py check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
           cp "$RUNNER_TEMP/android-publication/INSTALL.md" "$RUNNER_TEMP/android-notes.md"
           printf '\nPublication readiness was reviewed through the protected Android environment; private device records are not distributed.\n' >> "$RUNNER_TEMP/android-notes.md"
