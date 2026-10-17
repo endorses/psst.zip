@@ -1,0 +1,1 @@
+Quellcode-Build und Store-Metadaten für F-Droid vorbereiten. Keine Änderungen am Übertragungsprotokoll oder Kontoverhalten.

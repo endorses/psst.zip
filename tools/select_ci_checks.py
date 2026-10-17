@@ -23,7 +23,6 @@ SECURITY_ONLY_TOOLS = frozenset(
     "tools/" + name
     for name in (
         "android_build_timings.gradle",
-        "android_release.py",
         "android_release_ci.py",
         "android_signing_bridge.py",
         "check_android_update.py",

@@ -1,0 +1,1 @@
+Prepare source-build packaging and store metadata for F-Droid. No changes to the transfer protocol or account behavior.

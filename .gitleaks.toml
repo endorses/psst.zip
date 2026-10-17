@@ -4,3 +4,15 @@ title = "psst.zip secret scanning"
 # individually in .gitleaksignore, never excluded by test directory or key type.
 [extend]
 useDefault = true
+
+# This is the public certificate digest, not an API credential. Restrict the
+# exception to this exact field, package recipe and already-published digest.
+[[allowlists]]
+description = "Published Android signing certificate in F-Droid metadata"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^fdroid/metadata/zip\.psst\.android\.yml$''']
+regexTarget = "match"
+regexes = [
+  '''^AllowedAPKSigningKeys: 6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15$''',
+]

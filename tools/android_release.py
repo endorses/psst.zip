@@ -698,6 +698,10 @@ def sign_apk(unsigned: Path, output: Path, sdk_tools: Path) -> None:
                     "env:ANDROID_RELEASE_STORE_PASSWORD",
                     "--key-pass",
                     "env:ANDROID_RELEASE_KEY_PASSWORD",
+                    # zipalign already established 16 KB alignment. Preserve its
+                    # padding so F-Droid can copy the v2/v3 signature exactly.
+                    "--alignment-preserved",
+                    "true",
                     "--v4-signing-enabled",
                     "false",
                     "--debuggable-apk-permitted",

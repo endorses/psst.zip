@@ -10,7 +10,9 @@ The first production-signed release is available as
 code `3`, published on October 17. Its public APK is byte-for-byte identical to the
 production APK already installed and checked on the operator's phone. Anonymous
 checksums, source/notices and the expected production signature were verified.
-This is GitHub APK distribution; Play and F-Droid are later milestones.
+This is GitHub APK distribution. The [F-Droid submission packet](../../fdroid/README.md)
+prepares candidate 0.1.1 / code 4; it has not been submitted or published.
+Play remains a later milestone.
 
 ## Version and build
 
@@ -73,6 +75,15 @@ packaged exact source revision, native ELF and ZIP alignment, and notice bytes.
 An unsigned preview cannot pass signed-publication validation. Dirty mobile source
 has no source revision and cannot be published. Remove your disposable report
 when finished.
+
+F-Droid builds may use `-Ppsst.unsignedRelease=true` instead of the environment
+variable. Its normal wrapper cleanup preserves source identity only for the six
+exact unstaged wrapper deletions; other modified or untracked build inputs still
+invalidate it. The signer now preserves existing ZIP alignment after zipalign, so
+F-Droid can reproduce signatures without downgrading Build Tools 37. Use Python
+3.13 for fdroidserver 2.4.5's signature-copy operation; the packet records the
+observed Python 3.14 incompatibility. These are Android packaging changes and do
+not alter mobile features, shared protocol or signing identity.
 
 `PSST_ANDROID_DEVICE_TEST_BUILD_TYPE` and `PSST_ANDROID_DEVICE_TEST_VERSION_CODE`
 are reserved for private disposable update fixtures. Do not set them in a release

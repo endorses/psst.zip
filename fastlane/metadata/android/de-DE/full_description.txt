@@ -1,0 +1,9 @@
+Mit psst.zip kannst du Dateien senden und Empfangslinks auf einem selbst gehosteten psst.zip-Server erstellen.
+
+Wähle Dateien aus und teile einen Link oder QR-Code. Dateien und Dateinamen werden vor dem Hochladen auf deinem Gerät verschlüsselt und auf dem Gerät des Empfängers entschlüsselt. Der Server speichert weiterhin Betriebsdaten wie Dateigrößen, Ablaufzeit und Eigentümer. Optionale gemeinsame Linktitel sind für den Server und Personen sichtbar, die den Link verwenden.
+
+Erstelle einen Empfangslink, über den andere dir ohne Konto Dateien senden können. Scanne einen QR-Code oder füge einen Downloadlink ein, um Dateien ohne Anmeldung zu speichern. Im Verlauf findest du gesendete Links, Empfangslinks und gespeicherte Downloads. Gespeicherte Dateien kannst du auch offline öffnen und teilen.
+
+Trage deine Serveradresse ein und melde dich mit einem Konto an, das der Administrator bereitgestellt hat. Zum Senden und Erstellen von Empfangslinks brauchst du ein reguläres Konto; eine öffentliche Registrierung gibt es nicht. Empfänger müssen den Server über das Netzwerk erreichen können. Private Empfangsschlüssel bleiben auf dem Gerät, das den Link erstellt hat, und werden beim Koppeln eines weiteren Geräts nicht übertragen.
+
+Mit Android-Teilen-Funktion, deutscher und englischer Oberfläche sowie System-, hellem und dunklem Erscheinungsbild. Lass die App beim Empfangen im Vordergrund.

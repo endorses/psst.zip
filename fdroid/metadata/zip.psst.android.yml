@@ -1,0 +1,51 @@
+Categories:
+  - Internet
+License: AGPL-3.0-only
+SourceCode: https://github.com/endorses/psst.zip
+IssueTracker: https://github.com/endorses/psst.zip/issues
+
+AutoName: psst.zip
+
+RepoType: git
+Repo: https://github.com/endorses/psst.zip.git
+Binaries: https://github.com/endorses/psst.zip/releases/download/android-v%v/psst.zip-%v.apk
+
+Builds:
+  - versionName: 0.1.1
+    versionCode: 4
+    commit: android-v0.1.1
+    subdir: android
+    gradle:
+      - yes
+    output: app/build/outputs/apk/release/app-release-unsigned.apk
+    prebuild: sdkmanager --sdk_root=$$SDK$$ 'platforms;android-37.0' 'build-tools;37.0.0'
+      'build-tools;36.0.0' platform-tools
+    gradleprops:
+      - psst.unsignedRelease=true
+
+AllowedAPKSigningKeys: 6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15
+
+MaintainerNotes: |-
+  This is a candidate recipe for android-v0.1.1, not a published F-Droid release.
+  Publish that Android tag and its developer-signed APK before submission.
+
+  Build from android/ with the sibling ../shared composite build intact. The
+  standard scanner removes both projects' wrapper scripts and wrapper JARs;
+  upstream provenance permits only those exact unstaged deletions. Do not restore
+  wrappers, exempt binaries, or modify tracked Android/shared build inputs.
+
+  Use the official buildserver's supported JDK 21. Upstream CI uses JDK 27, which
+  is not provided by the inspected Debian 13 buildserver; do not add Debian sid.
+  AGP 9.4 supports SDK 37 and requires JDK 17 or newer. The trusted F-Droid Gradle
+  launcher reads Gradle 9.8.1 from the remaining wrapper properties and verifies
+  its distribution against the F-Droid Gradle transparency log. The prebuild SDK
+  packages are installed with the buildserver's sdkmanager before Gradle clean.
+  The app explicitly uses Build Tools 37.0.0; the shared Android library uses
+  AGP's default Build Tools 36.0.0. Both compile against SDK 37; this additional
+  build-tool version does not lower the app's target SDK.
+
+AutoUpdateMode: Version android-v%v
+UpdateCheckMode: Tags ^android-v[0-9]+\.[0-9]+\.[0-9]+$
+UpdateCheckData: android/release-version.properties|(?m)^versionCode=([0-9]+)$|.|(?m)^versionName=([0-9]+\.[0-9]+\.[0-9]+)$
+CurrentVersion: 0.1.1
+CurrentVersionCode: 4
