@@ -290,8 +290,17 @@ and notice verification 11s. Independent verification of the downloaded candidat
 passed and its bytes match the phone-tested unsigned APK exactly. This run's
 encrypted map and public source/checksum metadata were separately retained and
 verified on the selected external drive. The protected signing job awaits the
-configured operator review without a special comment. The original signing
-failure remains unclassified until the newly instrumented protected job runs.
+configured operator review without a special comment. The operator approved it.
+The protected job successfully downloaded the candidate by immutable artifact ID,
+reverified its unsigned bytes and checked out the trusted dispatcher helper.
+Alignment succeeded, then the signer failed with fixed diagnostic
+`apk-sign (exit 2) [category=key-password]`: it could not decrypt the private key
+with the configured signing input. No Android release exists. This narrows the
+failure to private-key unlocking; it does not reveal the supplied value or prove
+how it became inconsistent. The operator must privately correct the existing
+PKCS12 password inputs in the protected Android environment before retrying only
+the failed publication job. The app source, tag and successful build remain
+unchanged. Failed-job-only reuse across attempts still needs actual execution.
 
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
