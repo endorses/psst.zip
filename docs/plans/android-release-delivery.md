@@ -220,6 +220,17 @@ requires the configured `endorses` environment review. No public Android release
 has been created yet. Routine releases need only this single dispatch/build and
 review; the separate unsigned run above was initial configuration verification.
 
+The publication run's own source/build gates have now passed and its signing job
+is waiting for the configured `android-release` review. Its exact downloaded
+candidate passed independent verification and matches both the initial preview
+and phone-tested unsigned APK byte-for-byte. The corresponding encrypted R8 map
+was copied to the selected external drive with a verified ciphertext checksum and
+source/run/APK metadata before its 30-day artifact expiry. This retained copy
+contains no plaintext mapping or private identity. A private review brief records
+the exact tag/source/code/checksum, expected signer and bounded phone evidence.
+The operator has been asked to approve the existing GitHub job; no special comment
+or additional manual app test is required.
+
 The final guide update exposed one avoidable CI trigger: the reviewed
 `docs/releases/android.md` path was treated as unknown source. The selector now
 treats that exact Markdown guide as documentation, while unknown release paths
