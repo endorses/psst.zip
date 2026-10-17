@@ -270,6 +270,19 @@ builds/lints once and signs only behind the Android environment. Publication and
 private device evidence remain disabled until readiness is established. There are
 no new backend/web/native iOS release jobs or custom approval-comment strings.
 
+Publication follow-up (October 17): the operator's comment-free review of run
+[39025363994](https://github.com/endorses/psst.zip/actions/runs/39025363994) succeeded,
+as did protected-policy inspection. Release enumeration then failed before
+signing because `gh api` rejects `--slurp` combined with its built-in `--jq`.
+No signing or release creation occurred. Both enumeration commands now flatten
+paginated pages with external `jq 'add // []'`. The corrected enumeration and
+existing publication guard passed against the real API with one release per page.
+All 18 workflow shell steps passed syntax checks, and 26 existing release/policy
+regressions passed in under a second. A bounded command/interface review found no
+further concrete blockers; actual signing and public readback remain pending.
+The immutable `android-v0.1.0` tag stays unchanged; a new dispatch from repaired
+`main` will use the same tested source. No special approval comment is required.
+
 Stable dependencies and API 37 were refreshed with preserved API 26 support.
 The operator approved Kotlin 2.4.20 while SKIE 0.10.15 rejects 2.4.21. Native
 notices must match the final resolution on both platforms. The API 37 LAN
