@@ -1,7 +1,7 @@
 # Android release delivery
 
-Created: 2026-10-09. Status: release tooling merged in PR #36; production signing, in-place device
-verification and publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
+Created: 2026-10-09. Status: release tooling merged in PR #36 and private APKs signed;
+in-place device verification and hosted publication pending. First deliverable: a signed, optimized **psst.zip** APK published on
 GitHub, with a verified path from the operator's debug installation and a
 repeatable update process that preserves client-held keys and history.
 
@@ -75,23 +75,25 @@ encrypted archive export/import capability must precede any reinstall.
       installation without sending keys, tokens, private links or archives to chat,
       GitHub artifacts or CI logs. Leave any old installation/data intact until
       recovery has been demonstrated.
-- [ ] Create the production key privately, record its public certificate fingerprint,
+- [x] Create the production key privately, record its public certificate fingerprint,
       verify recovery from a separately retained encrypted copy, and document
       custody/rotation. No signing passwords or private key values belong in chat.
 
 On October 10, the operator selected the private signing bridge and accepted the
 retained debug-certificate trust for signature permissions on the migrated
 installation. Encrypted export/import is not the selected prerequisite. The actual
-phone identity is now verified; production-key recovery and in-place preservation
-remain unverified.
+phone identity and production-key backup recovery are now verified; in-place
+preservation remains unverified.
 
 The operator created the production keystore and reported a backup on an external
 drive. Its public certificate SHA256 is
 `6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15`.
 On October 17, the operator opened the external-drive backup with `keytool`:
 the alias is a 4096-bit RSA `PrivateKeyEntry` and its certificate fingerprint
-matches. Successful completion of the disposable `-certreq` command remains to
-be confirmed before marking recovery complete. The public fingerprint is now set
+matches. The operator's subsequent recovery-helper output proves both the expected
+backup fingerprint check and disposable `-certreq` completed successfully before
+the helper reached mapping-identity restoration. Production-key backup recovery
+is therefore confirmed. The public fingerprint is now set
 as `ANDROID_RELEASE_SIGNER_SHA256` in the protected `android-release` environment.
 The operator then uploaded the four signing inputs directly to GitHub. Readback
 confirmed the environment contains `ANDROID_RELEASE_KEYSTORE_BASE64`,
@@ -138,7 +140,15 @@ either private key or password. No app has been installed or published.
 Both expected external backup files exist. A separate private recovery helper was
 prepared and syntax-checked to open the external keystore, sign a disposable CSR,
 restore the passphrase-encrypted mapping identity, and decrypt/check both retained
-maps; it has not been executed. Source worktrees and encrypted mappings remain
+maps. The operator executed it: keystore checks passed, then age rejected the
+mapping-backup passphrase. No full recovery-success record was produced. Header
+inspection confirmed the backup is an age-v1 scrypt/passphrase ciphertext, and
+the original local mapping identity remains present; the rejection's cause is
+undetermined. A separate private repair helper was prepared and syntax-checked.
+It keeps the existing mapping identity, creates a replacement encrypted backup,
+restores it and verifies both actual map checksums before replacing the canonical
+backup; the previous ciphertext is retained. It has not been executed.
+Source worktrees and encrypted mappings remain
 private for the pending recovery and phone checks. Wireless ADB initially found no
 connection; after enabling it, the service was reachable but the TLS handshake
 failed. The operator renewed pairing privately. A fresh read-only inspection then
@@ -147,7 +157,7 @@ installed version code `1`, expected debug certificate and unchanged UID. Its
 installed APK was pulled only for public metadata/signature inspection and the
 temporary copy removed. The new private pre-update identity record explicitly
 keeps update and protected-state preservation false. No app data was read or
-changed. External-backup recovery and the operator's pre-update functional
+changed. Mapping-backup recovery and the operator's pre-update functional
 baseline remain pending before installation.
 
 The decision above gates replacing the operator's installation. Preparation of
@@ -553,6 +563,6 @@ environment still has no secret or variable entries; signing and publication
 readiness have not been enabled.
 
 The private bridge is selected and the installed phone identity is verified. The
-next prerequisites are production-key recovery and the actual in-place transition.
+next prerequisites are mapping-backup recovery and the actual in-place transition.
 Store acceptance, iOS
 distribution and deferred VPS follow-ups are separate from this milestone.
