@@ -473,6 +473,60 @@ transition; do not run an uninstall command as a prerequisite. Native iOS
 verification for applicable changes uses the existing `xcode-27` CI job's
 `build-for-testing` / `test-without-building` commands from `ci.yml`.
 
+## F-Droid inclusion implementation (started 2026-10-17)
+
+The operator selected official F-Droid inclusion as the next phase after the first
+GitHub APK release. Preserve `zip.psst.android` and the existing production signer;
+use upstream developer-signed publication after F-Droid's independent comparison.
+The existing `android-v0.1.0` tag and its public artifacts remain immutable. Play
+and a custom F-Droid repository are outside this phase. Existing store research
+drafts remain untracked; this section is the implementation contract.
+
+- [ ] Audit Android/runtime dependencies, licenses, native libraries and source
+      blobs against current official inclusion/scanner rules; record concrete gaps.
+- [ ] Resolve exact-source provenance after F-Droid's documented wrapper cleanup
+      without accepting arbitrary source changes, restoring scanned binaries or
+      blanking the release revision. Cover this concrete boundary with a small
+      regression. If a source/build change is necessary, use a new release/version
+      rather than modifying an existing tag.
+- [ ] Prepare the official `fdroiddata` recipe with the composite Android/shared
+      build, pinned compatible toolchain, current production signing fingerprint,
+      upstream APK URL, Android-only tag detection and version-properties parsing.
+      Use current stable F-Droid tools; document actual compatibility boundaries.
+- [ ] Run official metadata lint/source scanning, and one clean recipe build in
+      an isolated environment. Compare it to the signed upstream APK using the
+      official signature-copy/reproducibility tooling. Diagnose actual differences;
+      do not add repeated full app/browser/iOS suites for packaging-only work.
+- [ ] Add accurate English/German upstream descriptions, release notes, the existing
+      brand icon and real screenshots from disposable app data. Do not publish
+      credentials, live private links or fabricated application states.
+- [ ] Prepare a reviewable F-Droid submission packet with recipe, source/version,
+      dependency/scanner results and exact reproduction commands. Submit to the
+      official project when authenticated access is available; distinguish local
+      preparation from F-Droid's own successful build/review/acceptance.
+- [ ] Update the release guide and this plan with actual results, format and commit
+      implementation, and retain any external review/build work explicitly pending.
+
+Initial read-only audit: the captured Android graph contains 123 FLOSS runtime
+artifacts (122 Apache-2.0 and one MIT). No Firebase, Play Services, analytics/ad SDK
+or proprietary service dependency was found. AndroidX graphics native libraries
+come from trusted Google Maven AARs; they are not committed application blobs or
+an independently source-built native dependency graph. The two wrapper JARs and
+OFL-licensed Nunito font are the identified tracked binary inputs. Final admission
+still requires actual official scanning/build review.
+
+The concrete provenance interaction is in `android/app/build.gradle.kts`: its
+clean-tree check includes wrapper files that F-Droid's scanner removes. Leaving
+that unchanged would produce an empty source revision and fail comparison with
+the upstream APK. No broad scanner exemption or weakening of the real-source
+cleanliness check is accepted as a fix. No Android/iOS app feature or protocol
+change is currently needed; any applicable feature change must preserve parity.
+
+References: [inclusion policy](https://f-droid.org/en/docs/Inclusion_Policy/),
+[submission guide](https://f-droid.org/en/docs/Submitting_to_F-Droid_Quick_Start_Guide/),
+[metadata reference](https://f-droid.org/en/docs/Build_Metadata_Reference/), and
+[developer-signed reproducible builds](https://f-droid.org/en/docs/Reproducible_Builds/).
+
 ## Later store milestones
 
 - [ ] Demonstrate clean independent reproducible APK builds, audit dependency/assets
