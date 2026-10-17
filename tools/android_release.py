@@ -9,6 +9,7 @@ include subprocess output or credential values. Ordinary validation needs no key
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -42,11 +43,139 @@ def require(condition: bool, message: str) -> None:
 
 
 def command(args: list[str], *, timeout: int = 120) -> str:
-    result = subprocess.run(
-        args, cwd=ROOT, capture_output=True, timeout=timeout, check=False
-    )
-    require(result.returncode == 0, "Required release command failed")
+    # Infer only fixed labels; callers (including the private bridge) never need
+    # to pass a path, alias or other private argument into a diagnostic.
+    executable = Path(args[0]).name if args else ""
+    action = args[1] if len(args) > 1 else ""
+    operation = {
+        "zipalign": "apk-align",
+        "aapt2": "apk-manifest",
+        "git": "source-git",
+    }.get(executable, "release-command")
+    if executable == "apksigner":
+        operation = {
+            "sign": "apk-sign",
+            "verify": "apk-verify",
+            "rotate": "apk-rotate",
+            "lineage": "apk-lineage",
+        }.get(action, "apk-signer")
+    try:
+        result = subprocess.run(
+            args, cwd=ROOT, capture_output=True, timeout=timeout, check=False
+        )
+    except subprocess.TimeoutExpired:
+        raise InvalidRelease(
+            f"Android release command timed out: {operation}"
+        ) from None
+    except OSError as error:
+        category = (
+            "permission-or-disk"
+            if error.errno in {errno.EACCES, errno.EPERM, errno.ENOSPC, errno.EDQUOT}
+            else "unclassified"
+        )
+        raise InvalidRelease(
+            f"Android release command could not start: {operation} [category={category}]"
+        ) from None
+    if result.returncode != 0:
+        category = command_failure_category(
+            result.stderr, signing=operation == "apk-sign"
+        )
+        raise InvalidRelease(
+            f"Android release command failed: {operation} (exit {result.returncode})"
+            f" [category={category}]"
+        )
     return result.stdout.decode("utf-8", errors="strict")
+
+
+def command_failure_category(stderr: bytes, *, signing: bool) -> str:
+    # Inspect a bounded prefix and emit an enum only. Tool output can contain
+    # secrets, paths and caller-controlled content, so never return excerpts.
+    value = stderr[:65536].lower()
+    categories = [
+        (
+            "permission-or-disk",
+            (
+                b"permission denied",
+                b"operation not permitted",
+                b"no space left",
+                b"disk quota exceeded",
+                b"read-only file system",
+            ),
+        ),
+    ]
+    if signing:
+        categories.extend(
+            [
+                (
+                    "java-provider-or-algorithm",
+                    (
+                        b"nosuchalgorithmexception",
+                        b"nosuchproviderexception",
+                        b"providernotfoundexception",
+                        b"providerexception",
+                        b"unsupportedclassversionerror",
+                        b"noclassdeffounderror",
+                        b"classnotfoundexception",
+                        b"exceptionininitializererror",
+                        b"could not create the java virtual machine",
+                    ),
+                ),
+                (
+                    "store-password-or-format",
+                    (
+                        b"keystore password was incorrect",
+                        b"keystore was tampered with",
+                        b"invalid keystore format",
+                        b"unrecognized keystore format",
+                        b"derinputstream",
+                        b"toderinputstream",
+                        b"failed to load keystore",
+                        b"keystore integrity check failed",
+                    ),
+                ),
+                (
+                    "key-password",
+                    (
+                        b"unrecoverablekeyexception",
+                        b"cannot recover key",
+                        b"key password was incorrect",
+                        b"failed to decrypt key",
+                    ),
+                ),
+                (
+                    "alias-or-private-key",
+                    (
+                        b"does not contain key",
+                        b"does not contain a key",
+                        b"not a key entry",
+                        b"not a private key",
+                        b"no key found",
+                        b"no certificate chain found",
+                        b"no such alias",
+                        b"failed to obtain key with alias",
+                    ),
+                ),
+                (
+                    "apk-policy",
+                    (
+                        b"debuggable",
+                        b"min-sdk-version",
+                        b"min sdk version",
+                        b"malformed apk",
+                        b"not an apk",
+                        b"androidmanifest.xml",
+                        b"zip format error",
+                        b"apk format error",
+                        b"unsupported option",
+                        b"unrecognized option",
+                    ),
+                ),
+            ]
+        )
+    for category, markers in categories:
+        if any(marker in value for marker in markers):
+            return category
+    return "unclassified"
 
 
 def write_json(path: Path, value: dict) -> None:

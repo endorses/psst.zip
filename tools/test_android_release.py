@@ -3,6 +3,7 @@
 import json
 import os
 import struct
+import subprocess
 import tempfile
 import unittest
 import warnings
@@ -11,6 +12,140 @@ from pathlib import Path
 from unittest.mock import patch
 
 import android_release as release
+
+
+class AndroidCommandDiagnosticsTest(unittest.TestCase):
+    def test_failures_distinguish_alignment_signing_and_verification_without_output(
+        self,
+    ):
+        canary = "private-canary-alias-path-password"
+        for executable, action, operation in (
+            ("zipalign", "-P", "apk-align"),
+            ("apksigner", "sign", "apk-sign"),
+            ("apksigner", "verify", "apk-verify"),
+        ):
+            arguments = [f"/{canary}/{executable}", action, canary]
+            result = subprocess.CompletedProcess(
+                arguments, 7, stdout=canary.encode(), stderr=canary.encode()
+            )
+            with (
+                self.subTest(operation=operation),
+                patch.object(release.subprocess, "run", return_value=result),
+                self.assertRaises(release.InvalidRelease) as rejected,
+            ):
+                release.command(arguments)
+            self.assertEqual(
+                str(rejected.exception),
+                f"Android release command failed: {operation} (exit 7)"
+                " [category=unclassified]",
+            )
+            self.assertNotIn(canary, str(rejected.exception))
+
+    def test_signing_classifications_only_emit_fixed_categories(self):
+        canary = b"private-canary-password-and-path"
+        for marker, expected in (
+            (
+                b"Keystore was tampered with, or password was incorrect",
+                "store-password-or-format",
+            ),
+            (
+                b"keystore password was incorrect: UnrecoverableKeyException",
+                "store-password-or-format",
+            ),
+            (b"Keystore does not contain key with alias", "alias-or-private-key"),
+            (b"UnrecoverableKeyException: Cannot recover key", "key-password"),
+            (b"java.security.NoSuchAlgorithmException", "java-provider-or-algorithm"),
+            (b"Refusing to sign debuggable APK", "apk-policy"),
+            (b"Permission denied", "permission-or-disk"),
+            (b"No space left on device", "permission-or-disk"),
+            (b"Disk quota exceeded", "permission-or-disk"),
+            (b"unknown failure", "unclassified"),
+        ):
+            arguments = ["apksigner", "sign"]
+            result = subprocess.CompletedProcess(
+                arguments, 1, stdout=canary, stderr=marker + b": " + canary
+            )
+            with (
+                self.subTest(expected=expected, marker=marker),
+                patch.object(release.subprocess, "run", return_value=result),
+                self.assertRaises(release.InvalidRelease) as rejected,
+            ):
+                release.command(arguments)
+            self.assertEqual(
+                str(rejected.exception),
+                "Android release command failed: apk-sign (exit 1)"
+                f" [category={expected}]",
+            )
+            self.assertNotIn(canary.decode(), str(rejected.exception))
+        self.assertEqual(
+            release.command_failure_category(
+                b"x" * 65536 + b"Permission denied", signing=True
+            ),
+            "unclassified",
+        )
+
+    def test_timeout_and_launch_errors_suppress_exception_details(self):
+        canary = "private-canary-password-and-path"
+        for error, expected in (
+            (
+                subprocess.TimeoutExpired([canary], 17, output=canary, stderr=canary),
+                "Android release command timed out: apk-sign",
+            ),
+            (
+                FileNotFoundError(2, canary, canary),
+                "Android release command could not start: apk-sign [category=unclassified]",
+            ),
+            (
+                PermissionError(13, canary, canary),
+                "Android release command could not start: apk-sign [category=permission-or-disk]",
+            ),
+        ):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(release.subprocess, "run", side_effect=error),
+                self.assertRaises(release.InvalidRelease) as rejected,
+            ):
+                release.command(["apksigner", "sign", canary])
+            self.assertEqual(str(rejected.exception), expected)
+            self.assertTrue(rejected.exception.__suppress_context__)
+
+    def test_failed_sign_removes_partial_output_and_keeps_passwords_in_environment(
+        self,
+    ):
+        with tempfile.TemporaryDirectory(prefix="psst-android-sign-test-") as temporary:
+            root = Path(temporary)
+            unsigned = root / "unsigned.apk"
+            unsigned.write_bytes(b"disposable non-APK fixture")
+            keystore = root / "private.keystore"
+            keystore.write_bytes(b"disposable non-key fixture")
+            output = root / "signed.apk"
+            canary = "private-canary-password"
+            environment = {
+                "ANDROID_RELEASE_KEYSTORE": str(keystore),
+                "ANDROID_RELEASE_KEY_ALIAS": "private-canary-alias",
+                "ANDROID_RELEASE_STORE_PASSWORD": canary,
+                "ANDROID_RELEASE_KEY_PASSWORD": canary,
+            }
+
+            def execute(arguments, **kwargs):
+                if Path(arguments[0]).name == "apksigner":
+                    output.write_bytes(b"partial signed output")
+                    self.assertIn("env:ANDROID_RELEASE_STORE_PASSWORD", arguments)
+                    self.assertIn("env:ANDROID_RELEASE_KEY_PASSWORD", arguments)
+                    self.assertNotIn(canary, arguments)
+                    return subprocess.CompletedProcess(
+                        arguments, 1, stdout=canary.encode(), stderr=canary.encode()
+                    )
+                return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
+
+            with (
+                patch.dict(os.environ, environment, clear=True),
+                patch.object(release.subprocess, "run", side_effect=execute) as run,
+                self.assertRaisesRegex(release.InvalidRelease, "apk-sign"),
+            ):
+                release.sign_apk(unsigned, output, root)
+            self.assertEqual(run.call_count, 2)
+            self.assertFalse(output.exists())
 
 
 class AndroidReleaseTest(unittest.TestCase):

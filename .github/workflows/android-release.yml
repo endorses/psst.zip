@@ -94,6 +94,7 @@ jobs:
       ANDROID_MAPPING_RECIPIENT: ${{ vars.ANDROID_MAPPING_RECIPIENT }}
     outputs:
       mapping_retained: ${{ steps.mapping.outputs.retained }}
+      artifact_id: ${{ steps.preview.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -191,6 +192,7 @@ jobs:
           printf 'retained=true\n' >> "$GITHUB_OUTPUT"
           printf 'R8 mapping retained only as age ciphertext; download it and keep a private recovery copy before artifact expiry.\n' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: preview
         with:
           name: android-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/android-preview/*
@@ -251,11 +253,15 @@ jobs:
         run: android --no-metrics --sdk="$ANDROID_HOME" sdk install build-tools/37.0.0
       - name: Start unsigned artifact transfer timing
         id: transfer
-        run: printf 'started=%s\n' "$(date +%s)" >> "$GITHUB_OUTPUT"
+        env:
+          BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+        run: |
+          [[ "$BUILD_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          printf 'started=%s\n' "$(date +%s)" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         id: download
         with:
-          name: android-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: ${{ runner.temp }}/android-preview
       - name: Report unsigned artifact transfer timing
         if: always() && steps.transfer.outputs.started != ''
@@ -273,6 +279,17 @@ jobs:
             --output "$RUNNER_TEMP/reverified.json"
           cmp "$RUNNER_TEMP/reverified.json" "$RUNNER_TEMP/android-preview/verification.json"
           test -s "$RUNNER_TEMP/android-preview/mapping.txt.age"
+      # Use the reviewed dispatcher signing helper without changing the tagged
+      # app checkout or rebuilding its APK. Only sign-apk runs from this sparse
+      # checkout; source/asset verification and packaging stay on the exact tag.
+      - name: Check out trusted dispatcher signing helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-dispatcher
+          sparse-checkout: tools/android_release.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Sign, verify and package exact release artifact
         env:
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
@@ -295,7 +312,7 @@ jobs:
           PY
           unset ANDROID_RELEASE_KEYSTORE_BASE64
           signing_started=$(date +%s)
-          python3 tools/android_release.py sign-apk --unsigned "$RUNNER_TEMP/android-preview/unsigned.apk" \
+          python3 .release-dispatcher/tools/android_release.py sign-apk --unsigned "$RUNNER_TEMP/android-preview/unsigned.apk" \
             --output "$private/signed.apk" --sdk-tools "$ANDROID_HOME/build-tools/37.0.0"
           printf 'APK alignment and signing: %ss.\n' "$(($(date +%s)-signing_started))" >> "$GITHUB_STEP_SUMMARY"
           unset ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_STORE_PASSWORD ANDROID_RELEASE_KEY_PASSWORD
