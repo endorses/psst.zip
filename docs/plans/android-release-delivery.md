@@ -502,7 +502,7 @@ submission. Candidate 0.1.1 / code 4 is prepared; publication remains separate.
 - [x] Exercise official signature copying with a disposable certificate and reject
       changed payloads. Resolve current signer padding and Python runtime
       compatibility without downgrading the SDK or bypassing cryptographic checks.
-- [ ] Publish the final new Android tag/APK, then compare that actual upstream
+- [x] Publish the final new Android tag/APK, then compare that actual upstream
       production-signed release with the unmodified official recipe and signer pin.
 - [x] Add accurate English/German upstream descriptions, release notes and the
       existing brand icon. Do not publish credentials, live private links or
@@ -550,10 +550,24 @@ payloads were rejected. No production signing key was accessed. Final comparison
 against a public 0.1.1 release, optional screenshots and GitLab admission remain
 pending; the packet does not claim otherwise.
 
-[Preparation PR #41](https://github.com/endorses/psst.zip/pull/41) is open. Its first
+[Preparation PR #41](https://github.com/endorses/psst.zip/pull/41) is merged. Its first
 CI run caught stale native-inventory build fingerprints; regenerating both
 platform inventories resolved the exact dependency graphs and changed only the
-Android build-script fingerprint. Required CI and final publication remain pending.
+Android build-script fingerprint. The corrected PR and exact merged-source CI
+passed every job. Immutable Android **0.1.1 / code 4** was published at
+`351cb91bbe2126577524e60dcb5377b07e3ed5ff` through approved release run
+[39044606117](https://github.com/endorses/psst.zip/actions/runs/39044606117).
+Anonymous asset readback and final signature checks passed; the encrypted mapping
+was retained on the existing external drive.
+
+The unchanged official recipe then rebuilt that public tag and compared against
+the actual production-signed APK with `Binaries` and `AllowedAPKSigningKeys` enabled.
+Refreshed source/binary scans, signature copying and the production certificate
+check passed in **72 seconds**. The unsigned output matched the GitHub preview
+byte-for-byte. See the [completion record](../releases/android.md#verified-upstream-f-droid-comparison)
+for exact hashes, commands and environment. These results supersede the preparation
+packet's pending upstream-release status; GitLab submission, F-Droid's independent
+review/admission and optional screenshots remain pending.
 
 References: [inclusion policy](https://f-droid.org/en/docs/Inclusion_Policy/),
 [submission guide](https://f-droid.org/en/docs/Submitting_to_F-Droid_Quick_Start_Guide/),
