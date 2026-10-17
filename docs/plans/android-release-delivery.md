@@ -220,6 +220,14 @@ requires the configured `endorses` environment review. No public Android release
 has been created yet. Routine releases need only this single dispatch/build and
 review; the separate unsigned run above was initial configuration verification.
 
+The final guide update exposed one avoidable CI trigger: the reviewed
+`docs/releases/android.md` path was treated as unknown source. The selector now
+treats that exact Markdown guide as documentation, while unknown release paths
+and forced full validation still select all application checks. The existing five
+selector regressions include this guide and the fail-closed unknown-path case;
+they passed in about 1.1 seconds. Ruff formatting/checks passed. No new application
+test suite was added for the documentation change.
+
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
 

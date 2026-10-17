@@ -134,7 +134,7 @@ def classify_path(path: str) -> frozenset[str]:
         return NATIVE_JOBS
     if path.startswith("ios/"):
         return frozenset({"ios"})
-    if path in {"README.md", "AGENTS.md"} or (
+    if path in {"README.md", "AGENTS.md", "docs/releases/android.md"} or (
         path.startswith(("docs/plans/", "docs/security/", "docs/research/"))
         and path.endswith(".md")
     ):
