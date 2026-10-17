@@ -92,9 +92,14 @@ On October 17, the operator opened the external-drive backup with `keytool`:
 the alias is a 4096-bit RSA `PrivateKeyEntry` and its certificate fingerprint
 matches. Successful completion of the disposable `-certreq` command remains to
 be confirmed before marking recovery complete. The public fingerprint is now set
-as `ANDROID_RELEASE_SIGNER_SHA256` in the protected `android-release` environment;
-signing secrets and publication readiness remain unconfigured. No private key or
-password was supplied in chat.
+as `ANDROID_RELEASE_SIGNER_SHA256` in the protected `android-release` environment.
+The operator then uploaded the four signing inputs directly to GitHub. Readback
+confirmed the environment contains `ANDROID_RELEASE_KEYSTORE_BASE64`,
+`ANDROID_RELEASE_KEY_ALIAS`, `ANDROID_RELEASE_STORE_PASSWORD` and
+`ANDROID_RELEASE_KEY_PASSWORD`; only their names and update timestamps were read.
+Their values have not been tested by a signing job. The inspection token, mapping
+recipient and publication readiness remain unconfigured. No private key or password
+was supplied in chat.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
