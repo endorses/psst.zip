@@ -139,9 +139,16 @@ Both expected external backup files exist. A separate private recovery helper wa
 prepared and syntax-checked to open the external keystore, sign a disposable CSR,
 restore the passphrase-encrypted mapping identity, and decrypt/check both retained
 maps; it has not been executed. Source worktrees and encrypted mappings remain
-private for the pending recovery and phone checks. Wireless ADB currently reports
-neither a connected phone nor an advertised debugging service, so reconnection and
-a fresh read-only installed-identity check are needed before installation.
+private for the pending recovery and phone checks. Wireless ADB initially found no
+connection; after enabling it, the service was reachable but the TLS handshake
+failed. The operator renewed pairing privately. A fresh read-only inspection then
+confirmed the same Android 16 phone, current profile, package `zip.psst.android`,
+installed version code `1`, expected debug certificate and unchanged UID. Its
+installed APK was pulled only for public metadata/signature inspection and the
+temporary copy removed. The new private pre-update identity record explicitly
+keeps update and protected-state preservation false. No app data was read or
+changed. External-backup recovery and the operator's pre-update functional
+baseline remain pending before installation.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
