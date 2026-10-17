@@ -13,8 +13,8 @@ all public releases and any private bridge installed on the operator's device.
 The first planned APK is version `0.1.0`, code `3`; this exceeds both the observed
 local debug APK's code `1` and the tested private bridge's code `2`. The phone's
 installed code `1` and matching debug certificate were verified read-only on
-October 10. Production-key backup recovery was confirmed on October 17; mapping
-backup recovery and actual device preservation remain pending.
+October 10. Production-key and encrypted mapping-backup recovery were confirmed on
+October 17; actual device preservation remains pending.
 Container tags retain their independent `vX.Y.Z` namespace.
 
 The current build uses stable AGP 9.4.1, Gradle 9.8.1, SDK API 37 and Build Tools
