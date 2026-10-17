@@ -109,6 +109,13 @@ The real-scanner integration confirms that a changed digest or the same value in
 another file remains detected. No detector, directory or credential type was
 disabled.
 
+The first preparation PR run caught stale native-inventory build fingerprints
+after the Android build-script change. Both inventories were regenerated from
+the cached resolved graphs: 123 Android and 117 iOS artifact variants. Only the
+build-script fingerprint changed; dependency records and license/notice text were
+unchanged. The input-freshness check and native notice regressions passed before
+the corrected commit was pushed.
+
 ## Remaining external work
 
 - [ ] Merge/review the preparation and publish a new 0.1.1 / code 4 Android tag/APK

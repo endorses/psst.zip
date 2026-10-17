@@ -550,6 +550,11 @@ payloads were rejected. No production signing key was accessed. Final comparison
 against a public 0.1.1 release, optional screenshots and GitLab admission remain
 pending; the packet does not claim otherwise.
 
+[Preparation PR #41](https://github.com/endorses/psst.zip/pull/41) is open. Its first
+CI run caught stale native-inventory build fingerprints; regenerating both
+platform inventories resolved the exact dependency graphs and changed only the
+Android build-script fingerprint. Required CI and final publication remain pending.
+
 References: [inclusion policy](https://f-droid.org/en/docs/Inclusion_Policy/),
 [submission guide](https://f-droid.org/en/docs/Submitting_to_F-Droid_Quick_Start_Guide/),
 [metadata reference](https://f-droid.org/en/docs/Build_Metadata_Reference/), and
