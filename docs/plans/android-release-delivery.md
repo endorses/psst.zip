@@ -88,10 +88,13 @@ remain unverified.
 The operator created the production keystore and reported a backup on an external
 drive. Its public certificate SHA256 is
 `6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15`.
-Backup recovery remains pending: the separate copy must expose the same certificate
-and successfully create a disposable certificate request using its private key.
-No private key or password was supplied in chat, and GitHub signing inputs remain
-unconfigured.
+On October 17, the operator opened the external-drive backup with `keytool`:
+the alias is a 4096-bit RSA `PrivateKeyEntry` and its certificate fingerprint
+matches. Successful completion of the disposable `-certreq` command remains to
+be confirmed before marking recovery complete. The public fingerprint is now set
+as `ANDROID_RELEASE_SIGNER_SHA256` in the protected `android-release` environment;
+signing secrets and publication readiness remain unconfigured. No private key or
+password was supplied in chat.
 
 The decision above gates replacing the operator's installation. Preparation of
 unsigned release builds and metadata can proceed while it is being resolved.
@@ -489,7 +492,8 @@ operator ignored incident `38067040` as a test credential and reran its GitGuard
 check; the check passed at 06:45 UTC on October 10. Under the operator's conditional
 merge approval, [PR #36](https://github.com/endorses/psst.zip/pull/36) merged at
 06:46 UTC as `144cd60c61d6b6ed086583865b0782fcc1a74661`, preserving its commits.
-The normal main-branch CI run started afterward; its result is still pending.
+The normal main-branch [CI run 38032098103](https://github.com/endorses/psst.zip/actions/runs/38032098103)
+passed; its terminal result was verified on October 17.
 Readback after the final preparation CI run confirmed that the `android-release`
 environment still has no secret or variable entries; signing and publication
 readiness have not been enabled.
