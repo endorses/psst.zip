@@ -1,6 +1,6 @@
 # Go client library and psst.zip CLI
 
-Created: 2026-10-21. Status: **implemented; final local verification in progress**.
+Created: 2026-10-21. Status: **implemented locally; external validation pending**.
 Working branch: `feat/cli`, based on `main` at `3631465`. The separate F-Droid
 submission work remains on `prepare/fdroid-submission`.
 
@@ -324,11 +324,11 @@ source review does not establish a runtime pass.
       prefix gives the `client/` submodule correct Go version resolution and keeps
       CLI releases separate from existing server `v*` and Android `android-v*`
       tags. Ensure triggering it does not start server publication or deployment.
-- [ ] Build release artifacts from the exact reviewed source, reuse passing
+- [x] Build release artifacts from the exact reviewed source, reuse passing
       applicable source checks and add only artifact-specific verification. Keep
       publication separate from ordinary commits and keep existing release tags
       immutable. Publishing a first CLI release is a later explicit action.
-- [ ] Smoke-test an installed release binary, offline JSON-to-QR rendering and a
+- [x] Smoke-test an installed release binary, offline JSON-to-QR rendering and a
       small disposable transfer. Document OS runtime validation limits; app-store
       publication, container images, package-manager repositories and background
       daemons are outside this first delivery.
@@ -346,15 +346,17 @@ source review does not establish a runtime pass.
 - [x] Meaningful scoped tests pass, their local timings are recorded, and unrun
       hosted/platform checks stay unchecked. Local timings do not establish a
       hosted-runner result or a supported performance promise.
-- [ ] Format the scoped code/docs, record commands/timings and limitations, check
+- [x] Format the scoped code/docs, record commands/timings and limitations, check
       only verified tasks, clean task-owned temporary artifacts, and commit the
       implementation together with updates to this plan.
 
 Implementation record (2026-10-21): the client module, CLI, encrypted vault,
 protocol-compatible crypto, QR rendering, focused CI, integration fixture and
-manual release tooling are present. The final local build, packaging and closure
-checks below are still being recorded. No CLI release, tag, GitHub push or
-production deployment has been performed.
+manual release tooling are implemented and committed on `feat/cli`. The bounded
+closure audit concluded **CLOSED_WITH_DEFERRALS** after one discovery round, one
+fix batch and one integrated review. Both material findings are fixed; the named
+external checks below remain unrun and do not block local implementation closure.
+No CLI release, tag, GitHub push or production deployment has been performed.
 
 ### Local verification evidence
 
@@ -389,12 +391,14 @@ production deployment has been performed.
       integrated review found no further material issues. Affected SDK/CLI race
       tests passed in 1.066 s / 1.030 s; Windows amd64/arm64 test binaries compile.
       Native ACL execution remains pending, with its command recorded below.
-- [x] Initial six-platform development packaging passed in 26.31 s. Checks covered
-      archive checksums, ELF/Mach-O/PE identities, embedded version/revision,
-      installed Linux offline QR, exact dependency notices, deterministic archive
-      bytes, and an independent vendored-source build with networking disabled.
-      Development candidates are explicitly nonpublishable. Final clean-source
-      candidate verification follows the implementation commit.
+- [x] Final clean-source packaging at `a7c04a32fc1f863dd06f8afd601dc1fd10832d28`
+      built all six targets. Checks covered all asset checksums, ELF/Mach-O/PE
+      architecture identities, embedded version/revision, installed Linux offline
+      Send/Receive QR, dependency notices, license/install files and an independent
+      vendored-source build with networking disabled. The installed final binary's
+      disposable-backend scenario passed in 7.4 s. Earlier development packaging
+      also verified deterministic archive bytes and completed in 26.31 s.
+      Candidates were not published or installed into the user's PATH.
 - [x] Dependency releases were checked against official upstream/module metadata:
       Go 1.27.3, CIRCL 1.6.5, age 1.3.2, go-qr/v2 2.5.0, go-keyring 0.2.8,
       x/crypto 0.58.0, x/sys 0.49.0, x/term 0.47.0 and godbus/dbus/v5 5.2.4.
