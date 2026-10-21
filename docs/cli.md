@@ -289,6 +289,12 @@ produces candidate artifacts by default; publication requires explicitly selecti
 its separate `publish` input. No CLI release has been published by implementing
 this tooling.
 
+Publication assumes the repository's existing immutable-release setting remains
+enabled. The workflow refuses existing releases, checks the source tag again,
+then verifies the published release's immutable flag. It does not inspect that
+administrative setting before publication; keep it enabled before selecting
+`publish`.
+
 Cross-compilation does not establish macOS Keychain or Windows credential/ACL
 runtime behavior. Native desktop provider/filesystem checks remain pending until
 run on those systems. The CLI preserves mobile link/encryption formats; it does

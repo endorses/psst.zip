@@ -189,7 +189,7 @@ func (c *Client) fetchTransfer(ctx context.Context, id string, key []byte, slot 
 			return result, e
 		}
 		temp := ".psst-" + random + ".partial"
-		dst, e := root.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		dst, e := createPrivateDownload(root, temp)
 		if e != nil {
 			return result, e
 		}

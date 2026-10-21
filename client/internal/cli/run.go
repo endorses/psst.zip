@@ -207,7 +207,10 @@ func classify(err error) *Failure {
 	var api *client.APIError
 	if errors.As(err, &api) {
 		code, exit := "resource_unavailable", ExitUnavailable
-		if api.Status == 401 || api.Status == 403 {
+		// Capacity can change after preflight. The backend also uses 403 for
+		// Receive policy failures; renewing credentials cannot resolve them.
+		policyForbidden := oneOf(api.Code, "receive_file_limit", "receive_batch_limit", "legacy_receive_disabled")
+		if api.Status == 401 || api.Status == 403 && !policyForbidden {
 			code, exit = "authentication_required", ExitAuth
 		}
 		return &Failure{Code: code, Message: api.Error(), ServerCode: api.Code, RetryAfterSeconds: int64(api.RetryAfter / time.Second), exit: exit}

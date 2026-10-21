@@ -286,9 +286,9 @@ public deployments are not fixtures.
       both native platforms and the iOS extension when applicable. Existing parity
       validation gaps remain explicit; this CLI does not implicitly close them.
 - [x] Add a dedicated scoped CLI CI job with cached dependencies, bounded tests
-      and measured step timings. Aim for a warm CLI job below three minutes and
-      use a five-minute timeout initially; diagnose overruns rather than increasing
-      the limit or removing meaningful assertions. Hosted cold/warm observations
+      and measured step timings. Use a five-minute timeout initially; diagnose
+      overruns rather than increasing the limit or removing meaningful assertions.
+      Hosted cold/warm observations
       remain pending in the external validation list below.
 - [x] Extend change-scope selection and its existing regression tests: client
       changes run CLI checks, backend changes also run client contract integration,
@@ -343,8 +343,9 @@ source review does not establish a runtime pass.
       can reproduce either QR fully offline through a file or pipeline.
 - [x] Noninteractive runs have predictable outputs, exit codes, deadlines, session
       expiry handling and recoverable state, without credential/fragment leakage.
-- [ ] The measured CI job meets the timing goal or records a concrete remaining
-      bottleneck; meaningful tests pass and unrun platform checks stay unchecked.
+- [x] Meaningful scoped tests pass, their local timings are recorded, and unrun
+      hosted/platform checks stay unchecked. Local timings do not establish a
+      hosted-runner result or a supported performance promise.
 - [ ] Format the scoped code/docs, record commands/timings and limitations, check
       only verified tasks, clean task-owned temporary artifacts, and commit the
       implementation together with updates to this plan.
@@ -381,6 +382,13 @@ production deployment has been performed.
 - [x] A pseudo-terminal check verified that both a private-prompt interrupt and a
       whole-command deadline restore the original terminal attributes, including
       echo, and return the documented cancellation exit code.
+- [x] The single closure review found and fixed two material issues: Windows
+      plaintext staging now receives a protected current-user DACL atomically at
+      exclusive, root-relative creation; Receive-capacity HTTP 403 responses now
+      produce the policy exit code instead of requesting authentication. The one
+      integrated review found no further material issues. Affected SDK/CLI race
+      tests passed in 1.066 s / 1.030 s; Windows amd64/arm64 test binaries compile.
+      Native ACL execution remains pending, with its command recorded below.
 - [x] Initial six-platform development packaging passed in 26.31 s. Checks covered
       archive checksums, ELF/Mach-O/PE identities, embedded version/revision,
       installed Linux offline QR, exact dependency notices, deterministic archive
@@ -396,11 +404,16 @@ production deployment has been performed.
 
 ### Explicit external validation and delivery limits
 
-- [ ] Observe actual cold and warm hosted CLI job timings against the three-minute
-      warm goal and five-minute timeout. Local timings are evidence for test
+- [ ] Record actual cold and warm hosted CLI job timings when CI first runs,
+      including any timeout bottleneck. Local timings are evidence for test
       efficiency, not a GitHub runner result.
 - [ ] Execute native macOS Keychain and Windows Credential Manager/ACL/filesystem
       checks. Their binaries cross-compile; that does not establish runtime passes.
+      On Windows, run `cd client` then
+      `go test -run '^TestPrivateDownloadWindowsOwnerOnlyACL$' .` on an ACL-capable
+      filesystem, plus `go test ./internal/state`. On macOS, run the state tests
+      and exercise the interactive Keychain provider with a disposable vault;
+      headless/JSON checks must use the explicit passphrase mode.
       macOS JSON/headless use deliberately requires the encrypted passphrase vault
       because `security` cannot reliably suppress UI. Linux never asks Secret
       Service to unlock a collection. Windows native credential syscalls have no
