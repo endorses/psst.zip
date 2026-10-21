@@ -236,7 +236,7 @@ func classify(err error) *Failure {
 		return &Failure{Code: "transport_failure", Message: "Could not connect to the configured server without a redirect; check its final origin and connection.", exit: ExitTransport}
 	}
 	if errors.Is(err, state.ErrUnavailable) {
-		return storageFailure("OS credential storage is unavailable. Explicitly configure an encrypted passphrase vault for headless use.")
+		return storageFailure("OS credential storage is unavailable or locked. Start or unlock your desktop keyring, or rerun with --vault-mode passphrase to use an encrypted local vault.")
 	}
 	if errors.Is(err, state.ErrLocked) {
 		return storageFailure("Another command holds this vault. Wait for it to finish; do not delete its lock file.")

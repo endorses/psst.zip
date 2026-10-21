@@ -56,6 +56,20 @@ Keychain vault into a fresh passphrase vault. Windows Credential Manager calls
 are noninteractive; native OS-call latency is outside Go context cancellation.
 Provider errors fail closed and never select plaintext storage.
 
+An encrypted passphrase vault also works interactively when no desktop keyring
+is available:
+
+```sh
+psst auth login --server https://files.example --username alice --vault-mode passphrase
+psst auth status --vault-mode passphrase
+```
+
+On first use, choose and confirm a new local vault passphrase; the account
+password prompt then takes your existing server password. Include
+`--vault-mode passphrase` on subsequent commands that access this vault. JSON and
+noninteractive commands additionally require a private passphrase descriptor,
+as shown in the automation examples below.
+
 `--profile NAME` selects an account profile. Resource keys and journals are scoped
 by normalized origin and account identity. Signing into another account does not
 make the previous account's private records accessible to it. Public-link
