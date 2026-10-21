@@ -17,6 +17,7 @@ import (
 )
 
 const help = `psst — encrypted file sharing with an operator-selected psst.zip server
+Project: https://psst.zip
 
   auth login --server ORIGIN --username NAME [--password-stdin]
   auth pair --json-file FILE|-       redeem a private web pairing document
