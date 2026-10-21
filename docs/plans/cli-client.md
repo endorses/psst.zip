@@ -1,6 +1,6 @@
 # Go client library and psst.zip CLI
 
-Created: 2026-10-21. Status: **planned; implementation has not started**.
+Created: 2026-10-21. Status: **implemented; final local verification in progress**.
 Working branch: `feat/cli`, based on `main` at `3631465`. The separate F-Droid
 submission work remains on `prepare/fdroid-submission`.
 
@@ -148,114 +148,114 @@ escape control characters rather than allowing terminal escape injection.
 This is required in the first complete CLI milestone, not a later presentation
 enhancement. Use the same renderer for `--qr`, resource `show` and `psst qr`.
 
-- [ ] Render complete canonical Send and Receive URLs locally with Unicode
+- [x] Render complete canonical Send and Receive URLs locally with Unicode
       half-blocks, a proper quiet zone and explicit foreground/background so
       terminal themes do not invert or obscure the code. Provide a plain block
       fallback and detect insufficient terminal width instead of wrapping a code.
-- [ ] Display the complete share URL alongside interactive QR output. Missing local
+- [x] Display the complete share URL alongside interactive QR output. Missing local
       Send keys must produce a useful error, not a QR containing an incomplete URL.
-- [ ] Define and document the version-1 saved JSON schema for individual successful
+- [x] Define and document the version-1 saved JSON schema for individual successful
       Send/Receive creation and show results. Include a sample of each using
       disposable fixtures, without real user credentials or links.
-- [ ] Implement `psst qr --json-file PATH` and `--json-file -`. Read one bounded JSON
+- [x] Implement `psst qr --json-file PATH` and `--json-file -`. Read one bounded JSON
       document, validate its version/success/resource kind and `data.link`, and
       encode that exact validated link. Do not encode the whole result object,
       remove its fragment, infer a link from an ID or choose an arbitrary field.
-- [ ] Reject malformed, failed, unsupported-version, missing-link and ambiguous
+- [x] Reject malformed, failed, unsupported-version, missing-link and ambiguous
       multi-resource documents with a concise diagnostic. Never silently choose
       the first element of a list. Respect encoder capacity and scanner limits;
       do not truncate or split a link into incompatible QR codes.
-- [ ] Keep saved-JSON QR rendering entirely offline: no profile, login, server
+- [x] Keep saved-JSON QR rendering entirely offline: no profile, login, server
       availability check, credential lookup or capability redemption is required.
       Keep pairing JSON separate: `auth pair` consumes its single-use credential,
       while this QR command handles saved Send/Receive results.
-- [ ] Make output selection explicit: a QR rendering request produces terminal
+- [x] Make output selection explicit: a QR rendering request produces terminal
       graphics, while `--json` produces structured output. Reject contradictory
       flag combinations before creating a resource; support deliberate rendering
       into a redirected terminal-output file without interactive prompts.
 
 ## 1. Client foundation, profiles and authentication
 
-- [ ] Create the Go submodule and thin command entry point; define the public SDK
+- [x] Create the Go submodule and thin command entry point; define the public SDK
       surface, command grammar, result schema and exit-code meanings together.
-- [ ] Implement normalized operator-selected origins, API/web identity checks,
+- [x] Implement normalized operator-selected origins, API/web identity checks,
       typed responses and stable errors including `X-Psst-Error-Code` and
       `Retry-After`. Preserve LAN HTTP support with explicit transport-risk
       documentation, normal HTTPS certificate verification and no TLS bypass flag.
-- [ ] Bind account credentials to the configured origin and owner. Use separate
+- [x] Bind account credentials to the configured origin and owner. Use separate
       anonymous/guest clients for share links, including links from another server.
       Reject credential-forwarding redirects and HTTPS downgrade; fragments never
       enter API requests or request logs.
-- [ ] Implement regular-user password login, private pairing-file/stdin redemption,
+- [x] Implement regular-user password login, private pairing-file/stdin redemption,
       status and logout/revocation using existing device-session APIs. Explain
       administrator restrictions and never reuse browser cookies as CLI state.
-- [ ] Implement account-scoped profiles and protected storage with atomic writes
+- [x] Implement account-scoped profiles and protected storage with atomic writes
       and restrictive permissions/ACLs. Use an OS credential-store adapter where
       available and an explicitly configured encrypted vault for headless use;
       never silently downgrade to plaintext secrets when a keyring is unavailable.
-- [ ] Define vault unlocking through a private provider/file descriptor for jobs,
+- [x] Define vault unlocking through a private provider/file descriptor for jobs,
       schema migration, locking/concurrent commands and recovery. Provide an
       encrypted backup/restore path for locally created Receive private keys before
       presenting those inboxes as durable; signing into the same account is not a
       recovery mechanism. Logout must not unexpectedly destroy decryption keys.
-- [ ] Report session expiry/revocation with a machine-readable authentication error
+- [x] Report session expiry/revocation with a machine-readable authentication error
       and document renewal before the existing 30-day expiry. Do not promise
       unattended indefinite operation. Scoped, renewable machine credentials are
       a separate backend feature requiring an explicit future design decision.
 
 ## 2. Encryption and transfer engine
 
-- [ ] Implement manifest AES-256-GCM and `chunked-v1` framing with standard
+- [x] Implement manifest AES-256-GCM and `chunked-v1` framing with standard
       primitives and secure randomness. Pass the existing deterministic
       [chunked-file vector](../protocol/chunked-file-vector.json), including empty
       files, exact boundaries, authenticated context and total-size arithmetic.
-- [ ] Select a maintained full HPKE implementation supporting the exact Receive-v2
+- [x] Select a maintained full HPKE implementation supporting the exact Receive-v2
       RFC 9180 suite. Pass the existing
       [RFC vector](../security/fixtures/hpke-rfc9180-x25519-aes256.json) and
       [cross-provider Receive fixtures](../security/fixtures/hpke-receive-v2.json)
       with the current identity-bound context and empty production AAD. Stop
       provider adoption if interoperability or public-key validation fails.
-- [ ] Implement bounded sequential encrypted uploads through the existing tus
+- [x] Implement bounded sequential encrypted uploads through the existing tus
       lifecycle, manifest publication and completion verification. Respect server
       limits and accepted expiry/download policies. Persist recoverable state
       before exposing a link; clean up failed allocations using their proper
       authority rather than leaving an apparently successful resource.
-- [ ] Implement bounded streaming downloads, manifest validation and authenticated
+- [x] Implement bounded streaming downloads, manifest validation and authenticated
       frames. Reject malformed identities/sizes, substitution, reordering,
       truncation, trailing bytes and unsafe filenames before publishing outputs.
       Use restrictive temporary destinations and collision-safe atomic publication;
       do not overwrite files or follow hostile paths from a manifest.
-- [ ] Implement cancellation, bounded backoff and operation journals. Resume an
+- [x] Implement cancellation, bounded backoff and operation journals. Resume an
       upload only against persisted ciphertext/nonce state; re-encrypting a partial
       chunk cannot be combined with an old tus offset. Initially restart an
       interrupted file download and retain completed files; do not promise byte
       range resume that the current framing/protocol does not provide.
-- [ ] Send idempotent completion receipts only after all required files are
+- [x] Send idempotent completion receipts only after all required files are
       durably saved. Retry a failed receipt without fetching files again. Preserve
       quota semantics: failed/retried attempts may consume download allowance and
       abandoned reservations do not imply restored capacity.
 
 ## 3. User workflows and QR delivery
 
-- [ ] Implement owned `send`, public-link `fetch`, resource list/show/revoke and
+- [x] Implement owned `send`, public-link `fetch`, resource list/show/revoke and
       bounded pagination, with the common output/error contract and cancellation.
       Retain only local state needed for recovery and reopening; never treat local
       history removal as remote revocation.
-- [ ] Implement Receive creation: generate and protect the private key before
+- [x] Implement Receive creation: generate and protect the private key before
       publishing the invitation, verify the server accepted protocol/public key
       and policy, and retain management state if verification is inconclusive.
       Revoke a failed allocation where safe; never display an unusable invitation.
-- [ ] Implement guest `upload` to Receive-v2 links, checking the invitation-bound
+- [x] Implement guest `upload` to Receive-v2 links, checking the invitation-bound
       public key against server metadata. Create a child transfer anonymously,
       then use only its issued upload capability for file creation/upload,
       finalization and cleanup.
-- [ ] Implement owned inbox list/show/fetch/revoke with bounded pagination, exact
+- [x] Implement owned inbox list/show/fetch/revoke with bounded pagination, exact
       membership checks, local private-key lookup and independent checkpoints per
       submission. Report missing keys explicitly without implying login can fix it.
       Provide a bounded `--wait` option only if needed; no unbounded polling loop.
-- [ ] Complete every terminal-QR and saved-JSON requirement above. A saved Receive
+- [x] Complete every terminal-QR and saved-JSON requirement above. A saved Receive
       JSON result contains its public invitation, never its private decryption key.
-- [ ] Write command help and `docs/cli.md` with interactive, pipeline, scheduled-job,
+- [x] Write command help and `docs/cli.md` with interactive, pipeline, scheduled-job,
       private credential input, session renewal, recovery and self-hosted examples.
 
 ## 4. Focused interoperability and efficient CI
@@ -264,19 +264,19 @@ Verify meaningful failure boundaries rather than adding tests to increase covera
 Tests use disposable data and local servers; production accounts, phone keys and
 public deployments are not fixtures.
 
-- [ ] Add fast table-driven vector/parser tests for crypto authentication, canonical
+- [x] Add fast table-driven vector/parser tests for crypto authentication, canonical
       links, hostile paths, bounded JSON, versioned outputs and exit codes. Verify
       QR correctness by independently decoding a generated matrix/image back to
       the complete expected URL, not by comparing terminal-art snapshots.
-- [ ] Cover the offline saved-JSON path with both Send and Receive results, stdin
+- [x] Cover the offline saved-JSON path with both Send and Receive results, stdin
       pipelines, malformed/ambiguous input and a disabled network/credential
       provider. Confirm fragments survive and secrets are absent from diagnostics.
-- [ ] Cover account/guest origin isolation, session expiry, redirect rejection,
+- [x] Cover account/guest origin isolation, session expiry, redirect rejection,
       atomic persistence, cancellation, safe file publication and receipt retry
       using small deterministic fixtures and injected clocks/failures rather than
       long sleeps or large random files. Measure streaming memory using a generated
       reader instead of allocating/uploading a multi-gigabyte fixture in CI.
-- [ ] Add one compact integration suite against a real disposable backend with
+- [x] Add one compact integration suite against a real disposable backend with
       its production checks enabled. Exercise CLI Send to existing client crypto,
       existing client Send to CLI download, guest Receive upload and owner decrypt,
       and revoke/expiry/allowance failures. Reuse the existing TypeScript crypto
@@ -285,15 +285,16 @@ public deployments are not fixtures.
       and shared/provider fixtures. Any required protocol/parser/UX fix must cover
       both native platforms and the iOS extension when applicable. Existing parity
       validation gaps remain explicit; this CLI does not implicitly close them.
-- [ ] Add a dedicated scoped CLI CI job with cached dependencies, bounded tests
+- [x] Add a dedicated scoped CLI CI job with cached dependencies, bounded tests
       and measured step timings. Aim for a warm CLI job below three minutes and
       use a five-minute timeout initially; diagnose overruns rather than increasing
-      the limit or removing meaningful assertions. Record cold/warm observations.
-- [ ] Extend change-scope selection and its existing regression tests: client
+      the limit or removing meaningful assertions. Hosted cold/warm observations
+      remain pending in the external validation list below.
+- [x] Extend change-scope selection and its existing regression tests: client
       changes run CLI checks, backend changes also run client contract integration,
       and shared protocol-fixture changes select their real consumers. CLI-only
       changes do not require Android/iOS builds; mobile source changes still do.
-- [ ] Run the Go race detector once for the client test suite and vet/build once;
+- [x] Run the Go race detector once for the client test suite and vet/build once;
       avoid duplicated build/test runs in packaging. Use the existing security
       hooks/scanners and include the new module in dependency-notice checks.
 
@@ -315,11 +316,11 @@ source review does not establish a runtime pass.
 
 ## 5. Packaging and release delivery
 
-- [ ] Package Linux, macOS and Windows binaries for amd64/arm64 where supported,
+- [x] Package Linux, macOS and Windows binaries for amd64/arm64 where supported,
       with embedded version/source revision, SHA256 checksums, licenses/notices,
       source and concise installation instructions. Avoid CGO/server/SQLite
       dependencies; validate platform adapters rather than assuming portability.
-- [ ] Use `client/v0.1.0` as the proposed first Go-module/GitHub release tag. Its
+- [x] Use `client/v0.1.0` as the proposed first Go-module/GitHub release tag. Its
       prefix gives the `client/` submodule correct Go version resolution and keeps
       CLI releases separate from existing server `v*` and Android `android-v*`
       tags. Ensure triggering it does not start server publication or deployment.
@@ -334,13 +335,13 @@ source review does not establish a runtime pass.
 
 ## Completion criteria and record
 
-- [ ] The public Go library can perform the supported operations without terminal
+- [x] The public Go library can perform the supported operations without terminal
       dependencies, and the executable imports no backend database/server internals.
-- [ ] Send/download and Receive/guest-upload/owner-download interoperate with the
+- [x] Send/download and Receive/guest-upload/owner-download interoperate with the
       existing encryption protocol, without syncing or exposing private keys.
-- [ ] Terminal QR codes scan as complete existing Send/Receive URLs; saved CLI JSON
+- [x] Terminal QR codes scan as complete existing Send/Receive URLs; saved CLI JSON
       can reproduce either QR fully offline through a file or pipeline.
-- [ ] Noninteractive runs have predictable outputs, exit codes, deadlines, session
+- [x] Noninteractive runs have predictable outputs, exit codes, deadlines, session
       expiry handling and recoverable state, without credential/fragment leakage.
 - [ ] The measured CI job meets the timing goal or records a concrete remaining
       bottleneck; meaningful tests pass and unrun platform checks stay unchecked.
@@ -348,6 +349,65 @@ source review does not establish a runtime pass.
       only verified tasks, clean task-owned temporary artifacts, and commit the
       implementation together with updates to this plan.
 
-Planning record: repository contracts were inspected; no CLI implementation,
-dependency installation, client test run, mobile build or release publication has
-been performed. All implementation and acceptance items above remain pending.
+Implementation record (2026-10-21): the client module, CLI, encrypted vault,
+protocol-compatible crypto, QR rendering, focused CI, integration fixture and
+manual release tooling are present. The final local build, packaging and closure
+checks below are still being recorded. No CLI release, tag, GitHub push or
+production deployment has been performed.
+
+### Local verification evidence
+
+- [x] Existing chunked-file and RFC 9180 vectors pass; Go opens the existing
+      browser, Tink/Android and Swift Receive wrappers. Module-local public fixture
+      copies are compared with root fixtures whenever the full repository exists.
+- [x] `go vet ./...` and `go test -race -timeout 2m -v ./...` passed on Go 1.27.3
+      Linux/amd64. This includes corruption, origin isolation, wrong contexts,
+      private-state recovery, interrupted publication, receipt retry, JSON/terminal
+      safety, independently decoded terminal output, and blocked-input cancellation.
+      The crypto suite took 1.737 s under the race detector; other packages took
+      1.008–1.261 s, including race-detector process overhead.
+- [x] A generated 64 MiB input allocated 8,412,032 bytes while encrypting to a
+      discard writer; no file-sized fixture was allocated or uploaded. This
+      bounded-memory regression took 0.54 s under the race detector.
+- [x] Six CI selector regressions pass in 1.567 s. A CLI-only push selects the CLI
+      without web/Android/iOS jobs; backend and imported browser-crypto changes
+      also select the actual interoperability consumers.
+- [x] The compact disposable backend scenario passed in 8.5 s against the final
+      built CLI, using real regular-user authentication, all four CLI/web Send and
+      Receive directions, multi-frame and empty files, Receive-key recovery,
+      enforced allowances/revocation/expiry, and receipt retry without another
+      file GET. The fixture supplies only web identity markup; this is not browser UI
+      validation. The final run used Node 26.12.0 and Go 1.27.3.
+- [x] A pseudo-terminal check verified that both a private-prompt interrupt and a
+      whole-command deadline restore the original terminal attributes, including
+      echo, and return the documented cancellation exit code.
+- [x] Initial six-platform development packaging passed in 26.31 s. Checks covered
+      archive checksums, ELF/Mach-O/PE identities, embedded version/revision,
+      installed Linux offline QR, exact dependency notices, deterministic archive
+      bytes, and an independent vendored-source build with networking disabled.
+      Development candidates are explicitly nonpublishable. Final clean-source
+      candidate verification follows the implementation commit.
+- [x] Dependency releases were checked against official upstream/module metadata:
+      Go 1.27.3, CIRCL 1.6.5, age 1.3.2, go-qr/v2 2.5.0, go-keyring 0.2.8,
+      x/crypto 0.58.0, x/sys 0.49.0, x/term 0.47.0 and godbus/dbus/v5 5.2.4.
+      CI uses current stable Node 26.12.0; the matching official Linux archive was
+      downloaded and its SHA256 verified for final interoperability validation.
+      No existing browser protocol packages were upgraded for this Go client.
+
+### Explicit external validation and delivery limits
+
+- [ ] Observe actual cold and warm hosted CLI job timings against the three-minute
+      warm goal and five-minute timeout. Local timings are evidence for test
+      efficiency, not a GitHub runner result.
+- [ ] Execute native macOS Keychain and Windows Credential Manager/ACL/filesystem
+      checks. Their binaries cross-compile; that does not establish runtime passes.
+      macOS JSON/headless use deliberately requires the encrypted passphrase vault
+      because `security` cannot reliably suppress UI. Linux never asks Secret
+      Service to unlock a collection. Windows native credential syscalls have no
+      cancellation handle and are checked before/after, not run asynchronously.
+- [ ] Perform physical Android/iOS scans and any remaining native app/extension
+      validation when those environments are available. No mobile implementation
+      or protocol was changed, and previously unrun native checks remain unrun.
+- [ ] Publish a first `client/v0.1.0` release only as a separately authorized action
+      after exact-source executed CI and candidate review. Existing server/Android
+      tags and production routing remain unchanged.

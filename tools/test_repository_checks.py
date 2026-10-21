@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
@@ -250,6 +251,41 @@ class RepositoryChecks(unittest.TestCase):
         self.write(recipe, content)
         self.write("other.yml", line + "\n")
         self.git("add", recipe, "other.yml")
+        self.assertNotEqual(self.check().returncode, 0)
+
+    @unittest.skipUnless(
+        REAL_SCANNER, "Gitleaks is needed for public protocol-vector integration"
+    )
+    def test_public_client_vector_exception_stays_narrow(self) -> None:
+        (self.bin / "gitleaks").unlink()
+        (self.bin / "gitleaks").symlink_to(REAL_SCANNER)
+        self.write(".gitleaks.toml", (ROOT / ".gitleaks.toml").read_bytes())
+        path = "client/internal/crypto/testdata/hpke-receive-v2.json"
+        content = (ROOT / path).read_text()
+        shared = ROOT / "docs/security/fixtures/hpke-receive-v2.json"
+        self.assertEqual(content, shared.read_text())
+        self.write(path, content)
+        self.git("add", ".gitleaks.toml", path)
+        self.assertEqual(self.check().returncode, 0)
+
+        for field in (
+            "private_key",
+            "wrapped_key",
+            "tink_wrapped_key",
+            "swift_wrapped_key",
+        ):
+            with self.subTest(field=field):
+                values = json.loads(content)
+                value = values[field]
+                values[field] = value[:-1] + ("0" if value[-1] != "0" else "1")
+                self.write(path, json.dumps(values, indent=2) + "\n")
+                self.git("add", path)
+                self.assertNotEqual(self.check().returncode, 0)
+
+        # Even unchanged public values cannot exempt a different file.
+        self.write(path, content)
+        self.write("other.json", content)
+        self.git("add", path, "other.json")
         self.assertNotEqual(self.check().returncode, 0)
 
     @unittest.skipUnless(

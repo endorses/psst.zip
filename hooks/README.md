@@ -70,6 +70,11 @@ browser-test password. It does not exempt test files, directories, credential
 types, or future occurrences. Editing those fixtures can therefore trigger a new
 finding and needs review.
 
+The client module carries a byte-identical copy of that public HPKE vector for
+standalone source builds. `.gitleaks.toml` permits only its four reviewed fields
+with their exact published values at that one path. Changing a value or moving
+the fixture still triggers scanning; a regression check verifies those boundaries.
+
 For a real credential, revoke/rotate it and remove it from the proposed commit.
 A credential already in history needs removal from the history that will be
 published; simply deleting the current file does not pass the pre-push scan. Do

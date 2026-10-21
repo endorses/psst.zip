@@ -25,6 +25,10 @@ save existing uploads and create a replacement invitation. Update the backend,
 web assets and apps together; an old app is not a compatible private-inbox client.
 See [the receive protocol and validation record](docs/security/receive-crypto-design.md).
 
+The [Go library and CLI](docs/cli.md) provide the same encrypted Send/Receive
+workflows for terminal use, scripts and agents. The `psst` executable can display
+share QR codes directly or render them offline from saved CLI JSON results.
+
 Creating transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
 into a receive link remain accessible without signing in.
@@ -92,6 +96,7 @@ downloaded files stay inert until the recipient chooses to open them.
 ```
 web/         SvelteKit SPA (static build, served by Caddy)
 backend/     Go HTTP server (REST API, tus uploads, SQLite, file storage)
+client/      Reusable Go client and psst CLI (encrypted transfers, JSON, terminal QR)
 shared/      Kotlin Multiplatform module (crypto, API client, models)
 android/     Android app (Jetpack Compose)
 ios/         iOS app (SwiftUI + share extension)

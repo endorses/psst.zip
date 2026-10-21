@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-JOBS = frozenset({"backend", "web", "android", "ios"})
+JOBS = frozenset({"backend", "web", "android", "ios", "cli"})
 NATIVE_JOBS = frozenset({"android", "ios"})
 MAX_EVENT_BYTES = 2 * 1024 * 1024
 GIT_TIMEOUT_SECONDS = 10
@@ -99,6 +99,7 @@ def classify_path(path: str) -> frozenset[str]:
     if path in {
         ".github/workflows/release.yml",
         ".github/workflows/android-release.yml",
+        ".github/workflows/cli-release.yml",
     }:
         return frozenset()
     if path.startswith(
@@ -116,8 +117,21 @@ def classify_path(path: str) -> frozenset[str]:
     }:
         return JOBS
     if path.startswith("backend/"):
-        # Web integration/browser checks compile and launch the backend.
-        return frozenset({"backend", "web"})
+        # Both client compatibility suites compile and launch the backend.
+        return frozenset({"backend", "web", "cli"})
+    if path.startswith("client/"):
+        return frozenset({"cli"})
+    if path.startswith("web/src/lib/i18n/") or path in {
+        "web/package.json",
+        "web/package-lock.json",
+        "web/src/lib/crypto.ts",
+        "web/src/lib/receive-crypto.ts",
+        "web/src/lib/chunked-files.ts",
+        "web/src/lib/filenames.ts",
+        "web/src/lib/recipient-policy.ts",
+    }:
+        # CLI compatibility checks exercise the existing browser providers.
+        return frozenset({"web", "cli"})
     if path.startswith("web/") or path == "tools/measure_browser_source_inventory.py":
         return frozenset({"web"})
     if path == "tools/android_release.py":
@@ -136,7 +150,12 @@ def classify_path(path: str) -> frozenset[str]:
         return NATIVE_JOBS
     if path.startswith("ios/"):
         return frozenset({"ios"})
-    if path in {"README.md", "AGENTS.md", "docs/releases/android.md"} or (
+    if path in {
+        "README.md",
+        "AGENTS.md",
+        "docs/releases/android.md",
+        "docs/cli.md",
+    } or (
         path.startswith(("docs/plans/", "docs/security/", "docs/research/"))
         and path.endswith(".md")
     ):

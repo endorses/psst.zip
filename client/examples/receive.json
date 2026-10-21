@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "data": {
+    "kind": "receive",
+    "id": "12345678-1234-1234-1234-123456789012",
+    "origin": "https://files.example",
+    "link": "https://files.example/u/12345678-1234-1234-1234-123456789012#v2.Iiu8NFq_c5OM_Vc3EQboi31PlR3Ne0Sfi1-_fPd_zWI",
+    "expires_at": "2030-01-01T00:00:00Z",
+    "key_available": true
+  }
+}

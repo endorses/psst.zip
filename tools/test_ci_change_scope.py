@@ -100,6 +100,8 @@ class ChangeScopeTests(unittest.TestCase):
         self.write("docs/releases/android.md")
         self.write(".github/workflows/release.yml")
         self.write(".github/workflows/android-release.yml")
+        self.write(".github/workflows/cli-release.yml")
+        self.write("docs/cli.md")
         self.write("tools/android_build_timings.gradle")
         self.write("tools/check_android_update.py")
         self.write("tools/test_android_update.py")
@@ -111,12 +113,23 @@ class ChangeScopeTests(unittest.TestCase):
                 self.assertEqual(self.cli(job)["run"], "false")
                 full = self.cli(job, force_full=True)
                 self.assertEqual(full["run"], "true")
-                self.assertEqual(full["scope"], "android,backend,ios,web")
+                self.assertEqual(full["scope"], "android,backend,cli,ios,web")
 
     def test_reviewed_dependencies_and_unknown_paths(self) -> None:
         cases = {
-            "backend/go.sum": {"backend", "web"},
+            "backend/go.sum": {"backend", "web", "cli"},
+            "client/go.sum": {"cli"},
+            "client/internal/cli/run.go": {"cli"},
+            "client/scripts/check-integration.py": {"cli"},
             "web/tests/check.ts": {"web"},
+            "web/src/lib/crypto.ts": {"web", "cli"},
+            "web/src/lib/receive-crypto.ts": {"web", "cli"},
+            "web/src/lib/chunked-files.ts": {"web", "cli"},
+            "web/src/lib/filenames.ts": {"web", "cli"},
+            "web/src/lib/recipient-policy.ts": {"web", "cli"},
+            "web/src/lib/i18n/messages.ts": {"web", "cli"},
+            "web/package.json": {"web", "cli"},
+            "web/package-lock.json": {"web", "cli"},
             "tools/measure_browser_source_inventory.py": {"web"},
             "shared/build.gradle.kts": {"android", "ios"},
             "android/gradle/wrapper/gradle-wrapper.properties": {"android", "ios"},
@@ -134,6 +147,7 @@ class ChangeScopeTests(unittest.TestCase):
             "docs/security/fixtures/vector.json": selector.JOBS,
             ".github/workflows/ci.yml": selector.JOBS,
             ".github/workflows/release.yml": set(),
+            ".github/workflows/cli-release.yml": set(),
             ".github/workflows/release.yaml": selector.JOBS,
             ".github/workflows/new-workflow.yml": selector.JOBS,
             "tools/select_ci_checks.py": selector.JOBS,
@@ -143,6 +157,7 @@ class ChangeScopeTests(unittest.TestCase):
             "docs/security/guide.md": set(),
             "docs/research/study.md": set(),
             "docs/releases/android.md": set(),
+            "docs/cli.md": set(),
             "docs/releases/new-guide.md": selector.JOBS,
             "deploy/updater/Dockerfile": set(),
             "tools/publish_verified_release.py": set(),
@@ -168,13 +183,14 @@ class ChangeScopeTests(unittest.TestCase):
         self.git("mv", "backend/old.go", "docs/plans/renamed\nnote.md")
         (self.repo / "ios/old.swift").unlink()
         self.commit()
-        # The final commit alone only affects web; the full range needs all three.
+        # The final commit alone only affects web; the full range includes CLI's
+        # real-backend compatibility checks and iOS's removed source as well.
         (self.repo / "web/deleted.ts").unlink()
         self.commit()
         self.push_event()
         result = self.cli("backend")
         self.assertEqual(result["run"], "true")
-        self.assertEqual(result["scope"], "backend,ios,web")
+        self.assertEqual(result["scope"], "backend,cli,ios,web")
 
     def test_pull_request_uses_merge_base_instead_of_base_tip(self) -> None:
         self.git("checkout", "-qb", "feature")
@@ -223,7 +239,7 @@ class ChangeScopeTests(unittest.TestCase):
                 self.event.write_text(contents or json.dumps({"before": self.base}))
                 result = self.cli("android")
                 self.assertEqual(result["run"], "true")
-                self.assertEqual(result["scope"], "android,backend,ios,web")
+                self.assertEqual(result["scope"], "android,backend,cli,ios,web")
         self.env = original_env
         self.event.write_text(json.dumps({"before": self.base}))
         for error in (OSError(), subprocess.TimeoutExpired("git", 10)):
@@ -235,7 +251,18 @@ class ChangeScopeTests(unittest.TestCase):
         self.write("tools/unknown_release_helper.py")
         self.commit()
         self.push_event()
-        self.assertEqual(self.cli("android")["scope"], "android,backend,ios,web")
+        self.assertEqual(self.cli("android")["scope"], "android,backend,cli,ios,web")
+
+    def test_cli_only_push_skips_web_and_native_jobs(self) -> None:
+        self.write("client/internal/cli/qr.go")
+        self.write("docs/cli.md")
+        self.commit()
+        self.push_event()
+        self.assertEqual(self.cli("cli")["run"], "true")
+        self.assertEqual(self.cli("cli")["scope"], "cli")
+        for job in ("web", "backend", "android", "ios"):
+            with self.subTest(job=job):
+                self.assertEqual(self.cli(job)["run"], "false")
 
 
 if __name__ == "__main__":
