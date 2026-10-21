@@ -122,7 +122,8 @@ func uniqueJSON(b []byte) error {
 }
 
 // qrArt keeps all modules and a four-module quiet zone. Colored half-block mode
-// deliberately fixes black foreground and white background on every line.
+// resets inherited styles and requests RGB black on white on every line, rather
+// than using the terminal theme's configurable ANSI palette slots.
 func qrArt(link string, columns int, plain bool) (string, error) {
 	if _, err := protocol.ParseLink(link); err != nil {
 		return "", usage("A complete psst.zip Send or Receive link is required.")
@@ -147,7 +148,7 @@ func qrArt(link string, columns int, plain bool) (string, error) {
 	}
 	for y := 0; y < side; y += step {
 		if !plain {
-			out.WriteString("\x1b[30;47m")
+			out.WriteString("\x1b[0;38;2;0;0;0;48;2;255;255;255m")
 		}
 		for x := 0; x < side; x++ {
 			if plain {

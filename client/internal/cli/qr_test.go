@@ -36,8 +36,24 @@ func shareFixture(t *testing.T, kind string) (string, []byte) {
 // catch an inverted half-block, missing quiet zone, or dropped key fragment.
 func decodeTerminal(t *testing.T, art string, plain bool) string {
 	t.Helper()
-	art = strings.ReplaceAll(strings.ReplaceAll(art, "\x1b[30;47m", ""), "\x1b[0m", "")
 	lines := strings.Split(strings.TrimSuffix(art, "\n"), "\n")
+	for i, line := range lines {
+		if !plain {
+			var ok bool
+			line, ok = strings.CutPrefix(line, "\x1b[0;38;2;0;0;0;48;2;255;255;255m")
+			if !ok {
+				t.Fatal("QR row must reset inherited styles and request RGB black on white, not theme palette colors")
+			}
+			line, ok = strings.CutSuffix(line, "\x1b[0m")
+			if !ok {
+				t.Fatal("QR row did not reset its terminal colors")
+			}
+		}
+		if strings.ContainsRune(line, '\x1b') {
+			t.Fatal("unexpected terminal styling in QR modules")
+		}
+		lines[i] = line
+	}
 	w := len([]rune(lines[0]))
 	h := len(lines) * 2
 	if plain {

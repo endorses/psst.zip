@@ -167,9 +167,13 @@ psst qr --json-file receive.json --plain > receive-qr.txt
 ```
 
 Terminal QR codes encode the complete existing share URL, including its fragment.
-Half-block rendering fixes black foreground and white background and includes a
-quiet zone; `--plain` uses full blocks. The CLI detects a terminal too narrow for
-the code instead of wrapping it. Widen it or deliberately render to a file.
+Half-block rendering requests RGB black (`#000000`) on white (`#ffffff`) and
+includes a quiet zone. This requires truecolor terminal support and avoids the
+theme's configurable ANSI palette colors. Each row resets inherited text styles
+before rendering and resets colors afterward. `--plain` uses full blocks with the
+terminal's current foreground/background colors, so its contrast depends on the
+theme. The CLI detects a terminal too narrow for the code instead of wrapping it.
+Widen it or deliberately render to a file.
 Choose `--qr` or `--json` for a creation/show command; the combination is rejected
 before resource creation.
 

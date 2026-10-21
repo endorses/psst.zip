@@ -149,9 +149,10 @@ This is required in the first complete CLI milestone, not a later presentation
 enhancement. Use the same renderer for `--qr`, resource `show` and `psst qr`.
 
 - [x] Render complete canonical Send and Receive URLs locally with Unicode
-      half-blocks, a proper quiet zone and explicit foreground/background so
-      terminal themes do not invert or obscure the code. Provide a plain block
-      fallback and detect insufficient terminal width instead of wrapping a code.
+      half-blocks, a proper quiet zone and explicit RGB black/white on truecolor
+      terminals, avoiding configurable ANSI palette slots. Reset inherited text
+      styles per row. Provide a plain block fallback using terminal colors and
+      detect insufficient terminal width instead of wrapping a code.
 - [x] Display the complete share URL alongside interactive QR output. Missing local
       Send keys must produce a useful error, not a QR containing an incomplete URL.
 - [x] Define and document the version-1 saved JSON schema for individual successful
