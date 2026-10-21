@@ -24,6 +24,7 @@ import (
 )
 
 const (
+	ModeAuto       Mode = "auto"
 	ModeKeyring    Mode = "keyring"
 	ModePassphrase Mode = "passphrase"
 	SchemaVersion       = 1
@@ -35,13 +36,15 @@ const (
 )
 
 var (
-	ErrNotFound    = errors.New("private state not found")
-	ErrLocked      = errors.New("private state is locked by another command")
-	ErrClosed      = errors.New("private state is closed")
-	ErrUnavailable = errors.New("credential store unavailable; explicitly configure an encrypted passphrase vault for headless use")
-	ErrUnlock      = errors.New("cannot unlock private state")
-	ErrCorrupt     = errors.New("invalid or unsupported private state")
-	ErrConflict    = errors.New("backup conflicts with existing private state")
+	ErrNotFound           = errors.New("private state not found")
+	ErrLocked             = errors.New("private state is locked by another command")
+	ErrClosed             = errors.New("private state is closed")
+	ErrUnavailable        = errors.New("OS credential store unavailable or locked")
+	ErrUnlock             = errors.New("cannot unlock private state")
+	ErrCorrupt            = errors.New("invalid or unsupported private state")
+	ErrConflict           = errors.New("backup conflicts with existing private state")
+	ErrPassphraseRequired = errors.New("private state requires its vault passphrase")
+	ErrModeMismatch       = errors.New("requested storage mode differs from existing private state")
 )
 
 type Mode string
@@ -76,6 +79,7 @@ type Config struct {
 type envelope struct {
 	SchemaVersion   int    `json:"schema_version"`
 	Mode            Mode   `json:"mode"`
+	KeyringProvider string `json:"keyring_provider,omitempty"`
 	WrappedIdentity []byte `json:"wrapped_identity,omitempty"`
 	Ciphertext      []byte `json:"ciphertext"`
 }
@@ -95,18 +99,16 @@ type Store struct {
 	work     int
 }
 
-// Open requires an explicit storage mode. It never falls back from an unavailable
-// OS credential store to a file containing plaintext secrets. Passphrase bytes
+// Open accepts an explicit mode or ModeAuto to reuse the vault's recorded mode.
+// A new automatic vault uses an OS wallet unless a passphrase was supplied.
+// It never falls back to plaintext secrets. Passphrase bytes
 // belong to the caller and can be cleared immediately after Open returns.
 func Open(c Config) (_ *Store, err error) {
-	if c.Mode != ModeKeyring && c.Mode != ModePassphrase {
-		return nil, errors.New("select keyring or passphrase private-state mode explicitly")
+	if c.Mode != ModeAuto && c.Mode != ModeKeyring && c.Mode != ModePassphrase {
+		return nil, errors.New("select auto, keyring or passphrase private-state mode explicitly")
 	}
 	if c.Mode == ModeKeyring && len(c.Passphrase) != 0 {
 		return nil, errors.New("passphrase supplied for keyring private-state mode")
-	}
-	if c.Mode == ModePassphrase && len(c.Passphrase) == 0 {
-		return nil, ErrUnlock
 	}
 	dir, err := filepath.Abs(c.Dir)
 	if err != nil || c.Dir == "" {
@@ -132,25 +134,48 @@ func Open(c Config) (_ *Store, err error) {
 		return nil, err
 	}
 	if exists {
-		if err = decode(data, &s.envelope); err != nil || s.envelope.SchemaVersion != SchemaVersion || s.envelope.Mode != c.Mode || len(s.envelope.Ciphertext) == 0 {
+		if err = decode(data, &s.envelope); err != nil || s.envelope.SchemaVersion != SchemaVersion || len(s.envelope.Ciphertext) == 0 || (s.envelope.Mode != ModeKeyring && s.envelope.Mode != ModePassphrase) || !validKeyringProvider(s.envelope.KeyringProvider) {
 			return nil, ErrCorrupt
 		}
+		if c.Mode != ModeAuto && s.envelope.Mode != c.Mode {
+			return nil, ErrModeMismatch
+		}
+		c.Mode = s.envelope.Mode
 	} else {
+		if c.Mode == ModeAuto {
+			c.Mode = ModeKeyring
+			if len(c.Passphrase) > 0 {
+				c.Mode = ModePassphrase
+			}
+		}
 		s.envelope = envelope{SchemaVersion: SchemaVersion, Mode: c.Mode}
 	}
+	if c.Mode == ModePassphrase && s.envelope.KeyringProvider != "" {
+		return nil, ErrCorrupt
+	}
+	if exists && c.Mode == ModePassphrase && (len(s.envelope.WrappedIdentity) == 0 || len(s.envelope.WrappedIdentity) > 8192) {
+		return nil, ErrCorrupt
+	}
+	if c.Mode == ModePassphrase && len(c.Passphrase) == 0 {
+		return nil, ErrPassphraseRequired
+	}
+	if c.Mode == ModeKeyring && len(c.Passphrase) > 0 {
+		return nil, ErrModeMismatch
+	}
+	providerChanged := false
 	if c.Mode == ModeKeyring {
 		if len(s.envelope.WrappedIdentity) != 0 {
 			return nil, ErrCorrupt
 		}
 		provider := c.Keyring
 		if provider == nil {
-			provider = OSKeyring{NonInteractive: c.NonInteractive}
+			provider = &OSKeyring{NonInteractive: c.NonInteractive, Provider: s.envelope.KeyringProvider}
 		}
 		ctx := c.Context
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, credentialTimeout(c.NonInteractive))
 		defer cancel()
 		get := func() (string, error) {
 			if err := ctx.Err(); err != nil {
@@ -199,6 +224,14 @@ func Open(c Config) (_ *Store, err error) {
 		if err != nil {
 			return nil, ErrUnlock
 		}
+		if named, ok := provider.(interface{ ProviderName() string }); ok {
+			name := named.ProviderName()
+			if name == "" || !validKeyringProvider(name) || s.envelope.KeyringProvider != "" && s.envelope.KeyringProvider != name {
+				return nil, ErrUnavailable
+			}
+			providerChanged = s.envelope.KeyringProvider != name
+			s.envelope.KeyringProvider = name
+		}
 	} else if exists {
 		if len(s.envelope.WrappedIdentity) == 0 || len(s.envelope.WrappedIdentity) > 8192 {
 			return nil, ErrCorrupt
@@ -233,6 +266,11 @@ func Open(c Config) (_ *Store, err error) {
 		if err != nil {
 			return nil, err
 		}
+		if providerChanged {
+			if err = s.persist(s.values); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		s.values = make(map[string]json.RawMessage)
 		if err = s.persist(s.values); err != nil {
@@ -240,6 +278,27 @@ func Open(c Config) (_ *Store, err error) {
 		}
 	}
 	return s, nil
+}
+
+// Info exposes only storage metadata, never the master identity or records.
+type Info struct {
+	Mode     Mode   `json:"mode"`
+	Provider string `json:"provider,omitempty"`
+}
+
+func (s *Store) Info() Info {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return Info{Mode: s.envelope.Mode, Provider: s.envelope.KeyringProvider}
+}
+
+func validKeyringProvider(name string) bool {
+	switch name {
+	case "", "secret-service", "keychain", "credential-manager":
+		return true
+	default:
+		return false
+	}
 }
 
 func accountForDirectory(dir string) string {

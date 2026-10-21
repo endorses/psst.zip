@@ -46,7 +46,7 @@ func (a *App) accountClient(ctx context.Context, o options, v *state.Store) (*cl
 		return nil, scopedStore{}, authRequired("This profile is signed out. Sign in again; locally held decryption keys remain available.")
 	}
 	if !p.Session.ExpiresAt.After(time.Now()) {
-		return nil, scopedStore{}, authRequired("The device session expired. Sign in again; device sessions currently last 30 days.")
+		return nil, scopedStore{}, authRequired("The saved session expired. Run psst auth login to sign in again; local decryption keys remain available. Device sessions last 30 days.")
 	}
 	c, e := client.New(p.Origin, a.HTTP, func(context.Context) (string, error) { return p.Session.Token, nil })
 	if e != nil {
@@ -64,6 +64,7 @@ func (a *App) authCommand(ctx context.Context, o options, v *state.Store, sub st
 		}
 		if sub == "logout" {
 			if p.Session != nil {
+				p.Username = p.Session.User.Username
 				c, e := client.New(p.Origin, a.HTTP, nil)
 				if e != nil {
 					return nil, e
@@ -89,12 +90,17 @@ func (a *App) authCommand(ctx context.Context, o options, v *state.Store, sub st
 		if u.ID != p.Owner {
 			return nil, client.ErrProtocol
 		}
-		return map[string]any{"profile": o.profile, "origin": p.Origin, "user": u, "expires_at": p.Session.ExpiresAt, "session_id": p.Session.SessionID, "authenticated": true}, nil
+		return map[string]any{"profile": o.profile, "origin": p.Origin, "user": u, "expires_at": p.Session.ExpiresAt, "session_id": p.Session.SessionID, "authenticated": true, "storage": v.Info()}, nil
 	}
 	var c *client.Client
 	var session protocol.Session
 	var e error
 	if sub == "login" {
+		server, username, err := loginDefaults(v, o.profile, o.server, *user)
+		if err != nil {
+			return nil, err
+		}
+		o.server, *user = server, username
 		c, e = client.New(o.server, a.HTTP, nil)
 		if e != nil {
 			return nil, usage("Login requires a valid server origin.")
@@ -140,14 +146,47 @@ func (a *App) authCommand(ctx context.Context, o options, v *state.Store, sub st
 	if e != nil {
 		return nil, e
 	}
-	p := profile{Origin: c.Origin(), Owner: session.User.ID, Session: &session}
+	p := profile{Origin: c.Origin(), Owner: session.User.ID, Username: session.User.Username, Session: &session}
 	if e = v.Put("profiles/"+o.profile, p); e != nil {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = c.WithToken(session.Token).Logout(cleanup)
 		return nil, storageFailure("The new session could not be saved; login was not completed.")
 	}
-	return map[string]any{"profile": o.profile, "origin": p.Origin, "user": session.User, "expires_at": session.ExpiresAt, "authenticated": true}, nil
+	return map[string]any{"profile": o.profile, "origin": p.Origin, "user": session.User, "expires_at": session.ExpiresAt, "authenticated": true, "storage": v.Info()}, nil
+}
+
+func loginDefaults(v *state.Store, name, server, username string) (string, string, error) {
+	if server != "" && username != "" {
+		return server, username, nil
+	}
+	p, err := loadProfile(v, name)
+	if err != nil {
+		var failure *Failure
+		if errors.As(err, &failure) && failure.Code == "authentication_required" {
+			return "", "", usage("First login requires --server ORIGIN and --username NAME.")
+		}
+		return "", "", err
+	}
+	if server == "" {
+		server = p.Origin
+	} else {
+		origin, err := protocol.NormalizeOrigin(server)
+		if err != nil || origin != p.Origin {
+			return "", "", usage("A different server requires an explicit --username; saved login details stay bound to their original server.")
+		}
+		server = origin
+	}
+	if username == "" {
+		username = p.Username
+		if username == "" && p.Session != nil {
+			username = p.Session.User.Username
+		}
+	}
+	if username == "" {
+		return "", "", usage("Login requires --username NAME for this profile.")
+	}
+	return server, username, nil
 }
 
 func (a *App) vaultCommand(ctx context.Context, o options, v *state.Store, sub string, output, input *string, backupFD int) (any, error) {

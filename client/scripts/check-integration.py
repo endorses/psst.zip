@@ -337,8 +337,6 @@ class CLI:
                     "10s",
                     "--state-dir",
                     str(self.directory / "vault"),
-                    "--vault-mode",
-                    "passphrase",
                     "--vault-passphrase-fd",
                     str(read_fd),
                     *args,

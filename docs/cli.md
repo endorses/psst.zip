@@ -30,7 +30,8 @@ For an interactive desktop with a working OS credential store:
 
 ```sh
 psst auth login --server https://files.example --username alice
-psst auth status --json
+psst auth status
+psst send report.pdf --qr
 ```
 
 The password is entered privately with terminal echo disabled. The CLI validates
@@ -40,17 +41,34 @@ select a hosted service. HTTPS uses normal certificate verification; there is no
 certificate-bypass option. LAN HTTP is supported, but it exposes account
 credentials and traffic to that network and does not authenticate browser code.
 
+After the first login, commands reuse the saved account token, server and local
+keys. When the 30-day session expires, `psst auth login` reuses this profile's
+server and username and asks for the account password again.
+
 The default encrypted vault is under the user's configuration directory at
 `psst.zip/cli/` (`--state-dir DIR` overrides it). Its random encryption identity is
 protected by macOS Keychain, Windows Credential Manager or Linux Secret Service.
-The CLI refuses to silently substitute a plaintext file if that provider is
-unavailable. The state directory must be private to the current user. Do not
+Storage selection defaults to `auto`: an existing vault remembers its mode and
+provider; a new vault uses the desktop wallet. The CLI refuses to silently
+substitute plaintext storage if that provider is unavailable. An explicit
+`--vault-mode` that conflicts with existing storage produces an error rather than
+replacing its keys. The state directory must be private to the current user. Do not
 delete its lock file to recover an interrupted command: the operating system
 releases the process lock when the process exits.
 
-Linux accesses only an already-unlocked Secret Service collection and never
-starts an unlock dialog. On macOS the system `security` command cannot reliably
-suppress Keychain UI, so JSON/headless commands require an explicitly configured
+Interactive Linux commands can activate the desktop wallet and display its
+normal unlock dialog when needed. KWallet is supported through its Secret Service
+interface. Once the wallet is unlocked, subsequent commands reuse it without a
+separate CLI vault password. The wallet's own lock policy still applies.
+
+JSON, explicitly noninteractive and non-TTY commands never activate a desktop
+wallet or open a dialog; Linux can reuse an already running, unlocked Secret
+Service collection. Unlock it first using an interactive command if necessary.
+Legacy native KWallet APIs without Secret Service are unsupported because they
+cannot guarantee prompt-free, create-only credential storage.
+
+On macOS the system `security` command cannot reliably suppress Keychain UI, so
+JSON/headless commands require an explicitly configured
 passphrase vault. An encrypted backup can move logical records from an interactive
 Keychain vault into a fresh passphrase vault. Windows Credential Manager calls
 are noninteractive; native OS-call latency is outside Go context cancellation.
@@ -61,14 +79,14 @@ is available:
 
 ```sh
 psst auth login --server https://files.example --username alice --vault-mode passphrase
-psst auth status --vault-mode passphrase
+psst auth status
 ```
 
 On first use, choose and confirm a new local vault passphrase; the account
-password prompt then takes your existing server password. Include
-`--vault-mode passphrase` on subsequent commands that access this vault. JSON and
-noninteractive commands additionally require a private passphrase descriptor,
-as shown in the automation examples below.
+password prompt then takes your existing server password. Subsequent commands
+remember passphrase mode without repeating `--vault-mode`; they still need the
+local vault passphrase. JSON and noninteractive commands require a private
+passphrase descriptor, as shown in the automation examples below.
 
 `--profile NAME` selects an account profile. Resource keys and journals are scoped
 by normalized origin and account identity. Signing into another account does not

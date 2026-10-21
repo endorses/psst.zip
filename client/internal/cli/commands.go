@@ -19,7 +19,7 @@ import (
 const help = `psst — encrypted file sharing with an operator-selected psst.zip server
 Project: https://psst.zip
 
-  auth login --server ORIGIN --username NAME [--password-stdin]
+  auth login [--server ORIGIN --username NAME] [--password-stdin]
   auth pair --json-file FILE|-       redeem a private web pairing document
   auth status | auth logout
   send FILE... [--expires 24h] [--max-downloads N] [--qr | --json]
@@ -38,12 +38,14 @@ Project: https://psst.zip
 
 Common flags (before or after the command):
   --json --non-interactive --timeout 10m --profile NAME --state-dir DIR
-  --vault-mode keyring|passphrase --vault-passphrase-fd N
+  --vault-mode auto|keyring|passphrase --vault-passphrase-fd N
   --server ORIGIN (login or guest upload resume; never overrides an account)
 
 Links may be supplied using --link-stdin or --link-file FILE. Credentials never
-belong in command arguments. Headless jobs must explicitly configure a passphrase
-vault and private descriptors (N >= 3). Login uses a regular account, not admin.
+belong in command arguments. Storage defaults to the remembered setting; new
+vaults use the desktop wallet. Passphrase vaults need private descriptors (N >= 3)
+for JSON/headless commands. Login uses a regular account, not admin. First login
+requires --server and --username; later logins reuse this profile's saved values.
 Share JSON and QR codes contain the same capabilities as their complete links.
 Send keys and Receive private keys stay encrypted locally. Pairing/login does not
 recover private keys from another device. Sessions currently expire after 30 days.
@@ -51,9 +53,10 @@ See docs/cli.md for schemas, exit codes, backup/recovery and automation examples
 `
 
 type profile struct {
-	Origin  string            `json:"origin"`
-	Owner   string            `json:"owner"`
-	Session *protocol.Session `json:"session,omitempty"`
+	Origin   string            `json:"origin"`
+	Owner    string            `json:"owner"`
+	Username string            `json:"username,omitempty"`
+	Session  *protocol.Session `json:"session,omitempty"`
 }
 
 type scopedStore struct {
@@ -270,9 +273,6 @@ func (a *App) onlineCommand(ctx context.Context, o options, args []string) (any,
 	}
 	if command == "upload" && *resume == "" && f.NArg() == 0 {
 		return nil, usage("Select files to upload.")
-	}
-	if command == "auth" && sub == "login" && (*user == "" || o.server == "") {
-		return nil, usage("Login requires --server ORIGIN and --username NAME.")
 	}
 	if command == "auth" && sub == "pair" && *jsonFile == "" {
 		return nil, usage("Pairing requires --json-file FILE|-.")

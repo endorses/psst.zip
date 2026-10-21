@@ -74,7 +74,7 @@ func commonFlags(f *flag.FlagSet, o *options) {
 	f.StringVar(&o.profile, "profile", "default", "local account profile")
 	f.StringVar(&o.server, "server", "", "operator-selected server origin")
 	f.StringVar(&o.dir, "state-dir", "", "private local state directory")
-	f.StringVar(&o.mode, "vault-mode", "keyring", "keyring or passphrase (explicit headless vault)")
+	f.StringVar(&o.mode, "vault-mode", "auto", "remembered storage mode; auto, keyring or passphrase")
 	f.IntVar(&o.passFD, "vault-passphrase-fd", -1, "read vault passphrase from a private file descriptor")
 	f.DurationVar(&o.timeout, "timeout", 10*time.Minute, "whole-command deadline")
 }
@@ -115,8 +115,11 @@ func parseCommon(args []string) (options, []string, error) {
 	if o.timeout <= 0 || o.profile == "" || len(o.profile) > 100 || strings.ContainsAny(o.profile, "/\\\r\n\x00") {
 		return o, nil, usage("Use a positive timeout and a simple nonempty profile name.")
 	}
-	if o.mode != "keyring" && o.mode != "passphrase" || o.passFD >= 0 && o.passFD < 3 {
-		return o, nil, usage("Select keyring or passphrase vault mode; private descriptors must be 3 or greater.")
+	if !oneOf(o.mode, "auto", "keyring", "passphrase") || o.passFD >= 0 && o.passFD < 3 {
+		return o, nil, usage("Select auto, keyring or passphrase vault mode; private descriptors must be 3 or greater.")
+	}
+	if o.mode == "keyring" && o.passFD >= 0 {
+		return o, nil, usage("Use auto or passphrase mode with a private vault passphrase descriptor.")
 	}
 	return o, rest, nil
 }
@@ -244,6 +247,12 @@ func classify(err error) *Failure {
 	if errors.Is(err, state.ErrUnlock) {
 		return storageFailure("Could not unlock the encrypted vault or backup with the supplied private credential.")
 	}
+	if errors.Is(err, state.ErrPassphraseRequired) {
+		return storageFailure("This vault uses a passphrase. Supply --vault-passphrase-fd for noninteractive commands.")
+	}
+	if errors.Is(err, state.ErrModeMismatch) {
+		return storageFailure("This vault uses a different storage mode. Omit --vault-mode to reuse its saved setting; use a separate --state-dir for a new vault.")
+	}
 	if errors.Is(err, state.ErrCorrupt) || errors.Is(err, state.ErrConflict) {
 		return storageFailure("Private state is invalid, unsupported, or conflicts with the backup; existing keys were retained.")
 	}
@@ -353,7 +362,7 @@ func (a *App) openVault(ctx context.Context, o options) (*state.Store, error) {
 	}
 	var pass []byte
 	var err error
-	if o.mode == "passphrase" {
+	if o.mode == "passphrase" || o.passFD >= 0 {
 		pass, err = a.secret(ctx, o, o.passFD, "Vault passphrase: ")
 		if err != nil {
 			return nil, err
@@ -372,10 +381,31 @@ func (a *App) openVault(ctx context.Context, o options) (*state.Store, error) {
 				}
 			}
 		}
-	} else if o.passFD >= 0 {
-		return nil, usage("Select --vault-mode passphrase when supplying a vault passphrase.")
 	}
-	return a.OpenState(state.Config{Dir: dir, Mode: state.Mode(o.mode), Passphrase: pass, Context: ctx, LockTimeout: 3 * time.Second, NonInteractive: o.json || o.noninteractive})
+	input, isFile := a.In.(*os.File)
+	interactive := isFile && term.IsTerminal(int(input.Fd()))
+	config := state.Config{Dir: dir, Mode: state.Mode(o.mode), Passphrase: pass, Context: ctx, LockTimeout: 3 * time.Second, NonInteractive: o.json || o.noninteractive || !interactive}
+	open := func(config state.Config) (*state.Store, error) {
+		vault, err := a.OpenState(config)
+		if err != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return vault, err
+	}
+	vault, err := open(config)
+	if errors.Is(err, state.ErrPassphraseRequired) && o.mode == "auto" && o.passFD < 0 {
+		if config.NonInteractive {
+			return nil, usage("This vault remembers passphrase storage. Supply --vault-passphrase-fd for JSON/noninteractive commands.")
+		}
+		pass, err = a.secret(ctx, o, -1, "Vault passphrase: ")
+		if err != nil {
+			return nil, err
+		}
+		defer clear(pass)
+		config.Mode, config.Passphrase = state.ModePassphrase, pass
+		return open(config)
+	}
+	return vault, err
 }
 
 // A stuck credential provider or an unclosed stdin pipe cannot defeat the
