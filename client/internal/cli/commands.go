@@ -16,42 +16,6 @@ import (
 	"github.com/endorses/psst.zip/client/protocol"
 )
 
-const help = `psst — encrypted file sharing with an operator-selected psst.zip server
-Project: https://psst.zip
-
-  auth login [--server ORIGIN --username NAME] [--password-stdin]
-  auth pair --json-file FILE|-       redeem a private web pairing document
-  auth status | auth logout
-  send FILE... [--expires 24h] [--max-downloads N] [--qr | --json]
-  send --resume OPERATION_ID         resume persisted encrypted uploads
-  fetch --link-stdin --output-dir DIR
-  upload FILE... --link-file FILE|-  submit files to a Receive invitation
-  upload --resume OPERATION_ID --server ORIGIN
-  receive create [--expires 24h] [--max-files N] [--qr | --json]
-  receive list | receive show ID [--qr] | receive revoke ID
-  receive fetch ID --output-dir DIR
-  transfers list | transfers show ID [--qr] | transfers revoke ID
-  qr --json-file FILE|- [--plain]    offline QR from saved CLI Send/Receive JSON
-  vault backup --output FILE --backup-passphrase-fd N
-  vault restore --input FILE --backup-passphrase-fd N
-  --version | help
-
-Common flags (before or after the command):
-  --json --non-interactive --timeout 10m --profile NAME --state-dir DIR
-  --vault-mode auto|keyring|passphrase --vault-passphrase-fd N
-  --server ORIGIN (login or guest upload resume; never overrides an account)
-
-Links may be supplied using --link-stdin or --link-file FILE. Credentials never
-belong in command arguments. Storage defaults to the remembered setting; new
-vaults use the desktop wallet. Passphrase vaults need private descriptors (N >= 3)
-for JSON/headless commands. Login uses a regular account, not admin. First login
-requires --server and --username; later logins reuse this profile's saved values.
-Share JSON and QR codes contain the same capabilities as their complete links.
-Send keys and Receive private keys stay encrypted locally. Pairing/login does not
-recover private keys from another device. Sessions currently expire after 30 days.
-See docs/cli.md for schemas, exit codes, backup/recovery and automation examples.
-`
-
 type profile struct {
 	Origin   string            `json:"origin"`
 	Owner    string            `json:"owner"`
@@ -88,6 +52,7 @@ func scope(v *state.Store, origin, owner string) (scopedStore, error) {
 
 func (a *App) execute(ctx context.Context, o options, args []string) (any, error) {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" || args[len(args)-1] == "--help" || args[len(args)-1] == "-h" {
+		help := helpText()
 		if o.json {
 			return map[string]any{"help": help}, nil
 		}
