@@ -61,10 +61,13 @@ was running during the initial availability check; Secret Service was not
 activatable. No CLI vault existed, and no credential values were inspected.
 
 Activating `org.kde.kwalletd6` exposed `org.freedesktop.secrets`; its default
-collection exists and is locked. No real wallet entry was read or created. The
-first real login must privately unlock the wallet through its normal desktop
-prompt; that graphical interaction and real credential persistence remain unrun.
-The wallet's lock policy still applies after login.
+collection exists and was locked at the initial check. Automated checks did not
+read or create any real wallet entry. The user subsequently completed a real
+interactive account login: the CLI reported authenticated keyring storage through
+`secret-service`, and later resource commands successfully reused that saved
+session. Real Linux credential persistence/reuse is therefore user-verified; the
+specific desktop unlock-dialog interaction was not observed by the agent. The
+wallet's lock policy still applies after login.
 
 Go vet and the complete affected state/CLI race suites passed (1.285s and 1.077s).
 The Unix adapter tests use disposable DBus services, including early prompt
@@ -87,7 +90,7 @@ and mobile wire formats remain unchanged.
 One independent bounded review found no material issues in mode/TTY selection,
 origin-bound renewal, existing-master preservation, authenticated metadata
 migration, prompt lifecycle and cancellation. Outcome: **CLOSED_WITH_DEFERRALS**
-for the named external native/graphical checks; no further discovery or test
+for the remaining native/graphical checks; no further discovery or test
 campaign is needed for this scope. The repository's staged security/format checks
 passed at local commit. `client/psst` was rebuilt and its version/help checked;
 the binary is ignored by Git. Task-owned temporary files were removed, and both

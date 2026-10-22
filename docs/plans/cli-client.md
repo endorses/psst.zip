@@ -420,8 +420,11 @@ No CLI release, tag, GitHub push or production deployment has been performed.
       and exercise the interactive Keychain provider with a disposable vault;
       headless/JSON checks must use the explicit passphrase mode.
       macOS JSON/headless use deliberately requires the encrypted passphrase vault
-      because `security` cannot reliably suppress UI. Linux never asks Secret
-      Service to unlock a collection. Windows native credential syscalls have no
+      because `security` cannot reliably suppress UI. Interactive Linux commands
+      can activate/unlock Secret Service, including KWallet's facade; JSON,
+      noninteractive and non-TTY commands never activate or unlock it. The user
+      verified a real Linux wallet-backed login and saved-session reuse after the
+      credential UX follow-up. Windows native credential syscalls have no
       cancellation handle and are checked before/after, not run asynchronously.
 - [ ] Perform physical Android/iOS scans and any remaining native app/extension
       validation when those environments are available. No mobile implementation
