@@ -16,3 +16,18 @@ regexTarget = "match"
 regexes = [
   '''^AllowedAPKSigningKeys: 6f10e624c6f577544bd01928b33d834ad5434e54363313617e30fe2dfa835b15$''',
 ]
+
+# Exact public Receive-v2 vectors copied from the already-reviewed shared fixture.
+# Both the field/value and module-local path must match; other values still scan.
+[[allowlists]]
+description = "Public cross-provider Receive-v2 interoperability vector"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^client/internal/crypto/testdata/hpke-receive-v2\.json$''']
+regexTarget = "match"
+regexes = [
+  '''^private_key": "800b738fe78a510a85b0676e7c5ef9a8596f848f52251c9633379f138107e71e"$''',
+  '''^wrapped_key": "a3a375312ae04c4d5c270f1d6007fb891e725a3336a887b3e63bccce4fb17e0742a47d44e4a4acbba159af5fea9dc8c51ac4faa2ccfb50afda148eee203512a5cfbbf2a2637e0ff4103da7770db56ff2"$''',
+  '''^tink_wrapped_key": "a6a9d3d11ea2ce2ea971f277d290f85c91584fbfda1785ee8fbfd9ff8ed44c46c2b09c81cd5942335b03a9fc5dfa02ee53e87dfdfca6536f440bea69b1392f0534a21e30dfa00c0db5fff3d16fd39752"$''',
+  '''^swift_wrapped_key": "33d56dbdbbdc495e4c9f590e36556f8e116bca1aa2e6148fd5e0371088bbd62231979d7cec3544f7d6c8bd717c7e998bea499e78e03280004c9356ab4763256bd68fb7cf349cfd4de5ab958399180a53"$''',
+]

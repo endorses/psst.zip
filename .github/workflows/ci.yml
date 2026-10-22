@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      cli_only:
+        description: Run repository security and the CLI compatibility checks only
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       full_validation:
@@ -12,7 +17,11 @@ on:
         type: boolean
         default: true
       container_release:
-        description: Validate server containers without running mobile application jobs
+        description: Validate server containers without running mobile or CLI jobs
+        type: boolean
+        default: false
+      cli_only:
+        description: Run repository security and the CLI compatibility checks only
         type: boolean
         default: false
 
@@ -34,7 +43,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache: false
 
       - name: Install pinned secret scanner
@@ -69,6 +78,7 @@ jobs:
         run: |
           cmp LICENSE backend/licenses/AGPL-3.0-only.txt
           cmp LICENSE web/static/licenses/AGPL-3.0-only.txt
+          cmp LICENSE client/LICENSE
 
       - name: Check native notice inputs and archive boundaries
         run: |
@@ -82,6 +92,7 @@ jobs:
 
   backend:
     name: Backend
+    if: ${{ !inputs.cli_only }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     defaults:
@@ -102,7 +113,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.scope.outputs.run == 'true'
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache-dependency-path: backend/go.sum
 
       - name: Lint
@@ -130,6 +141,7 @@ jobs:
 
   web:
     name: Web
+    if: ${{ !inputs.cli_only }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     defaults:
@@ -150,7 +162,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "26.11.1"
+          node-version: "26.12.0"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -165,7 +177,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.scope.outputs.run == 'true'
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
           cache-dependency-path: backend/go.sum
 
       - name: Type check
@@ -209,9 +221,92 @@ jobs:
             --root . --output-directory build --version dev \
             --revision "$GITHUB_SHA" --output "$proof_dir/measurement.json"
 
+  cli:
+    name: Go client and CLI
+    if: ${{ !inputs.container_release }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select affected application checks
+        id: scope
+        env:
+          FULL_VALIDATION: ${{ inputs.cli_only || inputs.full_validation || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: python3 "$GITHUB_WORKSPACE/tools/select_ci_checks.py" --job cli --force-full "$FULL_VALIDATION" --github-output "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: |
+            client/go.sum
+            backend/go.sum
+
+      - name: Vet Go client
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          started=$SECONDS
+          go vet ./...
+          printf 'CLI vet: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check resolved CLI dependency notices
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          started=$SECONDS
+          python3 scripts/generate-notices.py --output "$RUNNER_TEMP/cli-notices"
+          printf 'CLI dependency notice inventory: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Client and CLI race tests
+        if: steps.scope.outputs.run == 'true'
+        # Vet runs separately; do not repeat it or the test suite in packaging.
+        run: |
+          started=$SECONDS
+          go test -vet=off -race -timeout 2m ./...
+          printf 'CLI race tests: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build and smoke-test CLI executable once
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          started=$SECONDS
+          go build -trimpath -o "$RUNNER_TEMP/psst" ./cmd/psst
+          "$RUNNER_TEMP/psst" --version
+          printf 'CLI build and version smoke: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: "26.12.0"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install browser crypto providers for interoperability only
+        if: steps.scope.outputs.run == 'true'
+        working-directory: web
+        run: |
+          started=$SECONDS
+          npm ci --ignore-scripts
+          printf 'CLI interoperability dependencies: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Disposable backend and browser crypto interoperability
+        if: steps.scope.outputs.run == 'true'
+        timeout-minutes: 2
+        working-directory: .
+        # One compact compatibility scenario; no browser/mobile suites here.
+        run: |
+          started=$SECONDS
+          python3 client/scripts/check-integration.py --binary "$RUNNER_TEMP/psst"
+          printf 'CLI interoperability: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
+
   android:
     name: Android and shared module
-    if: ${{ !inputs.container_release }}
+    if: ${{ !inputs.container_release && !inputs.cli_only }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
@@ -253,7 +348,7 @@ jobs:
 
   ios:
     name: Native iOS app, extension and XCTest
-    if: ${{ !inputs.container_release }}
+    if: ${{ !inputs.container_release && !inputs.cli_only }}
     runs-on: xcode-27
     timeout-minutes: 25
     env:

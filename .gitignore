@@ -1,6 +1,8 @@
 # Go
 backend/tmp/
 backend/data/
+/client/psst
+/client/psst.exe
 
 # Node
 web/node_modules/
