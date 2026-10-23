@@ -301,7 +301,7 @@ class CorrespondingSource(unittest.TestCase):
 
     def test_complete_join_retains_exact_category_evidence_without_publication(self):
         report, evidence = self.produce()
-        source_review_details(report["details"], self.binding, distribution=False)
+        source_review_details(report["details"], self.binding)
         self.assertTrue(report["passed"])
         self.assertFalse(evidence["publication_authorized"])
         self.assertFalse(evidence["byte_reproduction_verified"])

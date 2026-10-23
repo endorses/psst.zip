@@ -356,12 +356,15 @@ class RecoveryGateChecks(unittest.TestCase):
     def test_complete_retained_native_records_derive_exact_contract_without_replay(
         self,
     ):
-        with patch.object(
-            recovery, "validate_inputs", side_effect=AssertionError("replay")
-        ), patch.object(
-            recovery.integration,
-            "execute_experiment",
-            side_effect=AssertionError("Docker"),
+        with (
+            patch.object(
+                recovery, "validate_inputs", side_effect=AssertionError("replay")
+            ),
+            patch.object(
+                recovery.integration,
+                "execute_experiment",
+                side_effect=AssertionError("Docker"),
+            ),
         ):
             result = self.aggregate()
         self.assertEqual(len(self.authenticator.calls), 2)
@@ -475,35 +478,6 @@ class RecoveryGateChecks(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "changed during"):
             self.aggregate()
 
-    def test_verify_only_authenticates_canonical_gate_without_replay(self):
-        report = self.aggregate()
-        output = self.folder / "upgrade-recovery.json"
-        output.write_bytes(json_bytes(report))
-        authenticator = ExactAttemptAuthenticator(self.binding, [output.read_bytes()])
-        with patch.object(
-            aggregation, "aggregate_recovery", side_effect=AssertionError("replay")
-        ):
-            self.assertEqual(
-                aggregation.verify_output(output, self.binding, authenticator), report
-            )
-        for mutate in (
-            lambda r: r.update(binding_digest=digest("f")),
-            lambda r: r["details"]["native_measurements"].pop(PLATFORMS[1]),
-            lambda r: r["details"].update(checks=aggregation.CHECKS[:-1]),
-        ):
-            value = copy.deepcopy(report)
-            mutate(value)
-            output.write_bytes(json_bytes(value))
-            authenticator = ExactAttemptAuthenticator(
-                self.binding, [output.read_bytes()]
-            )
-            with self.assertRaises(InvalidRelease):
-                aggregation.verify_output(output, self.binding, authenticator)
-        output.write_bytes(json.dumps(report).encode())
-        authenticator = ExactAttemptAuthenticator(self.binding, [output.read_bytes()])
-        with self.assertRaisesRegex(InvalidRelease, "noncanonical"):
-            aggregation.verify_output(output, self.binding, authenticator)
-
     def small_command_fixture(self):
         prepared = self.folder / "prepared"
         prepared.mkdir()
@@ -602,27 +576,19 @@ class RecoveryGateChecks(unittest.TestCase):
         self,
     ):
         args, auth = self.small_command_fixture()
-        with patch.object(
-            aggregation, "GhEvidenceVerifier", return_value=auth
-        ) as verifier, patch(
-            "generate_corresponding_source_review.command_inputs",
-            side_effect=AssertionError("full replay"),
+        with (
+            patch.object(
+                aggregation, "GhEvidenceVerifier", return_value=auth
+            ) as verifier,
+            patch(
+                "generate_corresponding_source_review.command_inputs",
+                side_effect=AssertionError("full replay"),
+            ),
         ):
             report = aggregation.run_command(args)
             verifier.assert_called_once_with(token=None, run_id=123, run_attempt=2)
         self.assertEqual(len(auth.calls), 3)
         self.assertEqual(args.output.read_bytes(), json_bytes(report))
-        auth.records.add(sha256(args.output.read_bytes()))
-        args.verify_only = True
-        with patch.object(
-            aggregation, "GhEvidenceVerifier", return_value=auth
-        ), patch.object(
-            aggregation,
-            "aggregate_recovery",
-            side_effect=AssertionError("repeat experiments"),
-        ):
-            self.assertEqual(aggregation.run_command(args), report)
-        args.verify_only = False
         with self.assertRaisesRegex(InvalidRelease, "already exists"):
             aggregation.run_command(args)
 
@@ -966,6 +932,58 @@ class AuthenticatedRecoveryInputs(unittest.TestCase):
             root=self.root,
         )
 
+    def test_one_canonical_source_result_drives_native_recovery_projection(self):
+        import publish_container_release as publication
+
+        source = json.loads(self.source_report.read_bytes())["details"]
+        smoke = json.loads(self.smoke_report.read_bytes())["details"]
+        checks = {gate: {} for gate in publication.GATES - {"upgrade-recovery"}}
+        checks.update(
+            {
+                "corresponding-source": source,
+                "final-image-smoke": smoke,
+                "source-ci": {"run_id": 123, "run_attempt": 2},
+            }
+        )
+        result = {
+            "schema_version": 1,
+            "kind": "container-release-result",
+            "repository": self.binding.repository,
+            "version": self.binding.version,
+            "commit": self.binding.commit,
+            "binding_digest": self.binding.digest,
+            "subjects": dict(self.binding.subjects),
+            "run_id": 123,
+            "attempt": 2,
+            "checks": checks,
+            "inputs": {"corresponding-source-replay": {"sha256": digest("e")}},
+            "platforms": {
+                p: {"execution": "native", "checks": ["final-image-smoke"]}
+                for p in PLATFORMS
+            },
+        }
+        self.source_report.write_bytes(json_bytes(result))
+        self.smoke_report = self.source_report
+        self.trusted = {sha256(self.source_report.read_bytes())}
+
+        def verify(gate, path, binding):
+            require(
+                binding == self.binding and sha256(path.read_bytes()) in self.trusted,
+                "No exact-attempt authenticated evidence",
+            )
+            return VerifiedEvidence(
+                gate,
+                binding.digest,
+                sha256(path.read_bytes()),
+                True,
+                result["checks"][gate],
+            )
+
+        with patch.object(self, "verify", side_effect=verify):
+            observed = self.validate()
+            self.assertEqual(observed.images, self.images)
+            observed.unchanged()
+
     def test_projection_uses_signed_other_platform_facts_and_selected_real_bytes(self):
         inputs = self.validate()
         self.assertEqual(self.calls, ["corresponding-source", "final-image-smoke"])
@@ -1026,16 +1044,19 @@ class AuthenticatedRecoveryInputs(unittest.TestCase):
             {"source_report": self.source_report, "smoke_report": self.smoke_report},
             {"verifier": self},
         ):
-            with self.subTest(arguments=tuple(arguments)), patch.object(
-                recovery, "native_platform", return_value=PLATFORMS[1]
-            ), patch.object(
-                recovery,
-                "validate_inputs",
-                side_effect=AssertionError("unsigned replay"),
-            ), patch.object(
-                recovery,
-                "validate_authenticated_inputs",
-                side_effect=AssertionError("partial signed replay"),
+            with (
+                self.subTest(arguments=tuple(arguments)),
+                patch.object(recovery, "native_platform", return_value=PLATFORMS[1]),
+                patch.object(
+                    recovery,
+                    "validate_inputs",
+                    side_effect=AssertionError("unsigned replay"),
+                ),
+                patch.object(
+                    recovery,
+                    "validate_authenticated_inputs",
+                    side_effect=AssertionError("partial signed replay"),
+                ),
             ):
                 execute = unittest.mock.Mock(
                     side_effect=AssertionError("Docker execution")

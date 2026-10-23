@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import unittest
 from unittest.mock import patch
 
-import generate_distribution_review as distribution
+import container_release_policy as distribution
 from measure_release_source_scans import json_stream
 import publish_container_release as publication
 import temporary_caddy_acceptance as acceptance
@@ -35,9 +35,9 @@ class TemporaryCaddyAcceptanceChecks(unittest.TestCase):
         self.addCleanup(self.clock.stop)
         policy = {
             "schema_version": 1,
-            "kind": "container-distribution-review-policy",
+            "kind": "container-publication-policy",
             "environment": "container-release",
-            "reviewers": ["fixture-owner"],
+            "authorized_exception_owners": ["fixture-owner"],
         }
         self.node = {
             "schema_version": 1,
@@ -204,9 +204,9 @@ class TemporaryCaddyAcceptanceChecks(unittest.TestCase):
             self.fixture.auth.trust(native_path)
             for component in ("backend", "web"):
                 target = component + "-" + platform.split("/")[1]
-                self.fixture.records[target][0]["source"][
-                    "commit"
-                ] = self.binding.commit
+                self.fixture.records[target][0]["source"]["commit"] = (
+                    self.binding.commit
+                )
                 graph = self.fixture.graph_records[target]
                 graph["source"]["commit"] = self.binding.commit
                 if component == "web":
@@ -270,9 +270,9 @@ class TemporaryCaddyAcceptanceChecks(unittest.TestCase):
     def test_uncommitted_policy_changes_do_not_extend_acceptance(self):
         policy_path = self.git_root / publication.SOURCE_REVIEW_POLICY
         policy = read_json(policy_path.read_bytes())
-        policy["temporary_caddy_exception"]["findings"][0][
-            "installed_version"
-        ] = "v0.60.0"
+        policy["temporary_caddy_exception"]["findings"][0]["installed_version"] = (
+            "v0.60.0"
+        )
         policy_path.write_bytes(json_bytes(policy))
         report = self.aggregate()
         self.assertEqual(
@@ -378,9 +378,9 @@ class TemporaryCaddyAcceptanceChecks(unittest.TestCase):
         # it still must not inherit this exact binary's risk acceptance.
         different_binary = "sha256:" + "0" * 64
         graph["binary"]["sha256"] = different_binary
-        graph["binary"]["correspondence"][
-            "executable_archive_member_sha256"
-        ] = different_binary
+        graph["binary"]["correspondence"]["executable_archive_member_sha256"] = (
+            different_binary
+        )
         pack_path = self.fixture.native.packs["linux/amd64"] / "runtime-pack.json"
         pack = read_json(pack_path.read_bytes())
         pack["bindings"]["web"]["binary_sha256"] = different_binary[7:]

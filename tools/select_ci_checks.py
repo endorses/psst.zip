@@ -35,18 +35,18 @@ SECURITY_ONLY_TOOLS = frozenset(
         "container-distribution-policy.json",
         "final_image_notice_inventory.py",
         "generate_corresponding_source_review.py",
-        "generate_distribution_review.py",
+        "container_release_policy.py",
         "measure_native_browser_inputs.py",
         "package_application_dependencies.py",
         "package_runtime_sources.py",
         "package_upstream_application_sources.py",
         "prepare_candidate_transfer.py",
         "prepare_native_release.py",
-        "prepare_publication_inputs.py",
         "publication_diagnostics.py",
         "publish_container_release.py",
         "publish_verified_release.py",
         "release_artifacts.py",
+        "release_result.py",
         "request_production_deployment.py",
         "sqlite_vendoring.py",
         "sqlite_vendoring.go",
@@ -59,7 +59,6 @@ SECURITY_ONLY_TOOLS = frozenset(
         "test_android_update.py",
         "test_external_proxy.py",
         "test_native_browser_inputs.py",
-        "test_native_notices.py",
         "test_native_release_preparation.py",
         "test_repository_checks.py",
         "test_source_bidi.py",
@@ -94,6 +93,19 @@ class Selection:
 
 
 def classify_path(path: str) -> frozenset[str]:
+    if path.startswith("tools/release/"):
+        if path.startswith(
+            (
+                "tools/release/internal/publication/",
+                "tools/release/internal/deployment/",
+                "tools/release/cmd/psst-deploy/",
+            )
+        ):
+            # Repository security always executes the development-tool tests.
+            return frozenset()
+        if path.startswith("tools/release/internal/androidrelease/"):
+            return frozenset({"android"})
+        return frozenset({"cli"})
     # Reviewed release orchestration is covered by repository security checks.
     # Tags/dispatch/full-validation still force every application check in select().
     if path in {
@@ -145,7 +157,7 @@ def classify_path(path: str) -> frozenset[str]:
     if path == "tools/android_release.py":
         # Gradle executes source-revision to embed the APK's source identity.
         return frozenset({"android"})
-    if path.startswith("shared/") or path in {"tools/generate_native_notices.py"}:
+    if path.startswith("shared/"):
         return NATIVE_JOBS
     if path.startswith("android/app/src/main/assets/licenses/"):
         return NATIVE_JOBS

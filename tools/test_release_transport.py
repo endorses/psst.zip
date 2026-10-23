@@ -326,7 +326,12 @@ class TransportChecks(unittest.TestCase):
             self.fixture.source.name: self.fixture.source,
         }
         self.reports = {
-            key: self.fixture.reports[key] for key in publication.READBACK_GATES
+            key: (
+                {"subjects": dict(self.plan.binding.subjects)}
+                if key == "provenance"
+                else {"binding": self.plan.binding.digest}
+            )
+            for key in publication.READBACK_GATES
         }
 
     def new_adapter(self, state=None, **kwargs):
@@ -380,9 +385,7 @@ class TransportChecks(unittest.TestCase):
             self.adapter.upload_assets(reservation, self.files)
             self.adapter.inspect_assets(reservation)
             self.adapter.create_version_tags(self.fixture.indexes)
-            result = self.adapter.publish(
-                reservation, self.reports, self.fixture.verifier
-            )
+            result = self.adapter.publish(reservation, self.reports)
             self.assertTrue(result["immutable"])
             public = self.adapter.verify_public(reservation)
             self.assertTrue(public["pull"]["anonymous"])
@@ -900,9 +903,9 @@ class TransportChecks(unittest.TestCase):
     def test_unverified_readback_report_cannot_publish_even_complete_draft(self):
         with publication.reserve_draft(self.plan, self.adapter) as reservation:
             self.stage_tags(reservation)
-            self.fixture.verifier.mutate = lambda receipt: {"passed": True}
-            with self.assertRaisesRegex(InvalidRelease, "no receipt"):
-                self.adapter.publish(reservation, self.reports, self.fixture.verifier)
+            self.reports["provenance"] = {"subjects": dict(self.plan.updater_subjects)}
+            with self.assertRaisesRegex(InvalidRelease, "provenance is incomplete"):
+                self.adapter.publish(reservation, self.reports)
             self.assertTrue(self.api.releases[0]["draft"])
             self.assertFalse(any(method == "PATCH" for method, *_ in self.api.calls))
 

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import copy
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import github_release_evidence as evidence
@@ -59,6 +59,140 @@ class EvidenceChecks(unittest.TestCase):
             }
         ]
 
+    def test_one_result_authenticates_all_sections_once_and_rejects_scope_substitution(
+        self,
+    ):
+        from publish_container_release import GATES
+
+        subjects = {
+            key: "file:" + key + "@sha256:" + "b" * 64
+            for key in (
+                "manifest",
+                "bundle",
+                "backend-index",
+                "backend-amd64",
+                "backend-arm64",
+                "web-index",
+                "web-amd64",
+                "web-arm64",
+            )
+        }
+        binding = Binding(
+            self.binding.repository,
+            self.binding.version,
+            self.binding.commit,
+            tuple(sorted(subjects.items())),
+        )
+        checks = {gate: {} for gate in GATES - {"upgrade-recovery"}}
+        checks["source-ci"] = {"run_id": 123, "run_attempt": 2}
+        checks["final-image-smoke"] = {
+            "execution": {p: "native" for p in ("linux/amd64", "linux/arm64")}
+        }
+        result = {
+            "schema_version": 1,
+            "kind": "container-release-result",
+            "repository": binding.repository,
+            "version": binding.version,
+            "commit": binding.commit,
+            "binding_digest": binding.digest,
+            "subjects": subjects,
+            "run_id": 123,
+            "attempt": 2,
+            "checks": checks,
+            "inputs": {"corresponding-source-replay": {"sha256": "sha256:" + "e" * 64}},
+            "platforms": {
+                p: {"execution": "native", "checks": ["final-image-smoke"]}
+                for p in ("linux/amd64", "linux/arm64")
+            },
+        }
+        self.path.write_bytes(json_bytes(result))
+        with patch.object(
+            evidence, "bounded_verify", return_value=json_bytes(self.output())
+        ) as crypto:
+            for gate in checks:
+                receipt = self.verifier.verify(gate, self.path, binding)
+                self.assertEqual(receipt.details, checks[gate])
+            crypto.assert_called_once()
+        for key, value in (("attempt", 1), ("subjects", {}), ("checks", {})):
+            changed = copy.deepcopy(result)
+            changed[key] = value
+            self.path.write_bytes(json_bytes(changed))
+            strict = evidence.GhEvidenceVerifier(
+                gh=Path(sys.executable), run_id=123, run_attempt=2
+            )
+            with (
+                patch.object(evidence, "bounded_verify") as crypto,
+                self.assertRaises(InvalidRelease),
+            ):
+                strict.verify("source-ci", self.path, binding)
+            crypto.assert_not_called()
+
+    def test_standard_final_file_and_image_subjects_require_verified_provenance(self):
+        from types import SimpleNamespace
+
+        raw = self.path.read_bytes()
+        digest = sha256(raw)
+        subjects = (
+            ("manifest", "file:gate.json@" + digest),
+            (
+                "backend-index",
+                "oci://ghcr.io/endorses/psst-zip-backend@sha256:" + "b" * 64,
+            ),
+        )
+        binding = Binding(
+            self.binding.repository, self.binding.version, self.binding.commit, subjects
+        )
+        plan = SimpleNamespace(binding=binding, assets=(("gate.json", digest),))
+        calls = []
+
+        def lookup(args, environment):
+            calls.append(args[3])
+            result = self.output()
+            result[0]["verificationResult"]["statement"]["subject"] = [
+                {"name": "gate.json", "digest": {"sha256": digest[7:]}},
+                {
+                    "name": "ghcr.io/endorses/psst-zip-backend",
+                    "digest": {"sha256": "b" * 64},
+                },
+            ]
+            return json_bytes(result)
+
+        with patch.object(evidence, "bounded_verify", side_effect=lookup):
+            self.assertEqual(
+                evidence.verify_final_subjects(
+                    plan, {"gate.json": self.path}, self.verifier
+                ),
+                {"subjects": dict(subjects)},
+            )
+        self.assertEqual(
+            calls, [str(self.path)], "one statement requires one cryptographic lookup"
+        )
+        with (
+            patch.object(
+                evidence, "bounded_verify", return_value=json_bytes(self.output())
+            ),
+            self.assertRaisesRegex(InvalidRelease, "complete subject set"),
+        ):
+            evidence.verify_final_subjects(
+                plan, {"gate.json": self.path}, self.verifier
+            )
+        with (
+            patch.object(evidence, "bounded_verify", return_value=b"[]"),
+            self.assertRaises(InvalidRelease),
+        ):
+            evidence.verify_final_subjects(
+                plan, {"gate.json": self.path}, self.verifier
+            )
+        self.path.write_bytes(b"changed")
+        with (
+            patch.object(evidence, "bounded_verify") as lookup,
+            self.assertRaises(InvalidRelease),
+        ):
+            evidence.verify_final_subjects(
+                plan, {"gate.json": self.path}, self.verifier
+            )
+        lookup.assert_not_called()
+
     def test_measurement_authentication_is_bounded_and_has_no_gate_receipt(self):
         content = self.path.read_bytes()
         with patch.object(
@@ -76,8 +210,9 @@ class EvidenceChecks(unittest.TestCase):
 
     def test_exact_attempt_provenance_and_same_result_subject_scope_are_cached(self):
         for run_id, run_attempt in ((1, None), (None, 1), (0, 1), (1, True)):
-            with self.subTest(scope=(run_id, run_attempt)), self.assertRaises(
-                InvalidRelease
+            with (
+                self.subTest(scope=(run_id, run_attempt)),
+                self.assertRaises(InvalidRelease),
             ):
                 evidence.GhEvidenceVerifier(
                     gh=Path(sys.executable), run_id=run_id, run_attempt=run_attempt
@@ -178,9 +313,12 @@ class EvidenceChecks(unittest.TestCase):
             destination[keys[-1]] = value
             if stale is None:
                 stale = changed
-            with self.subTest(path=keys, value=value), patch.object(
-                evidence, "bounded_verify", return_value=json_bytes(changed)
-            ) as runner:
+            with (
+                self.subTest(path=keys, value=value),
+                patch.object(
+                    evidence, "bounded_verify", return_value=json_bytes(changed)
+                ) as runner,
+            ):
                 with self.assertRaises(InvalidRelease):
                     verifier.authenticate(content, self.binding)
                 # A failed verification must not poison or populate the cache.
@@ -190,12 +328,16 @@ class EvidenceChecks(unittest.TestCase):
         wrong_subject = copy.deepcopy(valid)
         wrong_subject[0]["verificationResult"]["statement"]["subject"][0]["digest"][
             "sha256"
-        ] = ("0" * 64)
-        with patch.object(
-            evidence, "bounded_verify", return_value=json_bytes(stale + wrong_subject)
+        ] = "0" * 64
+        with (
+            patch.object(
+                evidence,
+                "bounded_verify",
+                return_value=json_bytes(stale + wrong_subject),
+            ),
+            self.assertRaises(InvalidRelease),
         ):
-            with self.assertRaises(InvalidRelease):
-                verifier.authenticate(content, self.binding)
+            verifier.authenticate(content, self.binding)
         with patch.object(
             evidence, "bounded_verify", return_value=json_bytes(stale + valid)
         ) as runner:
@@ -219,9 +361,12 @@ class EvidenceChecks(unittest.TestCase):
             with self.assertRaises(InvalidRelease):
                 other_attempt.authenticate(content, self.binding)
             self.assertEqual(runner.call_count, 4)
-        with patch.object(evidence, "MAX_AUTHENTICATION_CACHE", 1), patch.object(
-            evidence, "bounded_verify", return_value=json_bytes(valid)
-        ) as runner:
+        with (
+            patch.object(evidence, "MAX_AUTHENTICATION_CACHE", 1),
+            patch.object(
+                evidence, "bounded_verify", return_value=json_bytes(valid)
+            ) as runner,
+        ):
             fresh = evidence.GhEvidenceVerifier(
                 gh=Path(sys.executable), run_id=123, run_attempt=2
             )
@@ -324,15 +469,17 @@ class EvidenceChecks(unittest.TestCase):
         mutated = copy.deepcopy(valid)
         mutated[0]["verificationResult"]["statement"]["subject"][0]["digest"][
             "sha256"
-        ] = ("0" * 64)
+        ] = "0" * 64
         cases.append(mutated)
         for output in cases:
-            with self.subTest(output=output):
-                with patch.object(
+            with (
+                self.subTest(output=output),
+                patch.object(
                     evidence, "bounded_verify", return_value=json_bytes(output)
-                ):
-                    with self.assertRaises(InvalidRelease):
-                        self.verifier.verify("source-ci", self.path, self.binding)
+                ),
+                self.assertRaises(InvalidRelease),
+            ):
+                self.verifier.verify("source-ci", self.path, self.binding)
 
     def test_substitution_during_verification_does_not_change_verified_report(self):
         expected = self.path.read_bytes()

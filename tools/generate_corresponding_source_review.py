@@ -25,7 +25,7 @@ import measure_native_browser_inputs as browser_inputs
 import package_upstream_application_sources as upstream_inputs
 import sqlite_vendoring
 import final_image_notice_inventory as final_notices
-from generate_distribution_review import committed_policy
+from container_release_policy import committed_policy
 from github_release_evidence import GhEvidenceVerifier
 
 from aggregate_release_image_scans import (
@@ -77,7 +77,6 @@ from release_artifacts import (
 SOURCE_STAGES = frozenset(
     {
         "input-validation",
-        "signed-output-verification",
         "source-ci",
         "base-authentication",
         "native-authentication",
@@ -307,8 +306,7 @@ def corresponding_source_report(
     )
     snapshots.update(
         {
-            collection
-            / "dependency-collection.json": source_digest(
+            collection / "dependency-collection.json": source_digest(
                 collection / "dependency-collection.json"
             )
             for collection in dependency_collections.values()
@@ -503,7 +501,7 @@ def corresponding_source_report(
         "policy": policy,
         "coverage": coverage,
     }
-    source_review_details(details, binding, distribution=False)
+    source_review_details(details, binding)
     return {
         "schema_version": 1,
         "gate": "corresponding-source",
@@ -1206,212 +1204,6 @@ def command_inputs(
     return inputs.binding, sources, record_raw, expected_names, snapshots
 
 
-def verify_command_output(
-    output: Path,
-    binding: Binding,
-    authenticator: GhEvidenceVerifier,
-    sources: dict[str, Path],
-) -> tuple[dict, dict]:
-    """Authenticate already produced bytes without repeating substantive replays."""
-    browser_inventory.root_directory(output)
-    names = {"corresponding-source.json", "corresponding-source-evidence.json"}
-    require(
-        {path.name for path in output.iterdir()} == names
-        and all(path.is_file() and not path.is_symlink() for path in output.iterdir()),
-        "Source verification requires exactly two regular output files",
-    )
-    report_path, evidence_path = (
-        output / "corresponding-source.json",
-        output / "corresponding-source-evidence.json",
-    )
-    report_raw, evidence_raw = read_bounded_file(report_path), read_bounded_file(
-        evidence_path
-    )
-    require(
-        0 < len(report_raw) + len(evidence_raw) <= MAX_COMMAND_OUTPUT,
-        "Source verification output exceeds bounds",
-    )
-    receipt = authenticator.verify("corresponding-source", report_path, binding)
-    require(
-        receipt.gate == "corresponding-source"
-        and receipt.binding_digest == binding.digest
-        and receipt.report_digest == sha256(report_raw)
-        and receipt.passed is True,
-        "Authenticated source report receipt differs",
-    )
-    report = fields(
-        read_json(report_raw),
-        {"schema_version", "gate", "binding_digest", "passed", "details"},
-        "authenticated source command report",
-    )
-    require(
-        type(report["schema_version"]) is int
-        and report["schema_version"] == 1
-        and report["gate"] == receipt.gate
-        and report["binding_digest"] == receipt.binding_digest
-        and report["passed"] is True
-        and report["details"] == receipt.details,
-        "Source report content differs from authenticated receipt",
-    )
-    source_review_details(receipt.details, binding, distribution=False)
-    authenticator.authenticate(evidence_raw, binding)
-    evidence = fields(
-        read_json(evidence_raw),
-        {
-            "schema_version",
-            "kind",
-            "binding_digest",
-            "source_assets",
-            "coverage_evidence",
-            "distribution_review_required",
-            "byte_reproduction_verified",
-            "publication_authorized",
-        },
-        "authenticated corresponding-source replay evidence",
-    )
-    require(
-        type(evidence["schema_version"]) is int
-        and evidence["schema_version"] == 1
-        and evidence["kind"] == "complete-corresponding-source-replay-evidence"
-        and evidence["binding_digest"] == binding.digest
-        and evidence["distribution_review_required"] is True
-        and evidence["byte_reproduction_verified"] is False
-        and evidence["publication_authorized"] is False,
-        "Source replay evidence identity or approval boundary differs",
-    )
-    assets = fields(
-        evidence["source_assets"],
-        {
-            "schema_version",
-            "kind",
-            "binding_digest",
-            "assets",
-            "corresponding_source_completeness_verified",
-            "distribution_review_required",
-            "publication_authorized",
-        },
-        "source evidence asset inventory",
-    )
-    require(
-        type(assets["schema_version"]) is int
-        and assets["schema_version"] == 1
-        and assets["kind"] == "release-source-asset-measurements"
-        and assets["binding_digest"] == binding.digest
-        and assets["corresponding_source_completeness_verified"] is False
-        and assets["distribution_review_required"] is True
-        and assets["publication_authorized"] is False,
-        "Source evidence asset boundary differs",
-    )
-    rows = fields(assets["assets"], set(sources), "all source evidence assets")
-    subjects = dict(binding.subjects)
-    for name, row in rows.items():
-        fields(row, {"digest", "size"}, "source evidence asset")
-        require(
-            type(row["size"]) is int
-            and row["size"] > 0
-            and row["size"] == sources[name].stat().st_size
-            and subjects.get("source:" + name)
-            == "file:" + name + "@" + str(row["digest"]),
-            "Source replay evidence asset differs from tagged binding",
-        )
-    retained = evidence["coverage_evidence"]
-    require(
-        isinstance(retained, dict)
-        and 0 < len(retained) <= 32
-        and all(
-            isinstance(name, str) and isinstance(value, dict)
-            for name, value in retained.items()
-        ),
-        "Source coverage evidence is missing or oversized",
-    )
-    hashes = {sha256(json_bytes(value)) for value in retained.values()}
-    for target in SOURCE_COVERAGE:
-        for row in receipt.details["coverage"][target].values():
-            require(
-                row["evidence_digest"] in hashes,
-                "Authenticated report coverage lacks exact retained evidence",
-            )
-        notices = retained.get(target + "-notices")
-        require(
-            isinstance(notices, dict)
-            and isinstance(notices.get("files"), dict)
-            and bool(notices["files"])
-            and notices.get("notice_inventory_digest")
-            == sha256(json_bytes(notices["files"]))
-            == receipt.details["images"][target]["notice_inventory_digest"],
-            "Authenticated report notices lack exact retained inventory",
-        )
-    require(
-        report_raw == json_bytes(report) and evidence_raw == json_bytes(evidence),
-        "Source command outputs must retain canonical producer bytes",
-    )
-    require(
-        read_bounded_file(report_path) == report_raw
-        and read_bounded_file(evidence_path) == evidence_raw
-        and {path.name for path in output.iterdir()} == names,
-        "Source outputs changed during authentication",
-    )
-    return report, evidence
-
-
-def verify_checks_output(
-    output: Path,
-    binding: Binding,
-    authenticator: GhEvidenceVerifier,
-    *,
-    run_id: int,
-    attempt: int,
-) -> dict[Path, bytes]:
-    """Verify the exact separate signed check reports without repeating replays."""
-    browser_inventory.root_directory(output)
-    reports = {gate: output / (gate + ".json") for gate in CHECK_GATES}
-    require(
-        {path.name for path in output.iterdir()}
-        == {path.name for path in reports.values()},
-        "Check verification requires exactly five report files",
-    )
-    snapshots = {}
-    for gate, path in reports.items():
-        require(
-            path.stat().st_size <= MAX_COMMAND_OUTPUT, "Check report exceeds bounds"
-        )
-        raw = read_bounded_file(path)
-        record = fields(
-            read_json(raw),
-            {"schema_version", "gate", "binding_digest", "passed", "details"},
-            "canonical completed check report",
-        )
-        require(
-            type(record["schema_version"]) is int
-            and record["schema_version"] == 1
-            and record["gate"] == gate
-            and record["binding_digest"] == binding.digest
-            and record["passed"] is True
-            and isinstance(record["details"], dict)
-            and raw == json_bytes(record),
-            "Check report is noncanonical, incomplete or bound to another release",
-        )
-        if gate == "source-ci":
-            require(
-                type(record["details"].get("run_id")) is int
-                and record["details"]["run_id"] == run_id
-                and type(record["details"].get("run_attempt")) is int
-                and record["details"]["run_attempt"] == attempt,
-                "Source CI report belongs to another run or attempt",
-            )
-        snapshots[path] = raw
-    require(
-        sum(map(len, snapshots.values())) <= MAX_COMMAND_OUTPUT,
-        "Check reports exceed bounds",
-    )
-    digests = verify_gates(reports, CHECK_GATES, binding, authenticator)
-    require(
-        all(digests[gate] == sha256(snapshots[path]) for gate, path in reports.items()),
-        "Check reports changed during authentication",
-    )
-    return snapshots
-
-
 def authenticate_native_inputs(binding, trees, authenticator) -> None:
     """Warm this invocation's exact-byte cache before sequential source replay."""
     relative_paths = (
@@ -1456,10 +1248,8 @@ def run_command(args) -> tuple[dict, dict]:
         "Source command requires a positive workflow run ID and attempt",
     )
     browser_inventory.root_directory(args.output.parent)
-    verify_only = getattr(args, "verify_only", False)
     checks_output = getattr(args, "checks_output", None)
     resolved_bases = getattr(args, "resolved_bases", None)
-    require(type(verify_only) is bool, "Invalid source command mode")
     if checks_output is not None:
         require(
             isinstance(resolved_bases, Path),
@@ -1476,16 +1266,15 @@ def run_command(args) -> tuple[dict, dict]:
             and check_directory not in source_directory.parents,
             "Source and check outputs require separate nonoverlapping directories",
         )
-    if not verify_only:
+    require(
+        not args.output.exists() and not args.output.is_symlink(),
+        "Source command output must be a new directory",
+    )
+    if checks_output is not None:
         require(
-            not args.output.exists() and not args.output.is_symlink(),
-            "Source command output must be a new directory",
+            not checks_output.exists() and not checks_output.is_symlink(),
+            "Check command output must be a new directory",
         )
-        if checks_output is not None:
-            require(
-                not checks_output.exists() and not checks_output.is_symlink(),
-                "Check command output must be a new directory",
-            )
     binding, sources, record_raw, expected_names, snapshots = command_inputs(
         root=args.root,
         prepared=args.prepared,
@@ -1501,54 +1290,6 @@ def run_command(args) -> tuple[dict, dict]:
         run_id=args.run_id,
         run_attempt=args.run_attempt,
     )
-    if verify_only:
-        source_stage("signed-output-verification")
-        output_snapshots = {
-            args.output / name: read_bounded_file(args.output / name)
-            for name in (
-                "corresponding-source.json",
-                "corresponding-source-evidence.json",
-            )
-        }
-        if checks_output is not None:
-            output_snapshots.update(
-                verify_checks_output(
-                    checks_output,
-                    binding,
-                    authenticator,
-                    run_id=args.run_id,
-                    attempt=args.run_attempt,
-                )
-            )
-        report, evidence = verify_command_output(
-            args.output, binding, authenticator, sources
-        )
-        require(
-            all(
-                read_bounded_file(path) == raw for path, raw in output_snapshots.items()
-            )
-            and {path.name for path in args.output.iterdir()}
-            == {path.name for path in output_snapshots if path.parent == args.output}
-            and (
-                checks_output is None
-                or {path.name for path in checks_output.iterdir()}
-                == {
-                    path.name
-                    for path in output_snapshots
-                    if path.parent == checks_output
-                }
-            ),
-            "Source/check outputs changed during authentication",
-        )
-        require(
-            read_bounded_file(args.prepared / "release-inputs.json") == record_raw
-            and {path.name for path in args.prepared.iterdir()} == expected_names
-            and all(
-                source_digest(path) == checksum for path, checksum in snapshots.items()
-            ),
-            "Prepared release changed during source authentication",
-        )
-        return report, evidence
     native_measurements = {
         p: t / "native/native-measurement.json" for p, t in trees.items()
     }
@@ -1587,8 +1328,8 @@ def run_command(args) -> tuple[dict, dict]:
             p: t / "source-scans/source-scan-measurement.json" for p, t in trees.items()
         },
         compiler_graphs={
-            "backend-"
-            + p.split("/")[1]: t / "compiler-backend/compiler-graph-measurement.json"
+            "backend-" + p.split("/")[1]: t
+            / "compiler-backend/compiler-graph-measurement.json"
             for p, t in trees.items()
         },
         upstream_collection=args.upstream,
@@ -1630,23 +1371,19 @@ def run_command(args) -> tuple[dict, dict]:
             native_measurements=native_measurements,
             runtime_packs={p: t / "native/pack" for p, t in trees.items()},
             scans={
-                component
-                + "-"
-                + p.split("/")[1]: t / ("image-scan-" + component + "/measurement.json")
+                component + "-" + p.split("/")[1]: t
+                / ("image-scan-" + component + "/measurement.json")
                 for p, t in trees.items()
                 for component in ("backend", "web")
             },
             raw_scans={
-                component
-                + "-"
-                + p.split("/")[1]: t / ("image-scan-" + component + "/scan.json")
+                component + "-" + p.split("/")[1]: t
+                / ("image-scan-" + component + "/scan.json")
                 for p, t in trees.items()
                 for component in ("backend", "web")
             },
             compiler_graphs={
-                component
-                + "-"
-                + p.split("/")[1]: t
+                component + "-" + p.split("/")[1]: t
                 / ("compiler-" + component + "/compiler-graph-measurement.json")
                 for p, t in trees.items()
                 for component in ("backend", "web")
@@ -1711,7 +1448,6 @@ def main(argv=None) -> None:
         parser.add_argument("--" + name, required=True)
     for name in ("run-id", "run-attempt"):
         parser.add_argument("--" + name, type=int, required=True)
-    parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--checks-output", type=Path)
     parser.add_argument("--resolved-bases", type=Path)
     args = parser.parse_args(argv)

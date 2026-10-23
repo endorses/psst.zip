@@ -1,23 +1,20 @@
 """Actual orchestration/transport fixtures; these never attest or publish live."""
 
 import copy
-from contextlib import redirect_stderr, redirect_stdout
 import io
-from pathlib import Path
 import tarfile
-import sys
-from types import SimpleNamespace
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
-from generate_release_gate_reports import CHECKS
 import github_release_transport as transport
+import publication_diagnostics as diagnostics
 import publish_container_release as publication
 import publish_verified_release as driver
-import publication_diagnostics as diagnostics
-from release_artifacts import InvalidRelease, read_json
 import test_release_transport as transport_fixtures
-import github_release_attestor as signer_module
+from generate_release_gate_reports import CHECKS
+from release_artifacts import InvalidRelease, read_json
 
 
 class FixtureVerifier:
@@ -25,6 +22,18 @@ class FixtureVerifier:
         self.upstream, self.signed = upstream, set()
 
     def verify(self, gate, report, binding):
+        value = read_json(report.read_bytes())
+        if isinstance(value, dict) and value.get("kind") == "container-release-result":
+            from release_result import checked_result
+
+            result = checked_result(value, binding, (77, 1))
+            return publication.VerifiedEvidence(
+                gate,
+                binding.digest,
+                publication.sha256(report.read_bytes()),
+                True,
+                result["checks"][gate],
+            )
         if gate in publication.GATES:
             return self.upstream.verify(gate, report, binding)
         raw = report.read_bytes()
@@ -42,47 +51,6 @@ class FixtureVerifier:
         )
 
 
-class FixtureAttestor:
-    """Explicit test injection, never a production bridge or trust flag."""
-
-    def __init__(self, case):
-        self.case, self.fail, self.mutate = case, None, None
-        self.calls = []
-
-    def attest_subjects(self, plan, files, output):
-        self.calls.append("provenance")
-        if self.fail == "provenance":
-            raise InvalidRelease("fixture signer interrupted")
-        self.case.assertTrue(self.case.adapter.held)
-        self.case.assertEqual(len(self.case.api.registry), 6)
-        self.case.assertEqual(set(files), set(dict(plan.assets)))
-        path = output / "provenance.json"
-        driver.exclusive_report(
-            path,
-            {
-                "schema_version": 1,
-                "gate": "provenance",
-                "binding_digest": plan.binding.digest,
-                "passed": True,
-                "details": {"subjects": dict(plan.binding.subjects)},
-            },
-        )
-        self.case.verifier.signed.add(path.read_bytes())
-        return path
-
-    def sign_report(self, binding, report):
-        value = read_json(report.read_bytes())
-        self.calls.append(value["gate"])
-        self.case.assertTrue(self.case.adapter.held)
-        if self.fail == value["gate"]:
-            raise InvalidRelease("fixture readback signer failed")
-        if self.mutate == value["gate"]:
-            report.chmod(0o600)
-            report.write_bytes(report.read_bytes() + b"\n")
-        else:
-            self.case.verifier.signed.add(report.read_bytes())
-
-
 class PublicationCommand(unittest.TestCase):
     def setUp(self):
         self.real = transport_fixtures.TransportChecks()
@@ -95,7 +63,8 @@ class PublicationCommand(unittest.TestCase):
             self.real.state,
         )
         self.verifier = FixtureVerifier(self.fixture.verifier)
-        self.attestor = FixtureAttestor(self)
+        self.provenance_failure = False
+        self.provenance_calls = 0
         self.adapter = None
         native = {}
         for platform in ("linux/amd64", "linux/arm64"):
@@ -159,25 +128,125 @@ class PublicationCommand(unittest.TestCase):
         return self.adapter
 
     def publish(self, **changes):
-        args = dict(
-            root=self.fixture.root,
-            repository="endorses/psst.zip",
-            ref="refs/tags/v1.2.3",
-            event_sha=self.fixture.commit,
-            reviewed_commit=self.fixture.commit,
-            manifest=self.fixture.manifest_path,
-            bundle=self.fixture.bundle,
-            indexes=self.fixture.indexes,
-            archives=self.real.archives,
-            source_assets={self.fixture.source.name: self.fixture.source},
-            reports={gate: self.fixture.reports[gate] for gate in publication.GATES},
-            state=self.state,
-            environment=self.environment,
-            verifier=self.verifier,
-            attestor=self.attestor,
-            transport_factory=self.factory,
-        )
+        args = {
+            "root": self.fixture.root,
+            "repository": "endorses/psst.zip",
+            "ref": "refs/tags/v1.2.3",
+            "event_sha": self.fixture.commit,
+            "reviewed_commit": self.fixture.commit,
+            "manifest": self.fixture.manifest_path,
+            "bundle": self.fixture.bundle,
+            "indexes": self.fixture.indexes,
+            "archives": self.real.archives,
+            "source_assets": {self.fixture.source.name: self.fixture.source},
+            "reports": {gate: self.fixture.reports[gate] for gate in publication.GATES},
+            "state": self.state,
+            "environment": self.environment,
+            "verifier": self.verifier,
+            "provenance_verifier": self.provenance,
+            "transport_factory": self.factory,
+        }
         return driver.publish(**(args | changes))
+
+    def provenance(self, plan, files, verifier):
+        self.provenance_calls += 1
+        self.assertTrue(self.adapter.held)
+        self.assertEqual(set(files), set(dict(plan.assets)))
+        if self.provenance_failure:
+            raise InvalidRelease("fixture final provenance verification failed")
+        return {"subjects": dict(plan.binding.subjects)}
+
+    def test_one_canonical_result_runs_the_same_real_transport_lifecycle(self):
+        plan = self.fixture.prepare()
+        checks = {
+            gate: self.verifier.upstream.verify(
+                gate, self.fixture.reports[gate], plan.binding
+            ).details
+            for gate in publication.GATES
+        }
+        checks["source-ci"].update(run_id=77, run_attempt=1)
+        result = {
+            "schema_version": 1,
+            "kind": "container-release-result",
+            "repository": plan.binding.repository,
+            "version": plan.binding.version,
+            "commit": plan.binding.commit,
+            "binding_digest": plan.binding.digest,
+            "subjects": dict(plan.binding.subjects),
+            "run_id": 77,
+            "attempt": 1,
+            "checks": checks,
+            "inputs": {
+                "corresponding-source-replay": {"sha256": "sha256:" + "e" * 64},
+                "source-result": {"sha256": "sha256:" + "f" * 64},
+            },
+            "platforms": {
+                p: {
+                    "execution": "native",
+                    "checks": ["final-image-smoke", "upgrade-recovery"],
+                }
+                for p in ("linux/amd64", "linux/arm64")
+            },
+        }
+        path = self.fixture.folder / "release-result.json"
+        path.write_bytes(driver.json_bytes(result))
+        retained = []
+        original_snapshot = driver.snapshot
+
+        def capture(source, destination, maximum=2 * 1024**3):
+            if source == path:
+                retained.append(destination)
+            return original_snapshot(source, destination, maximum)
+
+        with patch.object(driver, "snapshot", side_effect=capture):
+            receipt = self.publish(reports={gate: path for gate in publication.GATES})
+        self.assertTrue(receipt["immutable"])
+        self.assertTrue(self.adapter.public_verified)
+        self.assertEqual(len(retained), 1, "canonical result must be snapshotted once")
+
+    def test_standard_action_checksum_input_covers_all_authenticated_final_subjects(
+        self,
+    ):
+        output = self.fixture.folder / "final-subject-checksums.txt"
+        inputs = {
+            "manifest": str(self.fixture.manifest_path),
+            "bundle": str(self.fixture.bundle),
+            "indexes": {name: str(path) for name, path in self.fixture.indexes.items()},
+            "source_assets": {self.fixture.source.name: str(self.fixture.source)},
+            "reports": {
+                name: str(self.fixture.reports[name]) for name in publication.GATES
+            },
+        }
+        with patch.object(driver, "GhEvidenceVerifier", return_value=self.verifier):
+            driver.prepare_attestation(
+                root=self.fixture.root,
+                inputs=inputs,
+                environment=self.environment,
+                reviewed_commit=self.fixture.commit,
+                output=output,
+            )
+        plan = self.fixture.prepare()
+        expected = {
+            digest.removeprefix("sha256:")
+            + "  "
+            + name.removeprefix("file:").removeprefix("oci://")
+            for _, subject in plan.binding.subjects
+            for name, digest in (subject.split("@"),)
+        }
+        self.assertEqual(set(output.read_text().splitlines()), expected)
+        self.assertFalse(self.api.calls)
+        self.assertFalse(self.state.exists())
+        with (
+            patch.object(driver, "GhEvidenceVerifier", return_value=self.verifier),
+            self.assertRaises(FileExistsError),
+        ):
+            driver.prepare_attestation(
+                root=self.fixture.root,
+                inputs=inputs,
+                environment=self.environment,
+                reviewed_commit=self.fixture.commit,
+                output=output,
+            )
 
     def events(self):
         return self.real.events()
@@ -213,7 +282,7 @@ class PublicationCommand(unittest.TestCase):
         intents = [
             row["operation"] for row in self.events() if row["phase"] == "intent"
         ]
-        self.assertIn("attest-asset-readback", intents)
+        self.assertIn("upload-release-manifest.json", intents)
         self.assertNotIn("tag-backend", intents)
         self.assertNotIn("publish-release", intents)
         self.assertTrue(list(self.state.glob("publication-inputs-*")))
@@ -246,10 +315,7 @@ class PublicationCommand(unittest.TestCase):
         self.assertEqual(result["release_id"], 17)
         self.assertTrue(result["immutable"])
         self.assertTrue(self.adapter.public_verified)
-        self.assertEqual(
-            self.attestor.calls,
-            ["provenance", "registry-readback", "anonymous-pull", "asset-readback"],
-        )
+        self.assertEqual(self.provenance_calls, 1)
         self.assertEqual(
             result["journal_sha256"],
             publication.source_digest(self.state / "v1.2.3.jsonl"),
@@ -258,14 +324,11 @@ class PublicationCommand(unittest.TestCase):
             row["operation"] for row in self.events() if row["phase"] == "intent"
         ]
         self.assertLess(
-            intents.index("push-web-index"), intents.index("attest-reviewed-subjects")
-        )
-        self.assertLess(
-            intents.index("attest-reviewed-subjects"),
+            intents.index("push-web-index"),
             intents.index("upload-" + self.fixture.source.name),
         )
         self.assertLess(
-            intents.index("attest-asset-readback"), intents.index("tag-backend")
+            intents.index("upload-release-manifest.json"), intents.index("tag-backend")
         )
         self.assertEqual(intents[-1], "publish-release")
         progress = self.diagnostics("success")
@@ -279,7 +342,7 @@ class PublicationCommand(unittest.TestCase):
         reports = {
             k: v
             for k, v in self.fixture.reports.items()
-            if k in publication.GATES and k != "distribution-review"
+            if k in publication.GATES and k != "source-ci"
         }
         with self.assertRaises(InvalidRelease):
             self.publish(reports=reports)
@@ -358,32 +421,10 @@ class PublicationCommand(unittest.TestCase):
             self.publish()
         self.assertEqual(len(mutations), 1)
 
-    def test_default_bucket_free_driver_uses_a_disposable_official_signer_cache(self):
-        action_caches = []
-
-        def official_fixture(binding, **kwargs):
-            cache = kwargs["private_action_cache"]
-            self.assertFalse(cache.is_relative_to(kwargs["private_output"].parent))
-            (cache / "dist").mkdir(mode=0o700)
-            (cache / "dist" / "index.js").write_bytes(b"tiny official-action fixture")
-            action_caches.append(cache)
-            return self.attestor
-
-        with patch.object(
-            signer_module, "WorkflowAttestor", side_effect=official_fixture
-        ):
-            result = self.publish(attestor=None)
-        self.assertTrue(result["immutable"])
-        self.assertEqual(len(action_caches), 1)
-        self.assertFalse(action_caches[0].exists())
-        self.assertFalse(
-            any("S3" in key or "AWS" in key for key in driver.WORKFLOW_ENV)
-        )
-
     def test_authenticated_smoke_must_bind_all_four_native_configs(self):
         self.fixture.verifier.details["final-image-smoke"]["tested_configs"][
             "backend-arm64"
-        ] = ("sha256:" + "0" * 64)
+        ] = "sha256:" + "0" * 64
         with self.assertRaisesRegex(InvalidRelease, "config/child"):
             self.publish()
         self.assertEqual(self.api.calls, [])
@@ -412,39 +453,16 @@ class PublicationCommand(unittest.TestCase):
         )
 
     def test_subject_signing_failure_does_not_upload_or_create_version_tags(self):
-        self.attestor.fail = "provenance"
+        self.provenance_failure = True
         with self.assertRaises(InvalidRelease):
             self.publish()
         self.assertEqual(len(self.api.registry), 6)
         self.assertEqual(self.api.assets, {})
         self.assertTrue(self.api.releases[0]["draft"])
-        self.assertTrue(
-            any(
-                row["operation"] == "attest-reviewed-subjects"
-                and row["phase"] == "uncertain"
-                for row in self.events()
-            )
-        )
+        self.assertTrue(any(row["phase"] == "stopped" for row in self.events()))
         retained = list(self.state.glob("publication-inputs-*"))
         self.assertEqual(len(retained), 1)
         self.assertTrue((retained[0] / "snapshot-binding.json").is_file())
-
-    def test_failed_or_substituted_signed_readback_never_creates_tags_or_publishes(
-        self,
-    ):
-        self.attestor.mutate = "asset-readback"
-        with self.assertRaisesRegex(InvalidRelease, "changed during signing"):
-            self.publish()
-        self.assertTrue(self.api.assets)
-        self.assertFalse(self.adapter.tags_created)
-        self.assertTrue(self.api.releases[0]["draft"])
-        self.assertTrue(
-            any(
-                row["operation"] == "attest-asset-readback"
-                and row["phase"] == "uncertain"
-                for row in self.events()
-            )
-        )
 
     def test_immutable_policy_failure_never_creates_draft(self):
         self.api.immutable_status = 403
@@ -495,98 +513,6 @@ class PublicationCommand(unittest.TestCase):
         self.assertEqual(len(staged_roots), 1)
         self.assertFalse(staged_roots[0].exists())
 
-    def test_command_reports_safe_prelease_stage_and_category_without_remote_writes(
-        self,
-    ):
-        secret = "fixture-secret-token /private/credential-path private process stderr"
-        cases = (
-            (
-                driver,
-                "GhEvidenceVerifier",
-                RuntimeError(secret),
-                {"verifier": None},
-                "verifier-initialization",
-                "unexpected-error",
-            ),
-            (
-                self.verifier,
-                "verify",
-                InvalidRelease(secret),
-                {},
-                "release-gates",
-                "rejected",
-            ),
-            (
-                signer_module,
-                "WorkflowAttestor",
-                TypeError(secret),
-                {"attestor": None},
-                "attestor-initialization",
-                "interface-error",
-            ),
-            (
-                transport.GitHubReleaseTransport,
-                "package_preflight",
-                OSError(secret),
-                {},
-                "package-preflight",
-                "io-error",
-            ),
-            (
-                transport.GitHubReleaseTransport,
-                "prepare_images",
-                InvalidRelease(secret),
-                {},
-                "image-transport-preflight",
-                "rejected",
-            ),
-        )
-        for target, attribute, error, changes, stage, category in cases:
-            with self.subTest(stage=stage):
-                output = io.StringIO()
-                with (
-                    patch.object(target, attribute, side_effect=error),
-                    patch.object(
-                        driver, "main", side_effect=lambda argv: self.publish(**changes)
-                    ),
-                    redirect_stdout(output),
-                    redirect_stderr(output),
-                    self.assertRaises(SystemExit) as stopped,
-                ):
-                    driver.run_command([])
-                lines = output.getvalue().splitlines()
-                self.assertEqual(
-                    lines[-2:],
-                    [
-                        "Publication stage: " + stage,
-                        "Publication failure category: " + category,
-                    ],
-                )
-                self.assertTrue(
-                    all(
-                        line
-                        in {
-                            "Publication stage: " + name
-                            for name in driver.PUBLICATION_STAGES
-                        }
-                        or line == "Publication failure category: " + category
-                        for line in lines
-                    )
-                )
-                self.assertNotIn("Publication stage: publication-lease", lines)
-                self.assertNotIn(secret, output.getvalue() + str(stopped.exception))
-                self.assertEqual(
-                    str(stopped.exception),
-                    "Publication stopped; inspect retained journals before any further action.",
-                )
-                self.assertTrue(all(call[0] == "GET" for call in self.api.calls))
-                self.assertEqual(self.api.registry, {})
-                self.assertEqual(self.api.releases, [])
-                self.assertEqual(self.api.assets, {})
-                self.assertFalse((self.state / "v1.2.3.jsonl").exists())
-                self.assertEqual(list(self.state.glob("publication-inputs-*")), [])
-                self.assertEqual(list(self.state.glob("publication-signer-*")), [])
-
     def test_explicit_first_package_setup_reuses_the_reviewed_pair_in_one_run(self):
         request = self.api.request
 
@@ -608,25 +534,6 @@ class PublicationCommand(unittest.TestCase):
         ]
         self.assertEqual(intents.count("reserve-draft"), 1)
         self.assertEqual(sum(name.startswith("push-") for name in intents), 6)
-
-    def test_default_official_signer_checks_capability_before_reservation(self):
-        constructor_calls = []
-
-        def unavailable(binding, **kwargs):
-            constructor_calls.append((binding, kwargs))
-            raise InvalidRelease("official signer capability is missing")
-
-        with patch.dict(
-            sys.modules,
-            {"github_release_attestor": SimpleNamespace(WorkflowAttestor=unavailable)},
-        ):
-            with self.assertRaisesRegex(InvalidRelease, "capability"):
-                self.publish(attestor=None)
-        self.assertEqual(len(constructor_calls), 1)
-        self.assertEqual(constructor_calls[0][0].commit, self.fixture.commit)
-        self.assertIs(constructor_calls[0][1]["verifier"], self.verifier)
-        self.assertEqual(self.api.calls, [])
-        self.assertFalse((self.state / "v1.2.3.jsonl").exists())
 
 
 if __name__ == "__main__":

@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import replace
 import gzip
 import io
 import json
 import unittest
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import generate_release_gate_reports as producer
 import generate_corresponding_source_review as corresponding
-import generate_distribution_review as distribution
+import generate_release_gate_reports as producer
 import github_release_transport as transport
 import publish_container_release as publication
-import test_release_transport as transport_fixtures
 import test_native_browser_inputs as browser_fixtures
-from test_release_publication import source_review_fixture
+import test_release_transport as transport_fixtures
 from release_artifacts import InvalidRelease, json_bytes
 
 
@@ -261,8 +259,9 @@ class GateReports(unittest.TestCase):
                 ):
                     self.ci()
             self.jobs.jobs = original_jobs[:index] + original_jobs[index + 1 :]
-            with self.subTest(missing=required_job["name"]), self.assertRaisesRegex(
-                InvalidRelease, "security/backend/web"
+            with (
+                self.subTest(missing=required_job["name"]),
+                self.assertRaisesRegex(InvalidRelease, "security/backend/web"),
             ):
                 self.ci()
 
@@ -568,8 +567,7 @@ class GateReports(unittest.TestCase):
                 sorted(
                     {
                         **subjects,
-                        "source:"
-                        + name: "file:"
+                        "source:" + name: "file:"
                         + name
                         + "@"
                         + publication.sha256(source.read_bytes()),
@@ -682,24 +680,28 @@ class GateReports(unittest.TestCase):
                 },
             )
 
-        with patch.object(
-            corresponding.browser_inputs, "replay", side_effect=replay
-        ), patch.object(
-            corresponding.upstream_inputs,
-            "verify_source_files",
-            return_value=(upstream, {}),
-        ) as offering, patch.object(
-            corresponding.preferred,
-            "verify_preferred_relationships",
-            return_value={"fixture": "mapped modules"},
-        ), patch.object(
-            corresponding.preferred,
-            "verify_captured_compiler_inputs",
-            return_value={"fixture": "mapped compiler"},
-        ) as compiler, patch.object(
-            corresponding.preferred,
-            "verify_generator_relationships",
-            return_value={"fixture": "mapped generators"},
+        with (
+            patch.object(corresponding.browser_inputs, "replay", side_effect=replay),
+            patch.object(
+                corresponding.upstream_inputs,
+                "verify_source_files",
+                return_value=(upstream, {}),
+            ) as offering,
+            patch.object(
+                corresponding.preferred,
+                "verify_preferred_relationships",
+                return_value={"fixture": "mapped modules"},
+            ),
+            patch.object(
+                corresponding.preferred,
+                "verify_captured_compiler_inputs",
+                return_value={"fixture": "mapped compiler"},
+            ) as compiler,
+            patch.object(
+                corresponding.preferred,
+                "verify_generator_relationships",
+                return_value={"fixture": "mapped generators"},
+            ),
         ):
             result = verify()
             offering.assert_called_once_with(
@@ -776,143 +778,6 @@ class GateReports(unittest.TestCase):
             compiler.side_effect = substitute_after_mapping
             with self.assertRaisesRegex(InvalidRelease, "changed during replay"):
                 verify()
-
-    def distribution_fixture(self):
-        fixture = self.fixture.fixture
-        path = fixture.root / publication.SOURCE_REVIEW_POLICY
-        path.parent.mkdir(exist_ok=True)
-        path.write_bytes(
-            json_bytes(
-                {
-                    "schema_version": 1,
-                    "kind": "container-distribution-review-policy",
-                    "environment": "container-release",
-                    "reviewers": ["fixture-owner"],
-                }
-            )
-        )
-        fixture.git("add", publication.SOURCE_REVIEW_POLICY)
-        fixture.git("commit", "-qm", "Disposable authorization policy")
-        binding = replace(
-            self.binding, commit=fixture.git("rev-parse", "HEAD").decode().strip()
-        )
-        policy, fact = distribution.committed_policy(fixture.root, binding)
-        source = source_review_fixture(binding)
-        source["policy"] = fact
-        source_path = self.root / "signed-source-review.json"
-        source_path.write_bytes(
-            json_bytes({"fixture": "authenticated-complete-source"})
-        )
-        receipt = publication.VerifiedEvidence(
-            "corresponding-source",
-            binding.digest,
-            publication.sha256(source_path.read_bytes()),
-            True,
-            source,
-        )
-        verifier = Mock(verify=Mock(return_value=receipt))
-        run = {**self.jobs.run, "head_sha": binding.commit}
-        user = {"login": "fixture-owner", "id": 92, "type": "User"}
-        environment = {
-            "id": 31,
-            "name": policy["environment"],
-            "protection_rules": [
-                {
-                    "type": "required_reviewers",
-                    "reviewers": [{"type": "User", "reviewer": user}],
-                }
-            ],
-        }
-        comment = distribution.approval_comment(binding, receipt.report_digest, 77, 2)
-        approval = {
-            "state": "approved",
-            "comment": comment,
-            "user": copy.deepcopy(user),
-            "environments": [{"id": 31, "name": policy["environment"]}],
-        }
-        responses = {
-            "attempts/2": run,
-            "environments/container-release": environment,
-            "approvals": [approval],
-        }
-        api = Mock()
-
-        def request(method, url, *, headers):
-            self.assertEqual(method, "GET")
-            self.assertEqual(headers["Authorization"], "Bearer fixture-token")
-            value = next(
-                value for suffix, value in responses.items() if url.endswith(suffix)
-            )
-            return transport.Response(200, {}, json_bytes(value))
-
-        api.request.side_effect = request
-        args = {
-            "root": fixture.root,
-            "source_report": source_path,
-            "verifier": verifier,
-            "run_id": 77,
-            "attempt": 2,
-            "token": "fixture-token",
-            "http": api,
-        }
-        return binding, args, responses, receipt, path
-
-    def test_distribution_review_uses_committed_policy_and_exact_github_approval(self):
-        binding, args, responses, receipt, path = self.distribution_fixture()
-        # Uncommitted caller policy cannot grant or revoke release authorization.
-        path.write_text('{"reviewers":["caller"]}\n')
-        report, retained = distribution.distribution_review_report(binding, **args)
-        publication.source_review_details(report["details"], binding, distribution=True)
-        self.assertEqual(report["details"]["review"]["reviewer"], "fixture-owner")
-        self.assertEqual(
-            report["details"]["review"]["record_digest"],
-            publication.sha256(json_bytes(retained)),
-        )
-        self.assertEqual(retained["github_evidence"]["reviews"], responses["approvals"])
-        self.assertEqual(retained["source_gate_report_digest"], receipt.report_digest)
-        self.assertEqual(args["http"].request.call_count, 6)
-
-    def test_distribution_rejects_wrong_attempt_subjects_reviewer_policy_and_api_failure(
-        self,
-    ):
-        binding, args, responses, receipt, _ = self.distribution_fixture()
-        baseline = copy.deepcopy(responses)
-        changes = [
-            lambda r: r["attempts/2"].update(run_attempt=1),
-            lambda r: r["attempts/2"].update(head_sha="0" * 40),
-            lambda r: r["attempts/2"].update(event="pull_request"),
-            lambda r: r["attempts/2"].update(path=".github/workflows/other.yml"),
-            lambda r: r["environments/container-release"].update(protection_rules=[]),
-            lambda r: r["environments/container-release"]["protection_rules"][0][
-                "reviewers"
-            ][0]["reviewer"].update(login="other"),
-            lambda r: r["approvals"][0].update(state="rejected"),
-            lambda r: r["approvals"][0].update(comment="earlier approval"),
-            lambda r: r["approvals"][0]["user"].update(id=93),
-            lambda r: r["approvals"][0]["environments"][0].update(id=32),
-            lambda r: r["approvals"].append(copy.deepcopy(r["approvals"][0])),
-        ]
-        for change in changes:
-            responses.clear()
-            responses.update(copy.deepcopy(baseline))
-            change(responses)
-            with self.subTest(change=changes.index(change)), self.assertRaises(
-                InvalidRelease
-            ):
-                distribution.distribution_review_report(binding, **args)
-        responses.clear()
-        responses.update(copy.deepcopy(baseline))
-        args["verifier"].verify.return_value = replace(
-            receipt, report_digest="sha256:" + "0" * 64
-        )
-        with self.assertRaises(InvalidRelease):
-            distribution.distribution_review_report(binding, **args)
-        args["verifier"].verify.return_value = receipt
-        args["http"].request.side_effect = lambda *a, **k: transport.Response(
-            403, {}, b"{}"
-        )
-        with self.assertRaises(InvalidRelease):
-            distribution.distribution_review_report(binding, **args)
 
 
 if __name__ == "__main__":

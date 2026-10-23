@@ -31,10 +31,6 @@ OPERATIONS = (
     {
         "transaction",
         "reserve-draft",
-        "attest-reviewed-subjects",
-        "attest-registry-readback",
-        "attest-anonymous-pull",
-        "attest-asset-readback",
         "publish-release",
         "public-readback",
     }

@@ -1,38 +1,38 @@
-#!/usr/bin/env python3
 """Publish only an authenticated release through the held workflow lease.
 
-The official signing bridge and the transport perform actual publication actions.
+Normal workflow actions sign final subjects; this transport verifies and publishes them.
 There is no dry-run approval, arbitrary signer command, resume or cleanup mode.
 """
 
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager, ExitStack
-from dataclasses import dataclass
 import hashlib
 import os
-from pathlib import Path
 import shutil
 import tempfile
-from typing import Protocol
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 
 from assemble_release_oci import inspect_archive
+from generate_corresponding_source_review import prepared_inventory
 from generate_release_gate_reports import NativeSourceContext, validate_smoke
-from github_release_evidence import GhEvidenceVerifier
+from github_release_evidence import GhEvidenceVerifier, verify_final_subjects
 from github_release_transport import (
-    GitHubReleaseTransport,
     NUMBER,
+    GitHubReleaseTransport,
     WorkflowContext,
     private_directory,
     sync_directory,
 )
+from measure_browser_source_inventory import local_file, root_directory
 from publish_container_release import (
+    GATES,
     Binding,
     EvidenceVerifier,
-    GATES,
     PublicationPlan,
-    READBACK_GATES,
+    image_subjects,
     prepare_publication,
     reserve_draft,
     source_digest,
@@ -40,15 +40,16 @@ from publish_container_release import (
 )
 from release_artifacts import (
     DIGEST,
-    InvalidRelease,
     PLATFORMS,
+    VERSION,
+    InvalidRelease,
     fields,
     json_bytes,
     matches,
     read_bounded_file,
     read_json,
     require,
-    VERSION,
+    validate_manifest,
 )
 
 TARGETS = {
@@ -74,8 +75,6 @@ WORKFLOW_ENV = {
     "GITHUB_API_URL",
     "GITHUB_SERVER_URL",
     "GITHUB_EVENT_PATH",
-    "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-    "ACTIONS_ID_TOKEN_REQUEST_URL",
     "PSST_INITIALIZE_GHCR_PACKAGES",
 }
 PUBLICATION_STAGES = frozenset(
@@ -89,7 +88,6 @@ PUBLICATION_STAGES = frozenset(
         "workflow-context",
         "native-smoke",
         "final-oci",
-        "attestor-initialization",
         "transport-initialization",
         "workflow-api-preflight",
         "package-preflight",
@@ -154,15 +152,6 @@ def input_snapshots(state: Path):
     finally:
         if not snapshots.retain:
             shutil.rmtree(snapshots.root)
-
-
-class WorkflowAttestor(Protocol):
-    """Real reviewed action bridge; the independent verifier grants trust."""
-
-    def attest_subjects(
-        self, plan: PublicationPlan, assets: dict[str, Path], output: Path
-    ) -> Path: ...
-    def sign_report(self, binding: Binding, report: Path) -> None: ...
 
 
 def exclusive_report(path: Path, value: dict) -> None:
@@ -273,7 +262,7 @@ def publish(
     state: Path,
     environment: dict[str, str],
     verifier: EvidenceVerifier | None = None,
-    attestor: WorkflowAttestor | None = None,
+    provenance_verifier=verify_final_subjects,
     transport_factory=GitHubReleaseTransport,
 ) -> dict:
     """Drive the actual lifecycle. Fixture adapters must be injected explicitly."""
@@ -356,10 +345,13 @@ def publish(
             copied = private / "archives" / (target + ".tar")
             snapshot_input(path, copied, 4 * 1024**3)
             archive_paths[target] = copied
+        report_snapshots = {}
         for gate, path in reports.items():
-            target = private / "gates" / (gate + ".json")
-            snapshot_input(path, target, 16 * 1024**2)
-            report_paths[gate] = target
+            if path not in report_snapshots:
+                target = private / "gates" / path.name
+                snapshot_input(path, target, 16 * 1024**2)
+                report_snapshots[path] = target
+            report_paths[gate] = report_snapshots[path]
         publication_stage("release-gates")
         plan = prepare_publication(
             root=root,
@@ -398,21 +390,6 @@ def publish(
                     "linux/" + arch
                 ],
                 "Final OCI archive is not the authenticated reviewed child",
-            )
-        if attestor is None:
-            publication_stage("attestor-initialization")
-            from github_release_attestor import WorkflowAttestor as OfficialAttestor
-
-            signer_cache = signer_scope.enter_context(
-                tempfile.TemporaryDirectory(prefix="publication-signer-", dir=state)
-            )
-            attestor = OfficialAttestor(
-                plan.binding,
-                token=environment["GH_TOKEN"],
-                environment=environment,
-                verifier=verifier,
-                private_output=private / "readbacks",
-                private_action_cache=Path(signer_cache),
             )
         publication_stage("transport-initialization")
         adapter = transport_factory(
@@ -459,67 +436,21 @@ def publish(
             publication_stage("registry-readback")
             registry = adapter.inspect_pair()
             anonymous = adapter.anonymous_pull()
-            provenance = None
-
-            def attest_subjects():
-                nonlocal provenance
-                provenance = attestor.attest_subjects(
-                    plan, asset_paths, private / "readbacks"
-                )
-                require(
-                    isinstance(provenance, Path)
-                    and provenance.parent == private / "readbacks"
-                    and provenance.is_file()
-                    and not provenance.is_symlink(),
-                    "Invalid signed provenance report path",
-                )
-                verify_gates(
-                    {"provenance": provenance}, {"provenance"}, plan.binding, verifier
-                )
-                return {"report_sha256": source_digest(provenance)}
-
             publication_stage("provenance-publication")
-            adapter.journal.mutate(
-                "attest-reviewed-subjects",
-                {"subjects": dict(plan.binding.subjects)},
-                attest_subjects,
+            provenance = provenance_verifier(plan, asset_paths, verifier)
+            require(
+                provenance == {"subjects": dict(plan.binding.subjects)},
+                "Final standard provenance coverage differs",
             )
             publication_stage("release-assets")
             adapter.upload_assets(reservation, asset_paths)
             assets = adapter.inspect_assets(reservation)
-            readback_reports = {"provenance": provenance}
-            for gate, details in (
-                ("registry-readback", registry),
-                ("anonymous-pull", anonymous),
-                ("asset-readback", assets),
-            ):
-                path = private / "readbacks" / (gate + ".json")
-                exclusive_report(
-                    path,
-                    {
-                        "schema_version": 1,
-                        "gate": gate,
-                        "binding_digest": plan.binding.digest,
-                        "passed": True,
-                        "details": details,
-                    },
-                )
-                digest = source_digest(path)
-
-                def sign_readback(gate=gate, path=path, digest=digest):
-                    attestor.sign_report(plan.binding, path)
-                    require(
-                        source_digest(path) == digest,
-                        "Readback report changed during signing",
-                    )
-                    verify_gates({gate: path}, {gate}, plan.binding, verifier)
-                    return {"report_sha256": digest}
-
-                adapter.journal.mutate(
-                    "attest-" + gate, {"report_sha256": digest}, sign_readback
-                )
-                readback_reports[gate] = path
-            verify_gates(readback_reports, set(READBACK_GATES), plan.binding, verifier)
+            readback_reports = {
+                "registry-readback": registry,
+                "anonymous-pull": anonymous,
+                "asset-readback": assets,
+                "provenance": provenance,
+            }
             # The accepted risk may expire while awaiting package visibility or
             # remote readbacks. Recheck before exposing immutable version tags.
             verify_gates(
@@ -537,7 +468,7 @@ def publish(
                 plan.binding,
                 verifier,
             )
-            release = adapter.publish(reservation, readback_reports, verifier)
+            release = adapter.publish(reservation, readback_reports)
             publication_stage("public-readback")
             public = adapter.verify_public(reservation)
             result = {
@@ -558,6 +489,84 @@ def publish(
         return result
 
 
+def publication_inputs(
+    *, inputs_root: Path, repository: str, version: str, commit: str
+) -> dict:
+    require(inputs_root.is_absolute(), "Publication input root must be absolute")
+    root_directory(inputs_root)
+    NativeSourceContext(repository, version, commit, "linux/amd64").checked()
+    prepared = inputs_root / "prepared"
+    _, record, _, manifest, bundle_name, sources, indexes, _ = prepared_inventory(
+        prepared=prepared, repository=repository, version=version, commit=commit
+    )
+    validate_manifest(manifest, repository)
+    require(
+        manifest["version"] == version
+        and manifest["source"]["commit"] == commit
+        and manifest["payload_profile"] == "deployment-ready",
+        "Publication manifest differs from selected tagged context",
+    )
+    matches(record["binding_sha256"], DIGEST, "Invalid declared release binding")
+    subjects = fields(
+        record["subjects"],
+        set(image_subjects(manifest))
+        | {"manifest", "bundle"}
+        | {"source:" + name for name in sources},
+        "declared publication subjects",
+    )
+    require(
+        all(
+            subjects[name] == value for name, value in image_subjects(manifest).items()
+        ),
+        "Declared image subjects differ from manifest",
+    )
+    for name, digest in record["assets"].items():
+        subject = (
+            "manifest"
+            if name == "release-manifest.json"
+            else "bundle"
+            if name == bundle_name
+            else "source:" + name
+        )
+        require(
+            subjects[subject] == "file:" + name + "@" + digest,
+            "Declared file subjects differ from prepared asset inventory",
+        )
+    require(
+        record["assets"][bundle_name] == "sha256:" + manifest["bundle"]["sha256"],
+        "Declared bundle digest differs from manifest",
+    )
+    archives = {
+        component + "-" + arch: local_file(
+            inputs_root / arch, f"native/export/{component}-{arch}.oci.tar"
+        )
+        for component in ("backend", "web")
+        for arch in ("amd64", "arm64")
+    }
+    from release_result import checked_result
+
+    result_path = local_file(inputs_root / "recovery", "release-result.json")
+    binding = Binding(repository, version, commit, tuple(sorted(subjects.items())))
+    result = checked_result(read_json(read_bounded_file(result_path)), binding)
+    require(
+        set(result["checks"]) == set(GATES), "Publication requires completed recovery"
+    )
+    reports = {gate: result_path for gate in GATES}
+    return {
+        "manifest": str(prepared / "release-manifest.json"),
+        "bundle": str(prepared / bundle_name),
+        **{
+            name: {key: str(path) for key, path in sorted(paths.items())}
+            for name, paths in (
+                ("indexes", indexes),
+                ("archives", archives),
+                ("source_assets", sources),
+                ("reports", reports),
+            )
+        },
+    }
+
+
 def paths(value: object, label: str) -> dict[str, Path]:
     require(
         isinstance(value, dict)
@@ -575,13 +584,50 @@ def paths(value: object, label: str) -> dict[str, Path]:
     return result
 
 
+def prepare_attestation(
+    *, root: Path, inputs: dict, environment: dict, reviewed_commit: str, output: Path
+) -> None:
+    """Authenticate preparation once before emitting normal action checksum input.
+
+    This is an ephemeral action input, never release evidence or an approval record.
+    Publication repeats byte/authentication checks before any remote mutation.
+    """
+    require(output.is_absolute(), "Final checksum input must use an absolute path")
+    verifier = GhEvidenceVerifier(
+        token=environment.get("GH_TOKEN"),
+        run_id=int(environment["GITHUB_RUN_ID"]),
+        run_attempt=int(environment["GITHUB_RUN_ATTEMPT"]),
+    )
+    plan = prepare_publication(
+        root=root,
+        repository=environment["GITHUB_REPOSITORY"],
+        ref=environment["GITHUB_REF"],
+        event_sha=environment["GITHUB_SHA"],
+        reviewed_commit=reviewed_commit,
+        manifest_path=Path(inputs["manifest"]),
+        bundle=Path(inputs["bundle"]),
+        indexes=paths(inputs["indexes"], "indexes"),
+        source_assets=paths(inputs["source_assets"], "sources"),
+        reports=paths(inputs["reports"], "reports"),
+        verifier=verifier,
+    )
+    lines = []
+    for _, subject in plan.binding.subjects:
+        name, digest = subject.split("@")
+        name = name.removeprefix("file:").removeprefix("oci://")
+        require(not any(c.isspace() for c in name), "Invalid final subject name")
+        lines.append(digest.removeprefix("sha256:") + "  " + name + "\n")
+    with output.open("x", encoding="utf-8") as stream:
+        stream.write("".join(lines))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--inputs",
+        "--inputs-root",
         type=Path,
         required=True,
-        help="Exact prepared paths and authenticated gate reports JSON",
+        help="Downloaded exact prepared/native/source/recovery artifacts",
     )
     parser.add_argument(
         "--root", type=Path, required=True, help="Reviewed tagged Git checkout"
@@ -593,13 +639,19 @@ def main(argv: list[str] | None = None) -> None:
         required=True,
         help="Private runner-local publication journal directory",
     )
+    parser.add_argument(
+        "--checksums",
+        type=Path,
+        help="Prepare final attestation subjects without publishing",
+    )
     args = parser.parse_args(argv)
     publication_stage("cli-inputs")
     environment = {key: os.environ[key] for key in WORKFLOW_ENV if key in os.environ}
-    inputs = fields(
-        read_json(read_bounded_file(args.inputs)),
-        {"manifest", "bundle", "indexes", "archives", "source_assets", "reports"},
-        "prepared publication inputs",
+    inputs = publication_inputs(
+        inputs_root=args.inputs_root,
+        repository=environment.get("GITHUB_REPOSITORY", ""),
+        version=environment.get("GITHUB_REF", "").removeprefix("refs/tags/"),
+        commit=environment.get("GITHUB_SHA", ""),
     )
     singles = paths(
         {name: inputs[name] for name in ("manifest", "bundle")}, "release assets"
@@ -615,6 +667,15 @@ def main(argv: list[str] | None = None) -> None:
     version = ref.removeprefix("refs/tags/")
     matches(version, VERSION, "Publication requires a stable version tag")
     private_directory(args.state)
+    if args.checksums:
+        prepare_attestation(
+            root=root,
+            inputs=inputs,
+            environment=environment,
+            reviewed_commit=args.reviewed_commit,
+            output=args.checksums,
+        )
+        return
     receipt_path = args.state / (version + "-publication-receipt.json")
     require(
         not receipt_path.exists() and not receipt_path.is_symlink(),
@@ -646,7 +707,7 @@ def main(argv: list[str] | None = None) -> None:
 def run_command(argv: list[str] | None = None) -> None:
     try:
         main(argv)
-    except (Exception, KeyboardInterrupt) as error:
+    except (Exception, KeyboardInterrupt) as error:  # noqa: BLE001 - suppress all credential-bearing transport errors
         print("Publication failure category: " + failure_category(error), flush=True)
         raise SystemExit(
             "Publication stopped; inspect retained journals before any further action."

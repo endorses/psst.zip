@@ -131,25 +131,6 @@ class FixtureVerifier:
             details["subjects"] = dict(binding.subjects)
         elif gate == "corresponding-source":
             details = source_review_fixture(binding)
-        elif gate == "distribution-review":
-            source = source_review_fixture(binding)
-            details = {key: value for key, value in source.items() if key != "coverage"}
-            details.update(
-                {
-                    "coverage_digest": publication.sha256(
-                        release.json_bytes(source["coverage"])
-                    ),
-                    "review": {
-                        "decision": "approved",
-                        "reviewer": "fixture-reviewer",
-                        "record_digest": digest("c"),
-                        "source_gate_report_digest": publication.sha256(
-                            (path.parent / "corresponding-source.json").read_bytes()
-                        ),
-                        "reviewed_subjects": dict(binding.subjects),
-                    },
-                }
-            )
         details = self.details.get(gate, details)
         return self.mutate(
             publication.VerifiedEvidence(
@@ -307,8 +288,15 @@ class PublicationChecks(unittest.TestCase):
             plan,
             {"release_id": 17, "binding": plan.binding.digest, "ready": False},
             snapshot or self.ready_snapshot(plan),
-            reports or {key: self.reports[key] for key in publication.READBACK_GATES},
-            self.verifier,
+            reports
+            or {
+                key: (
+                    {"subjects": dict(plan.binding.subjects)}
+                    if key == "provenance"
+                    else {"binding": plan.binding.digest}
+                )
+                for key in publication.READBACK_GATES
+            },
         )
 
     def measure(self, **overrides):
@@ -371,8 +359,9 @@ class PublicationChecks(unittest.TestCase):
             {"source_assets": {}},
             {"indexes": {"backend": self.indexes["backend"]}},
         ):
-            with self.subTest(overrides=overrides), self.assertRaises(
-                release.InvalidRelease
+            with (
+                self.subTest(overrides=overrides),
+                self.assertRaises(release.InvalidRelease),
             ):
                 self.measure(**overrides)
 
@@ -398,8 +387,11 @@ class PublicationChecks(unittest.TestCase):
             (self.root / "LICENSE").write_text("changed tracked fixture\n")
             if staged:
                 self.git("add", "LICENSE")
-            with self.subTest(staged=staged), self.assertRaisesRegex(
-                release.InvalidRelease, "Tracked checkout differs"
+            with (
+                self.subTest(staged=staged),
+                self.assertRaisesRegex(
+                    release.InvalidRelease, "Tracked checkout differs"
+                ),
             ):
                 publication.checked_checkout(
                     self.root, "endorses/psst.zip", self.commit
@@ -611,56 +603,6 @@ class PublicationChecks(unittest.TestCase):
                     reports, frozenset(reports), binding, self.verifier
                 )
 
-    def test_distribution_review_requires_exact_completed_source_policy_and_notices(
-        self,
-    ):
-        binding = self.measure().binding
-        valid = self.verifier.verify(
-            "distribution-review", self.reports["distribution-review"], binding
-        ).details
-        mutations = [({}, "empty")]
-        for path, replacement in (
-            (("review", "decision"), "pending"),
-            (("review", "decision"), True),
-            (("review", "reviewer"), ""),
-            (("review", "record_digest"), ""),
-            (("review", "reviewed_subjects"), dict(binding.subjects[:-1])),
-            (("review", "source_gate_report_digest"), digest("f")),
-            (("coverage_digest",), digest("f")),
-            (("images", "web-amd64", "notice_inventory_digest"), digest("f")),
-            (("policy", "record_digest"), digest("f")),
-            (("policy", "git_blob"), "f" * 40),
-        ):
-            changed = copy.deepcopy(valid)
-            target = changed
-            for key in path[:-1]:
-                target = target[key]
-            target[path[-1]] = replacement
-            mutations.append((changed, path))
-        changed = copy.deepcopy(valid)
-        changed["review"]["caller_approved"] = True
-        mutations.append((changed, "bare approval"))
-        reports = {
-            gate: self.reports[gate]
-            for gate in ("corresponding-source", "distribution-review")
-        }
-        for details, name in mutations:
-            self.verifier.details = {"distribution-review": details}
-            with self.subTest(name=name), self.assertRaises(release.InvalidRelease):
-                publication.verify_gates(
-                    reports, frozenset(reports), binding, self.verifier
-                )
-        self.verifier.details = {}
-        with self.assertRaisesRegex(
-            release.InvalidRelease, "verified corresponding-source"
-        ):
-            publication.verify_gates(
-                {"distribution-review": self.reports["distribution-review"]},
-                frozenset({"distribution-review"}),
-                binding,
-                self.verifier,
-            )
-
     def test_smoke_requires_both_architectures_and_ci_requires_server_checks(self):
         for gate, details in (
             ("final-image-smoke", {"execution": {"linux/amd64": "native"}}),
@@ -685,8 +627,9 @@ class PublicationChecks(unittest.TestCase):
                 else:
                     jobs[job] = conclusion
                 self.verifier.details = {"source-ci": {"jobs": jobs}}
-                with self.subTest(job=job, conclusion=conclusion), self.assertRaises(
-                    release.InvalidRelease
+                with (
+                    self.subTest(job=job, conclusion=conclusion),
+                    self.assertRaises(release.InvalidRelease),
                 ):
                     self.prepare()
 
@@ -880,9 +823,16 @@ class PublicationChecks(unittest.TestCase):
                         if key != gate
                     },
                 )
-        self.verifier.details["provenance"] = {"subjects": dict(plan.updater_subjects)}
-        with self.assertRaisesRegex(release.InvalidRelease, "every updater and source"):
-            self.ready(plan)
+        readbacks = {
+            key: (
+                {"subjects": dict(plan.updater_subjects)}
+                if key == "provenance"
+                else {"binding": plan.binding.digest}
+            )
+            for key in publication.READBACK_GATES
+        }
+        with self.assertRaisesRegex(release.InvalidRelease, "provenance is incomplete"):
+            self.ready(plan, reports=readbacks)
 
     def test_recovery_preserves_partial_work_without_ready_or_convenience_tag_actions(
         self,

@@ -31,7 +31,6 @@ from assemble_release_oci import inspect_archive
 from github_release_oci import stage_verified_oci, validate_staged_oci
 from publish_container_release import (
     WORKFLOW,
-    EvidenceVerifier,
     PublicationPlan,
     ready_release_request,
     sha256,
@@ -1398,16 +1397,14 @@ class GitHubReleaseTransport:
             "immutable_releases": self.immutable(),
         }
 
-    def publish(
-        self, reservation: dict, reports: dict[str, Path], verifier: EvidenceVerifier
-    ) -> dict:
+    def publish(self, reservation: dict, readbacks: dict[str, dict]) -> dict:
         self.require_lease()
         require(
             self.tags_created and not self.published,
             "Publication requires complete version pair",
         )
         request = ready_release_request(
-            self.plan, reservation, self.ready_snapshot(reservation), reports, verifier
+            self.plan, reservation, self.ready_snapshot(reservation), readbacks
         )
         expected = {
             "release_id": self.release_id,

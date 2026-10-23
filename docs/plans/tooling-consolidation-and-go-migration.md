@@ -72,13 +72,13 @@ in place until its replacement is explicitly agreed.
       approval immediately before credentialed publication, a human-readable
       summary, and standard final provenance. Then replace the exact-comment
       protocol and duplicate review job together with their consumers.
-- [ ] Retain current scan coverage initially. Decide separately whether to replace
+- [x] Retain current scan coverage initially. Decide separately whether to replace
       custom advisory non-applicability inference with scanner results and narrow
       reviewed exceptions; do not silently weaken the gate during translation.
 - [x] Decide whether future debug-to-production Android signing migrations are
       supported. Retire bridge-only tooling if not; otherwise isolate it as an
       optional migration capability. Preserve ordinary same-signer update checks.
-- [ ] Record these decisions and the resulting artifact/consumer contract in this
+- [x] Record these decisions and the resulting artifact/consumer contract in this
       plan before implementing the corresponding policy changes.
 
 On 2026-10-23 the user approved one protected publication approval with standard
@@ -141,7 +141,7 @@ resolutions, scans of identical common inputs, copies, and uploaded payload byte
 
 ### 3. Introduce Go contracts and migrate CLI build/package tooling
 
-- [ ] Add `tools/release/go.mod` and `cmd/psst-release`, initially with only packages
+- [x] Add `tools/release/go.mod` and `cmd/psst-release`, initially with only packages
       required by real callers. Keep it independent of generated browser assets,
       backend/client module graphs, credentials, and release outputs.
 - [ ] Implement strict versioned manifest decoding/validation and archive/inventory
@@ -206,13 +206,13 @@ remain intact. No dual full packaging pipeline remains for new releases.
 
 ### 5. Simplify publication orchestration and signing
 
-- [ ] Replace the multiple gate envelopes with one versioned release result
+- [x] Replace the multiple gate envelopes with one versioned release result
       containing platform results and references to raw reports. Keep the actual
       CI, smoke, scan, source and recovery checks; remove redundant serialization.
-- [ ] After the publication decision above, use one protected publication job and
+- [x] After the publication decision above, use one protected publication job and
       readable summary. Remove exact-comment parsing, duplicate approval jobs,
       signed approval-evidence wrappers and their obsolete tests/policy fields.
-- [ ] Invoke the normal pinned attestation action in workflow steps. Remove custom
+- [x] Invoke the normal pinned attestation action in workflow steps. Remove custom
       action JavaScript downloads, runner/Node discovery and provenance-about-
       provenance. Verify that final subject digests, tag/commit, workflow identity,
       issuer and hosted-runner constraints match existing deployment readers.
@@ -359,3 +359,20 @@ does not claim all platform builds can finish within the CLI's five-minute limit
 | M8: exceptional Android signing migration                        | Explicit decision and stage 6                         |
 | VPS updater and deployment request                               | Stage 7; shared final contract from 3–5               |
 | Test coupling, repository hooks, inventory/retirement            | Stages 1, 8 and affected-stage verification           |
+
+## Implementation evidence
+
+The first publication slice replaces the exact-comment review and duplicate
+protected job with one protected publisher and normal pinned `actions/attest`
+steps. The Go `publication-result` command consolidates the six source-stage
+facts, then the exact same invocation adds recovery as its seventh fact. The
+temporary per-fact envelopes are removed after incorporation; useful raw replay
+and scanner inputs remain bound by digest. Existing Python readers are a narrow
+transition until their source/publication consumers migrate, not a second result
+producer. Final deployment manifest/bundle and signer identity remain unchanged.
+
+Local evidence: 126 focused publication/source/transport Python regressions pass
+in 13 seconds; actual Python producer → compiled Go result → semantic Python
+reader integration passes. Go contract/archive/cache/result/Android boundary tests
+pass in under one second on a warm compiler cache. No live release, remote
+publication, production update, or native Xcode verification is claimed.

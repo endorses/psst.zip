@@ -61,8 +61,7 @@ class CorrespondingSourceCommand(unittest.TestCase):
             "manifest": "file:release-manifest.json@"
             + command.sha256(assets["release-manifest.json"]),
             "bundle": "file:" + bundle + "@" + command.sha256(assets[bundle]),
-            "source:"
-            + self.source: "file:"
+            "source:" + self.source: "file:"
             + self.source
             + "@"
             + command.sha256(assets[self.source]),
@@ -350,63 +349,6 @@ class CorrespondingSourceCommand(unittest.TestCase):
         with self.assertRaises(InvalidRelease):
             command.run_command(self.args)
         self.assertEqual(producer.call_count, 1)
-        self.args.verify_only = True
-        auth.return_value.verify.return_value = VerifiedEvidence(
-            "corresponding-source",
-            self.binding.digest,
-            command.sha256(
-                (self.args.output / "corresponding-source.json").read_bytes()
-            ),
-            True,
-            self.report["details"],
-        )
-        before = {path.name: path.read_bytes() for path in self.args.output.iterdir()}
-        command.run_command(self.args)
-        self.assertEqual(producer.call_count, 1)
-        auth.return_value.verify.assert_called_once_with(
-            "corresponding-source",
-            self.args.output / "corresponding-source.json",
-            self.binding,
-        )
-        auth.return_value.authenticate.assert_called_once_with(
-            before["corresponding-source-evidence.json"], self.binding
-        )
-        self.assertEqual(
-            before,
-            {path.name: path.read_bytes() for path in self.args.output.iterdir()},
-        )
-        for mutation in ("coverage", "notices", "publication"):
-            bad = copy.deepcopy(self.evidence)
-            if mutation == "coverage":
-                for key, value in bad["coverage_evidence"].items():
-                    if not key.endswith("-notices"):
-                        value["substitution"] = True
-            elif mutation == "notices":
-                bad["coverage_evidence"]["web-arm64-notices"]["files"]["LICENSE"][
-                    "size"
-                ] += 1
-            else:
-                bad["publication_authorized"] = True
-            (self.args.output / "corresponding-source-evidence.json").write_bytes(
-                json_bytes(bad)
-            )
-            with self.subTest(mutation=mutation), self.assertRaises(InvalidRelease):
-                command.run_command(self.args)
-            self.assertEqual(producer.call_count, 1)
-        (self.args.output / "corresponding-source-evidence.json").write_bytes(
-            before["corresponding-source-evidence.json"]
-        )
-
-        def change_after_authentication(raw, binding):
-            (self.args.output / "corresponding-source-evidence.json").write_bytes(
-                raw + b" "
-            )
-
-        auth.return_value.authenticate.side_effect = change_after_authentication
-        with self.assertRaisesRegex(InvalidRelease, "changed during authentication"):
-            command.run_command(self.args)
-        self.assertEqual(producer.call_count, 1)
-        auth.return_value.authenticate.side_effect = None
 
     def test_unbound_planned_changed_and_partial_inputs_fail_without_output(self):
         prepared, auth, producer = self.mocks()
@@ -444,15 +386,17 @@ class CorrespondingSourceCommand(unittest.TestCase):
         self.write_record()
         producer.side_effect = None
         producer.return_value = (self.report, {"oversized": "x" * 1024})
-        with patch.object(command, "MAX_COMMAND_OUTPUT", 256), self.assertRaises(
-            InvalidRelease
+        with (
+            patch.object(command, "MAX_COMMAND_OUTPUT", 256),
+            self.assertRaises(InvalidRelease),
         ):
             command.run_command(self.args)
         self.assertFalse(self.args.output.exists())
         producer.side_effect = OSError("a sensitive network diagnostic fixture-token")
-        with patch.object(
-            command, "run_command", side_effect=producer.side_effect
-        ), patch("sys.stderr", new_callable=io.StringIO) as error:
+        with (
+            patch.object(command, "run_command", side_effect=producer.side_effect),
+            patch("sys.stderr", new_callable=io.StringIO) as error,
+        ):
             with self.assertRaises(SystemExit) as rejected:
                 command.main(
                     [
@@ -711,101 +655,6 @@ class CorrespondingSourceCommand(unittest.TestCase):
                 path = output / (gate + ".json")
                 self.assertEqual(path.read_bytes(), json_bytes(report))
                 before[path] = path.read_bytes()
-        self.args.verify_only = True
-        # Signed output verification does not reopen substantive scanner inputs.
-        self.args.resolved_bases.unlink()
-        command.run_command(self.args)
-        self.assertEqual(
-            {call.args[0] for call in auth.return_value.verify.call_args_list},
-            {*command.CHECK_GATES, "corresponding-source"},
-        )
-        self.assertEqual({path: path.read_bytes() for path in before}, before)
-        self.assertEqual(producer.call_count, 1)
-        self.assertEqual(ci.call_count, 1)
-        self.assertEqual(native.call_count, 1)
-        self.assertEqual(source.call_count, 1)
-        self.assertEqual(image.call_count, 1)
-        self.assertEqual(prepared.call_count, 2)
-
-    def test_paired_verification_rejects_missing_substituted_stale_and_changed_reports(
-        self,
-    ):
-        prepared, auth, producer, ci, native, source, image = self.paired_mocks()
-        command.run_command(self.args)
-        self.args.verify_only = True
-        path = self.args.checks_output / "source-ci.json"
-        original = path.read_bytes()
-        for mutation in (
-            "missing",
-            "substituted",
-            "old-attempt",
-            "old-run",
-            "noncanonical",
-            "linked",
-            "extra",
-        ):
-            with self.subTest(mutation=mutation):
-                changed = copy.deepcopy(self.checks["source-ci"])
-                if mutation == "missing":
-                    path.unlink()
-                elif mutation == "linked":
-                    path.unlink()
-                    path.symlink_to(self.args.output / "corresponding-source.json")
-                elif mutation == "extra":
-                    (self.args.checks_output / "extra.json").write_bytes(b"{}")
-                elif mutation == "noncanonical":
-                    path.write_bytes(original + b" ")
-                else:
-                    if mutation == "substituted":
-                        changed["details"]["jobs"]["ios"] = "failure"
-                    elif mutation == "old-attempt":
-                        changed["details"]["run_attempt"] -= 1
-                    else:
-                        changed["details"]["run_id"] += 1
-                    path.write_bytes(json_bytes(changed))
-                with self.assertRaises(InvalidRelease):
-                    command.run_command(self.args)
-                if path.is_symlink():
-                    path.unlink()
-                path.write_bytes(original)
-                (self.args.checks_output / "extra.json").unlink(missing_ok=True)
-        notice_path = self.args.checks_output / "runtime-notices.json"
-
-        for gate in ("source-scanners", "final-image-scanners"):
-            scanner_path = self.args.checks_output / (gate + ".json")
-            scanner_original = scanner_path.read_bytes()
-            for mutation in ("missing", "substituted", "unresolved"):
-                with self.subTest(gate=gate, mutation=mutation):
-                    changed = copy.deepcopy(self.checks[gate])
-                    if mutation == "missing":
-                        scanner_path.unlink()
-                    else:
-                        changed["details"]["scans"][0]["findings"] = [
-                            {"disposition": "unresolved", "reason": "fixture finding"}
-                        ]
-                        scanner_path.write_bytes(json_bytes(changed))
-                        if mutation == "unresolved":
-                            self.checks[gate]["details"] = changed["details"]
-                    with self.assertRaises(InvalidRelease):
-                        command.run_command(self.args)
-                    self.checks[gate]["details"] = read_json(scanner_original)[
-                        "details"
-                    ]
-                    scanner_path.write_bytes(scanner_original)
-
-        def change_paired_output(raw, binding):
-            notice_path.write_bytes(notice_path.read_bytes() + b" ")
-
-        auth.return_value.authenticate.side_effect = change_paired_output
-        with self.assertRaisesRegex(
-            InvalidRelease, "outputs changed during authentication"
-        ):
-            command.run_command(self.args)
-        self.assertEqual(producer.call_count, 1)
-        self.assertEqual(ci.call_count, 1)
-        self.assertEqual(native.call_count, 1)
-        self.assertEqual(source.call_count, 1)
-        self.assertEqual(image.call_count, 1)
 
     def test_paired_generation_failure_and_existing_output_create_no_complete_reports(
         self,

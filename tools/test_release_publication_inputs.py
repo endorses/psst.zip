@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-import prepare_publication_inputs as command
+import publish_verified_release as command
 import test_release_corresponding_source_command as source_fixtures
-from test_release_artifacts import manifest
-from publish_container_release import GATES, image_subjects
+from publish_container_release import Binding, GATES, image_subjects
 from release_artifacts import InvalidRelease, json_bytes, read_json
+from test_release_artifacts import manifest
 
 
 class PublicationInputMap(unittest.TestCase):
@@ -50,32 +50,50 @@ class PublicationInputMap(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"tiny staged OCI fixture")
                 self.payloads.add(path)
-        self.reports = {}
-        for gate in GATES:
-            if gate == "corresponding-source":
-                relative = "source/candidate-source-review/corresponding-source.json"
-            elif gate == "upgrade-recovery":
-                relative = "recovery/recovery-gate/upgrade-recovery.json"
-            elif gate == "distribution-review":
-                relative = (
-                    "distribution/distribution-review/reports/distribution-review.json"
-                )
-            else:
-                relative = "source/candidate-check-reports/" + gate + ".json"
-            path = self.inputs / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(
-                json_bytes(
-                    {
-                        "schema_version": 1,
-                        "gate": gate,
-                        "passed": True,
-                        "binding_digest": record["binding_sha256"],
-                        "details": {},
-                    }
-                )
+        binding = Binding(
+            fixture.args.repository,
+            fixture.args.version,
+            fixture.args.commit,
+            tuple(sorted(record["subjects"].items())),
+        )
+        record["binding_sha256"] = binding.digest
+        (prepared / "release-inputs.json").write_bytes(json_bytes(record))
+        path = self.inputs / "recovery/release-result.json"
+        path.parent.mkdir(parents=True)
+        checks = {gate: {} for gate in GATES}
+        checks["source-ci"] = {"run_id": 123, "run_attempt": 2}
+        checks["final-image-smoke"] = {
+            "execution": {p: "native" for p in ("linux/amd64", "linux/arm64")}
+        }
+        checks["upgrade-recovery"] = checks["final-image-smoke"]
+        path.write_bytes(
+            json_bytes(
+                {
+                    "schema_version": 1,
+                    "kind": "container-release-result",
+                    "repository": binding.repository,
+                    "version": binding.version,
+                    "commit": binding.commit,
+                    "run_id": 123,
+                    "attempt": 2,
+                    "binding_digest": binding.digest,
+                    "subjects": dict(binding.subjects),
+                    "checks": checks,
+                    "inputs": {
+                        "corresponding-source-replay": {"sha256": "sha256:" + "e" * 64},
+                        "source-result": {"sha256": "sha256:" + "d" * 64},
+                    },
+                    "platforms": {
+                        p: {
+                            "execution": "native",
+                            "checks": ["final-image-smoke", "upgrade-recovery"],
+                        }
+                        for p in ("linux/amd64", "linux/arm64")
+                    },
+                }
             )
-            self.reports[gate] = path
+        )
+        self.reports = {gate: path for gate in GATES}
 
     def map(self, **changes):
         return command.publication_inputs(
@@ -90,7 +108,7 @@ class PublicationInputMap(unittest.TestCase):
             )
         )
 
-    def test_actual_download_layout_exclusive_cli_and_no_payload_reads(self):
+    def test_actual_download_layout_and_no_payload_rereads(self):
         original_open = Path.open
 
         def bounded_open(path, *args, **kwargs):
@@ -99,38 +117,8 @@ class PublicationInputMap(unittest.TestCase):
             )
             return original_open(path, *args, **kwargs)
 
-        output = self.root / "publication-inputs.json"
         with patch.object(Path, "open", bounded_open):
-            command.main(
-                [
-                    "--inputs-root",
-                    str(self.inputs),
-                    "--repository",
-                    self.fixture.args.repository,
-                    "--version",
-                    self.fixture.args.version,
-                    "--commit",
-                    self.fixture.args.commit,
-                    "--output",
-                    str(output),
-                ]
-            )
-            with self.assertRaises(FileExistsError):
-                command.main(
-                    [
-                        "--inputs-root",
-                        str(self.inputs),
-                        "--repository",
-                        self.fixture.args.repository,
-                        "--version",
-                        self.fixture.args.version,
-                        "--commit",
-                        self.fixture.args.commit,
-                        "--output",
-                        str(output),
-                    ]
-                )
-        value = read_json(output.read_bytes())
+            value = self.map()
         self.assertEqual(
             set(value),
             {"manifest", "bundle", "indexes", "archives", "source_assets", "reports"},
@@ -167,7 +155,7 @@ class PublicationInputMap(unittest.TestCase):
         target.write_bytes(raw)
         for key, replacement in (
             ("binding_digest", "sha256:" + "0" * 64),
-            ("gate", "runtime-notices"),
+            ("kind", "unknown-result"),
         ):
             value = read_json(raw)
             value[key] = replacement

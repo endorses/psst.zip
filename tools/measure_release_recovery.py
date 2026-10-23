@@ -530,11 +530,18 @@ def validate_authenticated_inputs(
     validate_bundle_source(context, bundle, root)
     snapshots[bundle] = source_digest(bundle)
     source_raw = snapshot(source_report)
-    source = fields(
-        read_json(source_raw),
-        {"schema_version", "gate", "binding_digest", "passed", "details"},
-        "complete source recovery gate",
-    )
+    source_value = read_json(source_raw)
+    if (
+        isinstance(source_value, dict)
+        and source_value.get("kind") == "container-release-result"
+    ):
+        source = {"details": source_value.get("checks", {}).get("corresponding-source")}
+    else:
+        source = fields(
+            source_value,
+            {"schema_version", "gate", "binding_digest", "passed", "details"},
+            "complete source recovery gate",
+        )
     require(isinstance(source["details"], dict), "Missing complete source details")
     source_subjects = source["details"].get("source_subjects")
     require(
@@ -563,21 +570,27 @@ def validate_authenticated_inputs(
     checked_binding(binding)
 
     def authenticate(gate: str, path: Path, raw: bytes) -> dict:
-        record = fields(
-            read_json(raw),
-            {"schema_version", "gate", "binding_digest", "passed", "details"},
-            "authenticated recovery input gate",
-        )
-        require(
-            type(record["schema_version"]) is int
-            and record["schema_version"] == 1
-            and record["gate"] == gate
-            and record["binding_digest"] == binding.digest
-            and record["passed"] is True
-            and isinstance(record["details"], dict)
-            and json_bytes(record) == raw,
-            "Recovery input gate is stale, incomplete or noncanonical",
-        )
+        value = read_json(raw)
+        if isinstance(value, dict) and value.get("kind") == "container-release-result":
+            from release_result import checked_result
+
+            record = {"details": checked_result(value, binding)["checks"][gate]}
+        else:
+            record = fields(
+                value,
+                {"schema_version", "gate", "binding_digest", "passed", "details"},
+                "authenticated recovery input gate",
+            )
+            require(
+                type(record["schema_version"]) is int
+                and record["schema_version"] == 1
+                and record["gate"] == gate
+                and record["binding_digest"] == binding.digest
+                and record["passed"] is True
+                and isinstance(record["details"], dict)
+                and json_bytes(record) == raw,
+                "Recovery input gate is stale, incomplete or noncanonical",
+            )
         receipt = verifier.verify(gate, path, binding)
         require(
             isinstance(receipt, VerifiedEvidence)
@@ -591,7 +604,7 @@ def validate_authenticated_inputs(
         return receipt.details
 
     source_details = authenticate("corresponding-source", source_report, source_raw)
-    source_review_details(source_details, binding, distribution=False)
+    source_review_details(source_details, binding)
     smoke_details = authenticate(
         "final-image-smoke", smoke_report, snapshot(smoke_report)
     )

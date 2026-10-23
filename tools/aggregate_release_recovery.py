@@ -382,35 +382,6 @@ def aggregate_recovery(
     }
 
 
-def verify_output(
-    output: Path, binding: Binding, authenticator: MeasurementAuthenticator
-) -> dict:
-    from publish_container_release import recovery_review_details
-
-    raw = read_bounded_file(output)
-    require(0 < len(raw) <= MAX_OUTPUT, "Recovery gate exceeds output bounds")
-    authenticator.authenticate(raw, binding)
-    gate = fields(
-        read_json(raw),
-        {"schema_version", "gate", "binding_digest", "passed", "details"},
-        "authenticated recovery gate",
-    )
-    require(
-        type(gate["schema_version"]) is int
-        and gate["schema_version"] == 1
-        and gate["gate"] == "upgrade-recovery"
-        and gate["binding_digest"] == binding.digest
-        and gate["passed"] is True
-        and json_bytes(gate) == raw,
-        "Recovery gate is noncanonical or belongs to another release",
-    )
-    recovery_review_details(gate["details"], binding)
-    require(
-        read_bounded_file(output) == raw, "Recovery gate changed during authentication"
-    )
-    return gate
-
-
 def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
     """Use a signed corresponding-source gate to bind retained small assembly files."""
     from generate_corresponding_source_review import PREPARED_RECORD_FIELDS
@@ -489,7 +460,9 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
         subject_name = (
             "manifest"
             if name == manifest_path.name
-            else "bundle" if name == bundle.name else "source:" + name
+            else "bundle"
+            if name == bundle.name
+            else "source:" + name
         )
         require(
             subjects.get(subject_name) == "file:" + name + "@" + digest,
@@ -517,21 +490,30 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
     )
     source_raw = read_bounded_file(args.source_report)
     authenticator.authenticate(source_raw, binding)
-    source_gate = fields(
-        read_json(source_raw),
-        {"schema_version", "gate", "binding_digest", "passed", "details"},
-        "authenticated source binding gate",
-    )
-    require(
-        type(source_gate["schema_version"]) is int
-        and source_gate["schema_version"] == 1
-        and source_gate["gate"] == "corresponding-source"
-        and source_gate["binding_digest"] == binding.digest
-        and source_gate["passed"] is True
-        and json_bytes(source_gate) == source_raw,
-        "Source binding gate is noncanonical or belongs to another release",
-    )
-    source_review_details(source_gate["details"], binding, distribution=False)
+    value = read_json(source_raw)
+    if isinstance(value, dict) and value.get("kind") == "container-release-result":
+        from release_result import checked_result
+
+        source_details = checked_result(value, binding)["checks"][
+            "corresponding-source"
+        ]
+    else:
+        source_gate = fields(
+            value,
+            {"schema_version", "gate", "binding_digest", "passed", "details"},
+            "authenticated source binding gate",
+        )
+        require(
+            type(source_gate["schema_version"]) is int
+            and source_gate["schema_version"] == 1
+            and source_gate["gate"] == "corresponding-source"
+            and source_gate["binding_digest"] == binding.digest
+            and source_gate["passed"] is True
+            and json_bytes(source_gate) == source_raw,
+            "Source binding gate is noncanonical or belongs to another release",
+        )
+        source_details = source_gate["details"]
+    source_review_details(source_details, binding)
     snapshots = {
         manifest_path: sha256(manifest_raw),
         bundle: bundle_digest,
@@ -551,7 +533,7 @@ def run_command(args) -> dict:
 
     root_directory(args.output.parent)
     require(
-        args.verify_only or not args.output.exists() and not args.output.is_symlink(),
+        not args.output.exists() and not args.output.is_symlink(),
         "Recovery output already exists",
     )
     authenticator = GhEvidenceVerifier(
@@ -571,38 +553,34 @@ def run_command(args) -> dict:
             version=args.version,
             commit=args.commit,
         )
-    if args.verify_only:
-        report = verify_output(args.output, binding, authenticator)
-    else:
-        manifest = args.prepared / "release-manifest.json"
-        assembled = read_json(read_bounded_file(manifest))
-        trees = {"linux/amd64": args.amd64_inputs, "linux/arm64": args.arm64_inputs}
-        for tree in trees.values():
-            root_directory(tree)
-        report = aggregate_recovery(
-            binding,
-            measurements={
-                "linux/amd64": args.amd64_measurement,
-                "linux/arm64": args.arm64_measurement,
-            },
-            native_descriptors={
-                p: t / "native/native-artifacts.json" for p, t in trees.items()
-            },
-            manifest=manifest,
-            bundle=args.prepared / assembled["bundle"]["name"],
-            root=args.root,
-            authenticator=authenticator,
-        )
+    manifest = args.prepared / "release-manifest.json"
+    assembled = read_json(read_bounded_file(manifest))
+    trees = {"linux/amd64": args.amd64_inputs, "linux/arm64": args.arm64_inputs}
+    for tree in trees.values():
+        root_directory(tree)
+    report = aggregate_recovery(
+        binding,
+        measurements={
+            "linux/amd64": args.amd64_measurement,
+            "linux/arm64": args.arm64_measurement,
+        },
+        native_descriptors={
+            p: t / "native/native-artifacts.json" for p, t in trees.items()
+        },
+        manifest=manifest,
+        bundle=args.prepared / assembled["bundle"]["name"],
+        root=args.root,
+        authenticator=authenticator,
+    )
     require(
         read_bounded_file(args.prepared / "release-inputs.json") == record_raw
         and {path.name for path in args.prepared.iterdir()} == names
         and all(source_digest(path) == digest for path, digest in snapshots.items()),
         "Prepared inputs changed during recovery command",
     )
-    if not args.verify_only:
-        raw = json_bytes(report)
-        require(0 < len(raw) <= MAX_OUTPUT, "Recovery gate exceeds output bounds")
-        create_output(args.output, raw)
+    raw = json_bytes(report)
+    require(0 < len(raw) <= MAX_OUTPUT, "Recovery gate exceeds output bounds")
+    create_output(args.output, raw)
     return report
 
 
@@ -622,7 +600,6 @@ def main(argv=None) -> None:
         parser.add_argument("--" + name, required=True)
     for name in ("run-id", "run-attempt"):
         parser.add_argument("--" + name, type=int, required=True)
-    parser.add_argument("--verify-only", action="store_true")
     parser.add_argument(
         "--source-report",
         type=Path,
