@@ -498,3 +498,9 @@ That run caught and fixed a temporary-mount archive retrieval problem. Native
 browser collection now streams its bounded archive from the running isolated
 container and emits the existing runtime replay from the same verified image
 pair, removing another full OCI/source pass. Normal unit checks remain offline.
+
+CI selection now sends release evaluator/catalog and descriptive testing-document
+changes through repository security and tooling regressions without triggering
+unrelated Android/iOS builds. Unknown inputs and executable fixture changes still
+select affected application jobs. Six boundary/selection tests pass in 1.59 seconds;
+the CLI job's five-minute limit remains unchanged.

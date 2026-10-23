@@ -30,6 +30,9 @@ SECURITY_ONLY_TOOLS = frozenset(
         "collect_caddy_sources.py",
         "collect_runtime_notices.py",
         "container-distribution-policy.json",
+        "backend-source-recipes.json",
+        "go-runtime-sources.json",
+        "upstream-application-sources.json",
         "final_image_notice_inventory.py",
         "generate_corresponding_source_review.py",
         "container_release_policy.py",
@@ -96,6 +99,7 @@ def classify_path(path: str) -> frozenset[str]:
                 "tools/release/internal/scanning/",
                 "tools/release/internal/oci/",
                 "tools/release/internal/containerbuild/",
+                "tools/release/internal/evaluation/",
                 "tools/release/cmd/psst-deploy/",
             )
         ):
@@ -173,7 +177,9 @@ def classify_path(path: str) -> frozenset[str]:
         "docs/releases/android.md",
         "docs/cli.md",
     } or (
-        path.startswith(("docs/plans/", "docs/security/", "docs/research/"))
+        path.startswith(
+            ("docs/plans/", "docs/security/", "docs/research/", "docs/testing/")
+        )
         and path.endswith(".md")
     ):
         return frozenset()
