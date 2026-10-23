@@ -540,3 +540,11 @@ unchanged. Local retained Python release checks exercised 211 cases in 31.5
 seconds; the remaining old-message assertion was repaired and its 16-case
 boundary suite passed in 5.57 seconds. No new hosted timing or upload savings
 are claimed.
+
+The remaining native smoke checks now use small direct archive fixtures instead
+of recursively constructing publication TestCase setups. Five actual-archive
+smoke, substitution and private process checks pass in 2.23 seconds. Obsolete
+Python source-CI, gate aggregation, source-hash wrappers and publication/reservation
+APIs/tests are removed; read-only historical evidence validators remain for the
+retained recovery experiment. The transient HTTP adapter had no remaining caller
+and was retired with that old API path.

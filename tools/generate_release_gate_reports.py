@@ -1,8 +1,7 @@
-"""Produce exact release reports from completed checks, never review approval.
+"""Run the retained native smoke experiment and describe its measured bytes.
 
-Native measurements are produced by running the real smoke harness with runtime
-overlays. Both measurements must then be authenticated before aggregation. The
-trusted workflow signs the returned bytes; this module cannot sign or publish.
+Shared Go tooling owns source CI, source/OCI replay and release result aggregation.
+This adapter cannot sign, approve or publish a release.
 """
 
 from __future__ import annotations
@@ -19,10 +18,8 @@ from typing import Protocol
 from assemble_release_oci import inspect_archive
 from publish_container_release import (
     SOURCE_NAME,
-    WORKFLOW,
     Binding,
     sha256,
-    source_digest,
 )
 from release_artifacts import (
     COMMIT,
@@ -36,19 +33,9 @@ from release_artifacts import (
     repository_name,
     require,
 )
-from release_http import API_VERSION, HTTPS
 from release_process import command
 
 ROOT = Path(__file__).resolve().parents[1]
-CI_NAMES = {
-    "security": "Repository security",
-    "backend": "Backend",
-    "web": "Web",
-}
-MOBILE_CI_NAMES = frozenset(
-    {"Android and shared module", "Native iOS app, extension and XCTest"}
-)
-CI_PREFIX = "Exact tagged commit CI / "
 CHECKS = frozenset(
     {
         "image-metadata",
@@ -136,128 +123,6 @@ def timestamp(value: object) -> str:
         require(False, "Invalid completion time")
     require(parsed.tzinfo is not None, "Completion time lacks timezone")
     return value
-
-
-def source_ci_report(
-    binding: Binding, *, run_id: int, attempt: int, token: str, http=None
-) -> dict:
-    """Read the selected tag-run attempt's completed server/security CI jobs.
-
-    A successful old main run, cancelled/skipped jobs, API errors and incomplete
-    pagination cannot yield a report. Unrelated release jobs may still be active.
-    """
-    checked_binding(binding)
-    require(
-        type(run_id) is int and run_id > 0 and type(attempt) is int and attempt > 0,
-        "Invalid selected run attempt",
-    )
-    require(
-        isinstance(token, str) and token and "\n" not in token and "\r" not in token,
-        "Explicit Actions read credential required",
-    )
-    http = http or HTTPS()
-    root = f"https://api.github.com/repos/{binding.repository}/actions/runs/{run_id}/attempts/{attempt}"
-
-    def get(url):
-        response = http.request(
-            "GET",
-            url,
-            headers={
-                "Authorization": "Bearer " + token,
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": API_VERSION,
-                "User-Agent": "psst.zip-release-evidence",
-            },
-        )
-        require(response.status == 200, "Source CI API failed; success is unknown")
-        return read_json(response.body)
-
-    def same_run(value):
-        require(
-            isinstance(value, dict)
-            and value.get("id") == run_id
-            and value.get("run_attempt") == attempt
-            and value.get("head_sha") == binding.commit
-            and value.get("head_branch") == binding.version
-            and value.get("event") == "push"
-            and value.get("path") == WORKFLOW
-            and value.get("status") in {"in_progress", "completed"}
-            and value.get("repository", {}).get("full_name") == binding.repository
-            and value.get("head_repository", {}).get("full_name") == binding.repository,
-            "Source CI is not the selected version-tag release attempt",
-        )
-
-    same_run(get(root))
-    jobs, expected_total = [], None
-    for page in range(1, 21):
-        value = get(root + f"/jobs?per_page=100&page={page}")
-        require(
-            isinstance(value, dict)
-            and type(value.get("total_count")) is int
-            and 0 < value["total_count"] <= 2000
-            and isinstance(value.get("jobs"), list)
-            and len(value["jobs"]) <= 100,
-            "Malformed source CI job page",
-        )
-        if expected_total is None:
-            expected_total = value["total_count"]
-        require(expected_total == value["total_count"], "Source CI pagination changed")
-        jobs.extend(value["jobs"])
-        if len(value["jobs"]) < 100:
-            break
-    require(len(jobs) == expected_total, "Incomplete source CI job pagination")
-    seen, selected = set(), {}
-    names = {CI_PREFIX + display: key for key, display in CI_NAMES.items()}
-    for job in jobs:
-        require(
-            isinstance(job, dict)
-            and type(job.get("id")) is int
-            and job["id"] > 0
-            and job["id"] not in seen
-            and isinstance(job.get("name"), str),
-            "Invalid or repeated source CI job",
-        )
-        seen.add(job["id"])
-        name = job["name"]
-        if not name.startswith(CI_PREFIX):
-            continue
-        # The reusable caller skips these separate mobile checks for containers.
-        # Their presence in GitHub's jobs list is not server validation evidence.
-        if name.removeprefix(CI_PREFIX) in MOBILE_CI_NAMES:
-            continue
-        require(name in names, "Unexpected reusable source CI job")
-        key = names[name]
-        require(
-            key not in selected
-            and job.get("run_id") == run_id
-            and job.get("head_sha") == binding.commit
-            and job.get("status") == "completed"
-            and job.get("conclusion") == "success",
-            "Exact source CI job is duplicate, unfinished or unsuccessful",
-        )
-        selected[key] = {
-            "job_id": job["id"],
-            "name": name,
-            "completed_at": timestamp(job.get("completed_at")),
-        }
-    require(
-        set(selected) == set(CI_NAMES),
-        "Source CI lacks successful security/backend/web jobs",
-    )
-    same_run(get(root))
-    return {
-        "schema_version": 1,
-        "gate": "source-ci",
-        "binding_digest": binding.digest,
-        "passed": True,
-        "details": {
-            "jobs": {key: "success" for key in CI_NAMES},
-            "run_id": run_id,
-            "run_attempt": attempt,
-            "source_workflow": ".github/workflows/ci.yml",
-            "job_evidence": selected,
-        },
-    }
 
 
 @cache
@@ -471,178 +336,5 @@ def collect_native_measurement(
         "smoke": smoke,
         "images": images,
         "runtime": runtime,
-        "publication_authorized": False,
-    }
-
-
-def aggregate_native_reports(
-    binding: Binding,
-    measurements: dict[str, Path],
-    authenticator: MeasurementAuthenticator,
-) -> dict[str, dict]:
-    """Authenticate both full measurements before producing complete gate bytes."""
-    subjects = checked_binding(binding)
-    fields(measurements, set(PLATFORMS), "both native measurement reports")
-    records, configs = {}, {}
-    for platform, path in measurements.items():
-        raw = read_bounded_file(path)
-        authenticator.authenticate(raw, binding)
-        value = fields(
-            read_json(raw),
-            {
-                "schema_version",
-                "kind",
-                "source",
-                "smoke",
-                "images",
-                "runtime",
-                "publication_authorized",
-            },
-            "signed native measurement",
-        )
-        require(
-            type(value["schema_version"]) is int
-            and value["schema_version"] == 2
-            and value["kind"] == "native-release-measurement"
-            and value["source"]
-            == NativeSourceContext(
-                binding.repository, binding.version, binding.commit, platform
-            ).checked()
-            and value["publication_authorized"] is False,
-            "Stale or malformed native measurement",
-        )
-        runtime = value["runtime"]
-        fields(
-            runtime,
-            {
-                "runtime_pack_sha256",
-                "source_asset",
-                "notice_files",
-                "distribution_review_required",
-            },
-            "authenticated runtime checks",
-        )
-        require(
-            runtime["distribution_review_required"] is True,
-            "Runtime checks cannot clear distribution review",
-        )
-        matches(
-            runtime.get("runtime_pack_sha256"),
-            DIGEST,
-            "Missing checked runtime pack digest",
-        )
-        smoke = validate_smoke(
-            value["smoke"],
-            NativeSourceContext(
-                binding.repository, binding.version, binding.commit, platform
-            ),
-            runtime["runtime_pack_sha256"],
-        )
-        asset = runtime.get("source_asset")
-        fields(asset, {"name", "digest", "size"}, "authenticated runtime source asset")
-        require(
-            isinstance(asset.get("name"), str)
-            and type(asset.get("size")) is int
-            and asset["size"] > 0
-            and subjects.get("source:" + asset["name"])
-            == "file:" + asset["name"] + "@" + str(asset.get("digest")),
-            "Authenticated runtime source asset differs from release binding",
-        )
-        notices = fields(
-            runtime["notice_files"], {"backend", "web"}, "authenticated runtime notices"
-        )
-        for entries in notices.values():
-            require(
-                isinstance(entries, dict)
-                and {"THIRD_PARTY_NOTICES.txt", "runtime-inventory.json", "SOURCE.txt"}
-                <= set(entries),
-                "Authenticated runtime notice coverage is incomplete",
-            )
-            for relative, checksum in entries.items():
-                require(
-                    isinstance(relative, str)
-                    and relative
-                    and not Path(relative).is_absolute()
-                    and ".." not in Path(relative).parts
-                    and "\\" not in relative,
-                    "Unsafe authenticated runtime notice path",
-                )
-                matches(
-                    "sha256:" + str(checksum),
-                    DIGEST,
-                    "Invalid authenticated notice checksum",
-                )
-        images = fields(value["images"], {"backend", "web"}, "authenticated final pair")
-        for component, image in images.items():
-            require(
-                isinstance(image, dict)
-                and image.get("platform") == platform
-                and image.get("config_digest") == smoke["tested_configs"][component]
-                and subjects[component + "-" + platform.split("/")[1]]
-                == "oci://ghcr.io/"
-                + binding.repository.split("/")[0]
-                + "/psst-zip-"
-                + component
-                + "@"
-                + str(image.get("manifest_digest")),
-                "Authenticated smoke/config/export correspondence differs",
-            )
-            configs[component + "-" + platform.split("/")[1]] = image["config_digest"]
-        records[platform] = {
-            "measurement_digest": sha256(raw),
-            "smoke": smoke,
-            "images": images,
-            "runtime": runtime,
-        }
-    common = {"schema_version": 1, "binding_digest": binding.digest, "passed": True}
-    return {
-        "final-image-smoke": {
-            **common,
-            "gate": "final-image-smoke",
-            "details": {
-                "execution": {
-                    platform: record["smoke"]["execution"]
-                    for platform, record in records.items()
-                },
-                "tested_configs": configs,
-                "native_measurements": records,
-            },
-        },
-        "runtime-notices": {
-            **common,
-            "gate": "runtime-notices",
-            "details": {
-                "native_measurements": records,
-                "distribution_review_required": True,
-            },
-        },
-    }
-
-
-def source_asset_measurements(binding: Binding, sources: dict[str, Path]) -> dict:
-    """Measure immutable source bytes without asserting completeness or approval."""
-    subjects = checked_binding(binding)
-    expected = {
-        key.removeprefix("source:"): value
-        for key, value in subjects.items()
-        if key.startswith("source:")
-    }
-    fields(sources, set(expected), "all bound corresponding-source assets")
-    measured = {}
-    for name, path in sources.items():
-        require(name == path.name, "Renamed corresponding-source asset")
-        digest = source_digest(path)
-        require(
-            expected[name] == "file:" + name + "@" + digest,
-            "Source asset differs from release binding",
-        )
-        measured[name] = {"digest": digest, "size": path.stat().st_size}
-    return {
-        "schema_version": 1,
-        "kind": "release-source-asset-measurements",
-        "binding_digest": binding.digest,
-        "assets": measured,
-        "corresponding_source_completeness_verified": False,
-        "distribution_review_required": True,
         "publication_authorized": False,
     }
