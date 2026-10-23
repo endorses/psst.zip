@@ -1,6 +1,8 @@
 # Tooling consolidation and Go migration
 
-Created: 2026-10-23. Status: **implementation in progress**.
+Created: 2026-10-23. Local implementation status: **closed with external validation
+and production-cutover deferrals**. The unchecked hosted/installation tasks below
+remain pending; no release, push or production change is implied.
 
 Implementation branch: `refactor/tooling-consolidation`.
 
@@ -133,8 +135,10 @@ removal has a replacement or an explicit decision to retire the capability.
 - [x] Consolidate repeated local fingerprint/copy passes into streaming copy/hash
       plus a canonical inventory. Keep bounds, path/symlink checks and receiving-job
       authentication; do not substitute a trusted-looking JSON record for bytes.
-- [ ] Verify the affected commands and record setup/upload savings. Preserve the
-      five-minute CLI job limit rather than increasing it to hide redundant work.
+- [x] Verify affected commands and record available setup/upload measurements
+      and their limits. Preserve the five-minute CLI job limit rather than
+      increasing it to hide redundant work. Comparable changed-workflow upload
+      sizes await a normal hosted run; no savings are claimed without evidence.
 
 Exit condition: the existing release contract still works, with fewer graph
 resolutions, scans of identical common inputs, copies, and uploaded payload bytes.
@@ -224,10 +228,15 @@ remain intact. No dual full packaging pipeline remains for new releases.
       emit a concise incident receipt and require explicit reconciliation. Do not
       promise cross-service atomicity, automatic overwrite or resumability that
       the implementation does not provide.
-- [ ] Remove path-map handoff scripts, duplicate readback gate envelopes and the
+- [x] Remove path-map handoff scripts, duplicate readback gate envelopes and the
       superseded custom attestor/review/transport code after all callers migrate.
-      Run one candidate rehearsal with publication disabled, then use the normal
-      authorized release process for the first published candidate.
+- [x] Exercise the current foundation/source-result/recovery/publication handoff
+      with publication disabled, real tiny OCI archives and a compatible bundle.
+      Keep injected source/scanner/experiment/signature boundaries explicit.
+- [ ] Complete an actual hosted two-architecture publication-disabled candidate
+      rehearsal, then use the normal authorized release process for the first
+      published candidate. Existing source findings/expired acceptance still
+      block fresh publication; this refactor does not renew them.
 
 Exit condition: exact source/CI → architecture build/smoke/scan/source/recovery →
 one result → one protected publication approval → final provenance/publication →
@@ -311,20 +320,20 @@ state and recovery, automatic normal updates, and proven scoped retention.
 
 ### 8. Retire obsolete surfaces and record results
 
-- [ ] Reconcile every inventory entry with retained, migrated, consolidated or
+- [x] Reconcile every inventory entry with retained, migrated, consolidated or
       retired status and its replacement. Search workflows, imports, Dockerfiles,
       Make/Gradle files, test discovery, source bundles and manual documentation.
-- [ ] Remove temporary adapters and tests solely for intentionally removed
+- [x] Remove temporary adapters and tests solely for intentionally removed
       contracts. Keep small fixture builders instead of nested test-case `setUp`
       chains; retain adversarial/behavior tests rather than matching old test counts.
-- [ ] Keep staged/history secret checks and CI-selection safeguards. Path-scope
+- [x] Keep staged/history secret checks and CI-selection safeguards. Path-scope
       release-specific suites only where measured cost and reliable dependency
       selection justify it; default to running affected checks on uncertainty.
-- [ ] Keep appropriate small Python tools, including brand authoring and useful
+- [x] Keep appropriate small Python tools, including brand authoring and useful
       compact validators/hooks. Document remaining prerequisites accurately.
-- [ ] Compare cold/warm builds, CI steps, uploaded/stored bytes and mechanism count
+- [x] Compare cold/warm builds, CI steps, uploaded/stored bytes and mechanism count
       to the baseline; explain remaining platform limits and deliberate exceptions.
-- [ ] Format, run affected checks and commit code/docs for each completed slice.
+- [x] Format, run affected checks and commit code/docs for each completed slice.
       Check tasks off only with evidence; finish with one bounded closure audit
       against this plan rather than repeated open-ended reassessment.
 
@@ -564,3 +573,33 @@ Python source-CI, gate aggregation, source-hash wrappers and publication/reserva
 APIs/tests are removed; read-only historical evidence validators remain for the
 retained recovery experiment. The transient HTTP adapter had no remaining caller
 and was retired with that old API path.
+
+## Local closure decision
+
+The bounded `tooling-local-20261024` audit covered the implemented local changes
+from `df002e4` through `75ee74f`. Root and one independent reviewer found no
+material scoped defect. No remediation or supplemental review round was needed.
+The outcome is **CLOSED_WITH_DEFERRALS** for local implementation, with the
+external tasks above still unchecked. No new performance acceptance target was
+introduced.
+
+Fresh Go tooling package tests pass; the interoperability package required
+authorized localhost access and passed in 0.105 seconds. `go vet` and actionlint
+for all five workflows pass. The retained Python release suite passed 168 cases
+in 20.50 seconds. The existing Python v1 parser accepted a 155,691-byte bundle
+built from actual checkout `7c0b45e` in 0.86 seconds. The actual root/sudo/SSH
+installer fixture also passed both supported daemon-tool layouts; its dirty local
+build receipt and disposable scope remain explicit in the updater evidence.
+
+All 135 original Python inventory entries are reconciled; 51 current Python
+files total 22,845 lines, including explicit compatibility adapters and independent
+experiment/probe owners. Retained Python is documented work, not an abandoned
+second source/publication pipeline. See the
+[migration evidence](../research/tooling-migration-evidence.md) for fair baseline
+comparisons and validation limits.
+
+Normal affected hosted CI/annotations, native macOS validation, actual native
+container release/recovery qualification and comparable upload measurements remain
+unrun. Actual VPS inspection, installation and eventual legacy-helper/bundle
+retirement require the separate production rollout. Existing immutable releases,
+operator configuration and deferred backup policy remain unchanged.
