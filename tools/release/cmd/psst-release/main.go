@@ -68,7 +68,6 @@ Usage: psst-release [--root CHECKOUT] COMMAND
   sources             Retain and verify source originals and inventories
   scan                Measure common exact-lock scanner inputs
   github              Verify source CI or publish immutable CLI artifacts
-  publication-result  Consolidate exact container release evidence
   evaluate            Authenticate and evaluate both native container inputs
   container-publish   Publish verified immutable container release artifacts
   container-build     Bind source, resolve bases and prepare deployment bundles
@@ -111,8 +110,6 @@ Project: https://psst.zip`)
 		return nil
 	case "android":
 		return androidrelease.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
-	case "publication-result":
-		return publication.Run(ctx, args[1:])
 	case "container-publish":
 		return publication.RunPublish(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "container-build":

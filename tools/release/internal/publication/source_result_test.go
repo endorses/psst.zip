@@ -2,27 +2,15 @@ package publication
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/endorses/psst.zip/tools/release/internal/contract"
 )
 
 func TestNewSourceResultIncorporatesDirectChecksWithoutGateFiles(t *testing.T) {
-	o, checks := fixture(t)
-	raw, err := os.ReadFile(filepath.Join(o.Prepared, "release-inputs.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var foundation struct {
-		Binding  string            `json:"binding_sha256"`
-		Subjects map[string]string `json:"subjects"`
-	}
-	if err = json.Unmarshal(raw, &foundation); err != nil {
-		t.Fatal(err)
-	}
-	options := SourceResultOptions{Repository: o.Repository, Version: o.Version, Commit: o.Commit, RunID: o.RunID, Attempt: o.Attempt, Binding: foundation.Binding, Subjects: foundation.Subjects, Checks: checks, Inputs: map[string]Input{"corresponding-source-replay": {digest([]byte("raw replay"))}}}
+	fixture := resultFixture(t)
+	checks := fixture.Checks
+	options := SourceResultOptions{Repository: fixture.Repository, Version: fixture.Version, Commit: fixture.Commit, RunID: fixture.RunID, Attempt: fixture.Attempt, Binding: fixture.Binding, Subjects: fixture.Subjects, Checks: checks, Inputs: fixture.Inputs}
 	result, err := NewSourceResult(options)
 	if err != nil {
 		t.Fatal(err)

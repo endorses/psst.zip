@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -190,6 +191,35 @@ func (e *recoveryExecutor) Output(_ context.Context, _ time.Duration, args ...st
 	if len(args) == 5 && args[0] == "git" && args[1] == "merge-base" && args[2] == "--is-ancestor" {
 		return nil, nil
 	}
+	if len(args) > 1 && args[0] == "git" {
+		switch args[1] {
+		case "remote":
+			return []byte("https://github.com/" + e.binding.Repository + ".git"), nil
+		case "rev-parse":
+			return []byte(e.binding.Commit), nil
+		case "diff":
+			return nil, nil
+		}
+	}
+	if len(args) > 1 && args[0] == "gh" && args[1] == "api" {
+		for i, arg := range args[:len(args)-1] {
+			if arg == "--method" && args[i+1] != "GET" {
+				return nil, fmt.Errorf("remote mutation disabled in composite fixture")
+			}
+		}
+		endpoint := ""
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "repos/") {
+				endpoint = arg
+			}
+		}
+		if strings.Contains(endpoint, "/actions/runs/") {
+			return recoveryJSON(e.t, map[string]any{"id": e.binding.RunID, "run_attempt": e.binding.Attempt, "status": "in_progress", "event": "push", "head_sha": e.binding.Commit, "path": github.ReleaseWorkflow, "repository": map[string]string{"full_name": e.binding.Repository}, "head_repository": map[string]string{"full_name": e.binding.Repository}}), nil
+		}
+		if strings.Contains(endpoint, "/contents/") {
+			return recoveryJSON(e.t, map[string]string{"encoding": "base64", "content": base64.StdEncoding.EncodeToString(e.files[github.ReleaseWorkflow])}), nil
+		}
+	}
 	return nil, fmt.Errorf("unexpected fixture operation")
 }
 
@@ -199,6 +229,7 @@ func recoveryAggregationFixture(t *testing.T) (RecoveryEvaluator, RecoveryOption
 	binding := github.Binding{Repository: "endorses/psst.zip", Version: "v1.2.3", Commit: strings.Repeat("a", 40), RunID: 123, Attempt: 2}
 	o := RecoveryOptions{Binding: binding, Prepared: filepath.Join(root, "prepared"), SourceResult: filepath.Join(root, "source-result.json"), Output: filepath.Join(root, "complete-result.json"), Native: map[string]string{}, Measurements: map[string]string{}}
 	executor := &recoveryExecutor{t: t, binding: binding, accepted: map[string]bool{}, files: map[string][]byte{}}
+	executor.files[github.ReleaseWorkflow] = []byte("concurrency:\n  group: container-release-publication\n  cancel-in-progress: false\njobs:\n  publish:\n")
 	for _, name := range append(append([]string{}, recoveryFixtureFiles...), "deploy/update.py") {
 		body := []byte("committed disposable helper " + name)
 		executor.files[name] = body
@@ -207,13 +238,24 @@ func recoveryAggregationFixture(t *testing.T) (RecoveryEvaluator, RecoveryOption
 		os.WriteFile(path, body, 0600)
 	}
 	sha := func(value string) string { return digest([]byte(value)) }
-	bundle := []byte("already checked candidate bundle; no replay in aggregation")
+	bundle := recoveryBundle(t, binding)
 	manifest := contract.ManifestV1{SchemaVersion: 1, Version: binding.Version, PayloadProfile: "deployment-ready", Source: contract.SourceV1{Repository: binding.Repository, Commit: binding.Commit, ArchiveURL: "https://github.com/" + binding.Repository + "/archive/" + binding.Commit + ".tar.gz"}, Platforms: []string{"linux/amd64", "linux/arm64"}, Images: map[string]contract.ImageV1{}, Bundle: contract.BundleV1{Name: "psst.zip-deployment-" + binding.Version + ".tar.gz", SHA256: strings.TrimPrefix(digest(bundle), "sha256:")}, Requirements: contract.RequirementsV1{Docker: "27.0.0", Compose: "2.24.4"}, Notes: contract.NotesV1{Migration: "checkpoint before activation", Rollback: "isolated checkpoint restore", CheckpointRequired: true}, Build: contract.BuildV1{BaseImages: map[string]string{}, Toolchains: map[string]string{"go": "go1.27.3", "node": "26.12.1"}}}
 	for _, base := range []string{"golang", "node", "alpine", "caddy"} {
 		manifest.Build.BaseImages[base] = "docker.io/library/" + base + "@" + sha(base)
 	}
+	actualImages := map[string]recoveryImage{}
 	for _, component := range []string{"backend", "web"} {
-		manifest.Images[component] = contract.ImageV1{Index: "ghcr.io/endorses/psst-zip-" + component + "@" + sha(component+"index"), PlatformDigests: map[string]string{"linux/amd64": sha(component + "amd64"), "linux/arm64": sha(component + "arm64")}}
+		image := contract.ImageV1{PlatformDigests: map[string]string{}}
+		children := []any{}
+		for _, arch := range []string{"amd64", "arm64"} {
+			actual, child := recoveryNativeImage(t, root, binding, component, arch)
+			actualImages[component+"-"+arch] = actual
+			image.PlatformDigests["linux/"+arch] = actual.Manifest
+			children = append(children, child)
+		}
+		index := recoveryWrite(t, filepath.Join(root, "indexes", component+"-index.json"), map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.index.v1+json", "manifests": children})
+		image.Index = "ghcr.io/endorses/psst-zip-" + component + "@" + digest(index)
+		manifest.Images[component] = image
 	}
 	manifestRaw := recoveryWrite(t, filepath.Join(o.Prepared, "release-manifest.json"), manifest)
 	os.WriteFile(filepath.Join(o.Prepared, manifest.Bundle.Name), bundle, 0600)
@@ -240,7 +282,7 @@ func recoveryAggregationFixture(t *testing.T) (RecoveryEvaluator, RecoveryOption
 	for _, arch := range []string{"amd64", "arm64"} {
 		platform := "linux/" + arch
 		identity := scanning.NativeIdentity{Source: scanning.Source{Repository: binding.Repository, Version: binding.Version, Commit: binding.Commit}, Platform: platform}
-		configs := map[string]string{"backend": sha("config-backend-" + arch), "web": sha("config-web-" + arch)}
+		configs := map[string]string{"backend": actualImages["backend-"+arch].Config, "web": actualImages["web-"+arch].Config}
 		runtimeName := "psst.zip-" + binding.Version + "-runtime-sources-" + arch + ".tar.gz"
 		moduleName := "psst.zip-dependency-inputs-" + binding.Version + "-" + arch + ".tar.gz"
 		add(runtimeName)
@@ -249,10 +291,18 @@ func recoveryAggregationFixture(t *testing.T) (RecoveryEvaluator, RecoveryOption
 		for _, key := range []string{"build_record", "original_archive", "final_archive", "native_measurement", "smoke_report", "source_verification", "runtime_pack", "runtime_source", "backend_archive", "web_archive", "browser_inputs", "browser_verification"} {
 			descriptor.Artifacts[key] = containerbuild.NativeArtifact{File: key + ".fixture", SHA256: sha(key + arch), Size: 100}
 		}
+		for _, component := range []string{"backend", "web"} {
+			path := filepath.Join(root, arch, "native/export", component+"-"+arch+".oci.tar")
+			body, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			descriptor.Artifacts[component+"_archive"] = containerbuild.NativeArtifact{File: "export/" + component + "-" + arch + ".oci.tar", SHA256: digest(body), Size: int64(len(body))}
+		}
 		native := containerbuild.NativeAssemblyFacts{TestedConfigs: configs, Inputs: map[string]string{"runtime_inventory": descriptor.Artifacts["runtime_pack"].SHA256}, Images: map[string]map[string]any{}}
 		for _, component := range []string{"backend", "web"} {
 			target := component + "-" + arch
-			image := recoveryImage{Platform: platform, Manifest: manifest.Images[component].PlatformDigests[platform], ManifestSize: 1000, MediaType: "application/vnd.oci.image.manifest.v1+json", Config: configs[component], Archive: descriptor.Artifacts[component+"_archive"].SHA256, BlobCount: 3}
+			image := actualImages[target]
 			images[target] = image
 			native.Images[component] = recoveryObject(t, image)
 			f.Subjects[target] = "oci://ghcr.io/endorses/psst-zip-" + component + "@" + image.Manifest
@@ -274,7 +324,26 @@ func recoveryAggregationFixture(t *testing.T) (RecoveryEvaluator, RecoveryOption
 	}
 	f.BindingSHA256, _ = containerbuild.FoundationBinding(source.Context{Repository: binding.Repository, Version: binding.Version, Commit: binding.Commit}, f.Subjects)
 	foundationRaw := recoveryWrite(t, filepath.Join(o.Prepared, "release-inputs.json"), f)
-	checks := map[string]json.RawMessage{"corresponding-source": recoveryJSON(t, details), "source-ci": recoveryJSON(t, map[string]any{"run_id": binding.RunID, "run_attempt": binding.Attempt}), "source-scanners": json.RawMessage(`{}`), "final-image-scanners": json.RawMessage(`{}`), "runtime-notices": json.RawMessage(`{}`), "final-image-smoke": json.RawMessage(`{"execution":{"linux/amd64":"native","linux/arm64":"native"}}`)}
+	configs := map[string]string{}
+	for target, image := range images {
+		configs[target] = image.Config
+	}
+	checks := map[string]json.RawMessage{"corresponding-source": recoveryJSON(t, details), "source-ci": recoveryJSON(t, map[string]any{"run_id": binding.RunID, "run_attempt": binding.Attempt, "jobs": map[string]string{"security": "success", "backend": "success", "web": "success"}}), "runtime-notices": json.RawMessage(`{}`), "final-image-smoke": recoveryJSON(t, map[string]any{"execution": map[string]string{"linux/amd64": "native", "linux/arm64": "native"}, "tested_configs": configs})}
+	for _, gate := range []string{"source-scanners", "final-image-scanners"} {
+		scans := []any{}
+		targets := []string{"backend-source", "web-source"}
+		if gate == "final-image-scanners" {
+			targets = []string{"backend-amd64", "backend-arm64", "web-amd64", "web-arm64"}
+		}
+		for _, target := range targets {
+			subject := "git:" + binding.Repository + "@" + binding.Commit
+			if gate == "final-image-scanners" {
+				subject = f.Subjects[target]
+			}
+			scans = append(scans, map[string]any{"target": target, "subject": subject, "status": "complete", "exit_code": 0, "scanner": "disposable-boundary-fixture", "version": "1", "database": "fixture-only", "scanned_at": "2026-10-24T00:00:00Z", "findings": []any{}})
+		}
+		checks[gate] = recoveryJSON(t, map[string]any{"scans": scans})
+	}
 	inputs := map[string]publication.Input{"corresponding-source-replay": {SHA256: sha("replay")}, "artifact-foundation": {SHA256: digest(foundationRaw)}, "native-descriptor-amd64": {SHA256: descriptorHashes["linux/amd64"]}, "native-descriptor-arm64": {SHA256: descriptorHashes["linux/arm64"]}}
 	result, err := publication.NewSourceResult(publication.SourceResultOptions{Repository: binding.Repository, Version: binding.Version, Commit: binding.Commit, RunID: binding.RunID, Attempt: binding.Attempt, Binding: f.BindingSHA256, Subjects: f.Subjects, Checks: checks, Inputs: inputs})
 	if err != nil {

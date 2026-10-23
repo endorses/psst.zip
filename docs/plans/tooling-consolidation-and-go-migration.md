@@ -364,12 +364,12 @@ does not claim all platform builds can finish within the CLI's five-minute limit
 
 The first publication slice replaces the exact-comment review and duplicate
 protected job with one protected publisher and normal pinned `actions/attest`
-steps. The Go `publication-result` command consolidates the six source-stage
-facts, then the exact same invocation adds recovery as its seventh fact. The
-temporary per-fact envelopes are removed after incorporation; useful raw replay
-and scanner inputs remain bound by digest. Existing Python readers are a narrow
-transition until their source/publication consumers migrate, not a second result
-producer. Final deployment manifest/bundle and signer identity remain unchanged.
+steps. The Go evaluator derives six source-stage facts from authenticated native
+inputs, then the exact same invocation adds recovery as its seventh fact. Useful
+raw replay and scanner inputs remain bound by digest. The old envelope-producing
+`publication-result` command is retired. Existing Python readers serve the
+remaining native experiment controller and supported historical bundles. Final
+deployment manifest/bundle and signer identity remain unchanged.
 
 Local evidence: 126 focused publication/source/transport Python regressions pass
 in 13 seconds; actual Python producer → compiled Go result → semantic Python
@@ -525,6 +525,13 @@ the same result directly. The old Python aggregator and wrapper-only fixtures ar
 retired; historical/native producer projection fixtures remain. Complete hosted
 recovery experiments remain pending and this change claims no public provenance,
 independent backup-provider or real-device flow verification.
+
+A publication-disabled composite connects the current typed foundation, direct
+source result, Go recovery reader and publisher preparation in 0.02 seconds.
+Four tiny OCI archives, both indexes and the deployment bundle are parsed as real
+bytes; all fourteen final subjects remain exact, and altered source assets fail.
+Source/scanner/experiment observations and hosted signatures are fixture inputs,
+so this does not establish a successful live release or real native experiment.
 
 Native preparation and retained recovery adapters now invoke the shared Go OCI
 reader and deterministic index assembler, replacing the independent Python graph

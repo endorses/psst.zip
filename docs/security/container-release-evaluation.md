@@ -52,6 +52,15 @@ provider and real browser/mobile validation outside this local fixture evidence.
 The remaining Python native experiment controller and its historical input
 readers remain in place until their separate cutover.
 
+One fast publication-disabled composite connects that current foundation to the
+source result, native recovery reader and final publisher preparation. It parses
+four tiny OCI archives, both indexes and a compatible deployment bundle, retains
+all fourteen final subjects, and refuses changed source assets. Its substantive
+source/scanner/experiment observations and hosted signatures are injected fixture
+boundaries; it exercises contract handoffs without publishing or claiming native
+execution. The obsolete `publication-result` envelope-consolidation command is
+removed.
+
 Focused offline checks cover authentication before native claim consumption,
 changed retained bytes, current tagged CI run/attempt selection, measured versus
 derived browser facts, result scope and scanner descriptor overrides. These do
