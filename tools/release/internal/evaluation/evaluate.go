@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -93,6 +94,12 @@ func (e Evaluator) Evaluate(ctx context.Context, o Options) (publication.Result,
 	if err = checkFoundationNative(foundation, native); err != nil {
 		return result, err
 	}
+	foundationPath := filepath.Join(o.Prepared, "release-inputs.json")
+	foundationRaw, err := read(foundationPath)
+	expectedFoundation, encodeErr := contract.JSON(foundation)
+	if err != nil || encodeErr != nil || !bytes.Equal(foundationRaw, expectedFoundation) {
+		return result, fmt.Errorf("prepared foundation differs from the shared assembly result")
+	}
 	corresponding, evidence, err := correspondingSource(ctx, e.Root, foundation)
 	if err != nil {
 		return result, err
@@ -120,6 +127,10 @@ func (e Evaluator) Evaluate(ctx context.Context, o Options) (publication.Result,
 	if err = cache.recheck(); err != nil {
 		return result, err
 	}
+	currentFoundation, err := read(foundationPath)
+	if err != nil || !bytes.Equal(currentFoundation, foundationRaw) {
+		return result, fmt.Errorf("prepared foundation changed during source evaluation")
+	}
 	remote, err = client.ResolveTag(ctx, o.Binding.Repository, o.Binding.Version)
 	if err != nil || remote != o.Binding.Commit {
 		return result, fmt.Errorf("remote source tag changed during source evaluation")
@@ -139,7 +150,7 @@ func (e Evaluator) Evaluate(ctx context.Context, o Options) (publication.Result,
 		}
 		checks[name] = raw
 	}
-	inputFacts := map[string]publication.Input{"corresponding-source-replay": {SHA256: evidenceDigest}, "candidate-bases": {SHA256: digest(bases)}}
+	inputFacts := map[string]publication.Input{"corresponding-source-replay": {SHA256: evidenceDigest}, "candidate-bases": {SHA256: digest(bases)}, "artifact-foundation": {SHA256: digest(foundationRaw)}}
 	for platform, input := range native {
 		arch := strings.TrimPrefix(platform, "linux/")
 		inputFacts["native-transfer-"+arch] = publication.Input{SHA256: digest(input.Transfer.MetadataRaw)}

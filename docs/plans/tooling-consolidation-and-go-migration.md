@@ -517,6 +517,15 @@ bytes and removed its temporary fixture. Complete hosted/native-pair evaluation,
 recovery-result integration and live publication remain separate pending checks.
 See [evaluation boundaries](../security/container-release-evaluation.md).
 
+Recovery aggregation now consumes the authenticated source result and its exact
+schema2 foundation, then validates both native terminal measurements without
+repeating source/image/Docker experiments. Structured transaction, flow, checkpoint,
+restore-volume, temporal and scope checks share the Go updater policy and extend
+the same result directly. The old Python aggregator and wrapper-only fixtures are
+retired; historical/native producer projection fixtures remain. Complete hosted
+recovery experiments remain pending and this change claims no public provenance,
+independent backup-provider or real-device flow verification.
+
 Native preparation and retained recovery adapters now invoke the shared Go OCI
 reader and deterministic index assembler, replacing the independent Python graph
 and layer verifier. Five tiny actual-archive adapter cases pass in 1.28 seconds;

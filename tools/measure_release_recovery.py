@@ -696,6 +696,65 @@ def validate_inputs(
     return result
 
 
+def checked_artifact(value: object) -> dict:
+    record = fields(
+        value, {"file", "sha256", "size"}, "retained native artifact metadata"
+    )
+    name = record["file"]
+    require(isinstance(name, str), "Invalid retained artifact filename")
+    path = PurePosixPath(name)
+    require(
+        name == path.as_posix()
+        and not path.is_absolute()
+        and path.parts
+        and all(part not in {".", ".."} for part in path.parts)
+        and "\\" not in name,
+        "Unsafe retained artifact filename",
+    )
+    matches(record["sha256"], DIGEST, "Missing retained artifact hash")
+    require(
+        type(record["size"]) is int and 0 < record["size"] <= 2 * 1024**3,
+        "Invalid retained artifact size",
+    )
+    return record
+
+
+def checked_descriptor(value: object, context: NativeSourceContext) -> dict:
+    descriptor = fields(value, DESCRIPTOR_FIELDS, "retained native recovery descriptor")
+    require(
+        type(descriptor["schema_version"]) is int
+        and descriptor["schema_version"] == 2
+        and descriptor["kind"] == "native-release-artifacts"
+        and descriptor["source"] == context.checked()
+        and descriptor["oci_exporter"] == "docker-save-byte-preserving-oci-v1"
+        and descriptor["publication_authorized"] is False
+        and descriptor["measurement_authentication_required"] is True,
+        "Recovery native descriptor identity/policy differs",
+    )
+    for key in ("tested_configs", "original_tested_configs"):
+        pair = fields(
+            descriptor[key], {"backend", "web"}, "native recovery configuration pair"
+        )
+        for config in pair.values():
+            matches(config, DIGEST, "Invalid native recovery configuration")
+        require(
+            len(set(pair.values())) == 2, "Overlapping native recovery configurations"
+        )
+    matches(
+        descriptor["source_helper_config"],
+        DIGEST,
+        "Missing source helper configuration",
+    )
+    artifacts = fields(
+        descriptor["artifacts"],
+        ARTIFACTS | {"browser_inputs", "browser_verification"},
+        "retained native artifact inventory",
+    )
+    for artifact in artifacts.values():
+        checked_artifact(artifact)
+    return descriptor
+
+
 def source_asset_names(version: str) -> set[str]:
     return {
         "psst.zip-source-" + version + ".tar.gz",
@@ -888,10 +947,6 @@ def validate_authenticated_inputs(
     and OCI hashes must match the signed smoke report; the loaded saved pair's
     configurations and every layer are checked independently below.
     """
-    # The aggregate module imports this producer. Import its existing descriptor
-    # validator only at execution time, after both modules can initialize.
-    from aggregate_release_recovery import checked_descriptor
-
     context.checked()
     fields(natives, set(PLATFORMS), "both retained native descriptors")
     require(

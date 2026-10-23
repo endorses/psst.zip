@@ -31,8 +31,8 @@ run waits.
 
 ## One cross-job result
 
-`psst-release publication-result` consolidates completed source, scanner, image
-smoke and notice facts into one versioned `release-result.json`. It binds the
+`psst-release evaluate` authenticates and evaluates source, scanner, image smoke
+and notice inputs, producing one versioned `release-result.json`. It binds the
 exact repository, tag, source commit, run/attempt, file/image subjects and both
 native platform results. Raw corresponding-source replay evidence remains in the
 preparation artifact and is referenced by digest. Raw scanner/native diagnostics
@@ -40,10 +40,11 @@ remain with their producing artifacts.
 
 The source job attests this one result. Native recovery reads its authenticated
 source and smoke sections, runs the same real experiments, and produces native
-measurements. Aggregation authenticates those measurements, extends the exact
-source result with completed recovery, and attests the final combined result.
-Already incorporated per-check envelope files are removed. There are no separate
-signed prepublication gate files or redundant report-only verification modes.
+measurements. `psst-release evaluate recovery` authenticates both measurements
+and the exact prepared inventory bound by the source result, then directly
+extends that result with completed recovery. The workflow attests the combined
+result. No per-check envelope files or separate signed prepublication gates are
+produced.
 
 Publication downloads the final result and verifies its one signature once per
 exact byte snapshot, while applying the same source, scan, notice, native-image
@@ -107,11 +108,11 @@ Tokens remain in environment or private registry auth files; command arguments,
 public diagnostics and receipts contain no credential values. Failed private
 registry credentials are removed even when snapshots remain for reconciliation.
 
-`tools/release_http.py` and `tools/release_process.py` temporarily support the
-remaining Python measurement and recovery producers. They contain only a fixed
-read-only API reader and bounded process execution, with no release or registry
-publisher. Remove them when the last of those producers moves to Go. Helpers
-captured inside supported immutable deployment bundles keep their original bytes.
+`tools/release_process.py` supplies bounded private subprocess execution for the
+retained Python native smoke and recovery experiments. The obsolete API and
+publication drivers are removed. Read-only historical evidence validators remain
+where recovery still consumes them. Helpers captured inside supported immutable
+deployment bundles keep their original bytes.
 
 Remote writes are journaled with durable intent/completion boundaries. An
 interruption can leave a draft, digest-addressed images or a partial pair of

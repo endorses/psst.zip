@@ -56,8 +56,8 @@ The `ReadSourceMeasurement` API supplies structural binding for native Go and
 shared npm measurements. `AggregateSources` separately replays the raw reports,
 module checksums and affected-package evidence against the verified application
 snapshot. Both native Go measurements are required; the shared npm receipt must
-be identical across consumers. Older Python aggregation modules are removed only
-when their last active recovery or publication consumer switches to these APIs.
+be identical across consumers. The source and image Python aggregation modules
+have been removed with their last workflow consumers.
 
 Focused offline verification covers substituted tools, failed signatures,
 uncertain databases, omitted findings, incomplete compiler graphs, unsafe source

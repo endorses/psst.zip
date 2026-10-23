@@ -1056,23 +1056,16 @@ jobs:
           path: ${{ runner.temp }}/recovery-gate/arm64/recovery
       - name: Derive the gate from both authenticated terminal experiments
         run: |
-          python3 tools/aggregate_release_recovery.py \
-            --root "$GITHUB_WORKSPACE" --repository "$GITHUB_REPOSITORY" \
-            --version "$CANDIDATE_VERSION" --commit "$SOURCE_COMMIT" \
-            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
+          release_tool=$(sh tools/release/build.sh)
+          "$release_tool" evaluate recovery \
+            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
+            --commit "$SOURCE_COMMIT" --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
             --prepared "$RUNNER_TEMP/recovery-gate/prepared" \
-            --source-report "$RUNNER_TEMP/recovery-gate/source/release-result.json" \
+            --source-result "$RUNNER_TEMP/recovery-gate/source/release-result.json" \
             --amd64-inputs "$RUNNER_TEMP/recovery-gate/amd64" \
             --arm64-inputs "$RUNNER_TEMP/recovery-gate/arm64" \
             --amd64-measurement "$RUNNER_TEMP/recovery-gate/amd64/recovery/recovery-measurement.json" \
             --arm64-measurement "$RUNNER_TEMP/recovery-gate/arm64/recovery/recovery-measurement.json" \
-            --output "$RUNNER_TEMP/recovery-gate/upgrade-recovery.json"
-          release_tool=$(sh tools/release/build.sh)
-          "$release_tool" publication-result \
-            --previous-result "$RUNNER_TEMP/recovery-gate/source/release-result.json" \
-            --recovery "$RUNNER_TEMP/recovery-gate/upgrade-recovery.json" \
-            --repository "$GITHUB_REPOSITORY" --version "$CANDIDATE_VERSION" \
-            --commit "$SOURCE_COMMIT" --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
             --output "$RUNNER_TEMP/recovery-gate/release-result.json"
       - name: Attest the completed two-platform recovery report
         id: gate-attestation

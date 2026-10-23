@@ -34,6 +34,24 @@ workflow attests the result before the recovery stage consumes it. Recovery adds
 its two native experiment results to that same result contract; publication uses
 the final authenticated result and the single protected approval.
 
+`psst-release evaluate recovery` authenticates that source result before using
+the three small retained binding files. The source result binds the exact
+`release-inputs.json` bytes through its `artifact-foundation` input digest. Both
+native descriptors and completed terminal measurements must match the same
+repository, version, commit, run and attempt. The reader checks actual recorded
+upgrade/reapply/pause/failure/isolated-restore observations, historical ancestry,
+committed fixture inputs, matching native configurations, stopped checkpoints,
+isolated volumes and measurement intervals. Its structured flow checks share the
+Go updater's full-flow policy.
+
+Recovery writes the extended `release-result.json` directly, retaining digests of
+the authenticated source result and both terminal measurements. There is no
+intermediate recovery-gate file or repeated source, OCI, Docker or experiment
+execution. Explicit false scope flags keep public provenance, independent backup
+provider and real browser/mobile validation outside this local fixture evidence.
+The remaining Python native experiment controller and its historical input
+readers remain in place until their separate cutover.
+
 Focused offline checks cover authentication before native claim consumption,
 changed retained bytes, current tagged CI run/attempt selection, measured versus
 derived browser facts, result scope and scanner descriptor overrides. These do
