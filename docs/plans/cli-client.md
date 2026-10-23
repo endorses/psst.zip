@@ -340,6 +340,9 @@ source review does not establish a runtime pass.
 - [x] Add `make build-release` and `install-release`, retaining version/revision
       metadata while stripping symbol tables and DWARF using `-s -w`, consistent
       with the existing release packager.
+- [x] Derive Make build versions from stable CLI tags, including commit-distance
+      and tracked dirty-state suffixes. Ignore Android/server tags, retain explicit
+      overrides, and fall back to `dev` without matching Git metadata.
 
 Makefile follow-up (2026-10-23): Linux build and staged installation were verified
 from both entry points, including paths with spaces, `PREFIX`, `BINDIR` and
@@ -357,6 +360,14 @@ QR rendering and a staged `install-release` from `client/` passed, including
 executable permissions and byte-for-byte equality with the built binary. The
 observed development/release sizes were 12,641,243 / 8,605,856 bytes on this machine.
 These checks used a temporary Go build cache and did not publish a release.
+
+Version-detection follow-up (2026-10-23): temporary Git fixtures verified exact
+CLI tags, commits after a tag, tracked dirty state, ignored untracked files,
+Android/server tags, malformed CLI tags, archive fallback and explicit overrides.
+Both Make entry points resolved the expected version. A real stripped build and
+staged installation preserved the derived version and full revision in
+`--version`. The Makefile branch is past the `client/v0.1.0` tag, so it correctly
+reports a commit-distance/hash suffix rather than claiming to be the exact tag.
 
 ## Completion criteria and record
 

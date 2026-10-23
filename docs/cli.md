@@ -33,8 +33,12 @@ make uninstall PREFIX=/your/install/prefix
 
 `make help` lists targets and overrides. `make clean` removes only the built
 `client/psst` executable; account state and local encryption keys are stored
-elsewhere. Development builds embed `dev` and the current Git revision (or
-`unknown` outside a Git checkout); `VERSION` and `REVISION` can be overridden.
+elsewhere. Builds derive their version from stable `client/vX.Y.Z` tags. An exact
+tag builds as `X.Y.Z`; later commits include the distance and hash, for example
+`0.1.0-3-gabcdef0`. Tracked working-tree changes add `-dirty`. Server and Android
+tags are ignored. Without a matching CLI tag or Git metadata, the version is
+`dev`. The full Git revision is embedded separately (`unknown` outside Git).
+`VERSION` and `REVISION` can still be overridden explicitly.
 Both release targets retain this version/revision metadata and use the same
 `client/psst` output. Use `install-release` to install a stripped build;
 `install` builds the ordinary executable. These targets do not publish a release.

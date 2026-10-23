@@ -5,7 +5,7 @@ GO ?= go
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 DESTDIR ?=
-VERSION ?= dev
+VERSION ?= $(shell sh "$(CLIENT_DIR)/scripts/source-version.sh" "$(CLIENT_DIR)")
 REVISION ?= $(shell git -C "$(CLIENT_DIR)" rev-parse HEAD 2>/dev/null || printf '%s' unknown)
 
 .PHONY: build build-release install install-release uninstall clean help
@@ -45,5 +45,5 @@ help:
 		'BINDIR=PATH' 'Binary directory (default: PREFIX/bin)' \
 		'DESTDIR=PATH' 'Optional installation staging root' \
 		'GO=COMMAND' 'Go executable (default: go)' \
-		'VERSION=TEXT' 'Embedded version (default: dev)' \
+		'VERSION=TEXT' 'Override the version derived from client/v* tags' \
 		'REVISION=TEXT' 'Embedded revision (default: current Git HEAD)'
