@@ -120,7 +120,7 @@ removal has a replacement or an explicit decision to retire the capability.
 
 ### 2. Remove repeated work without changing release policy
 
-- [ ] Resolve CLI target/module/notice inputs once per build preparation and reuse
+- [x] Resolve CLI target/module/notice inputs once per build preparation and reuse
       them for embedded legal assets, packaging, and validation. Remove the repeated
       collection in `package-release.py` and routine CLI CI. Preserve input-based
       invalidation and verification of reused output.
@@ -148,14 +148,14 @@ resolutions, scans of identical common inputs, copies, and uploaded payload byte
       primitives. Preserve rejection of duplicate JSON keys, unknown/missing fields,
       malformed identities, unsafe archive paths, unsupported entries, excessive
       member/expansion sizes, and ambiguous symlink policies.
-- [ ] Build the development tool once per source/toolchain/platform combination;
+- [x] Build the development tool once per source/toolchain/platform combination;
       reuse it across commands in a job or Make invocation. Avoid repeated `go run`
       compilation on every substep and avoid adding a compiled-tool prerequisite
       to existing Git hooks merely for language consistency.
-- [ ] Move Go dependency notice collection into a shared package using resolved
+- [x] Move Go dependency notice collection into a shared package using resolved
       `go list` metadata. Share target definitions with packaging and retain actual
       toolchain/platform-dependent legal inputs.
-- [ ] Replace CLI Python assets/notices/package entry points with Go subcommands,
+- [x] Replace CLI Python assets/notices/package entry points with Go subcommands,
       retaining npm/Vite for actual web compilation and Node bundle instrumentation.
       Preserve existing Make targets, overrides, cached preparation, source version,
       stripped builds, Windows paths and offline source archive contents.
@@ -163,11 +163,11 @@ resolutions, scans of identical common inputs, copies, and uploaded payload byte
       release still needs the old generator, retain a minimal compatibility path
       until that source-verification consumer migrates; do not run both collectors
       in normal builds.
-- [ ] Move CLI integration orchestration to a bounded Go harness while preserving
+- [x] Move CLI integration orchestration to a bounded Go harness while preserving
       the actual executable and independent TypeScript crypto peer. Keep Send,
       Receive, receipt/retry and key-recovery behavior; avoid a self-confirming
       round trip through a single crypto implementation.
-- [ ] Switch Make/CI/docs callers and remove superseded CLI Python scripts and
+- [x] Switch Make/CI/docs callers and remove superseded CLI Python scripts and
       their implementation-specific tests. Retain the three real asset regressions
       for dependency completeness, cache invalidation and embedded vendor notices.
 
@@ -392,3 +392,20 @@ and the deliberate strict-concurrency compile failure. Clean compilation took
 32.2 seconds and XCTest 70.7 seconds, excluding dependency resolution. Native
 macOS/Xcode app, extension and XCTest checks remain pending. Catalog/configuration
 checks pass for both platforms after removing brittle implementation assertions.
+
+CLI assets, notices, packaging and integration orchestration now use Go. The
+cached native tool prepares unchanged assets in 0.95 seconds; the CLI target
+graph is collected once and its retained inventory is reused by packaging and
+checks. All six target archives and checksums pass; the source archive rebuilds
+with an empty module cache and networking disabled. Both LAN browser cases pass
+against the packaged binary in 1.6 seconds. The real backend/CLI/unchanged
+TypeScript crypto-peer scenario passes in 9.2 seconds, including its backend
+build. Windows development-tool compilation, race tests and vet pass. Backend
+notice collection independently reproduces all 15 existing dependency inventories
+and distributed legal files byte for byte; old source-verification consumers stay
+on their pinned generator until their coordinated migration.
+
+The source inventory v2/common-original/platform-module foundations are present
+with strict original/archive/lock and module ZIP/h1 tests. Container source,
+runtime and higher-level workflow consumers are still being migrated; these
+foundations alone do not complete the source pipeline or authorize publication.

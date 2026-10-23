@@ -16,8 +16,9 @@ import (
 
 // Runner carries the working checkout and optional environment overrides.
 type Runner struct {
-	Dir string
-	Env map[string]string
+	Dir      string
+	Env      map[string]string
+	CleanEnv bool // Exclude ambient credentials/configuration from child processes.
 }
 
 func (r Runner) With(env map[string]string) Runner {
@@ -66,14 +67,17 @@ func (r Runner) Result(ctx context.Context, timeout time.Duration, args ...strin
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Dir = r.Dir
 	values := map[string]string{}
-	for _, item := range os.Environ() {
-		if k, v, ok := strings.Cut(item, "="); ok {
-			values[k] = v
+	if !r.CleanEnv {
+		for _, item := range os.Environ() {
+			if k, v, ok := strings.Cut(item, "="); ok {
+				values[k] = v
+			}
 		}
 	}
 	for k, v := range r.Env {
 		values[k] = v
 	}
+	cmd.Env = make([]string, 0, len(values))
 	for k, v := range values {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}

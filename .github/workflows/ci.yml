@@ -315,7 +315,7 @@ jobs:
         # One compact compatibility scenario; no browser/mobile suites here.
         run: |
           started=$SECONDS
-          python3 client/scripts/check-integration.py --binary "$RUNNER_TEMP/psst"
+          "$PSST_RELEASE_TOOL" --root "$GITHUB_WORKSPACE" interop --binary "$RUNNER_TEMP/psst"
           printf 'CLI interoperability: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Chromium for two LAN browser scenarios

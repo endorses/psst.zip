@@ -120,7 +120,13 @@ jobs:
           REVISION: ${{ needs.source.outputs.revision }}
         run: |
           started=$SECONDS
-          python3 client/scripts/package-release.py --version "$VERSION" --revision "$REVISION" --output "$RUNNER_TEMP/cli-release"
+          if [ -f tools/release/build.sh ]; then
+            tool=$(sh tools/release/build.sh)
+            "$tool" cli-package --version "$VERSION" --revision "$REVISION" --output "$RUNNER_TEMP/cli-release"
+          else
+            # Only immutable pre-migration source tags use their original helper.
+            python3 client/scripts/package-release.py --version "$VERSION" --revision "$REVISION" --output "$RUNNER_TEMP/cli-release"
+          fi
           printf 'CLI six-target packaging and source/notices: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
       - name: Smoke-test packaged Linux executable and offline QR
         env:

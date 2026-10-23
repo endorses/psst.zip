@@ -50,7 +50,7 @@ and standard Unix shell/install tools. To prepare assets and build directly,
 including on native Windows:
 
 ```sh
-python3 client/scripts/prepare-lan-assets.py
+go -C tools/release run ./cmd/psst-release assets
 cd client
 go build -o psst ./cmd/psst
 ./psst --version

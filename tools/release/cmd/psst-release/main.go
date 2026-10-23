@@ -12,8 +12,10 @@ import (
 
 	"github.com/endorses/psst.zip/tools/release/internal/androidrelease"
 	"github.com/endorses/psst.zip/tools/release/internal/clibuild"
+	"github.com/endorses/psst.zip/tools/release/internal/interop"
 	"github.com/endorses/psst.zip/tools/release/internal/notices"
 	"github.com/endorses/psst.zip/tools/release/internal/publication"
+	"github.com/endorses/psst.zip/tools/release/internal/source"
 )
 
 func main() {
@@ -47,7 +49,20 @@ func run(ctx context.Context, args []string) error {
 	}
 	args = global.Args()
 	if len(args) == 0 || args[0] == "help" {
-		fmt.Println("psst-release — psst.zip development tooling\n\nUsage: psst-release [--root CHECKOUT] COMMAND\n\n  assets              Prepare or check embedded LAN assets and notices\n  notices             Collect resolved CLI target dependency notices\n  cli-package         Build six CLI targets, notices and offline source\n  android             Verify, sign or package Android releases\n  publication-result  Consolidate exact container release evidence\n\nProject: https://psst.zip")
+		fmt.Println(`psst-release — psst.zip development tooling
+
+Usage: psst-release [--root CHECKOUT] COMMAND
+
+  assets              Prepare or check embedded LAN assets and notices
+  notices             Collect resolved CLI target dependency notices
+  backend-notices     Collect or check pinned backend dependency notices
+  cli-package         Build six CLI targets, notices and offline source
+  interop             Check CLI/backend/TypeScript interoperability
+  android             Verify, sign or package Android releases
+  sources             Retain and verify source originals and inventories
+  publication-result  Consolidate exact container release evidence
+
+Project: https://psst.zip`)
 		return nil
 	}
 	absolute, err := filepath.Abs(*root)
@@ -55,6 +70,26 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	switch args[0] {
+	case "interop":
+		return interop.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
+	case "sources":
+		return source.Run(ctx, absolute, args[1:])
+	case "backend-notices":
+		flags := flag.NewFlagSet("backend-notices", flag.ContinueOnError)
+		output := flags.String("output", "", "output directory (default backend/licenses)")
+		check := flags.Bool("check", false, "verify existing notices")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 {
+			return fmt.Errorf("backend-notices accepts flags only")
+		}
+		result, err := notices.Backend(ctx, absolute, *output, *check)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Verified legal inputs for %d backend Go modules.\n", len(result.Modules))
+		return nil
 	case "android":
 		return androidrelease.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "publication-result":
