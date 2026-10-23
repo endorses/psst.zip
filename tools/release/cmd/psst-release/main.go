@@ -11,7 +11,9 @@ import (
 	"syscall"
 
 	"github.com/endorses/psst.zip/tools/release/internal/androidrelease"
+	"github.com/endorses/psst.zip/tools/release/internal/browser"
 	"github.com/endorses/psst.zip/tools/release/internal/clibuild"
+	"github.com/endorses/psst.zip/tools/release/internal/containerbuild"
 	"github.com/endorses/psst.zip/tools/release/internal/github"
 	"github.com/endorses/psst.zip/tools/release/internal/interop"
 	"github.com/endorses/psst.zip/tools/release/internal/notices"
@@ -58,6 +60,7 @@ Usage: psst-release [--root CHECKOUT] COMMAND
   assets              Prepare or check embedded LAN assets and notices
   notices             Collect resolved CLI target dependency notices
   backend-notices     Collect or check pinned backend dependency notices
+  browser             Verify actual Node/Vite browser build observations
   cli-package         Build six CLI targets, notices and offline source
   interop             Check CLI/backend/TypeScript interoperability
   android             Verify, sign or package Android releases
@@ -65,6 +68,8 @@ Usage: psst-release [--root CHECKOUT] COMMAND
   scan                Measure common exact-lock scanner inputs
   github              Verify source CI or publish immutable CLI artifacts
   publication-result  Consolidate exact container release evidence
+  container-publish   Publish verified immutable container release artifacts
+  container-build     Bind source, resolve bases and prepare deployment bundles
 
 Project: https://psst.zip`)
 		return nil
@@ -74,6 +79,8 @@ Project: https://psst.zip`)
 		return err
 	}
 	switch args[0] {
+	case "browser":
+		return browser.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "github":
 		return github.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "scan":
@@ -102,6 +109,10 @@ Project: https://psst.zip`)
 		return androidrelease.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "publication-result":
 		return publication.Run(ctx, args[1:])
+	case "container-publish":
+		return publication.RunPublish(ctx, absolute, args[1:], os.Stdout, os.Stderr)
+	case "container-build":
+		return containerbuild.Run(ctx, absolute, args[1:], os.Stdout)
 	case "assets":
 		flags := flag.NewFlagSet("assets", flag.ContinueOnError)
 		check := flags.Bool("check", false, "verify cached assets without rebuilding")

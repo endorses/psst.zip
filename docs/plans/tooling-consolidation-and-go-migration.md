@@ -453,3 +453,12 @@ The Go 1.27.3 runtime source catalog addition was checked against its official
 archive contains the expected `VERSION`, measures 35,526,415 bytes and hashes to
 `7d8518ab8bb4c9a0c58c4762422d3d4d05d1fad12666f4fca133201231d22c46`.
 Existing older source pins remain available for the actual Caddy compiler.
+
+Go container commands now provide exact tag/planned-source validation, immutable
+base resolution, native build records and compatible deployment bundles. The
+existing Python v1 parser accepts the new deterministic bundle. Go publication
+verifies the authenticated result, provenance, scan policy and actual OCI bytes,
+then retains a private incident receipt on partial failure. Offline fixtures cover
+success, partial registry publication and failed final readback. Focused race/vet
+checks pass. Workflow/legacy-adapter cutover is a separate integration slice;
+these command implementations do not establish a successful live release.

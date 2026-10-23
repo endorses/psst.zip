@@ -47,13 +47,13 @@ signed prepublication gate files or redundant report-only verification modes.
 
 Publication downloads the final result and verifies its one signature once per
 exact byte snapshot, while applying the same source, scan, notice, native-image
-and recovery semantics to its sections. The temporary Python reader is read-only;
-the Go tool is the sole canonical-result producer. This is an internal workflow
+and recovery semantics to its sections. The Go tool owns both result production
+and publication. This is an internal workflow
 contract; it does not change published deployment manifests or source offerings.
 
 ## Final provenance
 
-Immediately before transport, `publish_verified_release.py --checksums FILE`
+Immediately before transport, `psst-release container-publish prepare --checksums FILE`
 authenticates the fixed downloaded input layout and writes one ephemeral checksum
 input for the pinned normal `actions/attest` step. It covers the detached manifest,
 deployment bundle, every source asset, both image indexes and all four native
@@ -68,7 +68,7 @@ Node installation. The action keeps the existing `.github/workflows/release.yml`
 identity, version-tag ref and source commit.
 
 The publication driver snapshots and authenticates the same incoming bytes again
-before any remote mutation. After pushing the exact image subjects it verifies
+before any remote mutation. Before pushing the exact image subjects it verifies
 the one standard multi-subject provenance statement through the manifest with
 `gh attestation verify`, then requires that same verified statement to contain the
 exact complete file/image name-and-digest set. OCI index and child subjects retain
@@ -83,19 +83,35 @@ signed local readback envelope.
 ## Remote mutation and partial failure
 
 The workflow retains its repository-wide concurrency group with cancellation
-disabled. The driver also holds an exclusive runner-local lease. Immutable-release
+disabled. The driver independently checks that literal trusted workflow policy
+and creates an exclusive runner-local version journal. Immutable-release
 policy, source identity and package visibility are checked before mutation.
 An explicit first-package setup setting can permit creation of both absent
 packages; a mixed existing/missing pair remains an error. Registry package
 visibility may require the operator to make freshly created packages public.
 
-The driver creates a fresh empty draft, pushes reviewed children and indexes by
-digest, checks index/child maps and complete anonymous pulls, verifies final
-provenance, uploads assets without replacement, and downloads/hash-checks them.
-Only then does it create the two absent version tags and publish the complete
-immutable draft with `make_latest: false`. Public release assets and anonymous
-image pulls are checked again before the success receipt is written. Existing
+The shared GitHub adapter creates a fresh draft, uploads frozen assets without
+replacement, then downloads and hash-checks every asset. The container adapter
+uses the shared strict OCI reader to retain only the tested runnable manifests,
+configurations and layers. It assembles the exact prepared pair index without
+rebuilding or recompressing image bytes, then uses supported Skopeo commands to
+push that index and both native children by digest. It checks index/child maps
+and performs complete anonymous child pulls before creating the two absent
+version tags and publishing the complete immutable draft with `make_latest: false`.
+After publication, anonymous release assets, exact image digests and version tags
+are checked before the success receipt is written. Existing
 versions, assets and tags are never overwritten or automatically adopted.
+
+CLI publication shares the bounded GitHub source/CI and draft/readback adapters.
+Tokens remain in environment or private registry auth files; command arguments,
+public diagnostics and receipts contain no credential values. Failed private
+registry credentials are removed even when snapshots remain for reconciliation.
+
+`tools/release_http.py` and `tools/release_process.py` temporarily support the
+remaining Python measurement and recovery producers. They contain only a fixed
+read-only API reader and bounded process execution, with no release or registry
+publisher. Remove them when the last of those producers moves to Go. Helpers
+captured inside supported immutable deployment bundles keep their original bytes.
 
 Remote writes are journaled with durable intent/completion boundaries. An
 interruption can leave a draft, digest-addressed images or a partial pair of

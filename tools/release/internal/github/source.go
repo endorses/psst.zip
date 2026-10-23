@@ -17,9 +17,15 @@ func (c Client) ResolveTag(ctx context.Context, repository, tag string) (string,
 	if !RepositoryPattern.MatchString(repository) || !ReleaseTagPattern.MatchString(tag) {
 		return "", errors.New("invalid release repository or tag")
 	}
-	var response struct{ Object gitObject }
+	var response struct {
+		Object gitObject
+		Ref    string
+	}
 	if err := c.API(ctx, "GET", "repos/"+repository+"/git/ref/"+url.PathEscape("tags/"+tag), &response); err != nil {
 		return "", err
+	}
+	if response.Ref != "refs/tags/"+tag {
+		return "", errors.New("remote release tag name differs from reviewed identity")
 	}
 	for depth := 0; depth <= 8; depth++ {
 		if !CommitPattern.MatchString(response.Object.SHA) {

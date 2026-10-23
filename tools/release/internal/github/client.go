@@ -82,7 +82,7 @@ func validEndpoint(endpoint string) bool {
 // failures. gh --include supplies structured status independently of stderr;
 // no textual error-message matching can turn an uncertain result into absence.
 func (c Client) OptionalGET(ctx context.Context, endpoint string, target any) (bool, error) {
-	if !validEndpoint(endpoint) {
+	if c.Runner == nil || !validEndpoint(endpoint) {
 		return false, errors.New("untrusted optional GitHub lookup")
 	}
 	args := []string{"gh", "api", "--hostname", "github.com", "--include", "-H", "X-GitHub-Api-Version: " + APIVersion, endpoint}

@@ -9,9 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/endorses/psst.zip/tools/release/internal/process"
 )
 
 type executor func(context.Context, time.Duration, ...string) ([]byte, error)
@@ -20,6 +23,35 @@ func (f executor) Output(ctx context.Context, timeout time.Duration, args ...str
 	return f(ctx, timeout, args...)
 }
 func encoded(value any) ([]byte, error) { return json.Marshal(value) }
+
+func TestBoundedProcessFailureWithholdsCredentials(t *testing.T) {
+	if mode := os.Getenv("PSST_GITHUB_TEST_CHILD"); mode != "" {
+		fmt.Fprintln(os.Stderr, "private fixture diagnostics must stay private")
+		fmt.Fprintln(os.Stdout, "private fixture output must stay private")
+		if mode == "wait" {
+			time.Sleep(time.Minute)
+		}
+		os.Exit(7)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted publication process boundary is exercised on Linux")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"fail", "wait"} {
+		client := Client{Runner: process.Runner{Env: map[string]string{"PSST_GITHUB_TEST_CHILD": mode}}}
+		limit := time.Second
+		if mode == "wait" {
+			limit = 50 * time.Millisecond
+		}
+		data, err := client.Command(context.Background(), limit, executable, "-test.run=^TestBoundedProcessFailureWithholdsCredentials$")
+		if err == nil || len(data) != 0 || strings.Contains(err.Error(), "fixture") {
+			t.Fatal("failed or cancelled process succeeded or exposed private output")
+		}
+	}
+}
 func endpoint(args []string) string {
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "repos/") {
@@ -98,7 +130,7 @@ func TestCLISourceBindsDispatcherTagMainAndExecutedDefinition(t *testing.T) {
 			if movedTag {
 				target = strings.Repeat("b", 40)
 			}
-			return encoded(map[string]any{"object": gitObject{"commit", target}})
+			return encoded(map[string]any{"ref": "refs/tags/" + tag, "object": gitObject{"commit", target}})
 		case strings.HasSuffix(path, "/branches/main"):
 			return []byte(`{"name":"main","protected":true}`), nil
 		case strings.Contains(path, "/workflows/ci.yml/runs?"):
@@ -229,7 +261,7 @@ func TestDraftReadbackBeforePublicationAndPartialReceipt(t *testing.T) {
 				case strings.HasSuffix(path, "/immutable-releases"):
 					return []byte(`{"enabled":true}`), nil
 				case strings.Contains(path, "/git/ref/"):
-					return encoded(map[string]any{"object": gitObject{"commit", plan.Revision}})
+					return encoded(map[string]any{"ref": "refs/tags/" + plan.Tag, "object": gitObject{"commit", plan.Revision}})
 				case strings.Contains(path, "/releases/tags/"):
 					if !created {
 						t.Fatal("read release before draft creation")

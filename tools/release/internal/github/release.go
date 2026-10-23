@@ -116,6 +116,9 @@ type Publication struct {
 	BeforePublish func(context.Context) error
 	AfterPublish  func(context.Context, Release) error
 	OnPhase       func(string, int64) error
+	// The container job retains its existing bounded large-source transfer budget;
+	// small CLI releases use the shorter defaults and their own workflow deadline.
+	TransferTimeout time.Duration
 }
 type Receipt struct {
 	Schema     int     `json:"schema_version"`
@@ -222,6 +225,13 @@ func (c Client) PublishNew(ctx context.Context, plan Publication) (Receipt, erro
 	if !RepositoryPattern.MatchString(plan.Repository) || !ReleaseTagPattern.MatchString(plan.Tag) || !CommitPattern.MatchString(plan.Revision) || len(plan.Assets) < 1 || len(plan.Assets) > 128 || len(plan.Notes) > 64<<10 || len(plan.Title) > 256 {
 		return receipt, errors.New("invalid new release publication plan")
 	}
+	uploadTimeout, downloadTimeout := 90*time.Second, 60*time.Second
+	if plan.TransferTimeout != 0 {
+		if plan.TransferTimeout < time.Second || plan.TransferTimeout > 20*time.Minute {
+			return receipt, errors.New("invalid bounded publication transfer budget")
+		}
+		uploadTimeout, downloadTimeout = plan.TransferTimeout, plan.TransferTimeout
+	}
 	if err := writeReceipt(plan.Receipt, receipt, true); err != nil {
 		return receipt, err
 	}
@@ -270,11 +280,11 @@ func (c Client) PublishNew(ctx context.Context, plan Publication) (Receipt, erro
 	for _, asset := range plan.Assets {
 		args = append(args, asset.Path)
 	}
-	args = append(args, "--repo", plan.Repository, "--verify-tag", "--draft", "--latest=false", "--title", plan.Title, "--notes-file", notes)
+	args = append(args, "--repo", "github.com/"+plan.Repository, "--verify-tag", "--draft", "--latest=false", "--title", plan.Title, "--notes-file", notes)
 	if err = advance("reserve-draft-intent"); err != nil {
 		return receipt, err
 	}
-	if _, err = c.Command(ctx, 90*time.Second, args...); err != nil {
+	if _, err = c.Command(ctx, uploadTimeout, args...); err != nil {
 		return receipt, errors.New("draft creation or upload was interrupted; reconcile the partial receipt, do not overwrite or replay")
 	}
 	release, err := c.ReleaseByTag(ctx, plan.Repository, plan.Tag)
@@ -290,7 +300,7 @@ func (c Client) PublishNew(ctx context.Context, plan Publication) (Receipt, erro
 		if err = os.Mkdir(directory, 0700); err != nil {
 			return receipt, errors.New("private asset readback unavailable")
 		}
-		if _, err = c.Command(ctx, 60*time.Second, "gh", "release", "download", plan.Tag, "--repo", plan.Repository, "--dir", directory, "--pattern", asset.Name); err != nil {
+		if _, err = c.Command(ctx, downloadTimeout, "gh", "release", "download", plan.Tag, "--repo", "github.com/"+plan.Repository, "--dir", directory, "--pattern", asset.Name); err != nil {
 			return receipt, errors.New("draft asset download failed; release remains incomplete")
 		}
 		_, copied, err := SnapshotAssets(directory, []string{asset.Name})
@@ -318,7 +328,7 @@ func (c Client) PublishNew(ctx context.Context, plan Publication) (Receipt, erro
 	if err = advance("publish-release-intent"); err != nil {
 		return receipt, err
 	}
-	if _, err = c.Command(ctx, 45*time.Second, "gh", "release", "edit", plan.Tag, "--repo", plan.Repository, "--draft=false"); err != nil {
+	if _, err = c.Command(ctx, 45*time.Second, "gh", "release", "edit", plan.Tag, "--repo", "github.com/"+plan.Repository, "--draft=false", "--latest=false"); err != nil {
 		return receipt, errors.New("publication result is uncertain; reconcile the partial receipt, do not replay")
 	}
 	final, err := c.ReleaseByTag(ctx, plan.Repository, plan.Tag)
