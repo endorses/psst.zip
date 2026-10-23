@@ -291,6 +291,9 @@ func reportsBounded(directory string) error {
 }
 
 func Run(ctx context.Context, root string, args []string, output io.Writer) error {
+	if len(args) > 0 && args[0] == "source" {
+		return sourceCommand(ctx, root, args[1:], output)
+	}
 	if len(args) > 0 && args[0] == "image" {
 		return imageCommand(ctx, root, args[1:], output)
 	}
@@ -298,7 +301,7 @@ func Run(ctx context.Context, root string, args []string, output io.Writer) erro
 		return compilerCommand(ctx, root, args[1:], output)
 	}
 	if len(args) == 0 || args[0] != "npm" {
-		return errors.New("scan requires npm, compiler or image")
+		return errors.New("scan requires npm, source, compiler or image")
 	}
 	flags := flag.NewFlagSet("scan npm", flag.ContinueOnError)
 	var source Source

@@ -17,6 +17,15 @@ container. The exact-source Docker context includes both capture catalogs and
 the capture script. The temporary rehearsal test was removed after verification;
 normal tests remain offline and fast.
 
+A native AMD64 source-scanner rehearsal at the same commit completed with Go
+1.27.3 in 75.754 seconds, including a cold installation of the pinned
+`govulncheck` tool and both actual import graphs. One fresh common npm audit took
+3.204 seconds and was reused without another npm invocation. Independent replay
+matched all scanner, database, graph and finding facts: 21 module-only Go findings
+had every officially affected package absent from both graphs; three npm findings
+remained unresolved and keep publication closed. This was one native architecture,
+not a complete release gate. Its temporary replay harness was removed afterward.
+
 The maintained release tool is built with `sh tools/release/build.sh`. Its source collectors retain complete upstream originals and native Go module ZIPs; source replay reads those retained bytes without running upstream generators. The source inventory uses one versioned document, with identical bytes inside and beside each offering. The final release manifest binds the exact archive bytes.
 
 Run the focused checks with the repository's Go toolchain:
