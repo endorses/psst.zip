@@ -140,17 +140,18 @@ func (s *Session) Activate(kind, id string) error {
 	if s.closed || s.id != "" {
 		return errors.New("standalone session is closed or already active")
 	}
-	if kind == "send" {
+	switch kind {
+	case "send":
 		transfer, err := s.queries.GetTransfer(id)
 		if err != nil || transfer.Status != "complete" || transfer.MaxDownloads != s.cfg.MaxDownloads {
 			return errors.New("standalone Send must be complete with the configured download limit")
 		}
-	} else if kind == "receive" {
+	case "receive":
 		slot, err := s.queries.GetSlot(id)
 		if err != nil || slot.ReceiveProtocol != 2 || slot.MaxFiles != s.cfg.MaxFiles {
 			return errors.New("standalone Receive must use protocol v2 and the configured file limit")
 		}
-	} else {
+	default:
 		return errors.New("standalone resource kind must be send or receive")
 	}
 	s.kind, s.id = kind, id
