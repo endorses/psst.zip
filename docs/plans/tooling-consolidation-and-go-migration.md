@@ -245,7 +245,7 @@ legal-resource/localization/configuration coverage to both Android and iOS.
 - [x] Move native dependency resolution/export from embedded Groovy/Python into
       Gradle Kotlin tasks. Preserve Android runtime and iOS klib/POM associations,
       output determinism, source identity, and shipped notices for both platforms.
-- [ ] Reuse Go source/version/archive/GitHub primitives for Android release tooling;
+- [x] Reuse Go source/version/archive/GitHub primitives for Android release tooling;
       keep thin adapters invoking official Gradle/SDK/`age` programs. Preserve
       signer fingerprints, version codes, alignment, private mapping encryption,
       secret-safe failures, and exclusion of private migration lineage.
@@ -425,3 +425,14 @@ public provenance or install the canonical privileged CLI. Installed-host
 SSH/sudo checks, publication-compatible cutover and final restored-flow approval
 remain pending. The Python updater remains operational and supported bundles
 retain its required parser. See [updater evidence](../testing/go-vps-updater.md).
+
+The Go common-lock npm collector completed a real audit in 2.2 seconds with
+official Node 26.12.1/npm 11.20.0. The existing independent policy analyzer
+validated its raw bytes and explicit amd64 collector mapping for an arm64
+consumer. New regressions reject substituted locks/raw reports and different
+common receipts across platforms; legacy source/transfer cases remain passing.
+This audit found an existing Vite advisory in the current 6.4.3 lock. It is
+retained as an unresolved release blocker, not suppressed by the refactor.
+The committed Caddy acceptance also expired on 2026-10-23; publication rechecks
+its exact finding/binary/source scope and deadline. Neither exception policy nor
+application dependencies have been changed as part of this migration.

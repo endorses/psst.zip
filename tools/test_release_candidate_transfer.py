@@ -6,8 +6,8 @@ import copy
 import gzip
 import io
 import shutil
-import tarfile
 import sys
+import tarfile
 import unittest
 from unittest.mock import patch
 
@@ -389,10 +389,11 @@ class CandidateTransfer(unittest.TestCase):
         altered = []
 
         def change(source, target):
-            real_copy(source, target)
+            copied = real_copy(source, target)
             if not altered:
                 source.write_bytes(source.read_bytes() + b"changed")
                 altered.append(source)
+            return copied
 
         with patch.object(transfer, "copy_file", side_effect=change):
             with self.assertRaisesRegex(InvalidRelease, "changed during transfer"):
@@ -453,36 +454,42 @@ class CandidateTransfer(unittest.TestCase):
             "--source-kind",
             "planned-main-dispatch",
         ]
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "transfer",
-                "stage",
-                *context_args,
-                "--private",
-                str(self.private),
-                "--output",
-                str(self.output),
-            ],
-        ), self.assertRaisesRegex(InvalidRelease, "retained browser evidence"):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "transfer",
+                    "stage",
+                    *context_args,
+                    "--private",
+                    str(self.private),
+                    "--output",
+                    str(self.output),
+                ],
+            ),
+            self.assertRaisesRegex(InvalidRelease, "retained browser evidence"),
+        ):
             transfer.main()
         self.assertFalse(self.output.exists())
         self.stage()
         receipt = self.fixture.folder / "verified-transfer.json"
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "transfer",
-                "verify",
-                *context_args,
-                "--transfer",
-                str(self.output),
-                "--output",
-                str(receipt),
-            ],
-        ), self.assertRaisesRegex(InvalidRelease, "retained browser evidence"):
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [
+                    "transfer",
+                    "verify",
+                    *context_args,
+                    "--transfer",
+                    str(self.output),
+                    "--output",
+                    str(receipt),
+                ],
+            ),
+            self.assertRaisesRegex(InvalidRelease, "retained browser evidence"),
+        ):
             transfer.main()
         self.assertFalse(receipt.exists())
 

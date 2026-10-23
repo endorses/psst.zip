@@ -12,9 +12,11 @@ import (
 
 	"github.com/endorses/psst.zip/tools/release/internal/androidrelease"
 	"github.com/endorses/psst.zip/tools/release/internal/clibuild"
+	"github.com/endorses/psst.zip/tools/release/internal/github"
 	"github.com/endorses/psst.zip/tools/release/internal/interop"
 	"github.com/endorses/psst.zip/tools/release/internal/notices"
 	"github.com/endorses/psst.zip/tools/release/internal/publication"
+	"github.com/endorses/psst.zip/tools/release/internal/scanning"
 	"github.com/endorses/psst.zip/tools/release/internal/source"
 )
 
@@ -60,6 +62,8 @@ Usage: psst-release [--root CHECKOUT] COMMAND
   interop             Check CLI/backend/TypeScript interoperability
   android             Verify, sign or package Android releases
   sources             Retain and verify source originals and inventories
+  scan                Measure common exact-lock scanner inputs
+  github              Verify source CI or publish immutable CLI artifacts
   publication-result  Consolidate exact container release evidence
 
 Project: https://psst.zip`)
@@ -70,6 +74,10 @@ Project: https://psst.zip`)
 		return err
 	}
 	switch args[0] {
+	case "github":
+		return github.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
+	case "scan":
+		return scanning.Run(ctx, absolute, args[1:], os.Stdout)
 	case "interop":
 		return interop.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "sources":

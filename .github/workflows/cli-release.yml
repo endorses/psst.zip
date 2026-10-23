@@ -36,60 +36,18 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: tools/release/go.mod
       - name: Validate tag ancestry and successful executed source checks
         id: source
         env:
           CLI_TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 - <<'PY'
-          import json, os, re, subprocess
-
-          def run(*args):
-              return subprocess.check_output(args, text=True, timeout=30).strip()
-
-          def api(path):
-              return json.loads(run('gh', 'api', path))
-
-          tag = os.environ['CLI_TAG']
-          if os.environ['GITHUB_REF'] != 'refs/heads/main' or not re.fullmatch(r'client/v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)', tag):
-              raise SystemExit('Dispatch from main with an existing stable client/vX.Y.Z tag.')
-          if run('git', 'rev-parse', 'HEAD') != os.environ['GITHUB_SHA']:
-              raise SystemExit('Dispatcher source identity mismatch.')
-          revision = run('git', 'rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}')
-          subprocess.run(['git', 'merge-base', '--is-ancestor', revision, 'HEAD'], check=True, timeout=10)
-          repository = os.environ['GITHUB_REPOSITORY']
-          required = {
-              'Repository security': {'Scan complete Git history', 'Repository check regression tests'},
-              'Go client and CLI': {'Vet Go client', 'Client and CLI race tests', 'Build and smoke-test CLI executable once', 'Check resolved CLI dependency notices', 'Disposable backend and browser crypto interoperability'},
-          }
-          if subprocess.run(['git', 'cat-file', '-e', revision + ':client/internal/lan/session.go'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10).returncode == 0:
-              required['Go client and CLI'].update({'Prepare matching embedded LAN browser assets', 'Embedded LAN Send and Receive browser interoperability'})
-          eligible = None
-          for page in range(1, 6):
-              runs = api(f'repos/{repository}/actions/workflows/ci.yml/runs?head_sha={revision}&status=success&per_page=100&page={page}')['workflow_runs']
-              for candidate in runs:
-                  if candidate['event'] not in {'push', 'workflow_dispatch'} or candidate['head_sha'] != revision or candidate['head_branch'] != 'main' or candidate['conclusion'] != 'success':
-                      continue
-                  jobs = api(f"repos/{repository}/actions/runs/{candidate['id']}/attempts/{candidate['run_attempt']}/jobs?per_page=100")['jobs']
-                  passed = {}
-                  for job in jobs:
-                      if job['name'] not in required or job['conclusion'] != 'success':
-                          continue
-                      steps = {step['name'] for step in job['steps'] if step['conclusion'] == 'success' and step.get('started_at') and step.get('completed_at')}
-                      passed[job['name']] = required[job['name']] <= steps
-                  if all(passed.get(name) for name in required):
-                      eligible = candidate['id']
-                      break
-              if eligible is not None or len(runs) < 100:
-                  break
-          if eligible is None:
-              raise SystemExit('Exact tagged source needs successful, executed CLI and security checks on main; skipped checks are insufficient. Run CI on that exact main revision with cli_only=true, then retry this candidate workflow.')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'revision={revision}\nversion={tag.removeprefix("client/v")}\nci_run={eligible}\n')
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-              output.write(f'CLI source `{revision}` reuses executed checks in CI run {eligible}. No application suites are rerun for packaging.\n')
-          PY
+          tool=$(sh tools/release/build.sh)
+          "$tool" github cli-source --tag "$CLI_TAG"
 
   build:
     name: Package reviewed CLI source once
@@ -156,70 +114,34 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: tools/release/go.mod
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cli-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/cli-release
-      - name: Refuse existing releases and changed tags, then publish exact artifacts
+      - name: Publish exact assets after draft byte readback
         env:
           GH_TOKEN: ${{ github.token }}
           CLI_TAG: ${{ inputs.tag }}
           VERSION: ${{ needs.source.outputs.version }}
           REVISION: ${{ needs.source.outputs.revision }}
         run: |
-          cd "$RUNNER_TEMP/cli-release"
-          sha256sum --check SHA256SUMS
-          python3 - <<'PY'
-          import json, os, subprocess
-          from urllib.parse import quote
-
-          def api(path):
-              return json.loads(subprocess.check_output(['gh', 'api', path], text=True, timeout=30))
-
-          repository, tag = os.environ['GITHUB_REPOSITORY'], os.environ['CLI_TAG']
-          # Inspect every release, including drafts; no overwrite or draft reuse.
-          for page in range(1, 101):
-              releases = api(f'repos/{repository}/releases?per_page=100&page={page}')
-              if any(release['tag_name'] == tag for release in releases):
-                  raise SystemExit('This tag already has a release; existing releases are never replaced.')
-              if len(releases) < 100:
-                  break
-          else:
-              raise SystemExit('Release listing exceeded its inspection bound.')
-          ref = api(f'repos/{repository}/git/ref/{quote("tags/" + tag, safe="")}')['object']
-          for unused in range(8):
-              if ref['type'] == 'commit':
-                  break
-              if ref['type'] != 'tag':
-                  raise SystemExit('Unsupported tag target.')
-              ref = api(f"repos/{repository}/git/tags/{ref['sha']}")['object']
-          if ref['type'] != 'commit' or ref['sha'] != os.environ['REVISION']:
-              raise SystemExit('Selected tag changed after source verification.')
-          record = json.load(open('cli-release.json'))
-          if record['revision'] != ref['sha'] or record['version'] != os.environ['VERSION'] or record['development_only'] or record['source_dirty']:
-              raise SystemExit('Publication candidate identity or clean-source verification failed.')
-          PY
-          printf 'psst.zip CLI %s\n\nReviewed source: %s\n\nPlatform archives contain licenses and installation instructions. SHA256SUMS covers every release asset; the source archive includes vendored dependencies.\n' "$VERSION" "$REVISION" > "$RUNNER_TEMP/cli-notes.md"
-          gh release create "$CLI_TAG" ./* --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "psst.zip CLI $VERSION" --notes-file "$RUNNER_TEMP/cli-notes.md"
-          gh release edit "$CLI_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          python3 - <<'PY'
-          import json, os, subprocess
-          from urllib.parse import quote
-
-          def api(path):
-              return json.loads(subprocess.check_output(['gh', 'api', path], text=True, timeout=30))
-
-          repository, tag = os.environ['GITHUB_REPOSITORY'], os.environ['CLI_TAG']
-          release = api(f'repos/{repository}/releases/tags/{quote(tag, safe="")}')
-          if release.get('tag_name') != tag or release.get('draft') is not False or release.get('immutable') is not True:
-              raise SystemExit('Published release identity, visibility or immutability was not confirmed.')
-          ref = api(f'repos/{repository}/git/ref/{quote("tags/" + tag, safe="")}')['object']
-          for unused in range(8):
-              if ref['type'] == 'commit':
-                  break
-              if ref['type'] != 'tag':
-                  raise SystemExit('Unsupported published tag target.')
-              ref = api(f"repos/{repository}/git/tags/{ref['sha']}")['object']
-          if ref['type'] != 'commit' or ref['sha'] != os.environ['REVISION']:
-              raise SystemExit('Published immutable tag does not match the reviewed source revision.')
-          PY
+          tool=$(sh tools/release/build.sh)
+          "$tool" github cli-publish --tag "$CLI_TAG" --version "$VERSION" --revision "$REVISION" \
+            --artifacts "$RUNNER_TEMP/cli-release" --receipt "$RUNNER_TEMP/cli-publication-receipt.json"
+      - name: Retain bounded publication receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-publication-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cli-publication-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30

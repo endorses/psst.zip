@@ -5,17 +5,17 @@ from __future__ import annotations
 import copy
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import aggregate_release_source_scans as gate
 import measure_release_source_scans as producer
 from generate_release_gate_reports import NativeSourceContext
 from prepare_release_candidate import BASES
 from publish_container_release import Binding, sha256
-from release_artifacts import InvalidRelease, PLATFORMS, json_bytes
+from release_artifacts import PLATFORMS, InvalidRelease, json_bytes
 from test_release_source_scans import go_fixture, stream
 
 
@@ -254,6 +254,86 @@ class SourceGateTests(unittest.TestCase):
             resolved_bases=self.base_path,
             authenticator=self.auth,
         )
+
+    def use_common_npm(self):
+        raw = {
+            name: self.raw["linux/amd64"]["web-source"].get(name, b"")
+            for name in producer.NPM_RAW
+        }
+        first = next(
+            s
+            for s in self.records["linux/amd64"]["scans"]
+            if s["target"] == "web-source"
+        )
+        common = {
+            "schema_version": 1,
+            "kind": "common-npm-lock-scanner-measurement",
+            "source": {
+                "repository": self.binding.repository,
+                "version": self.binding.version,
+                "commit": self.binding.commit,
+            },
+            "execution": "common-lock",
+            "platform": "linux/amd64",
+            "source_inputs": {
+                name: self.inputs[name]
+                for name in ("web/package.json", "web/package-lock.json")
+            },
+            "builder": first["builder"],
+            "started_at": first["started_at"],
+            "completed_at": first["scanned_at"],
+            "raw_files": {name: sha256(value) for name, value in raw.items()},
+            "publication_authorized": False,
+        }
+        raw["common-npm-audit.json"] = json_bytes(common)
+        for platform in PLATFORMS:
+            record = self.records[platform]
+            record.update(schema_version=2, execution="native-go-common-lock")
+            scan = next(s for s in record["scans"] if s["target"] == "web-source")
+            scan.update(
+                builder=copy.deepcopy(first["builder"]),
+                common_lock={
+                    "platform": common["platform"],
+                    "measurement_sha256": sha256(raw["common-npm-audit.json"]),
+                },
+            )
+            self.raw[platform]["web-source"] = copy.deepcopy(raw)
+            self.write_raw(platform, "web-source")
+        return common
+
+    def test_one_common_lock_audit_maps_to_both_native_go_measurements(self):
+        self.use_common_npm()
+        report = self.aggregate()
+        self.assertTrue(report["passed"])
+        self.assertEqual(
+            report["details"]["derivation_policy"],
+            "authenticated-native-Go-graphs-and-common-lock-npm-v2",
+        )
+        rows = {row["target"]: row for row in report["details"]["scans"]}
+        self.assertEqual(len(rows["backend-source"]["findings"]), 2)
+        self.assertEqual(
+            {
+                row["builder"]["architecture"]
+                for row in rows["web-source"]["native_measurements"].values()
+            },
+            {"amd64"},
+        )
+
+    def test_different_common_receipts_cannot_be_reported_as_one_audit(self):
+        common = self.use_common_npm()
+        common["completed_at"] = "2026-10-07T02:00:01Z"
+        raw = self.raw["linux/arm64"]["web-source"]
+        raw["common-npm-audit.json"] = json_bytes(common)
+        scan = next(
+            s
+            for s in self.records["linux/arm64"]["scans"]
+            if s["target"] == "web-source"
+        )
+        scan["common_lock"]["measurement_sha256"] = sha256(raw["common-npm-audit.json"])
+        scan["scanned_at"] = common["completed_at"]
+        self.write_raw("linux/arm64", "web-source")
+        with self.assertRaisesRegex(InvalidRelease, "same common npm audit"):
+            self.aggregate()
 
     def change_go(self, platform, mutate):
         raw = self.raw[platform]["backend-source"]

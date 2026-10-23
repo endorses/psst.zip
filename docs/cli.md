@@ -461,18 +461,23 @@ uses no production credentials or files. See the evidence in the
 
 The manual **CLI release** workflow checks an existing `client/vX.Y.Z` tag against
 successful, actually executed CLI and repository-security checks at that exact
-main commit. If a documentation-only commit skipped the CLI job, run **CI** from
+main commit, using the trusted dispatcher's CI definition, current protected main
+and the same remote tag target. If a documentation-only commit skipped the CLI job, run **CI** from
 main with `cli_only=true`, then retry the release candidate. This runs security
 and CLI validation without rebuilding the mobile apps. The release workflow
 produces candidate artifacts by default; publication requires explicitly selecting
 its separate `publish` input. No CLI release has been published by implementing
 this tooling.
 
-Publication assumes the repository's existing immutable-release setting remains
-enabled. The workflow refuses existing releases, checks the source tag again,
-then verifies the published release's immutable flag. It does not inspect that
-administrative setting before publication; keep it enabled before selecting
-`publish`.
+Publication assumes the repository's immutable-release setting remains enabled;
+the CLI job has no administrative inspection credential. It refuses existing
+releases including drafts and checks the source tag again. It snapshots the exact
+checksum-covered asset set, creates a draft, then
+downloads and compares every uploaded asset before publication. Final readback
+confirms the same release ID, immutable flag, tag target and complete asset set.
+The workflow retains a bounded publication receipt on success or failure. An
+interrupted or uncertain publication requires reconciliation; tooling never
+overwrites an existing release or automatically reuses a partial transaction.
 
 Cross-compilation does not establish macOS Keychain or Windows credential/ACL
 runtime behavior. Native desktop provider/filesystem checks remain pending until

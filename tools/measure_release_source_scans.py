@@ -4,26 +4,29 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import platform
 import re
+import shutil
 import signal
 import subprocess
 import tarfile
 import tempfile
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from generate_release_gate_reports import NativeSourceContext, timestamp
 from prepare_release_candidate import BASES
 from publish_container_release import sha256
 from release_artifacts import (
     DIGEST,
+    PLATFORMS,
     InvalidRelease,
+    fields,
     json_bytes,
     matches,
     read_json,
@@ -35,6 +38,17 @@ SCANNER_SUM = "h1:clG4qBU6zH5VKjti8n5j8BBuYzoSha392xXMkXS351U="
 GO_VERSION = "go1.27.2"
 MAX_RAW = 32 * 1024**2
 SOURCE_LIMIT = 256 * 1024**2
+NPM_RAW = {
+    "node-version.txt",
+    "npm-version.txt",
+    "npm-lock-graph.json",
+    "npm-graph.stderr",
+    "npm-audit.json",
+    "npm-audit.stderr",
+    "npm-audit.exit",
+    "node-execution.complete",
+    "execution.stderr",
+}
 GO_SCRIPT = r"""set -eu
 export PATH=/tmp/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export GOTOOLCHAIN=local GOPATH=/tmp/go GOMODCACHE=/tmp/modules GOCACHE=/tmp/build GOBIN=/tmp/bin
@@ -623,6 +637,87 @@ def execute_fixture(
             cidfile.unlink()
 
 
+def validate_common_npm(
+    raw: dict[str, bytes],
+    context: NativeSourceContext,
+    inputs: dict[str, str],
+    node_image: str,
+) -> dict:
+    """Bind one architecture-independent lock audit without claiming a second run."""
+    require(
+        set(raw) == NPM_RAW | {"common-npm-audit.json"},
+        "Common npm raw inventory differs",
+    )
+    common = fields(
+        read_json(raw["common-npm-audit.json"]),
+        {
+            "schema_version",
+            "kind",
+            "source",
+            "execution",
+            "platform",
+            "source_inputs",
+            "builder",
+            "started_at",
+            "completed_at",
+            "raw_files",
+            "publication_authorized",
+        },
+        "common npm measurement",
+    )
+    require(
+        type(common["schema_version"]) is int
+        and common["schema_version"] == 1
+        and common["kind"] == "common-npm-lock-scanner-measurement"
+        and common["execution"] == "common-lock"
+        and common["platform"] in PLATFORMS
+        and common["source"]
+        == {key: value for key, value in context.checked().items() if key != "platform"}
+        and common["source_inputs"]
+        == {key: inputs[key] for key in ("web/package.json", "web/package-lock.json")}
+        and common["publication_authorized"] is False,
+        "Common npm source/lock/execution identity differs",
+    )
+    builder = fields(
+        common["builder"],
+        {
+            "reference",
+            "config_digest",
+            "architecture",
+            "rootfs_layers",
+            "docker_engine_architecture",
+        },
+        "common npm builder",
+    )
+    arch = common["platform"].split("/")[1]
+    require(
+        builder["reference"] == node_image
+        and builder["architecture"] == arch
+        and builder["docker_engine_architecture"]
+        in ({"amd64", "x86_64"} if arch == "amd64" else {"arm64", "aarch64"}),
+        "Common npm collector builder differs",
+    )
+    matches(builder["config_digest"], DIGEST, "Invalid common npm builder digest")
+    require(
+        isinstance(builder["rootfs_layers"], list) and builder["rootfs_layers"],
+        "Missing common npm builder layers",
+    )
+    for digest in builder["rootfs_layers"]:
+        matches(digest, DIGEST, "Invalid common npm builder layer")
+    for key in ("started_at", "completed_at"):
+        timestamp(common[key])
+    require(
+        datetime.fromisoformat(common["started_at"].replace("Z", "+00:00"))
+        <= datetime.fromisoformat(common["completed_at"].replace("Z", "+00:00")),
+        "Common npm measurement timestamps differ",
+    )
+    require(
+        common["raw_files"] == {name: sha256(raw[name]) for name in NPM_RAW},
+        "Common npm raw reports differ",
+    )
+    return common
+
+
 def measure_source_scans(
     context: NativeSourceContext,
     *,
@@ -630,6 +725,7 @@ def measure_source_scans(
     go_image: str,
     node_image: str,
     output: Path,
+    common_npm: Path | None = None,
     execute=run,
 ) -> dict:
     identity = context.checked()
@@ -663,8 +759,11 @@ def measure_source_scans(
         )
         builders = {
             "backend-source": builder_identity(go_image, "golang", context, execute),
-            "web-source": builder_identity(node_image, "node", context, execute),
         }
+        if common_npm is None:
+            builders["web-source"] = builder_identity(
+                node_image, "node", context, execute
+            )
         records = []
         for target, script in [
             ("backend-source", GO_SCRIPT),
@@ -673,15 +772,46 @@ def measure_source_scans(
             raw_root = output / target
             raw_root.mkdir(mode=0o700)
             started = datetime.now(timezone.utc).isoformat()
-            execute_fixture(
-                docker_scan_args(
-                    builders[target]["config_digest"], source, raw_root, context, script
-                ),
-                root,
-                raw_root,
-                execute,
-                timeout=1200,
-            )
+            common = None
+            if target == "web-source" and common_npm is not None:
+                require(
+                    common_npm.is_dir()
+                    and not any(
+                        p.is_symlink() for p in (common_npm, *common_npm.parents)
+                    ),
+                    "Unsafe common npm collection",
+                )
+                require(
+                    {p.name for p in common_npm.iterdir()}
+                    == NPM_RAW | {"common-npm-audit.json"},
+                    "Incomplete common npm collection",
+                )
+                for path in common_npm.iterdir():
+                    require(
+                        path.is_file()
+                        and not path.is_symlink()
+                        and path.stat().st_size <= MAX_RAW,
+                        "Unsafe common npm report",
+                    )
+                    shutil.copyfile(path, raw_root / path.name)
+                shared = {path.name: path.read_bytes() for path in raw_root.iterdir()}
+                common = validate_common_npm(shared, context, inputs, node_image)
+                builders[target] = common["builder"]
+                started = common["started_at"]
+            else:
+                execute_fixture(
+                    docker_scan_args(
+                        builders[target]["config_digest"],
+                        source,
+                        raw_root,
+                        context,
+                        script,
+                    ),
+                    root,
+                    raw_root,
+                    execute,
+                    timeout=1200,
+                )
             raw = {}
             for path in raw_root.iterdir():
                 require(
@@ -701,13 +831,20 @@ def measure_source_scans(
                     "target": target,
                     "subject": "git:" + context.repository + "@" + context.commit,
                     "started_at": started,
-                    "scanned_at": datetime.now(timezone.utc).isoformat(),
+                    "scanned_at": common["completed_at"]
+                    if common
+                    else datetime.now(timezone.utc).isoformat(),
                     "builder": builders[target],
                     "raw_files": {
                         name: sha256(data) for name, data in sorted(raw.items())
                     },
                 }
             )
+            if common is not None:
+                scan["common_lock"] = {
+                    "platform": common["platform"],
+                    "measurement_sha256": sha256(raw["common-npm-audit.json"]),
+                }
             records.append(scan)
         require(
             inputs
@@ -720,10 +857,12 @@ def measure_source_scans(
             "Read-only source fixture changed during scans",
         )
         result = {
-            "schema_version": 1,
+            "schema_version": 2 if common_npm is not None else 1,
             "kind": "native-source-scanner-measurement",
             "source": identity,
-            "execution": "native",
+            "execution": "native-go-common-lock"
+            if common_npm is not None
+            else "native",
             "source_archive_sha256": archive_digest,
             "source_inputs": inputs,
             "scans": records,
@@ -752,6 +891,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--repository-root", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--node-image")
+    parser.add_argument("--common-npm", type=Path)
     parser.add_argument("--component", choices=["backend", "web"])
     parser.add_argument("--runtime-pack", type=Path)
     parser.add_argument("--runtime-source-sha256")
@@ -782,8 +922,8 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error("compiler-graph requires --" + name.replace("_", "-"))
         if args.component == "web" and args.cosign is None:
             parser.error("web compiler-graph requires --cosign")
-        if args.node_image:
-            parser.error("--node-image applies only to source-scans")
+        if args.node_image or args.common_npm:
+            parser.error("--node-image and --common-npm apply only to source-scans")
     try:
         context = NativeSourceContext(
             args.repository, args.version, args.revision, args.platform
@@ -794,6 +934,7 @@ def main(argv: list[str] | None = None) -> None:
                 repository_root=args.repository_root,
                 go_image=args.go_image,
                 node_image=args.node_image,
+                common_npm=args.common_npm,
                 output=args.output,
             )
             summary = {
@@ -1044,9 +1185,9 @@ def measure_compiler_graph(
     cosign: Path | None = None,
     execute=run,
 ) -> dict:
-    import verify_runtime_source_pack as replay
-    import package_runtime_sources as source_pack
     import collect_caddy_sources as caddy_sources
+    import package_runtime_sources as source_pack
+    import verify_runtime_source_pack as replay
     from collect_runtime_notices import read_url
 
     identity = context.checked()

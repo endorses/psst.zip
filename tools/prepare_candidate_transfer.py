@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-from pathlib import Path, PurePosixPath
 import re
+from pathlib import Path, PurePosixPath
 
 import measure_native_browser_inputs
-
 from generate_release_gate_reports import (
     NativeSourceContext,
     runtime_inputs,
@@ -161,7 +160,7 @@ def json_record(root: Path, name: str) -> dict:
 
 class Inventory:
     def __init__(self, root: Path):
-        self.root, self.files = root, {}
+        self.root, self.files, self.stamps = root, {}, {}
 
     def add(
         self,
@@ -171,7 +170,23 @@ class Inventory:
         *,
         maximum=MAX_FILE,
     ):
-        actual = fingerprint(self.root, name, maximum)
+        path = regular(self.root, name)
+        before = path.stat()
+        stamp = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        if name in self.files:
+            require(
+                self.stamps[name] == stamp, "Transfer input changed during inventory"
+            )
+            actual = self.files[name]
+            require(actual["size"] <= maximum, "Transfer input exceeds bounds")
+        else:
+            actual = fingerprint(self.root, name, maximum)
+            after = path.stat()
+            require(
+                stamp == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns),
+                "Transfer input changed during inventory",
+            )
+            self.stamps[name] = stamp
         if digest is not None:
             matches(digest, DIGEST, "Invalid referenced transfer checksum")
             require(actual["sha256"] == digest, "Referenced transfer bytes differ")
@@ -194,7 +209,17 @@ class Inventory:
 
     def json(self, name: str) -> dict:
         self.add(name, maximum=MAX_JSON)
-        return json_record(self.root, name)
+        with regular(self.root, name).open("rb") as stream:
+            raw = stream.read(MAX_JSON + 1)
+        require(
+            len(raw) <= MAX_JSON
+            and "sha256:" + hashlib.sha256(raw).hexdigest()
+            == self.files[name]["sha256"],
+            "Transfer JSON changed during inventory",
+        )
+        record = read_json(raw)
+        require(isinstance(record, dict), "Transfer record must be an object")
+        return record
 
     def raw(self, directory: str, raw_files: object, allowed: set[str]):
         require(
@@ -424,9 +449,17 @@ def collect_inventory(
         "Runtime replay evidence differs",
     )
     sources = inventory.json("source-scans/source-scan-measurement.json")
-    checked_measurement(sources, context, "native-source-scanner-measurement")
+    source_schema = sources.get("schema_version")
     require(
-        sources.get("execution") == "native"
+        type(source_schema) is int and source_schema in {1, 2},
+        "Unsupported source scanner schema",
+    )
+    checked_measurement(
+        sources, context, "native-source-scanner-measurement", source_schema
+    )
+    require(
+        sources.get("execution")
+        == ("native-go-common-lock" if source_schema == 2 else "native")
         and sources.get("source_scanners_gate_pending") is True
         and sources.get("findings_review_required") is True,
         "Source scanners require native pending review",
@@ -451,7 +484,10 @@ def collect_inventory(
         inventory.raw(
             "source-scans/" + target,
             scan.get("raw_files"),
-            GO_RAW if target == "backend-source" else NODE_RAW,
+            GO_RAW
+            if target == "backend-source"
+            else NODE_RAW
+            | ({"common-npm-audit.json"} if source_schema == 2 else set()),
         )
     for component in COMPONENTS:
         directory = "compiler-" + component
@@ -623,12 +659,14 @@ def verify_native(
 
 def copy_file(source: Path, target: Path):
     target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    size = 0
+    size, checksum = 0, hashlib.sha256()
     with source.open("rb") as reader, target.open("xb") as writer:
         while chunk := reader.read(1024**2):
             size += len(chunk)
             require(size <= MAX_FILE, "Candidate copy grew beyond bounds")
             writer.write(chunk)
+            checksum.update(chunk)
+    return {"sha256": "sha256:" + checksum.hexdigest(), "size": size}
 
 
 def stage_native(
@@ -651,25 +689,34 @@ def stage_native(
         context, private, allow_legacy_browser=allow_legacy_browser
     )
     output.mkdir(mode=0o700)
+    snapshots = {}
     for name, record in files.items():
-        require(
-            fingerprint(private, name) == record,
-            "Candidate input changed before transfer",
+        source = regular(private, name)
+        before = source.stat()
+        snapshots[name] = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
         )
-        copy_file(regular(private, name), output / name)
+        copied = copy_file(source, output / name)
+        after = source.stat()
         require(
-            fingerprint(output, name) == record == fingerprint(private, name),
+            copied == record
+            and snapshots[name]
+            == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns),
             "Candidate input changed during transfer",
         )
-    # Copy checks bind the validated source bytes. Recheck every retained byte,
-    # then independently replay the completed output once in verify_native.
-    require(
-        all(
-            fingerprint(private, name) == record == fingerprint(output, name)
-            for name, record in files.items()
-        ),
-        "Candidate evidence changed during transfer",
-    )
+    # Streaming copy hashes bind the validated bytes; metadata detects a source
+    # change after its copy. Receiving jobs independently hash and replay their
+    # downloaded trees; repeated local full-image hashing adds no trust boundary.
+    for name, stamp in snapshots.items():
+        current = regular(private, name).stat()
+        require(
+            stamp
+            == (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns),
+            "Candidate evidence changed during transfer",
+        )
     result = {
         "schema_version": 1,
         "kind": "native-candidate-transfer",
@@ -680,9 +727,7 @@ def stage_native(
         "measurement_authentication_required": True,
     }
     create_output(output / METADATA, json_bytes(result))
-    return verify_native(
-        context, output, source_kind, allow_legacy_browser=allow_legacy_browser
-    )
+    return result
 
 
 def main():
@@ -695,7 +740,9 @@ def main():
             choices=(
                 sorted(SOURCE_KINDS)
                 if name == "source-kind"
-                else PLATFORMS if name == "platform" else None
+                else PLATFORMS
+                if name == "platform"
+                else None
             ),
         )
     parser.add_argument("--private", type=Path)

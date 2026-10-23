@@ -1,6 +1,7 @@
 package process
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -33,6 +34,10 @@ func TestChildEnvironment(t *testing.T) {
 		}
 		if strings.TrimSpace(string(data)) != want {
 			t.Fatalf("CleanEnv=%v: %q", clean, data)
+		}
+		var streamed bytes.Buffer
+		if err := runner.RunTo(context.Background(), 5*time.Second, &streamed, binary, "-test.run=^TestChildEnvironment$"); err != nil || strings.TrimSpace(streamed.String()) != want {
+			t.Fatalf("streaming CleanEnv=%v: %q (%v)", clean, streamed.String(), err)
 		}
 	}
 }

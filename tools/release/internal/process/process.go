@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,12 +60,31 @@ func (e *Error) Unwrap() error { return e.cause }
 // Result executes one bounded command. A failed command still returns bounded
 // output for trusted classification; neither Error nor Output exposes that text.
 func (r Runner) Result(ctx context.Context, timeout time.Duration, args ...string) (Result, error) {
+	var stdout limitedBuffer
+	stderr, err := r.execute(ctx, timeout, &stdout, func() bool { return stdout.exceeded }, args...)
+	return Result{Stdout: stdout.Bytes(), Stderr: stderr}, err
+}
+
+// RunTo streams a process output without retaining an archive in memory. The
+// caller must close its destination on cancellation and enforce any tighter
+// format limits. A universal 8 GiB output cap and bounded private stderr remain.
+func (r Runner) RunTo(ctx context.Context, timeout time.Duration, destination io.Writer, args ...string) error {
+	if destination == nil {
+		return fmt.Errorf("missing build output destination")
+	}
+	output := &streamWriter{Writer: destination, remaining: 8 << 30}
+	_, err := r.execute(ctx, timeout, output, func() bool { return output.exceeded }, args...)
+	return err
+}
+
+func (r Runner) execute(ctx context.Context, timeout time.Duration, stdout io.Writer, exceeded func() bool, args ...string) ([]byte, error) {
 	if len(args) == 0 {
-		return Result{}, fmt.Errorf("missing build command")
+		return nil, fmt.Errorf("missing build command")
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Dir = r.Dir
 	values := map[string]string{}
 	if !r.CleanEnv {
@@ -82,17 +102,16 @@ func (r Runner) Result(ctx context.Context, timeout time.Duration, args ...strin
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	sort.Strings(cmd.Env)
-	var stdout, stderr limitedBuffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	var stderr limitedBuffer
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	err := cmd.Run()
-	result := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
 	if err == nil {
-		return result, nil
+		return stderr.Bytes(), nil
 	}
 	failure := &Error{Operation: filepath.Base(args[0]), ExitCode: -1, Kind: "start", Permission: errors.Is(err, os.ErrPermission)}
 	if ctx.Err() != nil {
 		failure.Kind, failure.cause = "cancelled", ctx.Err()
-	} else if stdout.exceeded || stderr.exceeded {
+	} else if exceeded() || stderr.exceeded {
 		failure.Kind = "output-limit"
 	} else {
 		var exit *exec.ExitError
@@ -100,7 +119,23 @@ func (r Runner) Result(ctx context.Context, timeout time.Duration, args ...strin
 			failure.Kind, failure.ExitCode = "exit", exit.ExitCode()
 		}
 	}
-	return result, failure
+	return stderr.Bytes(), failure
+}
+
+type streamWriter struct {
+	io.Writer
+	remaining int64
+	exceeded  bool
+}
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > w.remaining {
+		w.exceeded = true
+		return 0, fmt.Errorf("stream output exceeds limit")
+	}
+	n, err := w.Writer.Write(p)
+	w.remaining -= int64(n)
+	return n, err
 }
 
 // Output never includes command output in errors: callers may process credentials.

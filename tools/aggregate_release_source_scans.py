@@ -6,10 +6,10 @@ and signs the resulting gate. Caller dispositions cannot replace raw evidence.
 
 from __future__ import annotations
 
-from datetime import datetime
-from pathlib import Path, PurePosixPath
 import re
 import tempfile
+from datetime import datetime
+from pathlib import Path, PurePosixPath
 
 from generate_release_gate_reports import (
     MeasurementAuthenticator,
@@ -26,6 +26,7 @@ from measure_release_source_scans import (
     json_stream,
     run,
     source_snapshot,
+    validate_common_npm,
 )
 from prepare_release_candidate import validate_candidate
 from publish_container_release import Binding, sha256
@@ -297,6 +298,7 @@ def aggregate_source_scans(
     )
     measured = {target: {} for target in TARGETS}
     combined_findings = {target: [] for target in TARGETS}
+    common_digests = []
     with tempfile.TemporaryDirectory(prefix="psst-source-gate-") as folder:
         source = Path(folder)
         archive_digest = source_snapshot(repository_root, binding.commit, source, run)
@@ -332,10 +334,15 @@ def aggregate_source_scans(
             )
             require(
                 type(record["schema_version"]) is int
-                and record["schema_version"] == 1
+                and record["schema_version"] in {1, 2}
                 and record["kind"] == "native-source-scanner-measurement"
                 and record["source"] == context.checked()
-                and record["execution"] == "native"
+                and record["execution"]
+                == (
+                    "native-go-common-lock"
+                    if record["schema_version"] == 2
+                    else "native"
+                )
                 and record["source_archive_sha256"] == archive_digest
                 and record["source_inputs"] == inputs
                 and record["publication_authorized"] is False
@@ -355,10 +362,37 @@ def aggregate_source_scans(
             for scan in scans:
                 target = scan["target"]
                 kind = "golang" if target == "backend-source" else "node"
+                raw = raw_files(
+                    native_measurements[platform].parent / target, scan.get("raw_files")
+                )
+                builder_context = context
+                if target == "web-source" and record["schema_version"] == 2:
+                    common = validate_common_npm(
+                        raw, context, inputs, bases["base_images"]["node"]
+                    )
+                    common_digest = sha256(raw["common-npm-audit.json"])
+                    require(
+                        scan.get("common_lock")
+                        == {
+                            "platform": common["platform"],
+                            "measurement_sha256": common_digest,
+                        }
+                        and scan["builder"] == common["builder"]
+                        and scan["started_at"] == common["started_at"]
+                        and scan["scanned_at"] == common["completed_at"],
+                        "Common npm mapping differs from retained collector",
+                    )
+                    common_digests.append(common_digest)
+                    builder_context = NativeSourceContext(
+                        binding.repository,
+                        binding.version,
+                        binding.commit,
+                        common["platform"],
+                    )
                 checked_builder(
                     scan.get("builder"),
                     reference=bases["base_images"][kind],
-                    context=context,
+                    context=builder_context,
                 )
                 for key in ["started_at", "scanned_at"]:
                     timestamp(scan.get(key))
@@ -373,9 +407,6 @@ def aggregate_source_scans(
                         record["completed_at"].replace("Z", "+00:00")
                     ),
                     "Source measurement timestamps are inconsistent",
-                )
-                raw = raw_files(
-                    native_measurements[platform].parent / target, scan.get("raw_files")
                 )
                 required = (
                     {
@@ -423,6 +454,8 @@ def aggregate_source_scans(
                     "builder",
                     "raw_files",
                 }
+                if target == "web-source" and record["schema_version"] == 2:
+                    metadata.add("common_lock")
                 fields(scan, set(calculated) | metadata, "complete source scan")
                 require(
                     scan["subject"]
@@ -452,6 +485,12 @@ def aggregate_source_scans(
                 combined_findings[target].extend(
                     {**finding, "platform": platform} for finding in findings
                 )
+        require(
+            not common_digests
+            or len(common_digests) == 2
+            and len(set(common_digests)) == 1,
+            "Both platforms must bind the same common npm audit",
+        )
         return {
             "schema_version": 1,
             "gate": "source-scanners",
@@ -498,6 +537,8 @@ def aggregate_source_scans(
                 "source_archive_sha256": archive_digest,
                 "source_inputs": inputs,
                 "resolved_bases_sha256": bases_digest,
-                "derivation_policy": "authenticated-both-native-source-graphs-official-Go-package-absence-and-zero-npm-v1",
+                "derivation_policy": "authenticated-native-Go-graphs-and-common-lock-npm-v2"
+                if common_digests
+                else "authenticated-both-native-source-graphs-official-Go-package-absence-and-zero-npm-v1",
             },
         }

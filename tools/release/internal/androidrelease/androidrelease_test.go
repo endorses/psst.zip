@@ -378,7 +378,7 @@ func TestExecutedCIRequiresActualSuccessfulSteps(t *testing.T) {
 	if Executed(job, []string{"Build"}) {
 		t.Fatal("skipped CI accepted")
 	}
-	job.Steps[0] = JobStep{"Build", "success", "start", "end"}
+	job.Steps[0] = JobStep{Name: "Build", Conclusion: "success", Started: "start", Completed: "end"}
 	if !Executed(job, []string{"Build"}) {
 		t.Fatal("executed CI rejected")
 	}
@@ -539,7 +539,7 @@ func TestExactSourceCIReuseRequiresTrustedDefinitionAndExecutedJobs(t *testing.T
 	for name, required := range requiredSteps {
 		job := CIJob{ID: int64(len(jobs) + 1), Name: name, Status: "completed", Conclusion: "success"}
 		for _, step := range required {
-			job.Steps = append(job.Steps, JobStep{step, "success", "start", "end"})
+			job.Steps = append(job.Steps, JobStep{Name: step, Conclusion: "success", Started: "start", Completed: "end"})
 		}
 		jobs = append(jobs, job)
 	}

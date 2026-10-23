@@ -6,11 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/endorses/psst.zip/tools/release/internal/contract"
+	releasegithub "github.com/endorses/psst.zip/tools/release/internal/github"
 )
 
 var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -20,16 +19,7 @@ var requiredSteps = map[string][]string{
 	"Android and shared module": {"Assemble and test", "Verify actual resolved native dependency notices"},
 }
 
-func decodeAPI(data []byte, target any) error {
-	var raw any
-	if err := contract.Decode(data, 8<<20, &raw); err != nil {
-		return errors.New("invalid GitHub inspection response")
-	}
-	if err := json.Unmarshal(data, target); err != nil {
-		return errors.New("invalid GitHub inspection fields")
-	}
-	return nil
-}
+func decodeAPI(data []byte, target any) error { return releasegithub.DecodeAPI(data, target) }
 func (t Tool) ghJSON(ctx context.Context, endpoint string, target any) error {
 	data, err := t.command(ctx, 45*time.Second, "gh", "api", "-H", "X-GitHub-Api-Version: 2026-03-10", endpoint)
 	if err != nil {
@@ -54,50 +44,16 @@ func (t Tool) ProtectedMain(ctx context.Context, repository string) error {
 	return nil
 }
 
-type EvidenceRecord struct {
-	RunID   int64    `json:"run_id"`
-	Attempt int      `json:"attempt"`
-	JobID   int64    `json:"job_id"`
-	Steps   []string `json:"steps"`
-}
+type EvidenceRecord = releasegithub.Evidence
 type Evidence struct {
 	Revision string          `json:"sourceRevision"`
 	Android  *EvidenceRecord `json:"android"`
 	Security *EvidenceRecord `json:"security"`
 }
-type JobStep struct {
-	Name       string `json:"name"`
-	Conclusion string `json:"conclusion"`
-	Started    string `json:"started_at"`
-	Completed  string `json:"completed_at"`
-}
-type CIJob struct {
-	ID         int64     `json:"id"`
-	Name       string    `json:"name"`
-	Status     string    `json:"status"`
-	Conclusion string    `json:"conclusion"`
-	Steps      []JobStep `json:"steps"`
-}
+type JobStep = releasegithub.Step
+type CIJob = releasegithub.Job
 
-func Executed(job CIJob, required []string) bool {
-	if job.Status != "completed" || job.Conclusion != "success" {
-		return false
-	}
-	steps := map[string]JobStep{}
-	for _, step := range job.Steps {
-		if _, exists := steps[step.Name]; exists {
-			return false
-		}
-		steps[step.Name] = step
-	}
-	for _, name := range required {
-		step, ok := steps[name]
-		if !ok || step.Conclusion != "success" || step.Started == "" || step.Completed == "" {
-			return false
-		}
-	}
-	return true
-}
+func Executed(job CIJob, required []string) bool { return releasegithub.Executed(job, required) }
 func (t Tool) CIEvidence(ctx context.Context, repository, revision string) (Evidence, error) {
 	evidence := Evidence{Revision: revision}
 	if !repositoryPattern.MatchString(repository) || !revisionPattern.MatchString(revision) {
@@ -115,26 +71,13 @@ func (t Tool) CIEvidence(ctx context.Context, repository, revision string) (Evid
 		return evidence, nil
 	}
 	var runs struct {
-		Runs []struct {
-			ID         int64  `json:"id"`
-			Attempt    int    `json:"run_attempt"`
-			Revision   string `json:"head_sha"`
-			Branch     string `json:"head_branch"`
-			Event      string `json:"event"`
-			Path       string `json:"path"`
-			Repository struct {
-				Name string `json:"full_name"`
-			} `json:"repository"`
-			HeadRepository struct {
-				Name string `json:"full_name"`
-			} `json:"head_repository"`
-		} `json:"workflow_runs"`
+		Runs []releasegithub.WorkflowRun `json:"workflow_runs"`
 	}
 	if err = t.ghJSON(ctx, "repos/"+repository+"/actions/workflows/ci.yml/runs?head_sha="+revision+"&per_page=100", &runs); err != nil {
 		return evidence, err
 	}
 	for _, run := range runs.Runs {
-		if run.ID <= 0 || run.Attempt <= 0 || run.Revision != revision || run.Branch != "main" || run.Event != "push" && run.Event != "workflow_dispatch" || run.Path != ".github/workflows/ci.yml" || run.Repository.Name != repository || run.HeadRepository.Name != repository {
+		if !run.Exact(repository, revision) {
 			continue
 		}
 		var response struct {
@@ -143,21 +86,14 @@ func (t Tool) CIEvidence(ctx context.Context, repository, revision string) (Evid
 		if err = t.ghJSON(ctx, fmt.Sprintf("repos/%s/actions/runs/%d/attempts/%d/jobs?per_page=100", repository, run.ID, run.Attempt), &response); err != nil {
 			return evidence, err
 		}
-		for name, checks := range requiredSteps {
-			var matches []CIJob
-			for _, job := range response.Jobs {
-				if job.Name == name {
-					matches = append(matches, job)
-				}
-			}
+		for name, record := range releasegithub.MatchJobs(run, response.Jobs, requiredSteps) {
 			slot := &evidence.Security
 			if strings.HasPrefix(name, "Android") {
 				slot = &evidence.Android
 			}
-			if *slot == nil && len(matches) == 1 && matches[0].ID > 0 && Executed(matches[0], checks) {
-				ordered := append([]string(nil), checks...)
-				sort.Strings(ordered)
-				*slot = &EvidenceRecord{run.ID, run.Attempt, matches[0].ID, ordered}
+			if *slot == nil {
+				copy := record
+				*slot = &copy
 			}
 		}
 		if evidence.Android != nil && evidence.Security != nil {
