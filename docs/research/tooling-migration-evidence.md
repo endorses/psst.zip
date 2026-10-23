@@ -1,7 +1,7 @@
 # Tooling migration map and measured evidence
 
 Snapshot: 2026-10-24, implementation HEAD
-`7c0b45ee2c44e624c02b07dfdc0909025cd792e1`. The original baseline is
+`e7011377bee9b0d0d1c74689ed83ee666b02ddb2`. The original baseline is
 `df002e447dcd04842c854b3796b2b7e84c4cf3ae`. The [migration map](tooling-migration-map.csv)
 reconciles all **135** [original inventory](python-tooling-inventory.csv) rows in
 their original order. The baseline inventory and its [assessment](python-tooling-assessment.md)
@@ -78,7 +78,7 @@ boundaries, not unimplemented promises to port whole test harnesses.
   evidence verifier, recovery producer and compatible artifact reader. Removed
   source/image/assembly/publication producers are no longer imported by the workflow.
 - The container workflow runs Go source/image/compiler commands and one Go source
-  evaluator, then one Go recovery aggregation/result command. Cross-job inputs are
+  evaluator, then one Go recovery aggregation/result command that consumes the direct typed result rather than an envelope CLI. Cross-job inputs are
   authenticated before their claims are consumed. Final assets and standard
   provenance retain their existing manifest/bundle/certificate identities.
 - Native iOS inline Python selects and boots the installed simulator, bounds
