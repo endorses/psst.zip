@@ -168,3 +168,15 @@ func runtimeReplayReport(o RuntimeOptions, verified RuntimeVerification, smoke [
 func CheckRuntimeSmoke(raw []byte, o RuntimeOptions, inventoryDigest string) error {
 	return checkRuntimeSmoke(raw, o, inventoryDigest)
 }
+
+// RuntimeReplayReport emits the existing raw runtime observation from an already
+// verified pair. Smoke identity and completed coverage are always rechecked.
+func RuntimeReplayReport(o RuntimeOptions, verified RuntimeVerification, smoke []byte) (map[string]any, error) {
+	if verified.Inventory.Source != o.Source || verified.Images["backend"].ConfigDigest != o.BackendConfig || verified.Images["web"].ConfigDigest != o.WebConfig {
+		return nil, fmt.Errorf("runtime report differs from verified native pair")
+	}
+	if err := checkRuntimeSmoke(smoke, o, verified.InventoryFile.SHA256); err != nil {
+		return nil, err
+	}
+	return runtimeReplayReport(o, verified, smoke), nil
+}

@@ -19,6 +19,7 @@ type RuntimeVerification struct {
 	InventoryFile File
 	Images        map[string]oci.Image
 	Files         map[string]map[string][]byte
+	SourceFiles   map[string][]byte `json:"-"`
 	NoticeFiles   map[string][]File
 	GoLicenses    map[string]File
 }
@@ -77,7 +78,7 @@ func CheckRuntimeImage(graph RuntimeGraph, image SavedImage, expected map[string
 func VerifyRuntimeImages(ctx context.Context, o RuntimeOptions, archives, configs map[string]string) (RuntimeVerification, error) {
 	o = o.defaults()
 	inventory, sourceFiles, err := ReplayRuntimeRetained(ctx, o)
-	result := RuntimeVerification{Inventory: inventory, Images: map[string]oci.Image{}, Files: map[string]map[string][]byte{}, NoticeFiles: map[string][]File{}, GoLicenses: map[string]File{}}
+	result := RuntimeVerification{Inventory: inventory, SourceFiles: sourceFiles, Images: map[string]oci.Image{}, Files: map[string]map[string][]byte{}, NoticeFiles: map[string][]File{}, GoLicenses: map[string]File{}}
 	if err != nil {
 		return result, err
 	}

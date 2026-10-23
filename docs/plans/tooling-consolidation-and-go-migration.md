@@ -490,3 +490,11 @@ second, including injected download/signature/OCI failure boundaries. They do no
 claim a fresh live scanner/database run. The source-scanner policy and final
 workflow cutover are still being connected. See the
 [scanner contract](../security/release-scanner-evidence.md).
+
+A real shared-original collection retained 193 sources (173 npm and 20 upstream)
+in 2m35s. An exact-source native browser builder completed in 22.5 seconds; real
+capture, source replay and preferred-source verification passed in 8.42 seconds.
+That run caught and fixed a temporary-mount archive retrieval problem. Native
+browser collection now streams its bounded archive from the running isolated
+container and emits the existing runtime replay from the same verified image
+pair, removing another full OCI/source pass. Normal unit checks remain offline.

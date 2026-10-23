@@ -1,5 +1,22 @@
 # Container source tooling verification
 
+A publication-disabled common-source rehearsal at `6ba7e30` retained 193 originals
+(173 npm distributions and 20 upstream archives), totaling 412,351,580 bytes, in
+2m35s. An exact-source native Node builder completed in 22.5 seconds. Its real
+capture plus common-source replay and preferred-source checks passed in 8.42
+seconds: 4,337 inputs, 34 generated outputs, 168 rendered preferred package inputs,
+276 generator inputs, 23 virtual and 11 generated associations. This check used
+the official immutable Node 26.12.1 image, retained originals and actual container
+bytes. It did not test final Caddy/backend images or authorize publication.
+
+The experiment caught Docker's inability to retrieve the capture through its
+copy API from the container's temporary mount. The collector now keeps its
+isolated container running while it executes the capture and streams the bounded
+archive through that container's mount namespace, then removes the owned
+container. The exact-source Docker context includes both capture catalogs and
+the capture script. The temporary rehearsal test was removed after verification;
+normal tests remain offline and fast.
+
 The maintained release tool is built with `sh tools/release/build.sh`. Its source collectors retain complete upstream originals and native Go module ZIPs; source replay reads those retained bytes without running upstream generators. The source inventory uses one versioned document, with identical bytes inside and beside each offering. The final release manifest binds the exact archive bytes.
 
 Run the focused checks with the repository's Go toolchain:

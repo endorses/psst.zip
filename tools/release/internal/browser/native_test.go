@@ -18,7 +18,7 @@ import (
 )
 
 func TestNativeCaptureIsBoundedNativeAndCleansExactCIDAfterFailures(t *testing.T) {
-	for _, failure := range []string{"", "create", "start-cancel", "status", "copy", "archive"} {
+	for _, failure := range []string{"", "create", "start-cancel", "exec", "status", "copy", "archive"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -65,23 +65,35 @@ func TestNativeCaptureIsBoundedNativeAndCleansExactCIDAfterFailures(t *testing.T
 						return nil, context.Canceled
 					}
 					return nil, nil
+				case "exec":
+					if args[2] != cid || (args[3] != "node" && args[3] != "cat") {
+						t.Fatal("capture did not execute inside owned running container")
+					}
+					if args[3] == "cat" {
+						if args[4] != "/tmp/psst-browser-builder.tar" {
+							t.Fatal("streamed another container file")
+						}
+						if failure == "copy" {
+							return nil, errors.New("archive stream fixture")
+						}
+						if failure == "archive" {
+							return []byte("invalid archive"), nil
+						}
+						name := filepath.Join(private, "fixture.tar")
+						if _, err := WriteCapture(name, map[string][]byte{"src/input.js": []byte("captured input")}); err != nil {
+							return nil, err
+						}
+						return os.ReadFile(name)
+					}
+					if failure == "exec" {
+						return nil, errors.New("capture execution fixture")
+					}
+					return nil, nil
 				case "inspect":
 					if failure == "status" {
-						return []byte("1\n"), nil
+						return []byte("false\n"), nil
 					}
-					return []byte("0\n"), nil
-				case "cp":
-					if args[2] != cid+":/tmp/psst-browser-builder.tar" {
-						t.Fatal("copied from another container", args)
-					}
-					if failure == "copy" {
-						return nil, errors.New("copy fixture")
-					}
-					if failure == "archive" {
-						return nil, os.WriteFile(args[3], []byte("invalid"), 0600)
-					}
-					_, err := WriteCapture(args[3], map[string][]byte{"src/input.js": []byte("captured input")})
-					return nil, err
+					return []byte("true\n"), nil
 				case "rm":
 					if ctx.Err() != nil || len(args) != 4 || args[3] != cid {
 						t.Fatal("cleanup ignored cancellation or removed another container", args, ctx.Err())
