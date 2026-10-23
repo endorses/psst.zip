@@ -2,27 +2,170 @@
 
 `psst` is a Go client for an operator-selected psst.zip server. It supports
 encrypted Send and Receive workflows, public downloads, guest uploads, resource
-management, terminal QR codes and scripted use. It does not run or administer a
-server. Transfer creation requires a regular account; administrator accounts
-cannot send files or create Receive links.
+management, terminal QR codes and scripted use. It can also serve temporary Send
+and Receive links directly on a trusted LAN without an account or hosted server.
+Hosted transfer creation requires a regular account; administrator accounts cannot
+send files or create Receive links.
 
 ## Install and build
 
 The CLI has an independent Go module in `client/`. Before a public CLI release is
-published, build the checked-out source:
+published, build the checked-out source. From the repository root or `client/`:
 
 ```sh
+make build            # plain make also builds the CLI
+make install          # builds and installs ~/.local/bin/psst
+make build-release    # strips symbol tables and DWARF debug information (-s -w)
+make install-release  # builds and installs the stripped executable
+psst --version
+psst help
+```
+
+Add `~/.local/bin` to your shell's `PATH` if it is not already present. The default
+installation does not require root permissions. To select a different destination or stage a
+package, use the same overrides when uninstalling:
+
+```sh
+make install PREFIX=/your/install/prefix
+make install BINDIR=/your/bin
+make install DESTDIR=/your/staging/root PREFIX=/usr/local
+make uninstall PREFIX=/your/install/prefix
+```
+
+`make help` lists targets and overrides. `make clean` removes only the built
+`client/psst` executable; account state and local encryption keys are stored
+elsewhere. Builds derive their version from stable `client/vX.Y.Z` tags. An exact
+tag builds as `X.Y.Z`; later commits include the distance and hash, for example
+`0.1.0-3-gabcdef0`. Tracked working-tree changes add `-dirty`. Server and Android
+tags are ignored. Without a matching CLI tag or Git metadata, the version is
+`dev`. The full Git revision is embedded separately (`unknown` outside Git).
+`VERSION` and `REVISION` can still be overridden explicitly.
+Both release targets retain this version/revision metadata and use the same
+`client/psst` output. Use `install-release` to install a stripped build;
+`install` builds the ordinary executable. These targets do not publish a release.
+Source builds also need Node/npm for the embedded LAN browser interface. The Make
+targets prepare matching assets automatically and reuse unchanged browser builds;
+installed binaries need neither Node nor Docker. The Make targets use GNU Make
+and standard Unix shell/install tools. To prepare assets and build directly,
+including on native Windows:
+
+```sh
+python3 client/scripts/prepare-lan-assets.py
 cd client
 go build -o psst ./cmd/psst
 ./psst --version
 ./psst help
 ```
 
+On native Windows, use `go build -o psst.exe ./cmd/psst` and run `.\psst.exe`.
+
 Use the stable Go version declared in `client/go.mod` (currently 1.27.3). Planned
 release tags use `client/vX.Y.Z`, independently of server and Android releases.
 Committing code does not deploy a server or publish a binary. Packaged releases
 include the version/source revision, licenses, dependency notices, checksums and
 corresponding build source. Do not infer a published version from this document.
+
+## Temporary sharing on a trusted LAN
+
+```sh
+psst serve send ./document.pdf --qr
+psst serve receive --output-dir ./incoming --qr
+```
+
+The command runs in the foreground and prints a browser link. A recipient on the
+same network can open that link or scan its QR code. No account, login, keyring or
+connection to the configured hosted server is used. Ordinary `psst send` and
+`psst receive` still use the configured server.
+
+The OS assigns an available port, so a busy conventional port does not prevent
+startup. The link and QR contain the actual port. If several private interfaces
+are available, choose one when prompted, or explicitly select the address:
+
+```sh
+psst serve send ./document.pdf --listen 192.168.1.42:0 --qr
+psst serve receive --output-dir ./incoming --listen '[fd12:3456::42]:0'
+```
+
+Port `0` requests an available port. An explicitly requested occupied port reports
+the conflict rather than silently changing your configuration. Only specific
+private or loopback IPs are accepted; wildcard and public binds are rejected.
+Loopback is useful for local checks but its links cannot be opened on another
+device. IPv6 link-local addresses with interface zones are not portable share links
+and are excluded from automatic selection. Docker/container-only bridges are
+omitted from the chooser; their private addresses remain usable with `--listen`.
+
+HTTP is the default: no TLS certificate is needed. Files remain encrypted, but an
+active network attacker could replace the HTTP page and its encryption code. Use
+this mode on networks you trust. HTTP browser downloads use the existing bounded
+memory fallback, limited to 25 MiB per file; larger downloads require a CLI/native
+receiver or trusted HTTPS. Browser uploads use the existing chunked encryption.
+
+Optional HTTPS uses your own certificate and private key:
+
+```sh
+psst serve receive --output-dir ./incoming --listen 192.168.1.42:8443 \
+  --tls-cert ./lan.crt --tls-key ./lan.key
+```
+
+The certificate must be valid for the advertised IP address and trusted by the
+recipient's device. A self-signed certificate does not automatically establish
+trust. No certificate-verification bypass or automatic certificate service is used.
+
+Each invocation owns one temporary Send transfer or Receive inbox. Defaults are
+one hour, 1 GiB of encrypted payload, two concurrent streams, one acknowledged Send
+download, and at most 100 Receive files. Override finite limits explicitly:
+
+```sh
+psst serve send ./photo.jpg --expires 30m --max-downloads 3 --max-bytes 100MiB
+psst serve receive --output-dir ./incoming --expires 2h --max-files 20 --max-bytes 1GiB
+```
+
+Lifetimes range from one second to seven days; byte budgets range from 1 MiB to
+1 TiB. File limits are 1–100, stream limits 1–32, and Send download limits
+1–1,000,000. Receive quotas count cumulative admitted uploads; deleting an upload
+does not restore its lifetime allowance. `--expires` controls normal serving
+lifetime independently of the ten-minute timeout for other commands. An explicit
+`--timeout` adds an earlier whole-command deadline.
+
+Send prepares a private encrypted snapshot before advertising its link; changing
+the original files afterward does not change that transfer. Receive stores
+authenticated plaintext under `OUTPUT_DIR/SUBMISSION_ID/`, prevents overwrites and
+path escape, and preserves successfully received files after shutdown. Both modes
+preflight disk space and stream files within bounded memory. Receive needs space
+for encrypted staging and plaintext output.
+
+Keep the host awake and connected until completion. Send stops after its download
+allowance is acknowledged; Receive stops after collecting its file allowance.
+Ctrl+C/SIGTERM and expiry close the listener and remove private staging. A stopped
+session cannot be resumed; its in-memory keys are gone. Expiry after completed
+work exits successfully; expiry without a completion exits 4. Intentional
+Ctrl+C/SIGTERM shutdown exits successfully after cleanup; an explicit command
+timeout exits 5. Other failures use the ordinary CLI error codes.
+
+`--json` emits one startup result, then keeps serving. It includes the usual share
+fields plus `hosting` with the bound listener and limits. Progress/final status
+goes to stderr; the final process exit code reports success or failure. A saved
+startup result works with `psst qr --json-file FILE`:
+
+```sh
+psst serve send ./document.pdf --json > lan-share.json
+# While that process remains running, from another terminal:
+psst qr --json-file lan-share.json
+```
+
+Forced termination can leave a private `psst-lan-*` directory in the OS temporary
+directory. To remove one confirmed stopped session, use
+`psst serve cleanup --session-dir EXACT_DIRECTORY`. This checks the owner, marker
+and held session lock, refuses active sessions and never scans/deletes unrelated
+directories. Cleanup does not promise secure erasure on an SSD.
+
+If the recipient cannot connect, check that both devices can communicate on the
+same LAN, that the selected address belongs to the intended network, and that the
+host firewall permits the printed TCP port. Guest Wi-Fi isolation and VPN routing
+can prevent access. The CLI never changes firewall rules, forwards router ports
+or opens an internet tunnel. The browser's Source and licenses page identifies
+the embedded source revision and notices; custom uncommitted or unpublished builds
+do not claim a publicly available source release.
 
 ## Account and private state
 

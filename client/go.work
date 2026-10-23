@@ -1,0 +1,8 @@
+go 1.27.3
+
+use (
+	.
+	../backend
+)
+
+replace github.com/endorses/psst.zip/backend v0.0.0-20261023195706-c1693a02d45f => ../backend

@@ -42,6 +42,8 @@
   import { downloadLinkExhausted, DOWNLOAD_LINK_CLOSED } from "$lib/link-title";
   import DownloadContext from "$lib/components/DownloadContext.svelte";
 
+  let { standalone = false }: { standalone?: boolean } = $props();
+
   type Status = "loading" | "ready" | "downloading" | "error";
 
   let controller: AbortController | null = null,
@@ -115,7 +117,7 @@
   async function load() {
     transferId = $page.params.transferId ?? "";
     keyStr = window.location.hash.slice(1);
-    inboxId = $page.url.searchParams.get("inbox") ?? "";
+    inboxId = standalone ? "" : ($page.url.searchParams.get("inbox") ?? "");
 
     if (!keyStr && !inboxId) {
       status = "error";

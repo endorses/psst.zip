@@ -333,6 +333,41 @@ source review does not establish a runtime pass.
       small disposable transfer. Document OS runtime validation limits; app-store
       publication, container images, package-manager repositories and background
       daemons are outside this first delivery.
+- [x] Provide shared `make build`, `install`, `uninstall`, `clean` and `help`
+      targets from the repository root and `client/`. Default to the user's
+      `~/.local/bin`, support prefix/binary-directory/staging overrides, and embed
+      the development version and current Git revision.
+- [x] Add `make build-release` and `install-release`, retaining version/revision
+      metadata while stripping symbol tables and DWARF using `-s -w`, consistent
+      with the existing release packager.
+- [x] Derive Make build versions from stable CLI tags, including commit-distance
+      and tracked dirty-state suffixes. Ignore Android/server tags, retain explicit
+      overrides, and fall back to `dev` without matching Git metadata.
+
+Makefile follow-up (2026-10-23): Linux build and staged installation were verified
+from both entry points, including paths with spaces, `PREFIX`, `BINDIR` and
+`DESTDIR` overrides, version/revision overrides, executable mode 0755, installed
+binary equality, uninstall and clean/rebuild. `make build install` builds once
+within the invocation. Checks used an isolated temporary Go build cache and
+staging directories. No real user installation was performed. Native Windows
+keeps the documented direct Go-build path; these Make targets require GNU Make
+and standard Unix shell/install tools.
+
+Release-target verification (2026-10-23): inspected the native Linux ELF sections
+to confirm the stripped binary has no symbol table or DWARF debug sections;
+ordinary builds retain them. Both targets preserve `--version` metadata. Offline
+QR rendering and a staged `install-release` from `client/` passed, including
+executable permissions and byte-for-byte equality with the built binary. The
+observed development/release sizes were 12,641,243 / 8,605,856 bytes on this machine.
+These checks used a temporary Go build cache and did not publish a release.
+
+Version-detection follow-up (2026-10-23): temporary Git fixtures verified exact
+CLI tags, commits after a tag, tracked dirty state, ignored untracked files,
+Android/server tags, malformed CLI tags, archive fallback and explicit overrides.
+Both Make entry points resolved the expected version. A real stripped build and
+staged installation preserved the derived version and full revision in
+`--version`. The Makefile branch is past the `client/v0.1.0` tag, so it correctly
+reports a commit-distance/hash suffix rather than claiming to be the exact tag.
 
 ## Completion criteria and record
 

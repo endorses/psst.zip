@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 // DiskStore implements FileStore using the local filesystem.
@@ -46,7 +44,7 @@ func (d *DiskStore) path(key string) string {
 }
 
 func (d *DiskStore) Save(key string, r io.Reader) error {
-	f, parent, root, err := d.openPayload(key, unix.O_WRONLY, true)
+	f, parent, root, err := d.openPayload(key, os.O_WRONLY, true)
 	if err != nil {
 		return err
 	}
@@ -62,7 +60,7 @@ func (d *DiskStore) SaveAt(key string, r io.Reader, offset int64) (int64, error)
 	if offset < 0 {
 		return 0, errors.New("negative payload offset")
 	}
-	f, parent, root, err := d.openPayload(key, unix.O_WRONLY, true)
+	f, parent, root, err := d.openPayload(key, os.O_WRONLY, true)
 	if err != nil {
 		return 0, err
 	}
@@ -77,7 +75,7 @@ func (d *DiskStore) SaveAt(key string, r io.Reader, offset int64) (int64, error)
 }
 
 func (d *DiskStore) Load(key string) (io.ReadCloser, error) {
-	f, parent, root, err := d.openPayload(key, unix.O_RDONLY, false)
+	f, parent, root, err := d.openPayload(key, os.O_RDONLY, false)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +86,7 @@ func (d *DiskStore) Load(key string) (io.ReadCloser, error) {
 }
 
 func (d *DiskStore) Inspect(key string) (PayloadInfo, error) {
-	f, parent, root, err := d.openPayload(key, unix.O_RDONLY, false)
+	f, parent, root, err := d.openPayload(key, os.O_RDONLY, false)
 	if errors.Is(err, os.ErrNotExist) {
 		return PayloadInfo{}, nil
 	}
@@ -154,7 +152,7 @@ func (d *DiskStore) Truncate(key string, size int64) error {
 	if size < 0 {
 		return errors.New("negative payload size")
 	}
-	f, parent, root, err := d.openPayload(key, unix.O_WRONLY, false)
+	f, parent, root, err := d.openPayload(key, os.O_WRONLY, false)
 	if err != nil {
 		return err
 	}
@@ -165,7 +163,7 @@ func (d *DiskStore) syncFile(file *os.File) error {
 	if d.ioHooks != nil && d.ioHooks.sync != nil {
 		return d.ioHooks.sync(file)
 	}
-	return file.Sync()
+	return syncDiskFile(file)
 }
 func (d *DiskStore) closeFile(file *os.File) error {
 	if d.ioHooks != nil && d.ioHooks.close != nil {

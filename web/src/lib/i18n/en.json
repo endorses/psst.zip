@@ -1152,5 +1152,13 @@
   "legalUnavailable": "Exact source metadata is unavailable. Ask the server operator for the source of this deployed version.",
   "legalBack": "Back to psst.zip",
   "legalBackendNotices": "Backend dependency notices",
-  "legalRuntimeNotices": "Runtime component notices"
+  "legalRuntimeNotices": "Runtime component notices",
+  "lanSharing": "Temporary LAN sharing",
+  "lanOpenSharedLink": "Open the complete Send or Receive link provided by the person running psst.zip. This temporary session has no account or sign-in.",
+  "lanSessionNotice": "This link works only while the sharing computer is reachable and the session is running.",
+  "lanSourceAccess": "Source and licenses",
+  "lanSourceDescription": "This session uses the psst.zip CLI with embedded transfer screens. Download the matching source and dependency information below.",
+  "lanSourceMetadata": "Build and source information",
+  "lanHTTPDownloadLimit": "On HTTP, this browser can save files up to 25 MiB each. For larger files, use the psst.zip CLI or ask the sender to use trusted HTTPS.",
+  "lanSourceUnavailable": "Exact source information is unavailable for this development build. Request the matching source from the person running this session."
 }

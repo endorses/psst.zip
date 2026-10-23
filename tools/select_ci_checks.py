@@ -133,7 +133,15 @@ def classify_path(path: str) -> frozenset[str]:
         # CLI compatibility checks exercise the existing browser providers.
         return frozenset({"web", "cli"})
     if path.startswith("web/") or path == "tools/measure_browser_source_inventory.py":
-        return frozenset({"web"})
+        # The CLI embeds the standalone build, including shared browser screens.
+        # Hosted-only routes and browser tests do not change that executable.
+        if path.startswith("web/tests/") and not path.startswith("web/tests/lan/"):
+            return frozenset({"web"})
+        if path.startswith("web/src/routes/") and not path.startswith(
+            ("web/src/routes/d/", "web/src/routes/u/")
+        ):
+            return frozenset({"web"})
+        return frozenset({"web", "cli"})
     if path == "tools/android_release.py":
         # Gradle executes source-revision to embed the APK's source identity.
         return frozenset({"android"})

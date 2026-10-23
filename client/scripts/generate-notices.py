@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 CLIENT = Path(__file__).resolve().parents[1]
+SITE = CLIENT / "internal/lanassets/site"
 TARGETS = tuple(
     f"{system}/{arch}"
     for system in ("linux", "darwin", "windows")
@@ -25,7 +26,12 @@ LEGAL_PREFIXES = ("license", "licence", "copying", "copyright", "notice", "paten
 
 
 def command(args: list[str], *, env: dict[str, str] | None = None) -> bytes:
-    return subprocess.check_output(args, cwd=CLIENT, env=env, timeout=90)
+    return subprocess.check_output(
+        args,
+        cwd=CLIENT,
+        env=os.environ if env is None else env,
+        timeout=90,
+    )
 
 
 def values(raw: bytes):
@@ -49,7 +55,13 @@ def legal_files(directory: Path) -> list[Path]:
     )
 
 
-def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
+def collect(
+    output: Path,
+    targets: tuple[str, ...] = TARGETS,
+    *,
+    include_web: bool = True,
+    workspace: bool = False,
+) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
         raise ValueError("notice output directory must be empty")
@@ -92,6 +104,7 @@ def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
             "GOOS": system,
             "GOARCH": arch,
             "GOFLAGS": "-mod=readonly",
+            "GOWORK": str(CLIENT / "go.work") if workspace else "off",
         }
         args = ["go", "list", "-deps", "-json", "./cmd/psst"]
         commands.append({"target": target, "command": args})
@@ -99,17 +112,24 @@ def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
             if package.get("Error") or package.get("DepsErrors"):
                 raise ValueError("Go package graph could not be resolved")
             module = package.get("Module")
-            if module and not module.get("Main"):
-                if module.get("Replace") or not module.get("Version"):
+            if module and (
+                not module.get("Main")
+                or module["Path"] == "github.com/endorses/psst.zip/backend"
+            ):
+                local_backend = bool(module.get("Main") and workspace)
+                if module.get("Replace") or (
+                    not local_backend and not module.get("Version")
+                ):
                     raise ValueError(
                         "release dependencies must use pinned upstream modules"
                     )
-                identity = module["Path"] + "@" + module["Version"]
+                version = "workspace-source" if local_backend else module["Version"]
+                identity = module["Path"] + "@" + version
                 entry = entries.setdefault(
                     identity,
                     {
                         "module": module["Path"],
-                        "version": module["Version"],
+                        "version": version,
                         "packages": [],
                         "targets": [],
                         "notices": [],
@@ -150,6 +170,30 @@ def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
                         )
                     directory = directory.parent
 
+    # The executable also distributes the browser code and its exact bundled
+    # dependency terms. Keep those independently identified from Go modules.
+    browser = {"module": "Embedded LAN browser", "notices": []}
+    if include_web:
+        source_metadata = SITE / "licenses/SOURCE.json"
+        if not source_metadata.is_file() or not (SITE / "index.html").is_file():
+            raise ValueError(
+                "embedded LAN assets are missing; prepare them before generating notices"
+            )
+        for path in sorted((SITE / "licenses").rglob("*")):
+            if path.is_file():
+                retain(
+                    path,
+                    "web/" + path.relative_to(SITE / "licenses").as_posix(),
+                    browser,
+                )
+        for required in (
+            "web/AGPL-3.0-only.txt",
+            "web/THIRD_PARTY_NOTICES.txt",
+            "web/dependency-inventory.json",
+        ):
+            if required not in files:
+                raise ValueError("embedded browser license inventory is incomplete")
+
     inventory = {
         "schema_version": 1,
         "inputs": {
@@ -157,6 +201,7 @@ def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
             for name in ("go.mod", "go.sum")
         },
         "commands": commands,
+        "embedded_browser": browser,
         "modules": [entries[key] for key in sorted(entries)],
     }
     text = [
@@ -171,6 +216,15 @@ def collect(output: Path, targets: tuple[str, ...] = TARGETS) -> dict:
         entry["targets"].sort()
         entry["notices"].sort(key=lambda item: item["path"])
         for item in entry["notices"]:
+            text.extend(
+                [
+                    "=== " + item["path"] + " ===",
+                    files[item["path"]].decode("utf-8"),
+                    "",
+                ]
+            )
+    for item in browser["notices"]:
+        if Path(item["path"]).suffix.lower() in {".txt", ".md"}:
             text.extend(
                 [
                     "=== " + item["path"] + " ===",

@@ -37,14 +37,15 @@ type App struct {
 }
 
 type options struct {
-	json           bool
-	noninteractive bool
-	profile        string
-	server         string
-	dir            string
-	mode           string
-	passFD         int
-	timeout        time.Duration
+	json            bool
+	noninteractive  bool
+	profile         string
+	server          string
+	dir             string
+	mode            string
+	passFD          int
+	timeout         time.Duration
+	timeoutExplicit bool
 }
 
 func (a *App) defaults() {
@@ -98,6 +99,9 @@ func parseCommon(args []string) (options, []string, error) {
 		if !strings.HasPrefix(v, "-") || known == nil {
 			rest = append(rest, v)
 			continue
+		}
+		if name == "timeout" {
+			o.timeoutExplicit = true
 		}
 		global = append(global, v)
 		boolean, ok := known.Value.(interface{ IsBoolFlag() bool })
@@ -160,7 +164,7 @@ func parseFlags(f *flag.FlagSet, args []string) error {
 func (a *App) Run(ctx context.Context, args []string) int {
 	a.defaults()
 	o, args, err := parseCommon(args)
-	if err == nil {
+	if err == nil && (o.timeoutExplicit || len(args) == 0 || args[0] != "serve") {
 		ctx2, cancel := context.WithTimeout(ctx, o.timeout)
 		defer cancel()
 		ctx = ctx2
@@ -171,7 +175,8 @@ func (a *App) Run(ctx context.Context, args []string) int {
 	}
 	if err != nil {
 		f := classify(err)
-		if o.json {
+		var serving *servingFailure
+		if o.json && !errors.As(err, &serving) {
 			_ = writeJSON(a.Out, nil, f)
 		} else {
 			_, _ = fmt.Fprintln(a.Err, "psst:", safeText(f.Message))

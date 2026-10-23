@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/endorses/psst.zip/client/internal/lan"
 	"github.com/endorses/psst.zip/client/protocol"
 	qr "github.com/piglig/go-qr/v2"
 )
@@ -16,13 +17,14 @@ import (
 const maxSavedJSON = 64 * 1024
 
 type savedShare struct {
-	Kind         string     `json:"kind"`
-	ID           string     `json:"id"`
-	Origin       string     `json:"origin"`
-	Link         string     `json:"link"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	KeyAvailable *bool      `json:"key_available,omitempty"`
-	OperationID  string     `json:"operation_id,omitempty"`
+	Kind         string       `json:"kind"`
+	ID           string       `json:"id"`
+	Origin       string       `json:"origin"`
+	Link         string       `json:"link"`
+	ExpiresAt    *time.Time   `json:"expires_at,omitempty"`
+	KeyAvailable *bool        `json:"key_available,omitempty"`
+	OperationID  string       `json:"operation_id,omitempty"`
+	Hosting      *lan.Hosting `json:"hosting,omitempty"`
 }
 
 // linkFromJSON accepts only individual version-1 CLI share results. In
