@@ -1,89 +1,154 @@
 # Tooling migration map and measured evidence
 
 Snapshot: 2026-10-24, implementation HEAD
-`959f9b25e7ba2f4166e38ccc483b7006ea8f9f10` plus the ongoing working-tree
-migration. The original baseline is `df002e447dcd04842c854b3796b2b7e84c4cf3ae`.
-The [migration map](tooling-migration-map.csv) reconciles all **135** original
-[inventory](python-tooling-inventory.csv) rows in their original order. Neither
-the baseline inventory nor its [assessment](python-tooling-assessment.md) was
-rewritten. This snapshot records remaining work; it is not stage-8 closure.
+`7c0b45ee2c44e624c02b07dfdc0909025cd792e1`. The original baseline is
+`df002e447dcd04842c854b3796b2b7e84c4cf3ae`. The [migration map](tooling-migration-map.csv)
+reconciles all **135** [original inventory](python-tooling-inventory.csv) rows in
+their original order. The baseline inventory and its [assessment](python-tooling-assessment.md)
+remain historical records and were not rewritten. This is a local implementation
+reconciliation, not evidence of a hosted release, production updater installation
+or measured upload savings.
 
-## Reconciliation and status meanings
+## Reconciliation and current ownership
 
-The map records current file existence/size, entry-point and manual callers,
-Python imports/test consumers, filename discovery, output consumers, the current
-owner, replacement owner and removal milestone. Evidence includes tracked
-workflows, Make/Gradle files, Dockerfiles, hooks, documentation, Python AST imports
-and dynamic filename references, plus the new Go tooling. A textual reference is
-identified as such; it is not by itself proof that a command executes. No entry
-is classified as dead merely because a literal caller was not found.
+Every baseline row records current existence/size, named replacement or deliberate
+retained owner, current command/manual references, Python AST imports, literal
+fixture references, filename discovery, output consumers and a removal or retention
+trigger. A reference is labeled as a caller/config, manual or historical record;
+its mere presence is not proof of execution. No file is classified as dead from
+an empty text search. Removed filenames in historical Git ranges now select the
+unknown-path full CI coverage rather than keeping obsolete selector exemptions.
 
-| State        | Baseline entries | Meaning                                                                                                                                                             |
-| ------------ | ---------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Retained     |               62 | The compact tool or active implementation's behavior/tests still has an owner and consumers. Retention does not mean every release test must remain Python forever. |
-| In-progress  |               40 | Replacement primitives/commands exist, but workflow/import, source-pack or installed-host consumers still require the old surface.                                  |
-| Migrated     |                8 | The old implementation is absent and a named replacement owns its capability.                                                                                       |
-| Consolidated |               21 | The old file is absent and its capability/tests now belong to a shared command, package or native harness.                                                          |
-| Retired      |                4 | A mechanism was deliberately removed under the agreed policy, including its protocol-only tests.                                                                    |
-| **Total**    |          **135** | **Every baseline row has one state and removal/retention milestone.**                                                                                               |
+| State        | Baseline entries | Meaning                                                                                                                                                                        |
+| ------------ | ---------------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Retained     |               47 | Deliberate compact validators, native/recovery probes, narrow Go-command adapters and installed/published v1 compatibility readers, with named consumers and removal triggers. |
+| Migrated     |               35 | The old implementation is absent and a named Go/native owner supplies the capability.                                                                                          |
+| Consolidated |               48 | The old file is absent; its behavior belongs to a shared command, package, native harness or renamed independent fixture.                                                      |
+| Retired      |                5 | The approved exceptional signing bridge, exact-comment/duplicate-review protocol or custom attestor mechanism and its protocol-only tests were removed.                        |
+| **Total**    |          **135** | **Every baseline row has one current owner and disposition.**                                                                                                                  |
 
-The baseline cohort now has 102 present files, 56,407 physical lines and
-2,217,623 bytes, compared with 135 / 65,825 / 2,583,684 at baseline. These
-cohort counts exclude additions. The current tracked Python total is **104
-files / 56,645 lines / 2,226,100 bytes**, including the new narrow
-`tools/container_release_policy.py` (63 lines) and `tools/release_result.py`
-(175 lines). Those adapters retain committed publication policy and read the
-canonical Go-produced result while active Python consumers migrate. These are
-source-size observations, not a language deletion quota or execution-time result.
+The baseline cohort now has **47 present files /
+21,712 physical lines / 844,987 bytes**, compared with
+135 / 65,825 / 2,583,684 at baseline. The current tracked Python total, including
+additions, is **51 files / 22,845 lines / 890,015 bytes**.
+Counts use UTF-8 bytes and physical `splitlines()` counts. They include comments,
+blank lines and substantive independent test scenarios, exclude untracked drafts,
+user transfers, third-party caches and inline YAML, and do not reproduce GitHub
+Linguist or measure runtime performance. File reduction is an observation, not a quota.
 
-Completed removals belong to commits `497bd7f` (publication policy/result
-simplification), `8827434` (native mobile tooling/signing bridge retirement) and
-`959f9b2` (CLI Go tooling). The CSV names the relevant removal milestone per row.
-The remaining 27-line `github_release_attestor.py` only validates public tag
-events; its former custom JavaScript/runtime-discovery signing mechanism is
-already gone. Current workflow signing belongs to the normal pinned
-`actions/attest` step, and tag-event checking is moving to `psst-release github`.
+The four post-baseline Python additions are accounted for separately:
 
-## Callers that a filename-only search misses
+| Current addition                        | Lines |  Bytes | Actual retained owner                                                                                                               |
+| --------------------------------------- | ----: | -----: | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `tools/container_release_policy.py`     |    63 |  2,635 | Narrow committed-policy compatibility reader for retained historical Python report consumers; Go owns current publication policy.   |
+| `tools/release_process.py`              |    59 |  1,815 | Bounded private process/timeout adapter for retained native and compatibility callers; no custom action runtime.                    |
+| `tools/release_result.py`               |   175 |  5,842 | Strict canonical Go-result reader at the Python native/recovery experiment boundary; no separate signed gate producer.              |
+| `tools/test_release_recovery_inputs.py` |   836 | 34,736 | Renamed independent input/provenance/actual OCI/save/bundle producer-boundary tests; obsolete aggregate gate fixtures were removed. |
 
-- `hooks/pre-commit` executes `check_repository.py staged`; CI separately runs
-  complete-history/files checks. `select_ci_checks.py` supplies all five
-  backend/web/CLI/Android/iOS job selectors. Their compact Python implementations
-  and security/selection regressions remain deliberate dependencies.
-- `ci.yml` discovers `test_release_*.py`, `test_android*.py` and the named native,
-  runtime, repository and bidi suites. Discovery is a caller even if no source
-  file spells an individual test path. It imports
-  `test_release_updater_integration.py`, but does **not** execute that module's
-  guarded Docker scenario; `measure_release_recovery.py` imports and invokes
-  that explicit harness separately.
-- Inline Python in `release.yml` imports `generate_release_gate_reports`,
-  `prepare_candidate_transfer`, `prepare_release_inputs`, `release_artifacts`,
-  `aggregate_release_recovery`, `measure_release_recovery`, `release_result`
-  and publication helpers. These remain active production workflow consumers.
-  Other inline blocks handle native record redaction, compiler metadata, small
-  JSON projections and protected publication settings. They are not represented
-  by the 135 standalone Python files.
-- Inline Python in `ci.yml` selects/boots the installed iOS simulator, waits for
-  readiness and bounds failure diagnostics. `diagnose_build.py` now samples
-  resources only when requested; native `xcodebuild` timing remains available.
-  Go migration of release infrastructure does not remove these native needs.
+The Go tool owns current source retention/replay, original notice correspondence,
+OCI graphs, candidate assembly/transfer, source/image scan policy, canonical release
+results and publication. Existing Node/Vite tooling still compiles and instruments
+the browser. Gradle owns ordinary mobile source/dependency export and the explicit
+SwiftPM harness owns portable Swift tests. The map distinguishes these changes
+from translating every test or native process runner into Go.
+
+The retained `prepare_native_release.py` runs actual Docker builds/exports and
+smoke probes; `measure_release_recovery.py` runs disposable upgrade/restart/failure
+experiments. Their small Go-contract adapters do not maintain a second source,
+scanner, OCI or publication policy. `verify_release_images.py` keeps independent
+HTTP/authentication/runtime-source-offer probes. `request_production_deployment.py`
+keeps the bounded fixed-SSH version-only client and secret handling without making
+an operator build the development tool. Read-only historical subject/evidence
+readers remain while these experiment and old published-v1 consumers need them.
+Their explicit removal triggers are in the CSV; these are deliberate scope
+boundaries, not unimplemented promises to port whole test harnesses.
+
+## Callers outside a filename-only search
+
+- `hooks/pre-commit` executes `check_repository.py staged`; CI runs independent
+  complete-history/files/bidi checks. `select_ci_checks.py` serves all five
+  application job selectors and fails closed on unknown paths or incomplete history.
+- `ci.yml` discovers `test_release_*.py`, named native/repository/bidi tests and
+  the Android test pattern. Discovery is a caller. Importing
+  `test_release_updater_integration.py` does not run its guarded Docker scenario;
+  the release recovery producer invokes that explicit scenario separately.
+- Container release inline Python now supplies bounded native diagnostic
+  redaction, a small build-metadata projection and the independent recovery
+  experiment bridge. That bridge imports the native context, read-only GitHub
+  evidence verifier, recovery producer and compatible artifact reader. Removed
+  source/image/assembly/publication producers are no longer imported by the workflow.
+- The container workflow runs Go source/image/compiler commands and one Go source
+  evaluator, then one Go recovery aggregation/result command. Cross-job inputs are
+  authenticated before their claims are consumed. Final assets and standard
+  provenance retain their existing manifest/bundle/certificate identities.
+- Native iOS inline Python selects and boots the installed simulator, bounds
+  readiness waits and failure diagnostics. Optional resource sampling remains
+  separate from actual `xcodebuild` timing and XCTest validation.
 - `tools/fixtures/release-updater/{checkpoint,controller,flows,verify}.py` are
-  copied into the disposable root runner. Hooks are invoked by protected paths,
-  not necessarily a literal `python3 file.py` command in the caller.
-- `tools/runtime-legal/verify.py` and `test_verify.py` are run directly by CI
-  and copied into runtime source packages. The retained source/replay consumer
-  matters even if a workflow stops naming the original repository path.
-- Backend notice generation remains hash-pinned by
-  `verify_application_dependency_inputs.py`; a successful Go reproduction alone
-  does not authorize deleting that producer before its source consumers switch.
-- `cli-release.yml` intentionally retains a Python packaging fallback only when
-  checking out immutable pre-migration source tags without `tools/release/build.sh`.
-  The helper is absent from the new checkout. This is historical compatibility,
-  not a stale command to remove without deciding support for those tags.
+  copied into a disposable root runner and called through protected fixture paths.
+  They are independent behavior scenarios, not production backend request code.
+- The compact `tools/runtime-legal/verify.py` and its tests remain direct offline
+  CI checks of the curated original legal data. Go collection/replay independently
+  consumes that data; it no longer executes or packages the Python checker as its
+  source verifier. The original data and full legal texts remain retained.
+- Current backend notice generation/checking is Go. Its original/distributed-byte
+  checks replaced the Python generator and the old hash-pinned-generator consumer
+  together; the shipped normalized notice bytes remain unchanged.
+- CLI and Android workflows intentionally retain small old-source fallbacks only
+  for immutable pre-migration tags without the Go release tool. Those branches
+  execute the old tag checkout, never a missing producer from current main.
 
-The original inventory excludes inline snippets and future additions. The map
-accounts for their relationships, and this section records the remaining inline
-owners rather than pretending they were baseline standalone files.
+## Local implementation and measured checks
+
+The common-originals collection at source `6ba7e30`, planned version `v0.1.999`,
+retained **193 sources** (173 npm distributions and 20 upstream originals),
+**412,351,580 bytes**, in **2m35s**. An exact-source native Node builder took
+**22.5 s**. Actual capture, common-original replay and preferred-source checks
+passed in **8.42 s**, covering 4,337 inputs, 34 outputs, 168 rendered preferred
+inputs, 276 generator inputs, 23 virtual and 11 generated associations. Docker's
+temporary-mount retrieval issue was found and corrected using bounded archive
+streaming from the running isolated container. These were publication-disabled
+experiments, not final Caddy/backend image validation.
+
+Actual backend preferred-source replay passed in **7.96 s**: 5,476 proxy members,
+both Linux SQLite syntax translations, 622 libc recipe/overlay/header members and
+three generator tool originals. A later positive corresponding-source data
+rehearsal took **23.86 s**, using actual Git/common originals, 18 H1-authenticated
+modules, an offline-built backend and normalized legal texts; final runtime and
+browser facts were explicitly synthetic. It rejected altered AGPL bytes and an
+omitted original module. Neither run claims upstream generator reproduction or
+an actual final native image pair. See [source tooling verification](../testing/container-source-tooling.md).
+
+One fresh common npm audit took **3.204 s**. The actual native AMD64 Go 1.27.3
+source producer took **75.754 s**, including cold pinned-scanner installation and
+both actual import graphs. Independent raw replay matched all scanner/database/
+graph/finding facts: 21 module-only Go findings had every officially affected
+package absent from both graphs; three npm findings remained unresolved. No npm
+scan was repeated per architecture. The existing Vite finding policy and expired
+Caddy exception remain closed; consolidation did not suppress either blocker.
+
+Normal source/scanner tests stay offline: representative runs took **0.160 s /
+0.148 s**, and focused scanner race checks **1.266 s**. Retained native preparation
+fixtures passed in **2.149 s** (14 tests, one optional Docker export check skipped);
+independent native smoke/report checks passed in **2.926 s**. The current Python
+release suite passed **168 tests in 20.503 s**, and the tooling Go suite took
+**0.61 s warm** before the final recovery integration. These scope/cache conditions
+are explicit; they are not a cold/warm hosted benchmark. Temporary actual-data
+harnesses were removed, and no network/source-download workload was added to the
+ordinary unit suite merely to increase coverage.
+
+At `7c0b45e`, the Go bundle command built a real current-checkout
+`v0.1.999` deployment-ready archive of **155,691 bytes**. The existing independent
+Python v1 manifest/bundle readers accepted it in **0.861 s**, including the cached
+tool lookup. Image/index values for that parser cross-check were fixtures; this
+was not source/OCI/publication validation. Its temporary output was removed.
+
+Producer deadlines remain bounded: source collection uses the existing isolated
+native container limits, the Go source scanner inner deadline is 15 minutes,
+Git snapshot/process operations have short deadlines and strict byte limits,
+and routine CLI CI keeps its five-minute limit. A deadline is a failure bound,
+not a target duration. Application/mobile suites were not run to inflate tooling
+coverage or to claim a complete platform release.
 
 ## Existing CI measurements
 
@@ -206,45 +271,57 @@ release provenance. The [disposable Go updater evidence](../testing/go-vps-updat
 adds real Docker/TLS/SQLite behavior with local acquisition, still without a
 production installation or remote provenance claim.
 
-## Changed tool pins and hosted annotations
+## Tool pins, compatibility and unavailable hosted evidence
 
-The maintained [toolchain policy](../plans/maintained-build-toolchains.md)
-remains the owner. This slice changes no pins or application dependencies. On
-2026-10-24, primary sources confirmed the migration's Go **1.27.3** selection
-on the [official download page](https://go.dev/dl/),
-[setup-go v7.0.0](https://github.com/actions/setup-go/releases/tag/v7.0.0) and
-[attest v4.2.2](https://github.com/actions/attest/releases/tag/v4.2.2) as their
-latest stable releases. The existing `b7ad1dad...` setup-go pin is reused;
-`1e69f48a...` is the standard attest pin replacing custom action execution.
-Unchanged app/native dependencies were not audited or upgraded for this map.
+The [maintained toolchain policy](../plans/maintained-build-toolchains.md) remains
+the owner. The migration selected Go **1.27.3**, Node **26.12.1**, BuildKit
+**0.34.1** and Caddy **2.11.7** after primary-source checks. Official stable Go
+metadata and the exact Go source tag/hash were checked; complete older Go
+originals remain available for the actual Caddy compiler. Backend compiler
+identity and Caddy compiler identity are verified independently.
 
-The exact-baseline security and CLI check-run annotation endpoints both returned
-empty arrays. That is observed absence of annotations on those checks, not a
-claim about all jobs or the unpushed migration. There is no hosted run of the
-current migration checkout, so its actual runner/action warnings remain
-**unavailable** until normal affected CI executes.
+The normal [setup-go v7.0.0](https://github.com/actions/setup-go/releases/tag/v7.0.0)
+and [attest v4.2.2](https://github.com/actions/attest/releases/tag/v4.2.2) pins
+replace no supported immutable identity. Caddy's official legacy detached
+signature format requires the reviewed, exact-hash Cosign 2.6.5 compatibility
+verifier; it is not an unreviewed outdated tool or a weaker fallback. Upstream
+certificate identity, transparency and Rekor verification remain required.
 
-## Remaining migration and measurement work
+The baseline security and CLI annotation endpoints returned empty arrays. That
+observed absence is limited to those old checks. No hosted run of the complete
+migration checkout has been observed, so current runner/action annotations,
+both native Linux execution results, comparable upload sizes and net transport
+savings are **unavailable**. The historical timing/artifact table above must not
+be presented as measured improvements of the new workflow.
 
-- [ ] Switch the 35 existing container source/OCI/scanner/preparation/publication
-      producer/helper entries marked in-progress in the CSV, together with inline
-      workflow imports, receiving-byte checks and their source-pack consumers. Shared
-      Go packages alone do not complete those transitions.
-- [ ] Coordinate backend notice generator migration with its hash-pinned source
-      verifier/replay consumer, and preserve exact distributed notice bytes.
-- [ ] Migrate the SQLite preferred-source relationship and production deployment
-      request consumer. Preserve version-only SSH and provenance requirements.
-- [ ] Complete the authorized installed-host Go updater cutover, keeping the old
-      helper/parser and immutable v1 assets compatible until no supported consumer
-      needs them. Local Docker success does not complete this item.
-- [ ] Retire compatibility adapters and protocol-only tests only after their last
-      real consumer switches. Keep behavior/negative cases and independent native,
-      browser/crypto and explicit recovery scenarios with the owning implementation.
-- [ ] Record a comparable completed migration CI/release run for job/step time,
-      action annotations and native image/source artifact bytes. Cold/warm labels,
-      raw image-byte duplication and net transport savings remain unmeasured.
+The new Go `psst-deploy` candidate and opt-in installer preserve v1 manifest,
+bundle and transaction contracts. Its standalone runtime does not invoke Python
+or execute code downloaded inside a release bundle. That does not remove the
+existing VPS's Python prerequisite: the old root-owned updater and parser remain
+installed until an explicit operator cutover. V1 bundles still include their inert
+compatibility payloads, and old immutable assets are unchanged. The staged
+installer retains the old helper/configuration and checks both readers under the
+shared lock; no production installation or SSH cutover was performed here.
 
-The retained compact repository/localization/brand tools, optional native
-diagnostic, source-pack checkers and active Python regression fixtures are
-explicit exceptions with owners. The CSV's per-entry milestones govern future
-removal; this document does not infer deletions from a missing literal caller.
+## Validation that remains external
+
+- [x] Reconcile all 135 baseline rows with actual current existence, named owners,
+      import/discovery/manual consumers and removal or retention triggers; account
+      for current post-baseline Python additions separately.
+- [x] Replace redundant active source/publication producer chains with shared Go
+      commands and retain useful raw observations and independent byte/legal tests.
+- [x] Record actual bounded original-source/browser/scanner measurements and
+      preserve the distinction between real retained data and synthetic final facts.
+- [ ] Execute normal affected hosted CI for this migration and inspect its actual
+      runner/action warnings; local compilation is not native iOS/Android validation.
+- [ ] Complete a publication-disabled two-architecture container rehearsal with
+      actual final images, source/scanner policy and recovery experiments, then
+      compare resulting job/step and artifact-upload measurements fairly.
+- [ ] Review and perform any actual VPS Go-updater cutover separately with the
+      operator. Staged installer code and local Docker/SQLite/TLS checks do not
+      establish a production change or off-host backup protection.
+
+The explicit retained Python owners above are part of the simplified system.
+Future retirement requires removing their real consumers and preserving their
+independent behavioral role, rather than treating missing literal callers or a
+GitHub language percentage as sufficient evidence.
