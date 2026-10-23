@@ -98,14 +98,14 @@ filenames rather than filenames named after these stages.
 
 ### 1. Establish the baseline and migration map
 
-- [ ] Reconcile the inventory against the implementation checkout. Record each
+- [x] Reconcile the inventory against the implementation checkout. Record each
       entry point, workflow/Make/Gradle/manual caller, output consumer, intended
       owner, and removal milestone. Include inline Python imports and discovered
       tests; absence of a literal caller is not proof of dead code.
-- [ ] Capture representative published manifest/bundle/provenance structures and
+- [x] Capture representative published manifest/bundle/provenance structures and
       synthetic updater configuration/state fixtures without user data or secrets.
       Record which bytes and fields existing readers require.
-- [ ] Measure relevant cold/warm build time, job/step time, duplicate archive
+- [x] Measure relevant cold/warm build time, job/step time, duplicate archive
       bytes, and tool prerequisites using available CI/local evidence. Do not run
       every application suite just to establish a tooling baseline.
 - [ ] Reuse the maintained toolchain policy: latest stable tools/actions/runners
@@ -275,24 +275,24 @@ without adding Go to standalone Android/F-Droid source builds.
 Dependencies: stable final release contract and completed compatibility fixtures.
 Keep the current installed helper operational until the replacement is verified.
 
-- [ ] Implement `psst-deploy` with a small durable state machine and concrete
+- [x] Implement `psst-deploy` with a small durable state machine and concrete
       Docker/GitHub/OS adapter. Reuse only the necessary contract/archive core;
       keep signing/publication credentials and the end-user CLI separate.
-- [ ] Preserve configuration, version-only SSH syntax, trusted signer policy,
+- [x] Preserve configuration, version-only SSH syntax, trusted signer policy,
       protected paths, lock/atomic state, pending transaction status and explicit
       recovery commands. Read existing transaction/checkpoint data or provide a
       bounded versioned import with validation.
-- [ ] Preserve adoption/preflight, isolated routing, automatic `runtime-v1` checks,
+- [x] Preserve adoption/preflight, isolated routing, automatic `runtime-v1` checks,
       database integrity, operator settings, storage ownership and resource limits.
       Keep exceptional adoption/restore verification where needed; ordinary
       releases must not regain repetitive manual administrator flow checklists.
-- [ ] Preserve the recorded migration boundary: no automatic old-binary restart
+- [x] Preserve the recorded migration boundary: no automatic old-binary restart
       against a database the new backend may have changed. Test interrupted writes,
       pre-mutation failure, post-mutation failure and explicit recovery behavior.
-- [ ] Preserve existing checkpoint policy, including the authorized local-only
+- [x] Preserve existing checkpoint policy, including the authorized local-only
       mode while off-host backups are deferred. This refactor does not introduce
       a bucket requirement or silently change backup policy.
-- [ ] Preserve disk reserves and bounded, retryable image/checkpoint cleanup on
+- [x] Preserve disk reserves and bounded, retryable image/checkpoint cleanup on
       the 40 GB VPS. Protect active, retained and foreign images/containers;
       remove only expired owned references and report incomplete cleanup durably.
 - [ ] Exercise one disposable Docker update/recovery/retention scenario and old
@@ -409,3 +409,19 @@ The source inventory v2/common-original/platform-module foundations are present
 with strict original/archive/lock and module ZIP/h1 tests. Container source,
 runtime and higher-level workflow consumers are still being migrated; these
 foundations alone do not complete the source pipeline or authorize publication.
+
+The [migration map](../research/tooling-migration-map.csv) reconciles all 135
+baseline Python entries with callers, consumers, owners and removal milestones.
+The [evidence report](../research/tooling-migration-evidence.md) records actual
+baseline CI timings/upload sizes and verified public v0.1.6 manifest provenance;
+uploaded sizes describe the old workflow rather than claimed future savings.
+
+The standalone Go updater passes fault-boundary, legacy-state, checkpoint,
+SQLite, retention, race and vet checks. One opt-in private nested-Docker experiment
+using concrete production host operations passed in 32.11 seconds: activation,
+post-start failure closure, restore into new volumes and scoped retention.
+Acquisition used cached local image IDs and a private test CA; it did not validate
+public provenance or install the canonical privileged CLI. Installed-host
+SSH/sudo checks, publication-compatible cutover and final restored-flow approval
+remain pending. The Python updater remains operational and supported bundles
+retain its required parser. See [updater evidence](../testing/go-vps-updater.md).
