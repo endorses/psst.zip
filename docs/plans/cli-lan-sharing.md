@@ -1,6 +1,6 @@
 # Temporary LAN sharing from the psst.zip CLI
 
-Created: 2026-10-23. Status: **implemented locally; final packaging verification in progress**.
+Created: 2026-10-23. Status: **implemented and verified locally; external native runtime checks pending**.
 Implementation branch: `feat/cli-lan-sharing`. This document does not authorize a release,
 production deployment, firewall change or history rewrite.
 
@@ -242,7 +242,7 @@ builds as a prerequisite for every CLI artifact.
       hosted account or reachable hosted server. Record platforms and results;
       browser/native manual checks are a one-time feature validation, not a new
       mandatory checklist for every release.
-- [ ] Format changes, complete relevant checks, record implementation/validation
+- [x] Format changes, complete relevant checks, record implementation/validation
       evidence here and commit the implementation. Publish or deploy only when
       separately authorized.
 
@@ -385,3 +385,29 @@ Cleanup failures still report failure. An explicit `--timeout` is distinguished
 from session expiry and reports exit 5; expiry without completed work remains
 exit 4. Deterministic context tests and real-process signal/timeout checks cover
 these distinct outcomes.
+
+### Closure decision
+
+**CLOSED_WITH_DEFERRALS** for native platform runtime checks listed above. No
+required local implementation remains. The single bounded review and its affected
+verification are complete; no further assurance campaign is required to use this
+feature.
+
+Implementation is committed as `c1693a0` (shared backend), `7312f59` (LAN CLI/web
+and build integration) and `78080ed` (graceful shutdown and complete embedded
+source assets). The final clean six-target packaging check at `78080ed` passed in
+23.4 seconds on the warm local build cache. All archive checksums, 2,922 source
+file hashes and 101 embedded asset/notice entries were verified. The repaired
+source archive rebuilt with an empty module cache and networking disabled; both
+actual browser transfer scenarios then passed against that rebuilt executable in
+1.7 seconds. This explicitly covers the archive's runtime assets, not only Go
+compilation.
+
+The three tiny build-input/source-selection regressions pass, as do affected
+CLI/LAN race checks and actual SIGINT/SIGTERM/explicit-timeout checks. Graceful
+signals exit 0 with one startup JSON document and no error; explicit timeout exits
+5 without a second JSON document. Successfully received files remain in place.
+The unrelated untracked store research drafts and the user's `incoming/` data were
+preserved. No tag, push, GitHub release, firewall change or production deployment
+was performed. GitHub execution of the updated workflows awaits a separately
+authorized push; local gates were exercised directly.
