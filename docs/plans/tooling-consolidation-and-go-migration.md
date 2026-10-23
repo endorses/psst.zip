@@ -472,3 +472,13 @@ and three generator tools. Application-source and final-notice APIs reuse one Gi
 snapshot and the runtime verifier's image bytes. Their small mutation fixtures
 pass; replacing the higher source-gate callers remains pending. See the
 [source tooling evidence](../testing/container-source-tooling.md).
+
+The Go browser capture command now uses a preloaded immutable native builder,
+without network access or host mounts, and removes its owned container on failure
+or cancellation. The receiving verifier binds its regular-only retained capture
+to shared originals and final image bytes. Reviewed preferred-source catalogs
+retain direct member equality, TypeScript configuration locks, embedded QR
+originals, icon SVG/metadata equality and finite virtual/generated associations;
+unknown rendered inputs fail. Browser/source race checks pass in 1.3 seconds and
+the affected CI workflows pass actionlint. Routine web CI now uses the Go
+observation verifier. Container source-result integration remains pending.

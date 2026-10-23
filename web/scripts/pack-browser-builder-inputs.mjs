@@ -16,6 +16,8 @@ const fixed = [
   "svelte.config.js",
   "tsconfig.json",
   "scripts/browser-module-inventory.mjs",
+  "scripts/pack-browser-builder-inputs.mjs",
+  "scripts/browser-preferred-sources.json",
 ];
 function check(condition) {
   if (!condition) throw new Error("Invalid browser builder input");
@@ -54,79 +56,14 @@ check(
   JSON.stringify(recipes.vite.helper_ids) ===
     JSON.stringify(["commonjsHelpers.js", "vite/preload-helper.js"]),
 );
-const virtualCandidates = new Set();
-const identifier = (raw) => "virtual:" + createHash("sha256").update(raw).digest("hex");
-const physical = new Set(
-  [...inventory.modules, ...inventory.excluded_modules]
-    .map((row) => row.module_path)
-    .filter((name) => name !== null),
-);
-for (const name of physical) {
-  if (!name.startsWith("node_modules/")) continue;
-  safe(name);
-  for (const suffix of recipes.vite.commonjs_suffixes)
-    virtualCandidates.add(identifier("\0<root>/" + name + suffix));
-}
-for (const helper of recipes.vite.helper_ids) virtualCandidates.add(identifier("\0" + helper));
-const adapter = recipes.adapter_static;
-check(
-  adapter.name === "@sveltejs/adapter-static" &&
-    adapter.version === "3.0.10" &&
-    JSON.stringify(adapter.members) === JSON.stringify(["index.js", "platforms.js"]) &&
-    adapter.fallback === "index.html" &&
-    Object.keys(adapter.preferred_source).sort().join(",") === "commit,directory,upstream_id" &&
-    adapter.preferred_source.upstream_id === "sveltekit" &&
-    adapter.preferred_source.commit === "39e8e1fbd4feba7f22dd46bfdf7335362c38de16" &&
-    adapter.preferred_source.directory === "packages/adapter-static",
-);
-for (const [key, name, version, entrypoints] of [
-  [
-    "svelte_compiler",
-    "svelte",
-    "5.57.1",
-    [
-      "src/compiler/index.js",
-      "src/compiler/preprocess/index.js",
-      "compiler/index.js",
-      "compiler/package.json",
-    ],
-  ],
-  [
-    "svelte_plugin",
-    "@sveltejs/vite-plugin-svelte",
-    "5.1.1",
-    ["src/index.js", "src/preprocess.js", "src/utils/compile.js"],
-  ],
-]) {
-  const recipe = recipes[key];
-  check(
-    Object.keys(recipe).sort().join(",") === "lock_path,members,name,version" &&
-      recipe.name === name &&
-      recipe.version === version &&
-      Array.isArray(recipe.members) &&
-      entrypoints.every((member) => recipe.members.includes(member)),
-  );
-}
-const needed = new Set(["adapter_static", "svelte_compiler", "svelte_plugin"]);
-for (const row of [...inventory.modules, ...inventory.excluded_modules]) {
-  if (row.kind === "virtual" && virtualCandidates.has(row.id)) needed.add("vite");
-  if (row.kind === "generated-application") {
-    const nodes = recipes.kit.generated_nodes;
-    check(nodes.prefix === ".svelte-kit/generated/client-optimized/nodes/");
-    const index = row.module_path.startsWith(nodes.prefix)
-      ? row.module_path.slice(nodes.prefix.length)
-      : "";
-    if (
-      Object.hasOwn(recipes.kit.generated, row.module_path) ||
-      (/^(0|[1-9][0-9]{0,4})\.js$/.test(index) && Number(index.slice(0, -3)) < 25000)
-    )
-      needed.add("kit");
-  }
-}
-for (const key of needed) {
+// Capture the finite reviewed catalog as data. The receiving Go verifier binds
+// every retained member to its exact npm original and committed catalog; capture
+// does not infer generator implementations from snippets or hardcoded versions.
+for (const key of ["vite", "kit", "adapter_static", "svelte_compiler", "svelte_plugin"]) {
   const recipe = recipes[key];
   const location = safe(recipe.lock_path);
   check(location === "node_modules/" + recipe.name);
+  check(typeof recipe.version === "string" && recipe.version.length > 0);
   check(
     Array.isArray(recipe.members) &&
       recipe.members.length > 0 &&
@@ -139,6 +76,8 @@ for (const key of needed) {
     selected.add(location + "/" + member);
   }
 }
+const adapter = recipes.adapter_static;
+check(adapter.fallback === "index.html");
 check(Array.isArray(inventory.modules) && Array.isArray(inventory.excluded_modules));
 check(inventory.modules.length + inventory.excluded_modules.length <= 25000);
 for (const row of [...inventory.modules, ...inventory.excluded_modules]) {

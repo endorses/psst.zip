@@ -21,7 +21,7 @@ import (
 	"github.com/endorses/psst.zip/tools/release/internal/source"
 )
 
-var fixedInputs = []string{"scripts/browser-source-recipes.json", "src/app.html", "package.json", "package-lock.json", "Dockerfile", "vite.config.ts", "svelte.config.js", "tsconfig.json", "scripts/browser-module-inventory.mjs", "scripts/pack-browser-builder-inputs.mjs"}
+var fixedInputs = []string{"scripts/browser-source-recipes.json", "src/app.html", "package.json", "package-lock.json", "Dockerfile", "vite.config.ts", "svelte.config.js", "tsconfig.json", "scripts/browser-module-inventory.mjs", "scripts/pack-browser-builder-inputs.mjs", preferredCatalogPath}
 
 type BindingOptions struct {
 	Root        string

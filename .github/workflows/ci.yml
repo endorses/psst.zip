@@ -163,7 +163,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "26.12.0"
+          node-version: "26.12.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -218,8 +218,9 @@ jobs:
         run: |
           proof_dir=$(mktemp -d "$RUNNER_TEMP/psst-browser-source.XXXXXX")
           trap 'rm -rf -- "$proof_dir"' EXIT
-          python3 ../tools/measure_browser_source_inventory.py \
-            --root . --output-directory build --version dev \
+          release_tool=$(sh ../tools/release/build.sh)
+          "$release_tool" browser verify \
+            --inputs-root . --output-directory build --version dev \
             --revision "$GITHUB_SHA" --output "$proof_dir/measurement.json"
 
   cli:
@@ -255,7 +256,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "26.12.0"
+          node-version: "26.12.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
 

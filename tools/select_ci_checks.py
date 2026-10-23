@@ -39,9 +39,9 @@ SECURITY_ONLY_TOOLS = frozenset(
         "package_upstream_application_sources.py",
         "prepare_candidate_transfer.py",
         "prepare_native_release.py",
-        "publication_diagnostics.py",
         "publish_container_release.py",
-        "publish_verified_release.py",
+        "release_http.py",
+        "release_process.py",
         "release_artifacts.py",
         "release_result.py",
         "request_production_deployment.py",
@@ -91,6 +91,11 @@ def classify_path(path: str) -> frozenset[str]:
             (
                 "tools/release/internal/publication/",
                 "tools/release/internal/deployment/",
+                "tools/release/internal/github/",
+                "tools/release/internal/source/",
+                "tools/release/internal/scanning/",
+                "tools/release/internal/oci/",
+                "tools/release/internal/containerbuild/",
                 "tools/release/cmd/psst-deploy/",
             )
         ):
@@ -98,6 +103,8 @@ def classify_path(path: str) -> frozenset[str]:
             return frozenset()
         if path.startswith("tools/release/internal/androidrelease/"):
             return frozenset({"android"})
+        if path.startswith("tools/release/internal/browser/"):
+            return frozenset({"web", "cli"})
         return frozenset({"cli"})
     # Reviewed release orchestration is covered by repository security checks.
     # Tags/dispatch/full-validation still force every application check in select().
