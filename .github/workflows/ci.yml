@@ -74,6 +74,9 @@ jobs:
         # Two tiny standard-library cases; no dependency downloads or generators.
         run: GOTOOLCHAIN=local GO111MODULE=off go test ./tools/sqlite_vendoring.go ./tools/sqlite_vendoring_test.go
 
+      - name: Shared development tooling regressions
+        run: GOWORK=off go -C tools/release test -count=1 -timeout 1m ./...
+
       - name: Check distributed project licenses
         run: |
           cmp LICENSE backend/licenses/AGPL-3.0-only.txt
@@ -82,8 +85,6 @@ jobs:
 
       - name: Check native notice inputs and archive boundaries
         run: |
-          python3 tools/generate_native_notices.py --check-inputs-only
-          python3 -m unittest discover -s tools -p 'test_native_notices.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_notices.py' -v
           python3 -m unittest discover -s tools -p 'test_runtime_source_packaging.py' -v
           python3 -m unittest discover -s tools -p 'test_caddy_source_signatures.py' -v
@@ -270,8 +271,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           started=$SECONDS
-          python3 scripts/test-lan-assets.py
-          python3 scripts/prepare-lan-assets.py
+          tool=$(sh ../tools/release/build.sh)
+          printf 'PSST_RELEASE_TOOL=%s\n' "$tool" >> "$GITHUB_ENV"
+          "$tool" --root "$GITHUB_WORKSPACE" assets
           printf 'LAN static build and source inventory: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Vet Go client
@@ -285,7 +287,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           started=$SECONDS
-          python3 scripts/generate-notices.py --output "$RUNNER_TEMP/cli-notices"
+          # Asset preparation already collected the exact six-target graph.
+          # Verify its input and legal-byte hashes without resolving it again.
+          "$PSST_RELEASE_TOOL" --root "$GITHUB_WORKSPACE" assets --check
           printf 'CLI dependency notice inventory: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Client and CLI race tests
@@ -373,7 +377,7 @@ jobs:
         run: ./android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :shared:testAndroidHostTest --no-daemon
       - name: Verify actual resolved native dependency notices
         if: steps.scope.outputs.run == 'true'
-        run: python3 tools/generate_native_notices.py --check
+        run: ./android/gradlew -p android :app:checkPsstNativeNotices :shared:checkPsstNativeNotices :shared:testPsstNativeTooling --no-daemon
 
   ios:
     name: Native iOS app, extension and XCTest

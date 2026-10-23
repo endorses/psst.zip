@@ -40,9 +40,9 @@ def main():
         xml = ET.parse(folder / "Localizable.stringsdict")
         for dictionary in xml.iter("dict"):
             xml_keys = [child.text for child in dictionary if child.tag == "key"]
-            assert len(xml_keys) == len(
-                set(xml_keys)
-            ), "Duplicate plural dictionary key"
+            assert len(xml_keys) == len(set(xml_keys)), (
+                "Duplicate plural dictionary key"
+            )
         with (folder / "Localizable.stringsdict").open("rb") as stream:
             plurals = plistlib.load(stream)
         assert not ordinary.keys() & plurals.keys()
@@ -95,15 +95,9 @@ def main():
     project = (ROOT / "project.yml").read_text()
     assert "knownRegions: [en, de]" in project and "path: Shared" in project
     assert project.count("templates: [SharedFramework]") == 2
-    assert "PsstLanguage()" in (ROOT / "Psst/PsstApp.swift").read_text()
-    assert (
-        "PsstLanguage()"
-        in (ROOT / "PsstShareExtension/ShareExtensionView.swift").read_text()
-    )
-    scanner = (ROOT / "Psst/Views/ScanReceiveView.swift").read_text()
-    assert 'model.stage == "' not in scanner
-    assert "refreshLanguage()" in (ROOT / "Shared/PairingScanner.swift").read_text()
-    assert "arguments" in (ROOT / "Shared/ClientErrorPresentation.swift").read_text()
+    # The native/portable tests exercise language changes and typed captions.
+    # Keep the explicit localization-provider policy, rather than checking
+    # individual calls, source ordering or test method names.
     assert "String(localized:" not in "\n".join(
         p.read_text()
         for folder in ("Psst", "Shared", "PsstShareExtension")

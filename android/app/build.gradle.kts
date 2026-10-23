@@ -40,21 +40,11 @@ require(androidVersionCode in 1..2100000000) {
     "Android versionCode is outside the supported range"
 }
 
-// The helper accepts only F-Droid's exact unstaged wrapper deletions, while
-// preserving an empty identity for modified or untracked build inputs.
-val gitSourceRevision =
-    providers
-        .exec {
-            workingDir(rootProject.projectDir.parentFile)
-            commandLine("python3", "tools/android_release.py", "source-revision")
-            isIgnoreExitValue = true
-        }
-        .standardOutput
-        .asText
-        .get()
-        .trim()
-        .takeIf { it.matches(Regex("[a-f0-9]{40}")) }
-        .orEmpty()
+// Shared Gradle/JDK maintenance logic keeps standalone source builds free of
+// release-tooling runtimes, including F-Droid's exact wrapper-only cleanup.
+apply(from = rootProject.file("../shared/gradle/native-tooling.gradle.kts"))
+
+val gitSourceRevision = extra["psstSourceRevision"] as String
 
 android {
     namespace = "zip.psst.android"
@@ -116,22 +106,6 @@ android {
     // See docs/security/lint-bidi-workaround.md for measured evidence and limits.
     lint { disable.add("BidiSpoofing") }
 }
-
-val checkSourceBidi =
-    tasks.register<Exec>("checkPsstSourceBidi") {
-        workingDir(rootProject.projectDir.parentFile)
-        commandLine(
-            "python3",
-            "tools/check_source_bidi.py",
-            "--generated-directory",
-            "android/app/build/generated/ksp/release/kotlin",
-        )
-        mustRunAfter(tasks.matching { it.name == "kspReleaseKotlin" })
-    }
-
-tasks
-    .matching { it.name == "lintAnalyzeRelease" || it.name == "lintVitalAnalyzeRelease" }
-    .configureEach { dependsOn(checkSourceBidi) }
 
 // Signing is a separate, protected step. Gradle never reads a signing keystore
 // or substitutes the debug key; an optimized APK must be requested explicitly.

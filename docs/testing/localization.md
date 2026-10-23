@@ -27,8 +27,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 android/localization/check_resources.py
 ./android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :shared:testDebugUnitTest --no-daemon
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_scanner_navigation.py
+ios/scripts/test-portable.sh --filter "LocalizationTests|SharedFailureBridgeTests|ScannerRequestLifetimeTests"
 go -C backend test ./internal/api -count=1
 ```
 

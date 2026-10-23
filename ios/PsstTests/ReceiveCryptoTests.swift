@@ -1,6 +1,10 @@
 import Foundation
-@testable import Psst
 import XCTest
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class ReceiveCryptoTests: XCTestCase {
     private let slot = "00112233-4455-6677-8899-aabbccddeeff"

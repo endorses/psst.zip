@@ -238,28 +238,28 @@ anonymous readback/receipt. Publication has no VPS credentials or access.
 This work can proceed independently of most container changes. Apply equivalent
 legal-resource/localization/configuration coverage to both Android and iOS.
 
-- [ ] Move the narrow Android source-revision check into Gradle Kotlin. Preserve
+- [x] Move the narrow Android source-revision check into Gradle Kotlin. Preserve
       clean/dirty source handling and F-Droid's exact wrapper-removal allowance;
       coordinate recipe expectations rather than accepting arbitrary dirty trees.
       Ordinary Android source builds require neither Python nor Go afterward.
-- [ ] Move native dependency resolution/export from embedded Groovy/Python into
+- [x] Move native dependency resolution/export from embedded Groovy/Python into
       Gradle Kotlin tasks. Preserve Android runtime and iOS klib/POM associations,
       output determinism, source identity, and shipped notices for both platforms.
 - [ ] Reuse Go source/version/archive/GitHub primitives for Android release tooling;
       keep thin adapters invoking official Gradle/SDK/`age` programs. Preserve
       signer fingerprints, version codes, alignment, private mapping encryption,
       secret-safe failures, and exclusion of private migration lineage.
-- [ ] Replace fourteen temporary SwiftPM generators with explicit targets/source
+- [x] Replace fourteen temporary SwiftPM generators with explicit targets/source
       lists and one native-or-container runner. Preserve the actual Swift XCTest
       sources, concurrency negative controls and Linux portable development checks.
       Remove duplicate Inbox test entry points without dropping unique coverage.
-- [ ] Prune literal code/test-name assertions and delimiter checks superseded by
+- [x] Prune literal code/test-name assertions and delimiter checks superseded by
       compilation/behavior tests. Keep entitlements, identifiers, extension wiring,
       localization keys/placeholders/plurals and configuration validation.
-- [ ] Make iOS process/VM incident sampling optional; keep normal build timing
+- [x] Make iOS process/VM incident sampling optional; keep normal build timing
       summaries. Do not claim that portable harness consolidation accelerates
       native CI, which does not currently run those Python launchers.
-- [ ] Apply the signing-migration decision: remove bridge-only code and tests, or
+- [x] Apply the signing-migration decision: remove bridge-only code and tests, or
       isolate an optional supported migration tool. Retain ordinary same-signer
       installed-data preservation checks and documented recovery information.
 - [ ] Remove obsolete callers/scripts and update developer/store build documents.
@@ -376,3 +376,19 @@ in 13 seconds; actual Python producer → compiled Go result → semantic Python
 reader integration passes. Go contract/archive/cache/result/Android boundary tests
 pass in under one second on a warm compiler cache. No live release, remote
 publication, production update, or native Xcode verification is claimed.
+
+Native build tooling now uses one Gradle Kotlin script for source identity, bidi
+checking and both Android/iOS notice inventories. Offline checks resolved 123
+Android artifacts and 117 iOS variants, preserving shipped notice/license bytes;
+focused Gradle boundary tests and debug metadata generation pass. Go Android
+release boundary/race tests and a real SDK 37 disposable signing/readback exercise
+pass. The exceptional signing bridge is retired; actual same-signer installed-data
+validation remains pending because this host has no `/dev/kvm`.
+
+The explicit portable Swift package stages 99 exact source/resource mappings
+without source slicing, generated manifests, or a symlink farm. Stable Swift 6.4
+and swift-crypto 5.0.1 passed 152 unique XCTest cases, four observer-lifetime checks,
+and the deliberate strict-concurrency compile failure. Clean compilation took
+32.2 seconds and XCTest 70.7 seconds, excluding dependency resolution. Native
+macOS/Xcode app, extension and XCTest checks remain pending. Catalog/configuration
+checks pass for both platforms after removing brittle implementation assertions.

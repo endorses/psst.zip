@@ -103,9 +103,8 @@ class ChangeScopeTests(unittest.TestCase):
         self.write(".github/workflows/cli-release.yml")
         self.write("docs/cli.md")
         self.write("tools/android_build_timings.gradle")
-        self.write("tools/check_android_update.py")
-        self.write("tools/test_android_update.py")
-        self.write("tools/android_signing_bridge.py")
+        self.write("tools/release/internal/publication/result.go")
+        self.write("tools/release/internal/deployment/update.go")
         self.commit()
         self.push_event()
         for job in sorted(selector.JOBS):
@@ -143,8 +142,12 @@ class ChangeScopeTests(unittest.TestCase):
             "android/app/src/main/assets/licenses/notice.txt": {"android", "ios"},
             "ios/Shared/LegalResources/notice.txt": {"android", "ios"},
             "ios/PsstShare/ShareViewController.swift": {"ios"},
-            "tools/generate_native_notices.py": {"android", "ios"},
-            "tools/android_release.py": {"android"},
+            "shared/gradle/native-tooling.gradle.kts": {"android", "ios"},
+            "tools/release/internal/clibuild/assets.go": {"cli"},
+            "tools/release/internal/androidrelease/apk.go": {"android"},
+            "tools/release/internal/publication/result.go": set(),
+            "tools/release/internal/deployment/update.go": set(),
+            "tools/release/internal/androidrelease/command.go": {"android"},
             "assets/brand/logo.svg": selector.JOBS,
             "LICENSE": selector.JOBS,
             "docs/protocol/chunked-files.md": selector.JOBS,

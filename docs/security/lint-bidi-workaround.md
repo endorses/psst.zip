@@ -14,10 +14,23 @@ The [upstream detector](https://android.googlesource.com/platform/tools/base/+/r
 requests all comments for each Kotlin UAST file before checking bidi segments.
 
 Only the `BidiSpoofing` lint rule is replaced temporarily. All other release lint
-rules remain enabled. Its replacement is
-[`tools/check_source_bidi.py`](../../tools/check_source_bidi.py), a standard-library
-source check that does not initialize Kotlin PSI or a compiler. Run it before
-release lint and in repository security:
+rules remain enabled. The Android replacement is Gradle's
+`checkPsstSourceBidi` / `checkPsstGeneratedSourceBidi` in
+[`shared/gradle/native-tooling.gradle.kts`](../../shared/gradle/native-tooling.gradle.kts).
+It uses the existing Gradle/JDK runtime without Python and scans raw source bytes
+without initializing Kotlin PSI or a compiler. Release lint depends on both the
+tracked-source check and the KSP-generated source check. Before lint, run:
+
+```sh
+android/gradlew -p android :app:checkPsstSourceBidi
+android/gradlew -p android :app:checkPsstSourceBidi \
+  -Ppsst.bidiGeneratedDirectory=android/app/build/generated/ksp/release/kotlin
+android/gradlew -p android :shared:testPsstNativeTooling --offline
+```
+
+The compact independent repository validator remains
+[`tools/check_source_bidi.py`](../../tools/check_source_bidi.py) for security hooks
+and repository-wide CI, which should not bootstrap Gradle just to scan text:
 
 ```sh
 python3 tools/check_source_bidi.py

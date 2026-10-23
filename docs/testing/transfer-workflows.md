@@ -50,9 +50,7 @@ From the repository root, with the README's JDK/Android SDK setup:
 ./android/gradlew -p android :app:testDebugUnitTest :shared:testDebugUnitTest \
   :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
 python3 ios/scripts/check_sources.py
-python3 ios/scripts/test_history_pages.py
-python3 ios/scripts/test_guest_store.py
-python3 ios/scripts/test_receive_checkpoints.py
+ios/scripts/test-portable.sh
 ```
 
 Android's guarded storage instrumentation requires a newly created disposable

@@ -1,6 +1,10 @@
 import Foundation
-@testable import Psst
 import XCTest
+#if SWIFT_PACKAGE
+    @testable import HistoryPageHarness
+#else
+    @testable import Psst
+#endif
 
 final class WorkflowPresentationTests: XCTestCase {
     private var priorLanguage = AppLanguage.system

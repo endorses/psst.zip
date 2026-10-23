@@ -1,7 +1,11 @@
 import Foundation
 import XCTest
 
-@testable import Psst
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class HistorySyncTests: XCTestCase {
     private let generation = "01234567-89ab-cdef-0123-456789abcdef"
@@ -9,26 +13,29 @@ final class HistorySyncTests: XCTestCase {
     private func batch(_ changes: String, cursor: String = "two", more: Bool = false) -> Data {
         Data(
             "{\"version\":1,\"generation\":\"\(generation)\",\"changes\":[\(changes)],\"next_cursor\":\"\(cursor)\",\"has_more\":\(more)}"
-                .utf8)
+                .utf8
+        )
     }
+
     func testFrozenBackendContractFixtures() throws {
-        #if os(Linux)
+        #if SWIFT_PACKAGE
             let bundle = Bundle.module
         #else
             let bundle = Bundle(for: HistorySyncTests.self)
         #endif
         let url = try XCTUnwrap(bundle.url(forResource: "history-sync-v1", withExtension: "json"))
-        let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
-        let snapshotData = try JSONSerialization.data(withJSONObject: fixture["snapshot"]!)
+        let fixture = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let snapshotData = try JSONSerialization.data(withJSONObject: XCTUnwrap(fixture["snapshot"]))
         let page = try JSONDecoder().decode(ResourceList.self, from: snapshotData)
         XCTAssertEqual(page.transfers.count, 1)
         XCTAssertEqual(page.slots.count, 1)
         for name in ["empty", "upsert", "remove", "unknown_summary"] {
-            let data = try JSONSerialization.data(withJSONObject: fixture[name]!)
+            let data = try JSONSerialization.data(withJSONObject: XCTUnwrap(fixture[name]))
             let batch = try JSONDecoder().decode(HistorySync.Batch.self, from: data)
             try batch.validate(
-                cursor: try XCTUnwrap(page.sync_cursor), generation: try XCTUnwrap(page.generation),
-                limit: 50)
+                cursor: XCTUnwrap(page.sync_cursor), generation: XCTUnwrap(page.generation),
+                limit: 50
+            )
         }
     }
 
@@ -41,35 +48,46 @@ final class HistorySyncTests: XCTestCase {
         XCTAssertTrue(empty.changes.isEmpty)
         let removed = try JSONDecoder().decode(
             HistorySync.Batch.self,
-            from: batch("{\"kind\":\"transfer\",\"id\":\"\(id)\",\"revision\":2,\"action\":\"remove\"}"))
+            from: batch("{\"kind\":\"transfer\",\"id\":\"\(id)\",\"revision\":2,\"action\":\"remove\"}")
+        )
         try removed.validate(cursor: "one", generation: generation, limit: 50)
         XCTAssertNil(removed.changes[0].transfer)
     }
+
     func testRejectsMismatchedRevisionIdentityGenerationAndCursorLoops() throws {
         let valid =
             "{\"kind\":\"transfer\",\"id\":\"\(id)\",\"revision\":2,\"action\":\"upsert\",\"resource\":{\"id\":\"\(id)\",\"revision\":2,\"status\":\"complete\",\"file_count\":1,\"total_size\":100,\"summary\":{\"state\":\"ready\",\"file_count\":1,\"completed_files\":1,\"total_size\":100}}}"
         let decoded = try JSONDecoder().decode(HistorySync.Batch.self, from: batch(valid))
         try decoded.validate(cursor: "one", generation: generation, limit: 50)
         XCTAssertThrowsError(
-            try decoded.validate(cursor: "one", generation: UUID().uuidString, limit: 50))
+            try decoded.validate(cursor: "one", generation: UUID().uuidString, limit: 50)
+        )
         XCTAssertThrowsError(
             try JSONDecoder().decode(
                 HistorySync.Batch.self,
                 from: batch(
                     valid.replacingOccurrences(
                         of: "\"resource\":{\"id\":\"\(id)\",\"revision\":2",
-                        with: "\"resource\":{\"id\":\"\(id)\",\"revision\":1"))))
+                        with: "\"resource\":{\"id\":\"\(id)\",\"revision\":1"
+                    )
+                )
+            )
+        )
         let loop = try JSONDecoder().decode(
-            HistorySync.Batch.self, from: batch("", cursor: "one", more: true))
+            HistorySync.Batch.self, from: batch("", cursor: "one", more: true)
+        )
         XCTAssertThrowsError(try loop.validate(cursor: "one", generation: generation, limit: 50))
         let duplicate = try JSONDecoder().decode(
-            HistorySync.Batch.self, from: batch(valid + "," + valid))
+            HistorySync.Batch.self, from: batch(valid + "," + valid)
+        )
         XCTAssertThrowsError(try duplicate.validate(cursor: "one", generation: generation, limit: 50))
     }
+
     func testCachedNullableSummariesRoundTripWithoutBecomingMissingFields() throws {
         let raw = Data(
             #"{"id":"44444444-4444-4444-8444-444444444444","status":"waiting","file_count":null,"completed_files":null,"total_size":null,"summary":{"state":"updating","file_count":null,"completed_files":null,"total_size":null}}"#
-                .utf8)
+                .utf8
+        )
         let row = try JSONDecoder().decode(ResourceList.Slot.self, from: raw)
         let encoded = try JSONEncoder().encode(row)
         let decoded = try JSONDecoder().decode(ResourceList.Slot.self, from: encoded)
@@ -108,6 +126,7 @@ final class HistorySyncTests: XCTestCase {
         XCTAssertFalse(try HistorySync.supports(Data(#"{}"#.utf8)))
         XCTAssertThrowsError(try HistorySync.supports(Data("offline".utf8)))
     }
+
     func testOversizedBatchNeverDecodesOrAdvancesCursor() async {
         do {
             _ = try await HistorySync.load(cursor: "one", generation: generation) { _ in

@@ -63,12 +63,22 @@ Version evidence: [official Compose BOM](https://dl.google.com/dl/android/maven2
 and [serialization release](https://github.com/Kotlin/kotlinx.serialization/releases/tag/v1.11.0).
 The inspection permissions follow GitHub's [environment API](https://docs.github.com/en/rest/deployments/environments#get-an-environment).
 
+The development-only Go command `psst-release android` owns source identity,
+APK/ELF/signature checks, packaging, CI inspection and timing summaries. It invokes
+the official SDK/Gradle/`age` tools at their existing boundaries. Build it once and
+reuse it; this adds no Go dependency to ordinary Android/F-Droid source builds.
+The workflow compiles trusted dispatcher tooling once per job before opening
+credentials and uses the immutable tag's actual app/source/legal bytes. Old-tag
+previews alone retain an explicit read-only native-notice compatibility call to
+the generator captured in that historical checkout.
+
 From a clean tagged checkout with the SDK and workflow's JDK installed:
 
 ```sh
+psst_release=$(./tools/release/build.sh)
 PSST_ANDROID_UNSIGNED_RELEASE=true ./android/gradlew -p android \
   :app:assembleRelease :app:lintRelease --no-daemon
-python3 tools/android_release.py verify-apk --unsigned \
+"$psst_release" android verify-apk --unsigned \
   --apk android/app/build/outputs/apk/release/app-release-unsigned.apk \
   --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" \
   --revision "$(git rev-parse HEAD)" --output /tmp/android-verification.json
@@ -117,8 +127,8 @@ identified input privately and rerun only the failed publication job: its build
 artifact ID is retained across attempts, so the successful build is reused.
 Workflow code repairs require a new dispatch from updated `main`.
 
-Create a dedicated production key privately, outside the checkout. Keep the debug
-key local for the one-time private transition; it is never a public release key.
+Create a dedicated production key privately, outside the checkout. A debug key
+is never a public release key.
 These commands are instructions for an interactive private terminal, not work
 that has already been completed:
 
@@ -203,117 +213,34 @@ Android/security checks once. It does not rerun backend, web or native iOS jobs.
 The existing container `refs/tags/v*` rule does not cover Android tags; preserve it
 when adding the independent Android namespace.
 
-## Existing debug installation
+## Existing production installation
 
-The operator's phone runs Android 16, without USB access currently. Android 13+
-supports a private debug-to-production signing bridge. Source review indicates a
-lineage with installed-data and signature-permission continuity can preserve the
-app UID, files and Keystore keys, and a
-subsequent production-only APK can update it. The disposable Android 16 diagnostic
-passed both updates with real Keystore, Room and HPKE/AES state. The operator's
-phone's package/code/certificate were verified read-only, and both real updates
-preserved its UID. The operator confirmed their existing account/history and the
-same transfer worked after both updates. Full per-store synthetic coverage remains
-separate from this bounded physical observation.
+The operator's historical debug-to-production transition completed in October
+2026, followed by a production-only higher-code update. The existing UID,
+account/history and the same transfer remained usable. That bounded observation
+is retained as history; it does not establish physical coverage of every store.
 
-### Read the installed identity without USB
+Future debug-to-production signing bridges are retired. No tool generates private
+rotation lineage, and public APK verification continues to reject any rotation
+lineage or signer other than the approved production certificate. Subsequent
+updates require the same package and production signer with a higher version code.
+Do not uninstall or clear data to bypass a signer mismatch: private encryption
+keys and history can be destroyed. A differently signed old installation needs a
+separately designed encrypted-data migration before any reinstall.
 
-Android 16 supports [Wireless debugging](https://developer.android.com/tools/adb#connect-to-a-device-over-wi-fi).
-Connect the phone and computer to the same Wi-Fi, enable Developer options →
-Wireless debugging, then choose **Pair device with pairing code**. In your private
-terminal, run `adb pair IP:PAIRING_PORT` and enter the code at its prompt. Keep the
-code out of chat. If the device does not connect automatically, use
-`adb connect IP:CONNECTION_PORT`; the main Wireless debugging screen's connection
-port is different from the pairing dialog's port. Use current SDK Platform Tools
-and check `adb devices -l` before selecting a device.
+The [disposable update fixture](../testing/android-release-updates.md) checks
+ordinary same-signer optimized updates using one ephemeral key and real protected
+storage. It never uses the operator's key, phone, accounts or production server.
+The [public APK smoke](../testing/android-release-smoke.md) separately covers
+fresh optimized startup, pairing, QR, transfer and sharing behavior.
 
-With `ANDROID_HOME` set and a working JDK on `PATH`, run this read-only inspection
-in Bash. It reads the currently active Android profile's installed APK, not its
-private app data, and removes the temporary APK afterward:
-
-```sh
-(
-  set -euo pipefail
-  umask 077
-  psst_adb="$ANDROID_HOME/platform-tools/adb"
-  read -r -p 'Connected device serial from adb devices: ' psst_device
-  psst_inspection=$(mktemp -d "${TMPDIR:-/tmp}/psst-installed-apk.XXXXXX")
-  trap 'rm -rf -- "$psst_inspection"' EXIT
-  psst_user=$("$psst_adb" -s "$psst_device" shell am get-current-user | tr -d '\r')
-  psst_apk_path=$("$psst_adb" -s "$psst_device" shell pm path --user "$psst_user" \
-    zip.psst.android | tr -d '\r' | sed -n 's/^package:\(.*\/base\.apk\)$/\1/p')
-  test -n "$psst_apk_path"
-  "$psst_adb" -s "$psst_device" shell getprop ro.build.version.sdk
-  "$psst_adb" -s "$psst_device" shell cmd package list packages -U \
-    --user "$psst_user" zip.psst.android
-  "$psst_adb" -s "$psst_device" pull "$psst_apk_path" "$psst_inspection/base.apk"
-  "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging \
-    "$psst_inspection/base.apk" | rg '^(package:|sdkVersion:|targetSdkVersion:)'
-  "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs \
-    "$psst_inspection/base.apk"
-)
-```
-
-Privately record the profile, package/UID, version code, API level and public
-certificate SHA256. Compare the certificate with the retained local debug APK;
-do not assume they match because the visible app name matches. These commands do
-not install, uninstall, clear data or demonstrate key preservation. If the package
-is missing, stop and identify the actual installation before proceeding. Turn off
-Wireless debugging when finished; optionally forget this computer in its paired
-device list. Signature verification uses the official
-[apksigner tool](https://developer.android.com/tools/apksigner).
-
-### Prepare the private transition
-
-`tools/android_signing_bridge.py` prepares a local bridge, with both keystores
-outside the checkout. It requires the recorded installed signer and version floor,
-verifies the old APK, enables installed-data and permission capabilities, disables
-shared UID, rollback and auth capabilities, and keeps outputs private. It refuses GitHub Actions
-and public artifact directories. Public release verification rejects rotation
-history, preventing publication of this debug-key bridge.
-
-Permission continuity is required to retain ownership of AndroidX's package-scoped
-`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. It remains a signature permission;
-removing it or lowering its protection would compromise older-system receiver
-isolation. Android checks the signing history's `PERMISSION` capability even when
-the same package updates its existing permission declaration.
-[AOSP permission ownership checks](https://android.googlesource.com/platform/frameworks/base/+/1406600d75c1a30ebdf45312b7fa0f4a4355194b/services/core/java/com/android/server/pm/InstallPackageHelper.java),
-[AndroidX declaration](https://android.googlesource.com/platform/prebuilts/sdk/+/5c762fb2f6235bbe5d006d3a26063a8e921354b4/current/androidx/manifests/androidx.core_core/AndroidManifest.xml).
-
-The migrated phone can retain historical debug-key trust for signature permissions.
-This trust may remain in Android's stored signing history after a subsequent
-production-only APK; a successful update does not prove its revocation. The
-operator reviewed and accepted this trust on October 10, selecting the private
-bridge. The real updates and their observed preservation checks passed. Fresh public
-installations use a production-only APK without the debug lineage.
-
-Do not uninstall, clear app data or replace a mismatched package to get around a
-signing error. If a bridge cannot preserve protected state, stop and implement an
-encrypted archive migration on **both Android and iOS** before any reinstall.
-
-Readiness record, kept privately and containing observations rather than secrets:
-
-- [x] Confirm the actual phone's installed package, version code and signing identity.
-- [x] Review and accept the private bridge's retained debug-key permission trust
-      before applying it to the actual phone.
-- [x] Verify a disposable emulator transition with actual protected stores before
-      applying the production bridge to the phone.
-- [x] Demonstrate production-key recovery from the separate encrypted copy.
-- [x] Perform the real in-place bridge update; confirm retained account/session,
-      history, Send decryption keys, Receive-v2 private keys and guest capabilities
-      remain usable.
-- [x] Install a subsequent production-only APK with a higher version code and
-      repeat the compact preservation check. A bridge at code `2` needs a later
-      production-only code above `2`.
-- [x] Verify a fresh optimized production install, API 26 and current Android
-      release-specific behavior, including pairing, transfer/decryption, Receive,
-      guest access, QR scanning and document/photo sharing using disposable files.
-
-Class-level protected-store coverage comes from the disposable fixture and normal
-optimized-APK smoke. The physical phone check observed its existing account/history
-and one existing transfer before and after both updates; its transfer category
-was not recorded. No separate physical test of every store is claimed. Relevant
-storage/crypto/ProGuard code is unchanged from the full fixture/smoke sources.
+For read-only inspection of a real installed APK, use Android's official
+[Wireless debugging](https://developer.android.com/tools/adb#connect-to-a-device-over-wi-fi)
+and [apksigner](https://developer.android.com/tools/apksigner) instructions. Select
+the intended device/profile explicitly, compare its public certificate SHA256,
+package and version code to the approved release, remove any temporary pulled APK,
+and disable Wireless debugging afterward. Inspection alone does not prove
+installed-data preservation.
 
 ## Publication and routine updates
 
@@ -324,8 +251,7 @@ For routine releases, dispatch once with `publish=true`: the build creates the
 preview before the protected signing job requests approval. Review that preview,
 then approve the job; the same unsigned artifact proceeds to signing without a
 second build. There is one configured environment approval and no custom review
-comment. The operator's private bridge is a one-time migration, not a routine
-release prerequisite.
+comment. Historical signing migration is not a supported routine release operation.
 The build/lint job starts with a 15-minute budget and reports execution timing.
 Approval waiting time is separate.
 
@@ -337,7 +263,7 @@ published asset and the final APK signature. Partial publication failures requir
 inspection; never overwrite immutable assets or move a tag to retry.
 
 For routine updates the package and production signer remain unchanged; install
-the newer APK over the existing app. Do not repeat the debug transition. Keep
+the newer APK over the existing app. Do not introduce signing rotation or debug-key lineage. Keep
 release-specific optimized smoke checks compact and reuse relevant passing CI.
 The first real same-signer preservation check is a prerequisite; routine CI is not
 a claim that an untested migration works.

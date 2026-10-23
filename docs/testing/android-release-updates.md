@@ -1,100 +1,65 @@
 # Android release install and update fixture
 
-This fixture tests one failure that JVM CI cannot establish: actual APK signing
-changes and optimized app updates must preserve the Android UID, non-exportable
-Keystore keys and their protected state. It uses a disposable emulator, disposable
-signing keys and a synthetic account; it never connects to a real server.
+This fixture checks what host JVM tests cannot establish: an optimized same-signer
+APK update preserves the Android UID, non-exportable Keystore keys, sessions,
+Room Send/Receive history, InboxKeyStore and GuestDownloadStore. It opens retained
+AES ciphertext, unwraps a Receive-v2 key with actual Tink HPKE, and opens the
+submission ciphertext. Re-pairing alone does not prove these properties.
 
-It checks the installed app's actual SessionStorage, Room Send/Receive history,
-InboxKeyStore, GuestDownloadStore and cryptographic implementations. After both
-updates it opens retained AES ciphertext, unwraps a Receive-v2 submission key using
-Tink HPKE, and opens that submission's ciphertext. A successful re-pairing alone
-would not prove any of these properties.
+Future debug-to-production bridges and private signing-lineage generation are
+retired. Both fixture APKs are optimized release variants signed by one disposable
+key. Public release verification still excludes rotation lineage and accepts only
+the approved production signer.
 
-The target APKs are **fixture-modified diagnostics**: the explicit private build
-adds one target-contained scenario, allowing R8 to optimize its complete store and
-crypto call graph. A framework-only Java `Instrumentation` runner invokes one
-kept entry signature. It has no AndroidX, Kotlin or JUnit test runtime dependency
-that can be deduplicated into, then removed from, the optimized target. Public
-builds omit this diagnostic source directory and keep rule entirely. Private
-metadata adds `deviceFixture=true`; ordinary APK publication rejects that marker,
-even if a fixture's version code matches the public version.
-
-The fixture does not replace the operator's real installation transition or the
-separate optimized-app pairing, QR, sharing and transfer smoke. Its report states
-those limits explicitly. Android-only package signing evaluation changes no shared
-archive format or iOS app behavior.
+The explicit fixture build compiles one diagnostic into the target APK so R8 sees
+its store/crypto call graph. A framework-only Java instrumentation runner invokes
+one kept signature, with no shared AndroidX/Kotlin/JUnit instrumentation dependency.
+Public builds omit the diagnostic source and keep rule. Fixture metadata includes
+`deviceFixture=true`; ordinary publication rejects it even at a public version.
 
 ## Requirements
 
-Use a clean committed checkout of the exact source under evaluation. This is a
-local verification tool, deliberately forbidden in GitHub Actions. Use the
-stable SDK/JDK selected by the tagged Android release workflow, with `java` and
-`keytool` on PATH, SDK Build Tools 37.0.0, platform-tools and an Android 13+ emulator
-image. Emulator acceleration must be available for reasonable runtime.
+Use a clean committed checkout, the existing workflow JDK/SDK, Build Tools 37.0.0,
+platform-tools and a disposable Android API 26+ emulator. This local maintenance
+command is forbidden in GitHub Actions and never selects a physical phone. Create
+a **new AVD** named `psst-release-fixture-` plus a unique suffix, using an installed
+image and a private temporary directory. Boot without a saved snapshot. The tool
+requires qemu, supported emulator hardware and no existing target/instrumentation
+package. It refuses to reset an everyday AVD. The caller stops/removes its own AVD
+and temporary APK directory afterward.
 
-Create a **new disposable AVD**, named `psst-release-fixture-` followed by a unique
-suffix, using an already installed image. Keep its disk files in a temporary
-private directory and boot it without loading a snapshot. Do not rename or reuse
-an everyday AVD: the runner refuses an existing `zip.psst.android` or instrumentation
-installation, and it does not reset one. The caller owns stopping/removing this
-specific temporary AVD after verification. Never use `adb uninstall` or `pm clear`
-on the operator's target app to work around a signing error.
+## Build two optimized inputs
 
-All six build inputs must be copied out before the next build can overwrite them.
-Create a temporary directory outside the checkout, accessible only to the current
-user. Set `fixture_dir` to that directory. These overrides are for disposable
-verification only; normal publication rejects a private version-code override.
-
-## Build the inputs
-
-The debug seed is code 1, private bridge code 2 and subsequent production-only
-update code 3. These are disposable test versions, not published version metadata.
-Use the matching framework-only instrumentation APKs for each target. They invoke
-the retained diagnostic entry rather than app internals across an R8 mapping.
-Do not use a debug test build as evidence that a minified target retained its
-runtime classes. Public optimized-APK startup and user flows remain separate checks.
+Set `fixture_dir` to a private temporary directory outside the checkout. Copy both
+the target and matching instrumentation APK before the next build overwrites them.
+Version codes 1 and 2 below are disposable overrides, not release metadata.
 
 ```sh
 export PSST_ANDROID_UNSIGNED_RELEASE=true
-export PSST_ANDROID_DEVICE_TEST_BUILD_TYPE=debug
-export PSST_ANDROID_DEVICE_TEST_VERSION_CODE=1
-./android/gradlew -p android :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
-cp android/app/build/outputs/apk/debug/app-debug.apk "$fixture_dir/seed.apk"
-cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$fixture_dir/seed-test.apk"
-
 export PSST_ANDROID_DEVICE_TEST_BUILD_TYPE=release
-export PSST_ANDROID_DEVICE_TEST_VERSION_CODE=2
+export PSST_ANDROID_DEVICE_TEST_VERSION_CODE=1
 ./android/gradlew -p android :app:assembleRelease :app:assembleReleaseAndroidTest --no-daemon
-cp android/app/build/outputs/apk/release/app-release-unsigned.apk "$fixture_dir/bridge-unsigned.apk"
-cp android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk "$fixture_dir/bridge-test.apk"
+cp android/app/build/outputs/apk/release/app-release-unsigned.apk "$fixture_dir/seed-unsigned.apk"
+cp android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk "$fixture_dir/seed-test.apk"
 
-export PSST_ANDROID_DEVICE_TEST_VERSION_CODE=3
+export PSST_ANDROID_DEVICE_TEST_VERSION_CODE=2
 ./android/gradlew -p android :app:assembleRelease :app:assembleReleaseAndroidTest --no-daemon
 cp android/app/build/outputs/apk/release/app-release-unsigned.apk "$fixture_dir/next-unsigned.apk"
 cp android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk "$fixture_dir/next-test.apk"
 unset PSST_ANDROID_DEVICE_TEST_BUILD_TYPE PSST_ANDROID_DEVICE_TEST_VERSION_CODE
 ```
 
-Release assembly and lint for public delivery remain separate required checks.
-The fixture rebuilds only the variants necessary for the signing transition and
-increasing-code update, rather than repeating the complete test suite. Build paths
-above are AGP defaults; inspect the actual output if a selected toolchain changes
-them.
+## Run the same-signer preservation check
 
-## Run the update check
-
-Set `fixture_serial` to the newly created emulator's explicit `emulator-NNNN`
-identifier. The tool checks qemu, supported emulator hardware, AVD ownership,
-API level and absence of an existing target before creating any disposable key.
+Set `fixture_serial` to the new AVD's explicit `emulator-NNNN` serial. No operator
+keystore, password, account, link, private mapping or production server is used.
 
 ```sh
-python3 tools/check_android_update.py \
-  --seed-apk "$fixture_dir/seed.apk" \
-  --bridge-unsigned "$fixture_dir/bridge-unsigned.apk" \
+psst_release=$(./tools/release/build.sh)
+"$psst_release" android check-update \
+  --seed-unsigned "$fixture_dir/seed-unsigned.apk" \
   --next-unsigned "$fixture_dir/next-unsigned.apk" \
   --seed-test-apk "$fixture_dir/seed-test.apk" \
-  --bridge-test-apk "$fixture_dir/bridge-test.apk" \
   --next-test-apk "$fixture_dir/next-test.apk" \
   --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" \
   --adb "$ANDROID_HOME/platform-tools/adb" \
@@ -104,53 +69,23 @@ python3 tools/check_android_update.py \
   --output "$fixture_dir/update-preservation.json"
 ```
 
-The runner creates two short-lived signing keys inside its own temporary private
-directory and passes random passwords through environment variables. It signs the
-seed and instrumentation packages, prepares an Android 13+ bridge with
-installed-data and signature-permission continuity, verifies its certificate
-order/capabilities, and signs the
-later production-only APK without that lineage. Files and secrets are discarded
-on success or failure; no private key is printed or retained in the report.
+The runner creates one short-lived signing key and random environment-only
+password, aligns/signs/verifies both targets, and signs both instrumentation APKs.
+It seeds actual protected state in the first installed release, then installs the
+second target **with `adb install -r`**, updates the test APK in place and verifies
+the retained state. Neither package is uninstalled or downgraded. Raw
+instrumentation must report both `OK (1 test)` and final
+`INSTRUMENTATION_CODE: -1`; crashes, cancellation and incomplete output fail.
 
-Permission continuity is necessary because AndroidX declares the package-scoped
-`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` as a signature permission. Android's
-installation code requires the signing-history `PERMISSION` capability to retain
-ownership of an existing permission, including during an update of the same
-package. Disabling it caused `INSTALL_FAILED_DUPLICATE_PERMISSION` in the actual
-Android 16 fixture. Keep the AndroidX declaration and protection level intact;
-it supports receiver isolation on older Android versions.
-[Android permission ownership checks](https://android.googlesource.com/platform/frameworks/base/+/1406600d75c1a30ebdf45312b7fa0f4a4355194b/services/core/java/com/android/server/pm/InstallPackageHelper.java),
-[AndroidX signature permission](https://android.googlesource.com/platform/prebuilts/sdk/+/5c762fb2f6235bbe5d006d3a26063a8e921354b4/current/androidx/manifests/androidx.core_core/AndroidManifest.xml).
+The schema-2 JSON report exists only after both fixture executions succeed. It
+records same-signer preservation and explicitly does not claim verification of the
+operator's real installation or network/pairing/QR/sharing flows. A failed run
+leaves the disposable AVD for inspection, without inventing successful evidence;
+retry on a fresh owned AVD. Ephemeral keys/APKs are removed on success or failure.
 
-The private bridge grants historical debug-key trust for installed data and
-signature permissions. Shared UID, rollback and auth capabilities remain disabled.
-This is a material trust decision: before a real-device transition, the operator
-must review the exact installed signer and accept that permission trust. The OS
-may retain signing history after a subsequent production-only update; passing
-that update does not establish revocation of historical permission trust. Public
-release APKs must still contain only the production signing identity and no
-rotation lineage, so fresh public installations do not acquire debug-key authority.
-
-It invokes `ReleaseUpdateFixture#run` through
-`zip.psst.android.fixture.ReleaseUpdateInstrumentation` three times: seed,
-after bridge installation, and after the production-only higher-code installation.
-The target is updated with `adb install -r`; it is never uninstalled or downgraded.
-Only the disposable instrumentation package is replaced to match its target's
-signing certificate. The target-contained scenario retains every protected-state
-assertion; failures produce a fixed diagnostic without printing stored values.
-The invocation requests raw instrumentation output and requires Android's final
-`INSTRUMENTATION_CODE: -1` alongside the passing diagnostic. A canceled result or
-an incomplete success stream is rejected.
-
-A JSON report is written only after all three fixture runs succeed. A failed run
-leaves its disposable emulator for inspection, without manufacturing successful
-evidence. Stop and remove that owned AVD, then use a fresh one for a retry. Retain
-the small non-secret report if useful and delete the caller's temporary APK/AVD
-files afterward.
-
-API 26 fresh optimized-app verification requires its own emulator/device. This
-Android 13+ signing-rotation fixture does not claim older-system transition
-support, the real phone's certificate, or end-to-end network functionality.
+This Android-only package-signing check changes no shared encryption protocol or
+iOS behavior. The separate optimized public-APK smoke remains required for
+release-specific startup, pairing, QR, sharing and transfer checks.
 
 ## Release build timing
 
@@ -165,6 +100,6 @@ and public download verification retain their separate workflow timings.
 
 `PSST_ANDROID_TASK_TIMINGS` selects a fresh JSONL output path. Initialize it once
 before invoking Gradle, and pass `--init-script` with the absolute script path.
-`python3 tools/android_release.py report-timings --input task-timings.jsonl
+`"$psst_release" android report-timings --input task-timings.jsonl
 --summary summary.md` produces the grouped task report. An empty file represents
 missing timing evidence, not a zero-second successful build.

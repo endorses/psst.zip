@@ -1,6 +1,11 @@
-import CryptoKit
 import Foundation
+import Observation
 import Shared
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import Crypto
+#endif
 
 /// Device-local downloads never acquire account ownership or deletion capabilities.
 struct GuestFile: Codable, Equatable, Identifiable, Sendable {
