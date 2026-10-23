@@ -337,6 +337,9 @@ source review does not establish a runtime pass.
       targets from the repository root and `client/`. Default to the user's
       `~/.local/bin`, support prefix/binary-directory/staging overrides, and embed
       the development version and current Git revision.
+- [x] Add `make build-release` and `install-release`, retaining version/revision
+      metadata while stripping symbol tables and DWARF using `-s -w`, consistent
+      with the existing release packager.
 
 Makefile follow-up (2026-10-23): Linux build and staged installation were verified
 from both entry points, including paths with spaces, `PREFIX`, `BINDIR` and
@@ -346,6 +349,14 @@ within the invocation. Checks used an isolated temporary Go build cache and
 staging directories. No real user installation was performed. Native Windows
 keeps the documented direct Go-build path; these Make targets require GNU Make
 and standard Unix shell/install tools.
+
+Release-target verification (2026-10-23): inspected the native Linux ELF sections
+to confirm the stripped binary has no symbol table or DWARF debug sections;
+ordinary builds retain them. Both targets preserve `--version` metadata. Offline
+QR rendering and a staged `install-release` from `client/` passed, including
+executable permissions and byte-for-byte equality with the built binary. The
+observed development/release sizes were 12,641,243 / 8,605,856 bytes on this machine.
+These checks used a temporary Go build cache and did not publish a release.
 
 ## Completion criteria and record
 

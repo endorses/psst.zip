@@ -12,8 +12,10 @@ The CLI has an independent Go module in `client/`. Before a public CLI release i
 published, build the checked-out source. From the repository root or `client/`:
 
 ```sh
-make build       # plain make also builds the CLI
-make install     # builds and installs ~/.local/bin/psst
+make build            # plain make also builds the CLI
+make install          # builds and installs ~/.local/bin/psst
+make build-release    # strips symbol tables and DWARF debug information (-s -w)
+make install-release  # builds and installs the stripped executable
 psst --version
 psst help
 ```
@@ -33,6 +35,9 @@ make uninstall PREFIX=/your/install/prefix
 `client/psst` executable; account state and local encryption keys are stored
 elsewhere. Development builds embed `dev` and the current Git revision (or
 `unknown` outside a Git checkout); `VERSION` and `REVISION` can be overridden.
+Both release targets retain this version/revision metadata and use the same
+`client/psst` output. Use `install-release` to install a stripped build;
+`install` builds the ordinary executable. These targets do not publish a release.
 The Make targets use GNU Make and standard Unix shell/install tools. A direct Go
 build also works without Make, including on native Windows:
 

@@ -30,7 +30,9 @@ workflows for terminal use, scripts and agents. The `psst` executable can displa
 share QR codes directly or render them offline from saved CLI JSON results.
 
 Build it with `make build` and install it to `~/.local/bin` with `make install`,
-from the repository root or `client/`. Run `make help` for targets and overrides.
+from the repository root or `client/`. Use `make build-release` or
+`make install-release` for a stripped binary. Run `make help` for targets and
+overrides.
 
 Creating transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
