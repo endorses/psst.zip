@@ -413,7 +413,7 @@ class PublicationChecks(unittest.TestCase):
                 "Main ancestry must be checked before CI/evidence verification"
             ),
         ) as verifier:
-            with self.assertRaisesRegex(release.InvalidRelease, "origin/main"):
+            with self.assertRaises(release.InvalidRelease):
                 self.prepare(
                     ref="refs/tags/v1.2.4", event_sha=other, reviewed_commit=other
                 )

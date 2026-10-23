@@ -262,7 +262,7 @@ legal-resource/localization/configuration coverage to both Android and iOS.
 - [x] Apply the signing-migration decision: remove bridge-only code and tests, or
       isolate an optional supported migration tool. Retain ordinary same-signer
       installed-data preservation checks and documented recovery information.
-- [ ] Remove obsolete callers/scripts and update developer/store build documents.
+- [x] Remove obsolete callers/scripts and update developer/store build documents.
       Record Android verification separately from macOS/Xcode/iOS verification;
       unavailable native environments leave those checks explicitly pending.
 
