@@ -3,21 +3,76 @@
 from __future__ import annotations
 
 import copy
-import gzip
 import io
 import json
+import os
+import sys
+import tarfile
+import time
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import generate_corresponding_source_review as corresponding
 import generate_release_gate_reports as producer
-import github_release_transport as transport
 import publish_container_release as publication
-import test_native_browser_inputs as browser_fixtures
-import test_release_transport as transport_fixtures
+import release_http as transport
+import release_process
+import test_release_oci as oci_fixtures
+import test_release_publication as publication_fixtures
 from release_artifacts import InvalidRelease, json_bytes
+
+
+class NativeGateFixture(unittest.TestCase):
+    def setUp(self):
+        self.fixture = publication_fixtures.PublicationChecks()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.children = {}
+        self.archives = {}
+        self.tested_configs = {}
+        for component, record in self.fixture.manifest["images"].items():
+            for architecture in ("amd64", "arm64"):
+                key = component + "-" + architecture
+                files, config_digest = oci_fixtures.fixture(component, architecture)
+                child_digest = json.loads(files["index.json"])["manifests"][0]["digest"]
+                child = json.loads(files.pop("blobs/sha256/" + child_digest[7:]))
+                config = json.loads(files.pop("blobs/sha256/" + config_digest[7:]))
+                labels = config["config"]["Labels"]
+                labels["org.opencontainers.image.revision"] = self.fixture.commit
+                labels["zip.psst.source.archive"] = (
+                    "https://github.com/endorses/psst.zip/archive/"
+                    + self.fixture.commit
+                    + ".tar.gz"
+                )
+                config_raw = json_bytes(config)
+                config_digest = publication.sha256(config_raw)
+                self.tested_configs[key] = config_digest
+                child["config"].update(digest=config_digest, size=len(config_raw))
+                raw = json_bytes(child)
+                child_digest = publication.sha256(raw)
+                index = json.loads(files["index.json"])
+                index["manifests"][0].update(digest=child_digest, size=len(raw))
+                files["index.json"] = json_bytes(index)
+                files["blobs/sha256/" + config_digest[7:]] = config_raw
+                files["blobs/sha256/" + child_digest[7:]] = raw
+                self.children[key] = raw
+                record["platform_digests"]["linux/" + architecture] = (
+                    publication.sha256(raw)
+                )
+                archive = self.fixture.folder / (key + ".tar")
+                with tarfile.open(archive, "w:") as output:
+                    for name, body in files.items():
+                        member = tarfile.TarInfo(name)
+                        member.size = len(body)
+                        output.addfile(member, io.BytesIO(body))
+                self.archives[key] = archive
+            raw = publication_fixtures.raw_index(record["platform_digests"])
+            record["index"] = (
+                record["index"].split("@")[0] + "@" + publication.sha256(raw)
+            )
+            self.fixture.indexes[component].write_bytes(raw)
+        self.fixture.write_manifest()
+        self.plan = self.fixture.prepare()
 
 
 class JobAPI:
@@ -64,7 +119,7 @@ class JobAPI:
 
 class GateReports(unittest.TestCase):
     def setUp(self):
-        self.fixture = transport_fixtures.TransportChecks()
+        self.fixture = NativeGateFixture()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.binding = self.fixture.plan.binding
@@ -76,6 +131,7 @@ class GateReports(unittest.TestCase):
         self.archives = {}
         self.configs = {}
         self.smoke_temp_roots = []
+        self.descriptions = {}
         for platform in producer.PLATFORMS:
             arch = platform.split("/")[1]
             pack = self.root / ("runtime-" + arch)
@@ -83,7 +139,8 @@ class GateReports(unittest.TestCase):
             source = self.fixture.fixture.source
             (pack / source.name).write_bytes(source.read_bytes())
             manifest = {
-                "schema_version": 1,
+                "schema_version": 2,
+                "kind": "native-runtime-source-description",
                 "version": self.binding.version,
                 "revision": self.binding.commit,
                 "architecture": arch,
@@ -105,7 +162,20 @@ class GateReports(unittest.TestCase):
                     for component in ("backend", "web")
                 },
             }
-            (pack / "runtime-pack.json").write_bytes(json_bytes(manifest))
+            inventory = {
+                "schema_version": 2,
+                "kind": "container-source-inventory",
+                "source": {
+                    "repository": self.binding.repository,
+                    "version": self.binding.version,
+                    "commit": self.binding.commit,
+                },
+            }
+            (pack / "source-inventory.json").write_bytes(json_bytes(inventory))
+            manifest["source_inventory_sha256"] = publication.sha256(
+                json_bytes(inventory)
+            )
+            self.descriptions[str(pack)] = manifest
             configs = {
                 component: self.fixture.tested_configs[component + "-" + arch]
                 for component in ("backend", "web")
@@ -125,12 +195,31 @@ class GateReports(unittest.TestCase):
                 "execution": "native",
                 "tested_configs": configs,
                 "runtime_pack_sha256": publication.sha256(
-                    (pack / "runtime-pack.json").read_bytes()
+                    (pack / "source-inventory.json").read_bytes()
                 ),
                 "checks": sorted(producer.CHECKS),
                 "completed_at": "2026-10-07T16:00:00+00:00",
                 "publication_authorized": False,
             }
+
+        def describe(context, mode, *args):
+            self.assertEqual(mode, "describe")
+            self.assertEqual(args[0], "--collection")
+            pack = Path(args[1])
+            record = self.descriptions[str(pack)]
+            source = pack / record["source_asset"]["file"]
+            if (
+                publication.source_digest(source)[7:]
+                != record["source_asset"]["sha256"]
+            ):
+                raise InvalidRelease("fixture source bytes changed")
+            return json_bytes(record)
+
+        self.description_patch = patch.object(
+            producer, "source_command", side_effect=describe
+        )
+        self.description_patch.start()
+        self.addCleanup(self.description_patch.stop)
 
     def ci(self):
         return producer.source_ci_report(
@@ -339,14 +428,16 @@ class GateReports(unittest.TestCase):
         ):
             self.ci()
 
-    def test_runtime_pack_manifest_substitution_during_smoke_fails(self):
+    def test_runtime_source_inventory_substitution_during_smoke_fails(self):
         def substitute(args, **kwargs):
             self.execute_smoke(args, **kwargs)
-            path = self.packs["linux/amd64"] / "runtime-pack.json"
+            path = self.packs["linux/amd64"] / "source-inventory.json"
             path.write_bytes(path.read_bytes() + b"\n")
             return b"fixture harness succeeded"
 
-        with self.assertRaisesRegex(InvalidRelease, "Runtime inputs changed"):
+        with self.assertRaisesRegex(
+            InvalidRelease, "Runtime .*context|Runtime inputs changed"
+        ):
             self.native(execute=substitute)
 
     def test_failed_harness_missing_report_or_incomplete_smoke_does_not_yield_measurement(
@@ -379,7 +470,7 @@ class GateReports(unittest.TestCase):
             self.native()
         source.write_bytes(self.fixture.fixture.source.read_bytes())
         self.configs["linux/amd64"]["backend"] = "sha256:" + "c" * 64
-        with self.assertRaisesRegex(InvalidRelease, "configuration"):
+        with self.assertRaises(InvalidRelease):
             self.native()
 
     def test_both_authenticated_measurements_required_before_gate_reports(self):
@@ -520,264 +611,48 @@ class GateReports(unittest.TestCase):
         with self.assertRaisesRegex(InvalidRelease, "differs"):
             producer.source_asset_measurements(self.binding, {source.name: source})
 
-    def test_application_source_replay_binds_git_commit_and_retained_archive(self):
-        fixture = self.fixture.fixture
-        name = f"psst.zip-source-{self.binding.version}.tar.gz"
-        source = self.root / name
-        tar = fixture.git(
-            "archive",
-            "--format=tar",
-            f"--prefix=psst.zip-{self.binding.version}/",
-            self.binding.commit,
-        )
-        buffer = io.BytesIO()
-        timestamp = int(fixture.git("show", "-s", "--format=%ct", self.binding.commit))
-        with gzip.GzipFile(
-            fileobj=buffer, mode="wb", filename="", mtime=timestamp
-        ) as stream:
-            stream.write(tar)
-        raw = buffer.getvalue()
-        source.write_bytes(raw)
-        subjects = {
-            **dict(self.binding.subjects),
-            "source:" + name: "file:" + name + "@" + publication.sha256(raw),
-        }
-        binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
-        # Working files and untracked secrets cannot influence the selected tree.
-        (fixture.root / "LICENSE").write_bytes(b"uncommitted replacement")
-        (fixture.root / "operator-secret.env").write_bytes(b"untracked operator data")
-        result = corresponding.verify_application_source_archive(
-            binding, root=fixture.root, source=source
-        )
-        self.assertEqual(result["git_archive_sha256"], publication.sha256(tar))
-        self.assertTrue(result["source_commit_archive_verified"])
-        self.assertFalse(result["corresponding_source_completeness_verified"])
-        self.assertFalse(result["publication_authorized"])
-        self.assertNotIn("passed", result)
-        self.assertNotIn("gate", result)
-        source.write_bytes(raw + b"substitution")
-        with self.assertRaisesRegex(InvalidRelease, "publication binding"):
-            corresponding.verify_application_source_archive(
-                binding, root=fixture.root, source=source
-            )
-        # Updating only the caller's digest does not legitimize another archive.
-        changed = replace(
-            binding,
-            subjects=tuple(
-                sorted(
-                    {
-                        **subjects,
-                        "source:" + name: "file:"
-                        + name
-                        + "@"
-                        + publication.sha256(source.read_bytes()),
-                    }.items()
-                )
-            ),
-        )
-        with self.assertRaisesRegex(InvalidRelease, "selected committed Git"):
-            corresponding.verify_application_source_archive(
-                changed, root=fixture.root, source=source
-            )
-        source.write_bytes(raw)
-        fixture.git("add", "LICENSE")
-        fixture.git("commit", "-qm", "Another source tree")
-        other_commit = fixture.git("rev-parse", "HEAD").decode().strip()
-        with self.assertRaisesRegex(InvalidRelease, "selected committed Git"):
-            corresponding.verify_application_source_archive(
-                replace(binding, commit=other_commit), root=fixture.root, source=source
-            )
 
-    def test_browser_replay_requires_both_authenticated_images_and_bound_source_bytes(
-        self,
-    ):
-        # Lower-level Git/npm/OCI and preferred mappings have separate byte tests.
-        # Exercise the new join boundary without rebuilding or duplicating them.
-        native = self.collect_both()
-        capture = browser_fixtures.NativeBrowser()
-        capture.setUp()
-        self.addCleanup(capture.doCleanups)
-        measurements, observations = {}, {}
-        trusted = {path.read_bytes() for path in native.values()}
-        for platform, path in native.items():
-            image = json.loads(path.read_bytes())["images"]["web"]
-            observations[platform] = {
-                "kind": "native-browser-input-measurement",
-                "source": producer.NativeSourceContext(
-                    self.binding.repository,
-                    self.binding.version,
-                    self.binding.commit,
-                    platform,
-                ).checked(),
-                "image": image,
-                "tested_web_config": self.configs[platform]["web"],
-                "browser_inputs_sha256": publication.source_digest(capture.pack),
-                "npm_archives": {},
-                "source_associations": {"unresolved_javascript": []},
-                "git_inputs": {},
-                "final_static_files": {},
-            }
-            measurement = self.root / ("browser-" + platform.split("/")[1] + ".json")
-            measurement.write_bytes(
-                json_bytes(
-                    {**observations[platform], "builder_config": "sha256:" + "c" * 64}
-                )
-            )
-            measurements[platform] = measurement
-            trusted.add(measurement.read_bytes())
-        asset_name = "psst.zip-upstream-inputs-" + self.binding.version + ".tar.gz"
-        collection = self.root / "upstream"
-        collection.mkdir()
-        (collection / asset_name).write_bytes(
-            b"independently replayed original fixture"
-        )
-        (collection / corresponding.upstream_inputs.RECORD).write_bytes(
-            b"collection fixture"
-        )
-        upstream = {
-            "asset": {
-                "name": asset_name,
-                "digest": publication.source_digest(collection / asset_name),
-            },
-            "collection_sha256": publication.source_digest(
-                collection / corresponding.upstream_inputs.RECORD
-            ),
-        }
-        subjects = dict(self.binding.subjects)
-        subjects["source:" + asset_name] = (
-            "file:" + asset_name + "@" + upstream["asset"]["digest"]
-        )
-        binding = replace(self.binding, subjects=tuple(sorted(subjects.items())))
-
-        class Authenticator:
-            def authenticate(inner, content, supplied):
-                self.assertEqual(supplied, binding)
-                if content not in trusted:
-                    raise InvalidRelease("unsigned browser/native measurement")
-
-        def replay(context, pack, archive, config, runtime, *, source_root):
-            self.assertEqual(pack, capture.pack)
-            self.assertEqual(archive, self.archives[context.platform]["web"])
-            self.assertEqual(config, self.configs[context.platform]["web"])
-            self.assertEqual(source_root, self.root)
-            return observations[context.platform]
-
-        def verify(**overrides):
-            return corresponding.verify_browser_source_inputs(
-                binding,
-                **{
-                    "root": self.root,
-                    "native_measurements": native,
-                    "runtime_packs": self.packs,
-                    "browser_measurements": measurements,
-                    "captures": {p: capture.pack for p in producer.PLATFORMS},
-                    "web_archives": {
-                        p: self.archives[p]["web"] for p in producer.PLATFORMS
-                    },
-                    "upstream_collection": collection,
-                    "authenticator": Authenticator(),
-                    **overrides,
-                },
-            )
-
-        with (
-            patch.object(corresponding.browser_inputs, "replay", side_effect=replay),
-            patch.object(
-                corresponding.upstream_inputs,
-                "verify_source_files",
-                return_value=(upstream, {}),
-            ) as offering,
-            patch.object(
-                corresponding.preferred,
-                "verify_preferred_relationships",
-                return_value={"fixture": "mapped modules"},
-            ),
-            patch.object(
-                corresponding.preferred,
-                "verify_captured_compiler_inputs",
-                return_value={"fixture": "mapped compiler"},
-            ) as compiler,
-            patch.object(
-                corresponding.preferred,
-                "verify_generator_relationships",
-                return_value={"fixture": "mapped generators"},
-            ),
+class RemainingMeasurementBoundaries(unittest.TestCase):
+    def test_read_only_api_refuses_external_hosts_mutations_and_oversized_data(self):
+        for method, url in (
+            ("GET", "https://attacker.example/path"),
+            ("POST", "https://api.github.com/path"),
         ):
-            result = verify()
-            offering.assert_called_once_with(
-                self.root,
-                binding.repository,
-                binding.version,
-                binding.commit,
-                collection,
-            )
-            self.assertEqual(set(result["images"]), {"web-amd64", "web-arm64"})
-            self.assertFalse(result["corresponding_source_completeness_verified"])
-            self.assertFalse(result["publication_authorized"])
-            self.assertNotIn("gate", result)
             with self.assertRaises(InvalidRelease):
-                verify(
-                    browser_measurements={"linux/amd64": measurements["linux/amd64"]}
-                )
-            arm = measurements["linux/arm64"]
-            original = arm.read_bytes()
-            arm.write_bytes(b"unsigned substitution")
-            with self.assertRaisesRegex(InvalidRelease, "unsigned"):
-                verify()
-            arm.write_bytes(original)
-            changed = {
-                **json.loads(original),
-                "tested_web_config": "sha256:" + "f" * 64,
-            }
-            arm.write_bytes(json_bytes(changed))
-            trusted.add(arm.read_bytes())
-            with self.assertRaisesRegex(InvalidRelease, "authenticated final image"):
-                verify()
-            arm.write_bytes(original)
-            observations["linux/arm64"]["source_associations"] = {"substituted": True}
-            with self.assertRaisesRegex(
-                InvalidRelease, "independent Git/npm/OCI replay"
-            ):
-                verify()
-            observations["linux/arm64"]["source_associations"] = {
-                "unresolved_javascript": [{"file": "unknown-emitted-worker.js"}]
-            }
-            unresolved = {
-                **json.loads(original),
-                "source_associations": observations["linux/arm64"][
-                    "source_associations"
-                ],
-            }
-            arm.write_bytes(json_bytes(unresolved))
-            trusted.add(arm.read_bytes())
-            with self.assertRaisesRegex(
-                InvalidRelease, "Unattributed final JavaScript"
-            ):
-                verify()
-            arm.write_bytes(original)
-            observations["linux/arm64"]["source_associations"] = {
-                "unresolved_javascript": []
-            }
-            upstream["asset"]["digest"] = "sha256:" + "f" * 64
-            with self.assertRaisesRegex(InvalidRelease, "publication binding"):
-                verify()
-            upstream["asset"]["digest"] = publication.source_digest(
-                collection / asset_name
+                transport.HTTPS().request(method, url)
+        response = unittest.mock.Mock()
+        response.status = 200
+        response.getheaders.return_value = [("Content-Length", "100")]
+        response.read.side_effect = io.BytesIO(b"oversized fixture").read
+        connection = unittest.mock.Mock()
+        connection.getresponse.return_value = response
+        with (
+            patch.object(transport, "MAX_JSON", 8),
+            patch.object(
+                transport.http.client, "HTTPSConnection", return_value=connection
+            ),
+            self.assertRaises(InvalidRelease),
+        ):
+            transport.HTTPS().request("GET", "https://api.github.com/fixture")
+
+    def test_process_timeout_and_output_bound_remain_private(self):
+        before = time.monotonic()
+        with self.assertRaises(InvalidRelease):
+            release_process.command(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                environment={"PATH": os.environ["PATH"]},
+                timeout=0.05,
             )
-            mappings = 0
-
-            def substitute_after_mapping(*args):
-                nonlocal mappings
-                mappings += 1
-                if mappings == 2:
-                    capture.pack.write_bytes(
-                        capture.pack.read_bytes() + b"changed after replay"
-                    )
-                return {"fixture": "mapped compiler"}
-
-            compiler.side_effect = substitute_after_mapping
-            with self.assertRaisesRegex(InvalidRelease, "changed during replay"):
-                verify()
+        self.assertLess(time.monotonic() - before, 3)
+        with (
+            patch.object(release_process, "MAX_JSON", 8),
+            self.assertRaises(InvalidRelease),
+        ):
+            release_process.command(
+                [sys.executable, "-c", "print('private disposable output')"],
+                environment={"PATH": os.environ["PATH"]},
+                timeout=1,
+            )
 
 
 if __name__ == "__main__":

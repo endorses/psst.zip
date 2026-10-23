@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/endorses/psst.zip/tools/release/internal/contract"
+	"github.com/endorses/psst.zip/tools/release/internal/oci"
 )
 
 // Run exposes read-only candidate preparation and exclusive v1 bundle creation.
@@ -34,6 +35,33 @@ func run(ctx context.Context, b Builder, args []string, stdout io.Writer) error 
 	var output, githubOutput string
 	var execute func() (any, map[string]string, error)
 	switch args[0] {
+	case "inspect-oci":
+		var options oci.Options
+		archive := flags.String("archive", "", "exact native OCI archive")
+		flags.StringVar(&options.Repository, "repository", "", "source repository")
+		flags.StringVar(&options.Version, "version", "", "exact stable version")
+		flags.StringVar(&options.Commit, "commit", "", "exact source commit")
+		flags.StringVar(&options.Platform, "platform", "", "native Linux platform")
+		flags.StringVar(&options.Component, "component", "", "backend or web")
+		flags.StringVar(&options.TestedConfig, "tested-config", "", "actually tested configuration digest")
+		execute = func() (any, map[string]string, error) {
+			image, err := oci.InspectArchive(*archive, options)
+			return metadata(image), nil, err
+		}
+	case "assemble-oci":
+		inputs := flags.String("inputs", "", "bounded native archive and tested configuration paths")
+		execute = func() (any, map[string]string, error) {
+			raw, err := readJSONFile(*inputs)
+			if err != nil {
+				return nil, nil, err
+			}
+			var options OCIAssemblyOptions
+			if err := contract.Decode(raw, maxJSON, &options); err != nil {
+				return nil, nil, err
+			}
+			result, err := AssembleOCI(ctx, options)
+			return result, nil, err
+		}
 	case "assemble":
 		inputs := flags.String("inputs", "", "bounded exact assembly input paths and source identity")
 		execute = func() (any, map[string]string, error) {

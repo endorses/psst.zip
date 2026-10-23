@@ -516,3 +516,10 @@ browser facts were explicitly synthetic. That rehearsal rejected altered AGPL
 bytes and removed its temporary fixture. Complete hosted/native-pair evaluation,
 recovery-result integration and live publication remain separate pending checks.
 See [evaluation boundaries](../security/container-release-evaluation.md).
+
+Native preparation and retained recovery adapters now invoke the shared Go OCI
+reader and deterministic index assembler, replacing the independent Python graph
+and layer verifier. Five tiny actual-archive adapter cases pass in 1.28 seconds;
+Go owns the traversal, descriptor/layer identity, labels and expansion limits.
+The archive helper remains a narrow compatibility boundary for the Python smoke
+and recovery experiment runners, with no second OCI policy implementation.
