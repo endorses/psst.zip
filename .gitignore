@@ -7,7 +7,11 @@ backend/data/
 # Node
 web/node_modules/
 web/build/
+web/build-lan/
 web/.svelte-kit/
+web/.svelte-kit-lan/
+/client/internal/lanassets/site/*
+!/client/internal/lanassets/site/README.txt
 
 # Android / Gradle
 android/.gradle/

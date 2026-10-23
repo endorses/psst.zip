@@ -30,11 +30,18 @@ workflows for terminal use, scripts and agents. The `psst` executable can displa
 share QR codes directly or render them offline from saved CLI JSON results.
 
 Build it with `make build` and install it to `~/.local/bin` with `make install`,
-from the repository root or `client/`. Use `make build-release` or
+from the repository root or `client/`. Source builds need Go and Node/npm to embed
+the browser interface; installed binaries run on their own. Use `make build-release` or
 `make install-release` for a stripped binary. Run `make help` for targets and
 overrides.
 
-Creating transfers and receive links requires an account. Administrators create
+For temporary transfers on a trusted LAN, run `psst serve send FILE --qr` or
+`psst serve receive --output-dir DIR --qr`. The executable serves the browser UI
+itself, selects an available port and needs no account, Docker or certificate.
+The host must remain reachable; HTTP does not authenticate the browser code.
+See [LAN sharing, limits and optional HTTPS](docs/cli.md#temporary-sharing-on-a-trusted-lan).
+
+Creating hosted transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
 into a receive link remain accessible without signing in.
 

@@ -68,6 +68,9 @@ func (a *App) execute(ctx context.Context, o options, args []string) (any, error
 	if args[0] == "qr" {
 		return a.qrCommand(ctx, o, args[1:])
 	}
+	if args[0] == "serve" {
+		return a.serveCommand(ctx, o, args[1:])
+	}
 	// Parse and reject invalid commands before accessing private state.
 	if !oneOf(args[0], "auth", "vault", "send", "fetch", "upload", "receive", "transfers") {
 		return nil, usage("Unknown command; run psst help.")

@@ -1152,5 +1152,13 @@
   "legalUnavailable": "Exakte Quellcode-Metadaten sind nicht verfügbar. Bitte den Serverbetreiber um den Quellcode dieser bereitgestellten Version.",
   "legalBack": "Zurück zu psst.zip",
   "legalBackendNotices": "Hinweise zu Backend-Abhängigkeiten",
-  "legalRuntimeNotices": "Hinweise zu Laufzeitkomponenten"
+  "legalRuntimeNotices": "Hinweise zu Laufzeitkomponenten",
+  "lanSharing": "Temporäre LAN-Freigabe",
+  "lanOpenSharedLink": "Öffne den vollständigen Senden- oder Empfangslink der Person, die psst.zip ausführt. Diese temporäre Sitzung benötigt kein Konto und keine Anmeldung.",
+  "lanSessionNotice": "Dieser Link funktioniert nur, solange der freigebende Computer erreichbar ist und die Sitzung läuft.",
+  "lanSourceAccess": "Quellcode und Lizenzen",
+  "lanSourceDescription": "Diese Sitzung verwendet die psst.zip-CLI mit eingebetteten Übertragungsseiten. Lade unten den zugehörigen Quellcode und die Informationen zu Abhängigkeiten herunter.",
+  "lanSourceMetadata": "Build- und Quellcodeinformationen",
+  "lanHTTPDownloadLimit": "Über HTTP kann dieser Browser Dateien mit jeweils bis zu 25 MiB speichern. Verwende für größere Dateien die psst.zip-CLI oder bitte den Absender um vertrauenswürdiges HTTPS.",
+  "lanSourceUnavailable": "Für diesen Entwicklungs-Build sind keine genauen Quellcodeinformationen verfügbar. Bitte die Person, die diese Sitzung ausführt, um den passenden Quellcode."
 }

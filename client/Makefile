@@ -8,9 +8,12 @@ DESTDIR ?=
 VERSION ?= $(shell sh "$(CLIENT_DIR)/scripts/source-version.sh" "$(CLIENT_DIR)")
 REVISION ?= $(shell git -C "$(CLIENT_DIR)" rev-parse HEAD 2>/dev/null || printf '%s' unknown)
 
-.PHONY: build build-release install install-release uninstall clean help
+.PHONY: build build-release install install-release uninstall clean help lan-assets
 
-build build-release:
+lan-assets:
+	python3 "$(CLIENT_DIR)/scripts/prepare-lan-assets.py"
+
+build build-release: lan-assets
 	CGO_ENABLED=0 $(GO) -C "$(CLIENT_DIR)" build -trimpath -buildvcs=false \
 		-ldflags "$(if $(filter build-release,$@),-s -w )-X main.version=$(VERSION) -X main.revision=$(REVISION)" \
 		-o "$(CLIENT_DIR)/psst" ./cmd/psst
@@ -34,6 +37,7 @@ help:
 	@printf '  %-22s %s\n' \
 		'make [build]' 'Build client/psst with the current Git revision' \
 		'make build-release' 'Build a stripped executable (-s -w)' \
+		'make lan-assets' 'Prepare matching embedded LAN browser assets (cached)' \
 		'make install' 'Build and install psst (default: ~/.local/bin)' \
 		'make install-release' 'Build and install the stripped executable' \
 		'make uninstall' 'Remove the installed executable' \

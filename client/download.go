@@ -81,6 +81,13 @@ func (c *Client) fetchTransfer(ctx context.Context, id string, key []byte, slot 
 		return result, e
 	}
 	defer root.Close()
+	return c.fetchTransferAtRoot(ctx, id, key, slot, private, root, absolute, s)
+}
+
+// fetchTransferAtRoot keeps filesystem containment anchored to an already opened
+// directory, including Receive submission subdirectories.
+func (c *Client) fetchTransferAtRoot(ctx context.Context, id string, key []byte, slot string, private []byte, root *os.Root, absolute string, s Store) (DownloadResult, error) {
+	result := DownloadResult{ID: id, Files: []string{}}
 	identityKey := key
 	if slot != "" {
 		identityKey = private
@@ -89,7 +96,7 @@ func (c *Client) fetchTransfer(ctx context.Context, id string, key []byte, slot 
 	digest := hex.EncodeToString(identity[:])
 	jk := checkpointID(c.origin, id, absolute)
 	j := downloadJournal{Origin: c.origin, ID: id, Directory: absolute, Files: map[string]completedFile{}, Pending: map[string]pendingFile{}, KeyDigest: digest}
-	e = s.Get(jk, &j)
+	e := s.Get(jk, &j)
 	if e != nil && !errors.Is(e, ErrNotFound) {
 		return result, e
 	}
@@ -406,6 +413,64 @@ func (c *Client) finishReceipt(ctx context.Context, result DownloadResult, j *do
 	return result, nil
 }
 
+// FetchSubmission downloads one complete, authoritative Receive inbox member.
+// It reuses the same authenticated output journal as FetchInbox and confines the
+// submission directory beneath dir even when an attacker places a symlink there.
+func (c *Client) FetchSubmission(ctx context.Context, slot, id, dir string, s Store) (DownloadResult, error) {
+	result := DownloadResult{ID: id, Files: []string{}}
+	if e := requireStore(s); e != nil {
+		return result, e
+	}
+	if !protocol.ValidID(slot) || !protocol.ValidID(id) {
+		return result, ErrProtocol
+	}
+	var local resourceRecord
+	if e := s.Get(resourceKey("receive", slot), &local); e != nil {
+		if errors.Is(e, ErrNotFound) {
+			return result, ErrMissingKey
+		}
+		return result, e
+	}
+	if local.Origin != c.origin || local.ID != slot || len(local.Key) != 32 || len(local.PublicKey) != 32 {
+		return result, ErrMissingKey
+	}
+	member, e := c.Membership(ctx, slot, id)
+	if e != nil {
+		return result, e
+	}
+	if member.ReceiveProtocol != 2 || !keyMatches(member.RecipientPublicKey, local.PublicKey) {
+		return result, ErrProtocol
+	}
+	absolute, e := filepath.Abs(dir)
+	if e != nil {
+		return result, e
+	}
+	if e = os.MkdirAll(absolute, 0700); e != nil {
+		return result, e
+	}
+	output, e := os.OpenRoot(absolute)
+	if e != nil {
+		return result, e
+	}
+	defer output.Close()
+	if e = output.Mkdir(id, 0700); e != nil && !errors.Is(e, os.ErrExist) {
+		return result, e
+	}
+	info, e := output.Lstat(id)
+	if e != nil {
+		return result, e
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return result, errors.New("Receive output is not a regular directory")
+	}
+	child, e := output.OpenRoot(id)
+	if e != nil {
+		return result, e
+	}
+	defer child.Close()
+	return c.fetchTransferAtRoot(ctx, id, nil, slot, local.Key, child, filepath.Join(absolute, id), s)
+}
+
 // FetchInbox checks exact authoritative membership for every submission before
 // decrypting it. A login cannot recover a private key absent from this Store.
 func (c *Client) FetchInbox(ctx context.Context, id, dir string, s Store) ([]DownloadResult, error) {
@@ -442,14 +507,7 @@ func (c *Client) FetchInbox(ctx context.Context, id, dir string, s Store) ([]Dow
 			if item.Status != "complete" {
 				continue
 			}
-			member, e := c.Membership(ctx, id, item.TransferID)
-			if e != nil {
-				return results, e
-			}
-			if member.ReceiveProtocol != 2 || !keyMatches(member.RecipientPublicKey, local.PublicKey) {
-				return results, errors.New("submission membership policy mismatch")
-			}
-			r, e := c.fetchTransfer(ctx, item.TransferID, nil, id, local.Key, filepath.Join(dir, item.TransferID), s)
+			r, e := c.FetchSubmission(ctx, id, item.TransferID, dir, s)
 			results = append(results, r)
 			if e != nil {
 				return results, e

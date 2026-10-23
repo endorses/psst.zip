@@ -1122,4 +1122,12 @@ export interface MessageArguments {
   legalBack: never;
   legalBackendNotices: never;
   legalRuntimeNotices: never;
+  lanSharing: never;
+  lanOpenSharedLink: never;
+  lanSessionNotice: never;
+  lanSourceAccess: never;
+  lanSourceDescription: never;
+  lanSourceMetadata: never;
+  lanHTTPDownloadLimit: never;
+  lanSourceUnavailable: never;
 }

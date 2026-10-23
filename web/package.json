@@ -10,7 +10,10 @@
     "format": "prettier --write .",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:browser": "playwright test",
-    "check:localization": "node scripts/check-localization.mjs"
+    "test:lan": "playwright test --config playwright.lan.config.ts",
+    "check:localization": "node scripts/check-localization.mjs",
+    "build:lan": "node scripts/lan-web.mjs build",
+    "check:lan": "node scripts/lan-web.mjs check"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
