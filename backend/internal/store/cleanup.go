@@ -1,3 +1,5 @@
+//go:build !windows
+
 package store
 
 import (
@@ -8,16 +10,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-// BoundedDeleter supports incremental deletion while holding a resource lock.
-// done=false keeps quota reservations charged and resumes on the next attempt.
-// Legacy stores retain their DeleteAll contract; callers must not simulate
-// cancellation by leaking a new goroutine for every blocked storage operation.
-type BoundedDeleter interface {
-	DeleteAllBounded(context.Context, string, int) (done bool, err error)
-}
-
-var errCleanupEntryChanged = errors.New("storage entry changed during cleanup")
 
 // DeleteAllBounded removes the exact resource directory (or file), never a
 // sibling with a matching prefix. Descriptor-relative traversal never follows a

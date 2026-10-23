@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"syscall"
 	"time"
 
 	"github.com/endorses/psst.zip/backend/internal/store"
-	"golang.org/x/sys/unix"
 )
 
 const OrphanDirectoryLimit = 64
@@ -284,7 +284,7 @@ func (q *Queries) CommitOrphanPage(ctx context.Context, d OrphanDirectory, p sto
 				return err
 			}
 		}
-		if d.Name == "" && !e.Unsupported && e.File.Mode&unix.S_IFMT == unix.S_IFDIR {
+		if d.Name == "" && !e.Unsupported && e.File.Mode&syscall.S_IFMT == syscall.S_IFDIR {
 			var count int
 			if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM orphan_directories`).Scan(&count); err != nil {
 				return err

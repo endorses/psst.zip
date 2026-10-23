@@ -116,40 +116,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/slots/{slotID}/traffic-status", s.slotTrafficStatus)
 		s.authRoutes(r)
 
-		// Transfer endpoints (send flow)
-		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/transfers", s.createTransfer)
-		r.With(s.requireTransferRead).Get("/transfers/{transferID}", s.getTransfer)
-		r.Delete("/transfers/{transferID}", s.deleteTransfer)
-		r.With(s.requireRegularUser).Patch("/transfers/{transferID}/title", s.renameTransferTitle)
-		r.With(s.requireUpload, s.requirePublicTransfers).Post("/transfers/{transferID}/complete", s.completeTransfer)
-		r.With(s.requireTransferRead).Post("/transfers/{transferID}/downloaded", s.acknowledgeDownload)
-		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Post("/transfers/{transferID}/manifest", s.uploadManifest)
-		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/manifest", s.downloadManifest)
-
-		r.Get("/transfers/{transferID}/upload-status", s.uploadStatus)
-
-		// Tus file upload endpoints
-		r.Options("/transfers/{transferID}/files", tus.ServeOptions)
-		r.With(s.requireUpload, s.requirePublicTransfers).Post("/transfers/{transferID}/files", s.tusCreate)
-		r.With(s.requireUpload).Head("/transfers/{transferID}/files/{fileID}", s.tusHead)
-		r.With(s.requireUpload, s.admitPayload, s.measureUpload).Patch("/transfers/{transferID}/files/{fileID}", s.tusPatch)
-
-		// File download
-		r.With(s.requireTransferRead, s.admitPayload, s.measureDownload).Get("/transfers/{transferID}/files/{fileID}", s.downloadFile)
-
-		// Slot endpoints (receive flow)
-		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requireRegularUser, s.requirePublicTransfers).Post("/slots", s.createSlot)
-		r.With(s.requireInboxOwner).Get("/slots/{slotID}", s.getSlot)
-		r.With(s.requireInboxOwner).Get("/slots/{slotID}/inbox", s.getInboxPage)
-		r.With(s.requireInboxOwner).Get("/slots/{slotID}/transfers/{transferID}/membership", s.inboxTransferMembership)
-		r.Delete("/slots/{slotID}", s.deleteSlot)
-		r.With(s.requireRegularUser).Patch("/slots/{slotID}/title", s.renameSlotTitle)
-		r.With(s.requireInboxOwner, s.admitEvents).Get("/slots/{slotID}/events", s.slotEvents)
-
-		r.Get("/slots/{slotID}/availability", s.slotAvailability)
-
-		// Slot-scoped transfer creation
-		r.With(rateLimitMiddleware(creationRL, s.clientIP), s.requirePublicTransfers).Post("/slots/{slotID}/transfers", s.createSlotTransfer)
+		s.transferRoutes(r, creationRL)
 	})
 
 	return r

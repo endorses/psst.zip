@@ -1,7 +1,7 @@
 # Temporary LAN sharing from the psst.zip CLI
 
-Created: 2026-10-23. Status: **planned; implementation not started**.
-Prepared on `build/cli-makefile`. This document does not authorize a release,
+Created: 2026-10-23. Status: **implementation in progress**.
+Implementation branch: `feat/cli-lan-sharing`. This document does not authorize a release,
 production deployment, firewall change or history rewrite.
 
 ## Goal and agreed scope
@@ -115,7 +115,7 @@ database/storage components only where useful; retain SQLite if that is the
 smallest way to preserve transfer semantics, without inventing a parallel database.
 Any internal owner identity is private implementation state, not a network login.
 
-- [ ] Define configuration, owner operations, restricted HTTP handler, readiness,
+- [x] Define configuration, owner operations, restricted HTTP handler, readiness,
       cancellation and cleanup boundaries. Restrict network routes to the active
       session and its required guest/browser APIs; public requests cannot create
       unrelated resources or invoke owner, account or administrator operations.
@@ -254,4 +254,23 @@ device can use the browser UI to transfer and recover matching plaintext; limits
 and shutdown are enforced; received files survive cleanup; hosted behavior remains
 compatible; and source/release builds include the correct assets and notices.
 Native validation and any unavailable platform checks remain explicitly documented
-until performed. All implementation tasks above are currently pending.
+until performed. Unchecked tasks remain pending.
+
+## Implementation evidence
+
+Backend embedding now uses `backend/standalone` and the shared
+`api.transferRoutes` registration. Standalone recorder tests cover the actual
+hosted handlers for Send acknowledgements, Receive-v2 submission, resource/route
+isolation, Host/Origin checks, expiry, capacity races and active stream limits.
+The seven standalone checks and storage checks pass under the race detector.
+Hosted API race tests pass (169.6 seconds locally); the entire database package
+passes normally (6.9 seconds), with targeted database capacity/download/file-list
+race regressions passing (5.8 seconds). A broad concurrent race run hit its
+three-minute database-package limit during fixture setup; this is recorded as an
+incomplete full race run, not a passing result. No database query semantics were
+changed for LAN mode.
+
+Backend facade cross-builds pass for Windows amd64 and macOS arm64 with CGO
+disabled. The existing Unix storage behavior is retained; Windows storage now
+uses handle-relative no-reparse opens and bounded deletion. Windows directory
+flush semantics differ from Unix; native Windows runtime checks remain pending.
