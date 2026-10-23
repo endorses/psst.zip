@@ -66,13 +66,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tools -p 'test_release_*.py' -v
           python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
-          python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
-          python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
           python3 -m unittest discover -s tools -p 'test_android*.py' -v
-
-      - name: SQLite vendoring syntax regressions
-        # Two tiny standard-library cases; no dependency downloads or generators.
-        run: GOTOOLCHAIN=local GO111MODULE=off go test ./tools/sqlite_vendoring.go ./tools/sqlite_vendoring_test.go
 
       - name: Shared development tooling regressions
         run: GOWORK=off go -C tools/release test -count=1 -timeout 1m ./...
@@ -83,11 +77,8 @@ jobs:
           cmp LICENSE web/static/licenses/AGPL-3.0-only.txt
           cmp LICENSE client/LICENSE
 
-      - name: Check native notice inputs and archive boundaries
+      - name: Check retained runtime legal policy
         run: |
-          python3 -m unittest discover -s tools -p 'test_runtime_notices.py' -v
-          python3 -m unittest discover -s tools -p 'test_runtime_source_packaging.py' -v
-          python3 -m unittest discover -s tools -p 'test_caddy_source_signatures.py' -v
           python3 tools/runtime-legal/verify.py
           python3 tools/runtime-legal/test_verify.py
 
@@ -128,7 +119,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           go mod download
-          python3 scripts/generate-third-party-notices.py --check
+          release_tool=$(sh "$GITHUB_WORKSPACE/tools/release/build.sh")
+          "$release_tool" --root "$GITHUB_WORKSPACE" backend-notices --check
 
       - name: Test
         if: steps.scope.outputs.run == 'true'

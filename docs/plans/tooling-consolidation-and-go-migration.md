@@ -108,10 +108,10 @@ filenames rather than filenames named after these stages.
 - [x] Measure relevant cold/warm build time, job/step time, duplicate archive
       bytes, and tool prerequisites using available CI/local evidence. Do not run
       every application suite just to establish a tooling baseline.
-- [ ] Reuse the maintained toolchain policy: latest stable tools/actions/runners
+- [x] Reuse the maintained toolchain policy: latest stable tools/actions/runners
       at implementation time unless compatibility requires a documented exception.
       Check official support information and CI annotations before changing pins.
-- [ ] Define final payloads versus internal records. Keep deliverables, raw useful
+- [x] Define final payloads versus internal records. Keep deliverables, raw useful
       diagnostics, one inventory per cross-job payload, and durable VPS state;
       nominate redundant gate envelopes/path maps for removal.
 
@@ -124,13 +124,13 @@ removal has a replacement or an explicit decision to retire the capability.
       them for embedded legal assets, packaging, and validation. Remove the repeated
       collection in `package-release.py` and routine CLI CI. Preserve input-based
       invalidation and verification of reused output.
-- [ ] Run npm lock auditing and collection of common npm originals once per exact
+- [x] Run npm lock auditing and collection of common npm originals once per exact
       lockfile. Retain platform-sensitive Go graphs/scans and explicit mapping
       from common inputs to both architecture builds.
-- [ ] Split image payloads from source/evidence payloads. Upload one image artifact
+- [x] Split image payloads from source/evidence payloads. Upload one image artifact
       per architecture for assembly, recovery, and publication. Select a canonical
       export; retain another format only where an actual consumer requires it.
-- [ ] Consolidate repeated local fingerprint/copy passes into streaming copy/hash
+- [x] Consolidate repeated local fingerprint/copy passes into streaming copy/hash
       plus a canonical inventory. Keep bounds, path/symlink checks and receiving-job
       authentication; do not substitute a trusted-looking JSON record for bytes.
 - [ ] Verify the affected commands and record setup/upload savings. Preserve the
@@ -159,7 +159,7 @@ resolutions, scans of identical common inputs, copies, and uploaded payload byte
       retaining npm/Vite for actual web compilation and Node bundle instrumentation.
       Preserve existing Make targets, overrides, cached preparation, source version,
       stripped builds, Windows paths and offline source archive contents.
-- [ ] Update the generator-hash pin and its consumers atomically. Where an existing
+- [x] Update the generator-hash pin and its consumers atomically. Where an existing
       release still needs the old generator, retain a minimal compatibility path
       until that source-verification consumer migrates; do not run both collectors
       in normal builds.
@@ -180,23 +180,23 @@ archive rebuild includes matching embedded assets/notices and works offline.
 - [x] Introduce one typed source inventory describing package/origin/version/digest,
       license/build-input paths, image associations, and platform mappings. Collect
       common originals once; preserve platform-specific inputs explicitly.
-- [ ] Consolidate application dependency, common upstream, and runtime source
+- [x] Consolidate application dependency, common upstream, and runtime source
       collection/packaging behind Go commands. Use content-addressed shared inputs
       where useful without inventing a separate storage service requirement.
-- [ ] Consolidate OCI file inspection, final notice-byte checks, source coverage and
+- [x] Consolidate OCI file inspection, final notice-byte checks, source coverage and
       bundle validation in one verifier. Keep distinct archive policies explicit
       rather than using one permissive extraction helper.
-- [ ] Replace bespoke dependency generator snippet parsing with a smaller reviewed
+- [x] Replace bespoke dependency generator snippet parsing with a smaller reviewed
       input catalog where the replacement supports the same source offering.
       Keep recipes/originals and a genuine offline rebuild where applicable;
       do not label source relationships as byte reproduction.
-- [ ] Replace overlapping collection/replay/report wrappers with sections of the
+- [x] Replace overlapping collection/replay/report wrappers with sections of the
       canonical inventory/result. Preserve raw scanner output and exact tool/input
       identity; combine local checks while retaining cross-job trust checks.
-- [ ] Preserve the installed updater's final manifest/bundle/provenance contract
+- [x] Preserve the installed updater's final manifest/bundle/provenance contract
       and existing source download names/URLs. If a change cannot be represented
       compatibly, version it explicitly and defer emission until readers support it.
-- [ ] Switch source/notice workflow and Dockerfile consumers; remove replaced
+- [x] Switch source/notice workflow and Dockerfile consumers; remove replaced
       Python producers/adapters and tests solely for retired wrapper schemas.
       Include the new Go tool source and dependencies in offline source offerings.
 
@@ -216,11 +216,11 @@ remain intact. No dual full packaging pipeline remains for new releases.
       action JavaScript downloads, runner/Node discovery and provenance-about-
       provenance. Verify that final subject digests, tag/commit, workflow identity,
       issuer and hosted-runner constraints match existing deployment readers.
-- [ ] Reduce custom transport around the supported GitHub/GHCR/action interfaces.
+- [x] Reduce custom transport around the supported GitHub/GHCR/action interfaces.
       Keep immutable-version checks, source-bound publication, bounded HTTP/process
       failures, readback and sanitized diagnostics. Use a draft/incomplete state
       until required assets/provenance are ready; do not advertise partial success.
-- [ ] Preserve practical handling of partial registry or release publication:
+- [x] Preserve practical handling of partial registry or release publication:
       emit a concise incident receipt and require explicit reconciliation. Do not
       promise cross-service atomicity, automatic overwrite or resumability that
       the implementation does not provide.
@@ -523,3 +523,20 @@ and layer verifier. Five tiny actual-archive adapter cases pass in 1.28 seconds;
 Go owns the traversal, descriptor/layer identity, labels and expansion limits.
 The archive helper remains a narrow compatibility boundary for the Python smoke
 and recovery experiment runners, with no second OCI policy implementation.
+
+The container workflow now uses Go for shared common/module collection, native
+source/image/compiler scans, transfer verification, exact-tag source evaluation,
+assembly and protected publication. Planned candidates remain unsigned and use
+structural assembly only. Image saves and OCI exports travel in one separate
+artifact per architecture; the supported Docker-save recovery consumer remains.
+The old Python source, preferred-source inference, generator, scanner, custom
+transport/attestor and publication producers and their wrapper-schema tests are
+removed with their callers. Compact smoke/recovery runners and explicit v1
+installed-updater compatibility remain. Current CI uses Go backend-notices and
+the shared source/OCI/scanner tests; native app jobs are not repeated for this
+release-specific validation. Hosted two-architecture and publication-disabled
+end-to-end rehearsal remain pending; current Vite/Caddy policy blockers are
+unchanged. Local retained Python release checks exercised 211 cases in 31.5
+seconds; the remaining old-message assertion was repaired and its 16-case
+boundary suite passed in 5.57 seconds. No new hosted timing or upload savings
+are claimed.

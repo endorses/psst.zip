@@ -12,11 +12,11 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime
+from functools import cache
 from pathlib import Path
 from typing import Protocol
 
 from assemble_release_oci import inspect_archive
-from github_release_transport import API_VERSION, HTTPS, command
 from publish_container_release import (
     SOURCE_NAME,
     WORKFLOW,
@@ -36,6 +36,8 @@ from release_artifacts import (
     repository_name,
     require,
 )
+from release_http import API_VERSION, HTTPS
+from release_process import command
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_NAMES = {
@@ -258,59 +260,86 @@ def source_ci_report(
     }
 
 
+@cache
+def _release_tool() -> str:
+    # Transitional native-orchestration adapter. The source, not this adapter,
+    # owns collection/replay. Remove with the remaining Python native harness.
+    return (
+        command(
+            ["sh", str(ROOT / "tools/release/build.sh")],
+            environment=dict(os.environ),
+            timeout=300,
+        )
+        .decode()
+        .strip()
+    )
+
+
+def source_command(context: NativeSourceContext, mode: str, *args: str) -> bytes:
+    context.checked()
+    return command(
+        [
+            _release_tool(),
+            "--root",
+            str(ROOT),
+            "sources",
+            "runtime",
+            mode,
+            "--repository",
+            context.repository,
+            "--version",
+            context.version,
+            "--commit",
+            context.commit,
+            "--platform",
+            context.platform,
+            *args,
+        ],
+        environment=dict(os.environ),
+        timeout=1800,
+    )
+
+
 def runtime_inputs(context: NativeSourceContext, pack: Path) -> tuple[dict, dict]:
     context.checked()
-    platform = context.platform
-    raw = read_bounded_file(pack / "runtime-pack.json")
-    record = read_json(raw)
+    raw = read_bounded_file(pack / "source-inventory.json")
+    inventory = read_json(raw)
     require(
-        isinstance(record, dict)
-        and type(record.get("schema_version")) is int
-        and record["schema_version"] == 1
+        isinstance(inventory, dict)
+        and inventory.get("schema_version") == 2
+        and inventory.get("kind") == "container-source-inventory"
+        and inventory.get("source")
+        == {
+            "repository": context.repository,
+            "version": context.version,
+            "commit": context.commit,
+        },
+        "Runtime inventory belongs to another release",
+    )
+    record = read_json(source_command(context, "describe", "--collection", str(pack)))
+    require(
+        record.get("schema_version") == 2
+        and record.get("kind") == "native-runtime-source-description"
+        and record.get("source_inventory_sha256") == sha256(raw)
         and record.get("version") == context.version
         and record.get("revision") == context.commit
-        and record.get("architecture") == platform.split("/")[1],
-        "Runtime pack belongs to another release/platform",
+        and record.get("architecture") == context.platform.split("/")[1],
+        "Runtime byte description belongs to another native source context",
     )
-    asset = record.get("source_asset")
-    require(isinstance(asset, dict), "Runtime source asset missing")
-    name = matches(asset.get("file"), SOURCE_NAME, "Unsafe runtime source asset name")
+    asset = record["source_asset"]
+    name = matches(asset["file"], SOURCE_NAME, "Unsafe runtime asset name")
     checksum = matches(
-        "sha256:" + str(asset.get("sha256")),
-        DIGEST,
-        "Runtime source asset checksum missing",
+        "sha256:" + asset["sha256"], DIGEST, "Runtime source digest missing"
     )
-    path = pack / name
     require(
-        source_digest(path) == checksum
-        and type(asset.get("size")) is int
-        and asset["size"] == path.stat().st_size
-        and asset.get("url")
+        asset["url"]
         == f"https://github.com/{context.repository}/releases/download/{context.version}/{name}",
-        "Runtime source bytes/offer differ from the native source context",
+        "Runtime source delivery URL differs",
     )
-    overlays = fields(record.get("overlays"), {"backend", "web"}, "runtime overlays")
-    for files in overlays.values():
-        require(
-            isinstance(files, dict)
-            and {"THIRD_PARTY_NOTICES.txt", "runtime-inventory.json", "SOURCE.txt"}
-            <= set(files),
-            "Runtime notice/source overlay files missing",
-        )
-        for relative, digest in files.items():
-            matches("sha256:" + str(digest), DIGEST, "Invalid runtime notice checksum")
-            require(
-                isinstance(relative, str)
-                and relative
-                and not Path(relative).is_absolute()
-                and ".." not in Path(relative).parts
-                and "\\" not in relative,
-                "Unsafe runtime notice path",
-            )
     return record, {
         "runtime_pack_sha256": sha256(raw),
-        "source_asset": {"name": name, "digest": checksum, "size": path.stat().st_size},
-        "notice_files": overlays,
+        "source_asset": {"name": name, "digest": checksum, "size": asset["size"]},
+        "notice_files": record["overlays"],
         "distribution_review_required": True,
     }
 

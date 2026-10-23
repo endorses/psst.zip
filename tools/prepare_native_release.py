@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Prepare one native release image pair privately; never publish or approve it.
 
 Requires real record-build output and its paired Docker save, preloaded immutable
@@ -14,29 +13,26 @@ import argparse
 import hashlib
 import io
 import os
-from pathlib import Path
 import re
 import shutil
 import tarfile
 import uuid
+from pathlib import Path, PurePosixPath
 
-import collect_caddy_sources
-import measure_native_browser_inputs
-import collect_runtime_notices
 from assemble_release_oci import inspect_archive
 from generate_release_gate_reports import (
     NativeSourceContext,
+    _release_tool,
     collect_native_measurement,
     runtime_inputs,
+    source_command,
     validate_smoke,
 )
-from github_release_transport import command
-import package_runtime_sources
 from prepare_release_candidate import BASES, validate_candidate
 from release_artifacts import (
     DIGEST,
-    InvalidRelease,
     PLATFORMS,
+    InvalidRelease,
     create_output,
     fields,
     json_bytes,
@@ -45,7 +41,7 @@ from release_artifacts import (
     read_json,
     require,
 )
-import verify_runtime_source_pack
+from release_process import command
 
 COMPONENTS = {"backend", "web"}
 CANDIDATE_FIELDS = {
@@ -68,6 +64,20 @@ BUILD_FIELDS = {
 }
 FILE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,150}\Z")
 MAX_ARCHIVE = 8 * 1024**3
+
+
+def _safe_image_member(name: str) -> PurePosixPath:
+    value = PurePosixPath(name)
+    require(
+        bool(name)
+        and not value.is_absolute()
+        and ".." not in value.parts
+        and "\\" not in name
+        and str(value) == name.rstrip("/")
+        and not any(ord(char) < 32 or ord(char) == 127 for char in name),
+        "Unsafe saved image member",
+    )
+    return value
 
 
 def file_record(path: Path, root: Path | None = None) -> dict:
@@ -94,7 +104,7 @@ def saved_pair(path: Path, configs: dict[str, str]) -> None:
         require(len(members) <= 20_000, "Original save has too many members")
         names = set()
         for member in members:
-            collect_runtime_notices.safe_member(member.name)
+            _safe_image_member(member.name)
             require(member.name not in names, "Duplicate original save member")
             names.add(member.name)
 
@@ -113,7 +123,7 @@ def saved_pair(path: Path, configs: dict[str, str]) -> None:
         seen = set()
         for item in manifest:
             require(isinstance(item, dict), "Invalid original save entry")
-            name = str(collect_runtime_notices.safe_member(item.get("Config", "")))
+            name = str(_safe_image_member(item.get("Config", "")))
             raw = read(name)
             seen.add("sha256:" + hashlib.sha256(raw).hexdigest())
         require(
@@ -149,7 +159,7 @@ def export_saved_image(
         require(len(members) <= 20_000, "Saved image has too many members")
         names = set()
         for member in members:
-            collect_runtime_notices.safe_member(member.name)
+            _safe_image_member(member.name)
             require(
                 member.name not in names
                 and (member.isfile() or member.isdir())
@@ -160,7 +170,7 @@ def export_saved_image(
 
         def metadata(name):
             require(isinstance(name, str), "Saved metadata path is invalid")
-            member = saved.getmember(str(collect_runtime_notices.safe_member(name)))
+            member = saved.getmember(str(_safe_image_member(name)))
             require(
                 member.isfile() and 0 < member.size <= 8 * 1024**2,
                 "Saved metadata exceeds bounds",
@@ -204,7 +214,7 @@ def export_saved_image(
         total = 0
         for name in layers:
             require(isinstance(name, str), "Saved layer path is invalid")
-            member = saved.getmember(str(collect_runtime_notices.safe_member(name)))
+            member = saved.getmember(str(_safe_image_member(name)))
             require(
                 member.isfile() and 0 < member.size <= 512 * 1024**2,
                 "Saved image layer exceeds bounds",
@@ -429,32 +439,41 @@ class Operations:
         )
         builder = self.run("docker", "buildx", "inspect", "default").decode()
         require(
-            re.search(r"^Driver:\s+docker\s*$", builder, re.M) is not None,
+            re.search(r"^Driver:\s+docker\s*$", builder, re.MULTILINE) is not None,
             "Local overlay builder must use Docker driver",
         )
 
-    def collect_apk(self, image: str, helper: str, output: Path) -> None:
-        collect_runtime_notices.collect(image, helper, output)
-
-    def collect_caddy(self, image: str, base: str, output: Path) -> None:
-        collect_caddy_sources.collect(image, base, output)
-
     def package(
         self,
-        collections: Path,
+        original: Path,
+        originals: dict[str, str],
+        helper: str,
+        caddy_base: str,
         cosign: Path,
         context: NativeSourceContext,
         output: Path,
     ) -> dict:
-        return package_runtime_sources.package(
-            collections / "backend",
-            collections / "web",
-            collections / "caddy",
-            cosign,
-            context.version,
-            context.commit,
-            f"https://github.com/{context.repository}/releases/download/{context.version}",
-            output,
+        source_command(
+            context,
+            "collect",
+            "--images-tar",
+            str(original),
+            "--backend-config",
+            originals["backend"],
+            "--web-config",
+            originals["web"],
+            "--helper-image",
+            helper,
+            "--caddy-base",
+            caddy_base,
+            "--cosign",
+            str(cosign),
+            "--output",
+            str(output),
+        )
+        source_command(context, "overlays", "--collection", str(output))
+        return read_json(
+            source_command(context, "describe", "--collection", str(output))
         )
 
     def overlay(
@@ -495,9 +514,20 @@ class Operations:
             "Overlay configuration was not recorded",
         )
 
-    def overlays(self, pack: Path, configs: dict[str, str]) -> dict:
-        return package_runtime_sources.verify_overlays(
-            pack, configs["backend"], configs["web"]
+    def overlays(
+        self, context: NativeSourceContext, pack: Path, configs: dict[str, str]
+    ) -> dict:
+        return read_json(
+            source_command(
+                context,
+                "verify-live",
+                "--collection",
+                str(pack),
+                "--backend-config",
+                configs["backend"],
+                "--web-config",
+                configs["web"],
+            )
         )
 
     def save(self, aliases: dict[str, str], output: Path) -> None:
@@ -536,42 +566,57 @@ class Operations:
         context,
         builder_config,
         source_root,
-        dependency_collection,
-        archive,
-        tested_config,
+        common_collection,
+        archives,
+        configs,
         runtime_pack,
+        cosign,
+        smoke,
+        asset_digest,
+        runtime_report,
         output,
     ):
-        return measure_native_browser_inputs.collect(
-            self,
-            context,
-            builder_config,
-            source_root,
-            dependency_collection,
-            archive,
-            tested_config,
-            runtime_pack,
-            output,
-        )
-
-    def replay(
-        self,
-        context: NativeSourceContext,
-        pack: Path,
-        archives: dict,
-        smoke: Path,
-        cosign: Path,
-        asset_digest: str,
-    ) -> dict:
-        return verify_runtime_source_pack.verify(
-            pack,
-            archives,
-            smoke,
-            cosign,
-            repository=context.repository,
-            version=context.version,
-            revision=context.commit,
-            source_sha256=asset_digest,
+        return read_json(
+            self.run(
+                _release_tool(),
+                "--root",
+                str(source_root),
+                "browser",
+                "native",
+                "collect",
+                "--repository",
+                context.repository,
+                "--version",
+                context.version,
+                "--commit",
+                context.commit,
+                "--platform",
+                context.platform,
+                "--builder-config",
+                builder_config,
+                "--common-collection",
+                str(common_collection),
+                "--runtime-collection",
+                str(runtime_pack),
+                "--backend-archive",
+                str(archives["backend"]),
+                "--web-archive",
+                str(archives["web"]),
+                "--backend-config",
+                configs["backend"],
+                "--web-config",
+                configs["web"],
+                "--cosign",
+                str(cosign),
+                "--smoke",
+                str(smoke),
+                "--runtime-source-sha256",
+                asset_digest,
+                "--runtime-report",
+                str(runtime_report),
+                "--output",
+                str(output),
+            )
         )
 
     def cleanup(self, aliases: list[str]) -> None:
@@ -592,7 +637,7 @@ def prepare(
     cosign: Path,
     web_builder_config: str,
     source_root: Path,
-    dependency_collection: Path,
+    common_collection: Path,
     output: Path,
     operations: Operations | None = None,
 ) -> dict:
@@ -636,8 +681,6 @@ def prepare(
         file_record(copied_original) == original_snapshot,
         "Original save changed while copying",
     )
-    collections = output / "collections"
-    collections.mkdir(mode=0o700)
     export_folder = output / "export"
     export_folder.mkdir(mode=0o700)
     pack = output / "pack"
@@ -649,14 +692,15 @@ def prepare(
         component: f"psst-native-{nonce}-{component}:final" for component in COMPONENTS
     }
     try:
-        for component in sorted(COMPONENTS):
-            operations.collect_apk(
-                originals[component], helper_config, collections / component
-            )
-        operations.collect_caddy(
-            originals["web"], candidate["base_images"]["caddy"], collections / "caddy"
+        operations.package(
+            copied_original,
+            originals,
+            helper_config,
+            candidate["base_images"]["caddy"],
+            cosign,
+            context,
+            pack,
         )
-        operations.package(collections, cosign, context, pack)
         manifest, runtime = runtime_inputs(context, pack)
         require(
             {
@@ -684,7 +728,7 @@ def prepare(
             )
         create_output(
             output / "overlay-verification.json",
-            json_bytes(operations.overlays(pack, configs)),
+            json_bytes(operations.overlays(context, pack, configs)),
         )
         final_save = output / "final-images.docker.tar"
         operations.save(aliases, final_save)
@@ -723,23 +767,35 @@ def prepare(
         smoke_path = output / "smoke-report.json"
         create_output(smoke_path, json_bytes(smoke))
         create_output(output / "native-measurement.json", json_bytes(measurement))
-        replay = operations.replay(
+        for component, archive in archives.items():
+            require(
+                measurement["images"][component]["config_digest"] == configs[component]
+                and measurement["images"][component]["archive_digest"]
+                == file_record(archive)["sha256"],
+                "Native OCI bytes differ from measured configurations",
+            )
+        runtime_report = output / "source-completeness-verification.json"
+        browser_result = operations.browser(
             context,
-            pack,
+            web_builder_config,
+            source_root,
+            common_collection,
             archives,
-            smoke_path,
+            configs,
+            pack,
             cosign,
+            smoke_path,
             runtime["source_asset"]["digest"],
+            runtime_report,
+            output / "browser",
         )
+        replay = read_json(read_bounded_file(runtime_report))
         require(
             replay.get("runtime_source_inputs_verified") is True
             and replay.get("distribution_authorized") is False
             and replay.get("images") == measurement["images"]
             and replay.get("runtime_pack_sha256") == runtime["runtime_pack_sha256"],
             "Independent source replay differs from final native measurement",
-        )
-        create_output(
-            output / "source-completeness-verification.json", json_bytes(replay)
         )
         require(
             runtime_inputs(context, pack)[1] == runtime
@@ -749,25 +805,10 @@ def prepare(
             and file_record(final_save) == final_snapshot,
             "Native preparation inputs changed",
         )
-        for component, archive in archives.items():
-            require(
-                measurement["images"][component]["config_digest"] == configs[component]
-                and measurement["images"][component]["archive_digest"]
-                == file_record(archive)["sha256"],
-                "Native OCI bytes differ from measured configurations",
-            )
-        browser_result = operations.browser(
-            context,
-            web_builder_config,
-            source_root,
-            dependency_collection,
-            archives["web"],
-            configs["web"],
-            manifest,
-            output / "browser",
-        )
         require(
-            browser_result.get("tested_web_config") == configs["web"]
+            browser_result.get("schema_version") == 2
+            and browser_result.get("kind") == "native-browser-input-measurement"
+            and browser_result.get("tested_web_config") == configs["web"]
             and browser_result.get("source") == context.checked()
             and browser_result.get("builder_config") == web_builder_config
             and browser_result.get("oci_image_verified") is True
@@ -780,6 +821,12 @@ def prepare(
             and browser_result.get("distribution_authorized") is False,
             "Native browser evidence identity/approval boundary differs",
         )
+        for component, archive in archives.items():
+            require(
+                measurement["images"][component]["archive_digest"]
+                == file_record(archive)["sha256"],
+                "Native OCI bytes changed during combined source/browser replay",
+            )
         artifact_paths = {
             "browser_inputs": output / "browser/browser-inputs.tar",
             "browser_verification": output / "browser/browser-verification.json",
@@ -789,7 +836,7 @@ def prepare(
             "native_measurement": output / "native-measurement.json",
             "smoke_report": smoke_path,
             "source_verification": output / "source-completeness-verification.json",
-            "runtime_pack": pack / "runtime-pack.json",
+            "runtime_pack": pack / "source-inventory.json",
             "runtime_source": pack / runtime["source_asset"]["name"],
             **{component + "_archive": path for component, path in archives.items()},
         }
@@ -833,7 +880,7 @@ def main() -> None:
         "original-archive",
         "cosign",
         "source-root",
-        "dependency-collection",
+        "common-collection",
         "output",
     ]:
         parser.add_argument("--" + name, type=Path, required=True)
@@ -849,7 +896,7 @@ def main() -> None:
             cosign=args.cosign,
             web_builder_config=args.web_builder_config,
             source_root=args.source_root,
-            dependency_collection=args.dependency_collection,
+            common_collection=args.common_collection,
             output=args.output,
         )
         print(json_bytes(result).decode(), end="")
