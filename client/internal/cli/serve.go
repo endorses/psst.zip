@@ -154,17 +154,22 @@ func (a *App) serveCommand(ctx context.Context, o options, args []string) (any, 
 	err = host.Wait()
 	closeErr := host.Close()
 	_, _ = fmt.Fprintln(a.Err, host.Summary())
+	if closeErr != nil {
+		return nil, &servingFailure{storageFailure("Transfer stopped, but private staging cleanup failed; use the documented crashed-session cleanup procedure.")}
+	}
+	if errors.Is(err, context.Canceled) {
+		// Ending an open Receive invitation is an ordinary user action. The
+		// listener and private staging have already been closed successfully.
+		return nil, nil
+	}
 	if err != nil {
 		if errors.Is(err, lan.ErrExpired) {
 			return nil, &servingFailure{&Failure{Code: "lan_expired", Message: "LAN session expired without a completed transfer.", exit: ExitUnavailable}}
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, &servingFailure{&Failure{Code: "interrupted", Message: "LAN sharing was stopped; this temporary session cannot be resumed.", exit: ExitTransport}}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, &servingFailure{&Failure{Code: "timeout", Message: "The explicit LAN command deadline expired; this temporary session cannot be resumed.", exit: ExitTransport}}
 		}
 		return nil, &servingFailure{err}
-	}
-	if closeErr != nil {
-		return nil, &servingFailure{storageFailure("Transfer stopped, but private staging cleanup failed; use the documented crashed-session cleanup procedure.")}
 	}
 	return nil, nil
 }

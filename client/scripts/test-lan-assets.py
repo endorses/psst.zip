@@ -15,6 +15,33 @@ spec.loader.exec_module(assets)
 
 
 class CacheInvalidationTests(unittest.TestCase):
+    def test_source_archive_retains_embedded_vendor_notices(self):
+        release_spec = importlib.util.spec_from_file_location(
+            "release_inputs", Path(__file__).with_name("package-release.py")
+        )
+        release = importlib.util.module_from_spec(release_spec)
+        release_spec.loader.exec_module(release)
+        with tempfile.TemporaryDirectory(prefix="psst-lan-assets-test-") as directory:
+            root = Path(directory)
+            embedded = (
+                root
+                / "client/internal/lanassets/site/licenses/backend/go/src/vendor/example/LICENSE"
+            )
+            excluded = root / "client/vendor/example/file.go"
+            for path in (embedded, excluded):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fixture")
+            with (
+                patch.object(release, "ROOT", root),
+                patch.object(release, "CLIENT", root / "client"),
+                patch.object(
+                    release, "run", return_value=b"client/vendor/example/file.go\0"
+                ),
+            ):
+                files = release.source_files(False)
+                self.assertIn(embedded, files)
+                self.assertNotIn(excluded, files)
+
     def test_lock_changes_refresh_installed_platform_subset(self):
         with tempfile.TemporaryDirectory(prefix="psst-lan-assets-test-") as directory:
             web = Path(directory)

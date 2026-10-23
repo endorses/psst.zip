@@ -138,8 +138,9 @@ Keep the host awake and connected until completion. Send stops after its downloa
 allowance is acknowledged; Receive stops after collecting its file allowance.
 Ctrl+C/SIGTERM and expiry close the listener and remove private staging. A stopped
 session cannot be resumed; its in-memory keys are gone. Expiry after completed
-work exits successfully; expiry without a completion exits 4, interruption or an
-explicit command timeout exits 5. Other failures use the ordinary CLI error codes.
+work exits successfully; expiry without a completion exits 4. Intentional
+Ctrl+C/SIGTERM shutdown exits successfully after cleanup; an explicit command
+timeout exits 5. Other failures use the ordinary CLI error codes.
 
 `--json` emits one startup result, then keeps serving. It includes the usual share
 fields plus `hosting` with the bound listener and limits. Progress/final status

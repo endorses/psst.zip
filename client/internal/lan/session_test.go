@@ -154,6 +154,29 @@ func TestReceiveCollectsAuthenticatedPlaintextWithoutVault(t *testing.T) {
 	}
 }
 
+func TestHostDistinguishesExplicitDeadlineAndSessionExpiry(t *testing.T) {
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	ticks := make(chan time.Time)
+	for _, tc := range []struct {
+		name      string
+		parent    context.Context
+		completed int
+		want      error
+	}{
+		{"explicit command deadline", expired, 0, context.DeadlineExceeded},
+		{"session expiry without work", context.Background(), 0, ErrExpired},
+		{"session expiry after work", context.Background(), 1, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host := &Host{ctx: expired, parent: tc.parent, completions: tc.completed}
+			if got := host.wait(ticks); !errors.Is(got, tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidationDoesNotBindOrPrepareInvalidSessions(t *testing.T) {
 	cfg := smallConfig("send")
 	cfg.Files = []client.InputFile{input("valid")}

@@ -88,9 +88,9 @@ Notes:
   vaults need private descriptors (N >= 3) for JSON/headless commands.
   Supply links with --link-stdin or --link-file FILE. Credentials never belong in
   command arguments. --server never overrides a saved account's server.
-  Share JSON and QR codes grant the same access as their complete links. Send keys
-  and Receive private keys stay encrypted locally; login/pairing does not recover
-  keys from another device.
+  Share JSON and QR codes grant the same access as their complete links. Hosted
+  keys use encrypted local storage; LAN session keys stay only in memory.
+  Login/pairing does not recover keys from another device.
 
 See docs/cli.md for schemas, exit codes, backup/recovery and automation examples.
 `)

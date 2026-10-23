@@ -62,6 +62,7 @@ type Host struct {
 	store       *memoryStore
 	staging     *staging
 	ctx         context.Context
+	parent      context.Context
 	cancel      context.CancelFunc
 	serveDone   chan error
 	closeOnce   sync.Once
@@ -130,7 +131,7 @@ func Start(ctx context.Context, config Config, assets http.Handler) (host *Host,
 			return nil, ErrTLS
 		}
 	}
-	host = &Host{config: config, store: newMemoryStore(), serveDone: make(chan error, 1), collected: make(map[string]bool)}
+	host = &Host{config: config, parent: ctx, store: newMemoryStore(), serveDone: make(chan error, 1), collected: make(map[string]bool)}
 	expires := time.Now().Add(config.Expires)
 	host.ctx, host.cancel = context.WithDeadline(ctx, expires)
 	prepared := host
@@ -266,6 +267,9 @@ func (h *Host) wait(ticks <-chan time.Time) error {
 	for {
 		select {
 		case <-h.ctx.Done():
+			if h.parent != nil && h.parent.Err() != nil {
+				return h.parent.Err()
+			}
 			if errors.Is(h.ctx.Err(), context.DeadlineExceeded) && (h.completions > 0 || h.downloads > 0) {
 				return nil
 			}

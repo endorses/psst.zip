@@ -126,7 +126,8 @@ def source_files(development: bool) -> list[Path]:
         # never a possibly divergent development workspace checkout.
         if relative.parts[0] == "backend" or path.name in {"go.work", "go.work.sum"}:
             continue
-        if any(
+        embedded = relative.is_relative_to("client/internal/lanassets/site")
+        if not embedded and any(
             part
             in {
                 "node_modules",

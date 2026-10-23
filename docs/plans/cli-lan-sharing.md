@@ -280,7 +280,7 @@ session cleanup. It binds a specific private address at OS-selected port `0`,
 retains the listener and advertises its actual port; explicit occupied ports fail
 with a useful diagnostic. Docker-only bridges are omitted from automatic choices,
 while explicit private binds and normal LAN bridges remain supported. No keyring
-or account state is opened. Cancellation uses a LAN-specific non-resumable message.
+or account state is opened. Intentional Ctrl+C/SIGTERM stops cleanly with exit 0; explicit command deadlines remain errors, and stopped sessions cannot resume.
 
 The standalone browser build reuses the production transfer screens and crypto
 providers, with separate account-free routing and no external assets. Two actual
@@ -371,3 +371,17 @@ command (or extract the matching packaged binary), run Send and Receive on a
 specific LAN address with port `0`, verify optional trusted TLS and interrupt a
 session to check output retention/staging cleanup. The external runtime checks do
 not require another production rollout or new CI suite.
+
+Final packaged-source runtime verification found a source-selection defect: a
+broad vendor-directory exclusion also removed embedded Go legal texts under
+`site/licenses/backend/go/src/vendor/`. The source copier now preserves every
+embedded asset, including those legal texts, and a focused fixture regression
+protects that boundary. This is separate from the ordinary Go vendor directory,
+which is still populated from the immutable module graph during packaging.
+
+The user's final shutdown clarification is implemented: a Receive invitation may
+remain open for more uploads, and Ctrl+C/SIGTERM is a successful explicit stop.
+Cleanup failures still report failure. An explicit `--timeout` is distinguished
+from session expiry and reports exit 5; expiry without completed work remains
+exit 4. Deterministic context tests and real-process signal/timeout checks cover
+these distinct outcomes.
