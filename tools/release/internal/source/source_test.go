@@ -108,10 +108,10 @@ func TestCollectAndVerifyRetainOriginalsAndRejectSubstitution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if verified.Artifacts[0] != inventory.Artifacts[0] {
-		t.Fatal("verification changed asset identity")
+	if verified.Source != inventory.Source || len(verified.Artifacts) != 0 {
+		t.Fatal("verification changed source identity or introduced self-referential asset facts")
 	}
-	sourceAsset := filepath.Join(o.Collection, inventory.Artifacts[0].Path)
+	sourceAsset := filepath.Join(o.Collection, "psst.zip-upstream-inputs-"+o.Source.Version+".tar.gz")
 	payload, _ := os.ReadFile(sourceAsset)
 	payload[len(payload)/2] ^= 1
 	os.WriteFile(sourceAsset, payload, 0600)
@@ -130,7 +130,7 @@ func TestNpmContentIsFetchedOnceAndEveryLockedPathIsAuthenticated(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 1 || len(files) != 1 || len(sources) != 2 || sources[0].ID == sources[1].ID || !sources[0].Development || !sources[0].Optional {
+	if calls.Load() != 1 || len(files) != 2 || len(sources) != 2 || sources[0].ID == sources[1].ID || !sources[0].Development || !sources[0].Optional {
 		t.Fatal("common npm acquisition duplicated or lost the exact locked path mapping")
 	}
 	corrupt := append([]byte(nil), raw...)

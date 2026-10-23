@@ -440,16 +440,16 @@ func CollectModules(ctx context.Context, o ModuleOptions) (Inventory, error) {
 		files[name] = raw
 	}
 	files["SOURCE.md"] = moduleSourceNote(o)
+	encoded, err := encode(inventory)
+	if err != nil {
+		return inventory, err
+	}
+	files["source-inventory.json"] = encoded
 	payload, err := offering(files)
 	if err != nil {
 		return inventory, err
 	}
 	assetName := "psst.zip-dependency-inputs-" + o.Source.Version + "-" + strings.TrimPrefix(o.Platform, "linux/") + ".tar.gz"
-	inventory.Artifacts = []File{fact(assetName, payload)}
-	encoded, err := encode(inventory)
-	if err != nil {
-		return inventory, err
-	}
 	if err = os.Mkdir(o.Output, 0700); err != nil {
 		return inventory, err
 	}
@@ -492,41 +492,38 @@ func moduleSourceNote(o ModuleOptions) []byte {
 // VerifyModules replays the public-checksum authentication and graph coverage
 // using retained bytes only. It never downloads modules or executes source code.
 func VerifyModules(ctx context.Context, o ModuleOptions) (Inventory, error) {
+	inventory, _, err := ReadModules(ctx, o)
+	return inventory, err
+}
+func ReadModules(ctx context.Context, o ModuleOptions) (Inventory, map[string][]byte, error) {
 	inputs, err := moduleInputs(ctx, o)
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, nil, err
 	}
 	raw, err := readRegular(filepath.Join(o.Collection, "source-inventory.json"), MetadataLimit)
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, nil, err
 	}
 	inventory, err := Decode(raw)
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
-	if inventory.Source != o.Source || len(inventory.Images) != 0 || len(inventory.Collectors) != 1 || len(inventory.Artifacts) != 1 {
-		return inventory, fmt.Errorf("module inventory scope differs")
+	if inventory.Source != o.Source || len(inventory.Images) != 0 || len(inventory.Collectors) != 1 || len(inventory.Artifacts) != 0 {
+		return inventory, nil, fmt.Errorf("module inventory scope differs")
 	}
 	collector := inventory.Collectors[0]
 	if collector.Name != "go-module-originals" || collector.Platform != o.Platform || collector.Image != o.GoImage {
-		return inventory, fmt.Errorf("module collector identity differs")
+		return inventory, nil, fmt.Errorf("module collector identity differs")
 	}
-	asset := inventory.Artifacts[0]
-	if asset.Path != "psst.zip-dependency-inputs-"+o.Source.Version+"-"+strings.TrimPrefix(o.Platform, "linux/")+".tar.gz" {
-		return inventory, fmt.Errorf("module offering name differs")
-	}
-	payload, err := readRegular(filepath.Join(o.Collection, asset.Path), OfferingLimit)
+	payload, err := readRegular(filepath.Join(o.Collection, "psst.zip-dependency-inputs-"+o.Source.Version+"-"+strings.TrimPrefix(o.Platform, "linux/")+".tar.gz"), OfferingLimit)
 	if err != nil {
-		return inventory, err
-	}
-	if fact(asset.Path, payload) != asset {
-		return inventory, fmt.Errorf("module offering bytes differ")
+		return inventory, nil, err
 	}
 	entries, err := os.ReadDir(o.Collection)
 	if err != nil || len(entries) != 2 {
-		return inventory, fmt.Errorf("unexpected module collection files")
+		return inventory, nil, fmt.Errorf("unexpected module collection files")
 	}
-	selected := map[string]bool{"SOURCE.md": true, "inputs/authenticated-go.sum": true}
+	selected := map[string]bool{"SOURCE.md": true, "inputs/authenticated-go.sum": true, "source-inventory.json": true}
 	for name := range inputs {
 		selected["inputs/"+name] = true
 	}
@@ -536,7 +533,7 @@ func VerifyModules(ctx context.Context, o ModuleOptions) (Inventory, error) {
 	byID := map[string]Source{}
 	for _, source := range inventory.Sources {
 		if source.Ecosystem != "go" || source.MemberInventory == nil || len(source.Auxiliary) != 2 {
-			return inventory, fmt.Errorf("unexpected source in platform module collection")
+			return inventory, nil, fmt.Errorf("unexpected source in platform module collection")
 		}
 		byID[source.ID] = source
 		selected[source.Original.Path] = true
@@ -547,38 +544,41 @@ func VerifyModules(ctx context.Context, o ModuleOptions) (Inventory, error) {
 	}
 	members, files, err := inspectArchive(payload, archivePolicy{Expanded: OfferingLimit, Member: OriginalLimit, Members: 100000, Selected: selected})
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	if len(members) != len(selected) || len(files) != len(selected) {
-		return inventory, fmt.Errorf("missing or unexpected module payload")
+		return inventory, nil, fmt.Errorf("missing or unexpected module payload")
+	}
+	if !bytes.Equal(files["source-inventory.json"], raw) {
+		return inventory, nil, fmt.Errorf("module offering canonical inventory differs")
 	}
 	for name, committed := range inputs {
 		if !bytes.Equal(committed, files["inputs/"+name]) {
-			return inventory, fmt.Errorf("retained module locks differ from committed source")
+			return inventory, nil, fmt.Errorf("retained module locks differ from committed source")
 		}
 	}
 	expected, err := moduleInventory(o, inputs, files, collector.Config)
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	gotInputs, _ := contract.JSON(inventory.Inputs)
 	wantInputs, _ := contract.JSON(expected.Inputs)
 	gotCollector, _ := contract.JSON(inventory.Collectors)
 	wantCollector, _ := contract.JSON(expected.Collectors)
 	if !bytes.Equal(gotInputs, wantInputs) || !bytes.Equal(gotCollector, wantCollector) || !bytes.Equal(files["SOURCE.md"], moduleSourceNote(o)) {
-		return inventory, fmt.Errorf("module collector/raw input inventory differs")
+		return inventory, nil, fmt.Errorf("module collector/raw input inventory differs")
 	}
 	sums, err := authenticatedSums(inputs["backend/go.sum"], files["inputs/authenticated-go.sum"])
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	downloads, err := streamModules(files["collection/go-downloads.json"])
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	graph, err := streamModules(files["collection/go-modules.json"])
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	sources, retained, err := collectModuleFiles(downloads, graph, sums, func(r moduleRecord, kind string) ([]byte, error) {
 		source := byID[goModuleID(r.Path, r.Version)]
@@ -590,22 +590,22 @@ func VerifyModules(ctx context.Context, o ModuleOptions) (Inventory, error) {
 		return raw, nil
 	})
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	if len(sources) != len(inventory.Sources) {
-		return inventory, fmt.Errorf("module inventory graph coverage differs")
+		return inventory, nil, fmt.Errorf("module inventory graph coverage differs")
 	}
 	for _, source := range sources {
 		got, _ := contract.JSON(byID[source.ID])
 		want, _ := contract.JSON(source)
 		if !bytes.Equal(got, want) {
-			return inventory, fmt.Errorf("module source inventory differs from authenticated originals")
+			return inventory, nil, fmt.Errorf("module source inventory differs from authenticated originals")
 		}
 	}
 	for name, raw := range retained {
 		if !bytes.Equal(files[name], raw) {
-			return inventory, fmt.Errorf("module member inventory differs")
+			return inventory, nil, fmt.Errorf("module member inventory differs")
 		}
 	}
-	return inventory, nil
+	return inventory, files, nil
 }

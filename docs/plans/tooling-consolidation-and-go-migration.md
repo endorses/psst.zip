@@ -144,7 +144,7 @@ resolutions, scans of identical common inputs, copies, and uploaded payload byte
 - [x] Add `tools/release/go.mod` and `cmd/psst-release`, initially with only packages
       required by real callers. Keep it independent of generated browser assets,
       backend/client module graphs, credentials, and release outputs.
-- [ ] Implement strict versioned manifest decoding/validation and archive/inventory
+- [x] Implement strict versioned manifest decoding/validation and archive/inventory
       primitives. Preserve rejection of duplicate JSON keys, unknown/missing fields,
       malformed identities, unsafe archive paths, unsupported entries, excessive
       member/expansion sizes, and ambiguous symlink policies.
@@ -177,7 +177,7 @@ archive rebuild includes matching embedded assets/notices and works offline.
 
 ### 4. Consolidate source, notice, image and scan inventories
 
-- [ ] Introduce one typed source inventory describing package/origin/version/digest,
+- [x] Introduce one typed source inventory describing package/origin/version/digest,
       license/build-input paths, image associations, and platform mappings. Collect
       common originals once; preserve platform-specific inputs explicitly.
 - [ ] Consolidate application dependency, common upstream, and runtime source
@@ -436,3 +436,20 @@ retained as an unresolved release blocker, not suppressed by the refactor.
 The committed Caddy acceptance also expired on 2026-10-23; publication rechecks
 its exact finding/binary/source scope and deadline. Neither exception policy nor
 application dependencies have been changed as part of this migration.
+
+The shared Go source inventory now covers common npm/upstream originals, native
+Go module graphs, runtime APK origins/recipes, Caddy signature inputs and compiler
+originals. Runtime replay and publication share one strict OCI graph reader;
+browser verification reuses the verified image bytes rather than inspecting OCI
+again. The browser reader checks regular-only bounded captures, exact Git/npm
+inputs and final static/legal bytes. Focused substitution/extra-file/archive tests
+pass. A fresh real web build passed the local observation verifier with 4,337
+inputs and 34 generated outputs; native capture and higher source-gate integration
+remain unfinished. These relationships do not claim transformed-byte reproduction.
+
+The Go 1.27.3 runtime source catalog addition was checked against its official
+[source tag](https://api.github.com/repos/golang/go/git/ref/tags/go1.27.3) and
+[stable release feed](https://go.dev/dl/?mode=json). The exact pinned codeload
+archive contains the expected `VERSION`, measures 35,526,415 bytes and hashes to
+`7d8518ab8bb4c9a0c58c4762422d3d4d05d1fad12666f4fca133201231d22c46`.
+Existing older source pins remain available for the actual Caddy compiler.

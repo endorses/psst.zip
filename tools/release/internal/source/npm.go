@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/endorses/psst.zip/tools/release/internal/contract"
 )
 
 type npmInput struct {
@@ -24,11 +26,22 @@ type npmInput struct {
 type npmResolved struct {
 	raw     []byte
 	sources []Source
+	members []byte
 }
 
 func npmID(input npmInput) string {
 	id := sha256.Sum256([]byte(input.Path + "@" + input.Version))
 	return "npm-" + hex.EncodeToString(id[:])
+}
+
+func npmLockedSource(original Source, input npmInput) (Source, error) {
+	if input.Name != original.Name || input.Version != original.Version || input.Integrity != original.Integrity {
+		return Source{}, fmt.Errorf("shared npm original differs from another locked identity")
+	}
+	item := original
+	item.ID, item.LockPath, item.Development, item.Optional = npmID(input), input.Path, input.Dev, input.Optional
+	item.URL = input.Resolved
+	return item, nil
 }
 
 func lockedNpm(lock []byte) ([]npmInput, error) {
@@ -80,14 +93,14 @@ func lockedNpm(lock []byte) ([]npmInput, error) {
 	}
 	return inputs, nil
 }
-func inspectNpm(raw []byte, input npmInput) (Source, error) {
+func inspectNpm(raw []byte, input npmInput) (Source, []byte, error) {
 	sum := sha512.Sum512(raw)
 	if input.Integrity != "sha512-"+base64.StdEncoding.EncodeToString(sum[:]) || int64(len(raw)) > OriginalLimit {
-		return Source{}, fmt.Errorf("npm original integrity differs")
+		return Source{}, nil, fmt.Errorf("npm original integrity differs")
 	}
-	members, selected, err := inspectArchive(raw, archivePolicy{Expanded: OriginalLimit, Member: OriginalLimit, Members: 100000, Original: true, Capture: func(name string) bool { return path.Base(name) == "package.json" && strings.Count(name, "/") == 1 }})
+	members, selected, err := inspectArchive(raw, archivePolicy{Expanded: OriginalLimit, Member: OriginalLimit, Members: 100000, Original: true, OriginalMetadata: true, Capture: func(name string) bool { return path.Base(name) == "package.json" && strings.Count(name, "/") == 1 }})
 	if err != nil {
-		return Source{}, err
+		return Source{}, nil, err
 	}
 	prefix := ""
 	for _, m := range members {
@@ -95,22 +108,23 @@ func inspectNpm(raw []byte, input npmInput) (Source, error) {
 			prefix = strings.Split(m.Path, "/")[0]
 		}
 		if m.Kind == "symlink" || !(m.Path == prefix || strings.HasPrefix(m.Path, prefix+"/")) {
-			return Source{}, fmt.Errorf("npm original contains a link or multiple roots")
+			return Source{}, nil, fmt.Errorf("npm original contains a link or multiple roots")
 		}
 	}
 	metadata := selected[prefix+"/package.json"]
 	value, err := jsonObject(metadata)
 	if err != nil {
-		return Source{}, err
+		return Source{}, nil, err
 	}
 	var name, version string
 	json.Unmarshal(value["name"], &name)
 	json.Unmarshal(value["version"], &version)
 	if name != input.Name || version != input.Version {
-		return Source{}, fmt.Errorf("npm original identity differs from lock")
+		return Source{}, nil, fmt.Errorf("npm original identity differs from lock")
 	}
 	archive := "npm/" + strings.TrimPrefix(hash(raw), "sha256:") + ".tgz"
 	item := Source{ID: npmID(input), Ecosystem: "npm", Name: name, Version: version, Origin: "npm", URL: input.Resolved, Original: fact(archive, raw), LicensePaths: []string{}, BuildInputPaths: []string{"package.json"}, PreferredSourcePaths: []string{}, ObservedInputs: map[string]File{"package.json": fact("package.json", metadata)}, LockPath: input.Path, Integrity: input.Integrity, Development: input.Dev, Optional: input.Optional}
+	item.Authentication = map[string]string{"archive_root": prefix}
 	for _, member := range members {
 		if member.Kind != "file" {
 			continue
@@ -125,7 +139,13 @@ func inspectNpm(raw []byte, input npmInput) (Source, error) {
 			}
 		}
 	}
-	return item, nil
+	memberRaw, err := contract.JSON(memberInventory{1, "retained-original-source-members", "npm:" + name, version, members})
+	if err != nil || int64(len(memberRaw)) > MetadataLimit {
+		return item, nil, fmt.Errorf("npm original member inventory exceeds bounds")
+	}
+	f := fact("inventory/npm-"+strings.TrimPrefix(hash(raw), "sha256:")+".json", memberRaw)
+	item.MemberInventory = &f
+	return item, memberRaw, nil
 }
 
 // collectNpm acquires each content identity once, even when multiple locked paths
@@ -139,7 +159,7 @@ func collectNpm(ctx context.Context, lock []byte, fetch Fetch) ([]Source, map[st
 	groups := map[string][]npmInput{}
 	var keys []string
 	for _, input := range inputs {
-		key := input.Resolved + "\n" + input.Integrity
+		key := input.Integrity
 		if _, ok := groups[key]; !ok {
 			keys = append(keys, key)
 		}
@@ -167,10 +187,15 @@ func collectNpm(ctx context.Context, lock []byte, fetch Fetch) ([]Source, map[st
 				}
 				resolved := npmResolved{raw: raw}
 				if err == nil {
+					var original Source
+					original, resolved.members, err = inspectNpm(raw, list[0])
 					for _, input := range list {
-						var item Source
-						item, err = inspectNpm(raw, input)
 						if err != nil {
+							break
+						}
+						item, e := npmLockedSource(original, input)
+						if e != nil {
+							err = e
 							break
 						}
 						resolved.sources = append(resolved.sources, item)
@@ -206,6 +231,7 @@ enqueue:
 		for _, item := range resolved.sources {
 			sources = append(sources, item)
 			files[item.Original.Path] = resolved.raw
+			files[item.MemberInventory.Path] = resolved.members
 		}
 	}
 	return sources, files, nil

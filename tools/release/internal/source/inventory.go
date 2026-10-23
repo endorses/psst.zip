@@ -68,6 +68,8 @@ type Source struct {
 	MemberInventory      *File             `json:"member_inventory,omitempty"`
 	Auxiliary            []File            `json:"auxiliary,omitempty"`
 	Authentication       map[string]string `json:"authentication,omitempty"`
+	NoticeFiles          map[string]File   `json:"notice_files,omitempty"`
+	Recipe               *Recipe           `json:"recipe,omitempty"`
 }
 type Image struct {
 	Component   string   `json:"component"`
@@ -78,14 +80,16 @@ type Image struct {
 	NoticeFiles []File   `json:"notice_files"`
 }
 type Inventory struct {
-	SchemaVersion int             `json:"schema_version"`
-	Kind          string          `json:"kind"`
-	Source        Context         `json:"source"`
-	Inputs        map[string]File `json:"inputs"`
-	Sources       []Source        `json:"sources"`
-	Images        []Image         `json:"images"`
-	Artifacts     []File          `json:"artifacts"`
-	Collectors    []Collector     `json:"collectors,omitempty"`
+	SchemaVersion int                     `json:"schema_version"`
+	Kind          string                  `json:"kind"`
+	Source        Context                 `json:"source"`
+	Inputs        map[string]File         `json:"inputs"`
+	Sources       []Source                `json:"sources"`
+	Images        []Image                 `json:"images"`
+	Artifacts     []File                  `json:"artifacts"`
+	Collectors    []Collector             `json:"collectors,omitempty"`
+	Runtime       []RuntimeGraph          `json:"runtime,omitempty"`
+	Signatures    []SignatureVerification `json:"signatures,omitempty"`
 }
 
 type Collector struct {
@@ -177,6 +181,9 @@ func Decode(raw []byte) (Inventory, error) {
 			return result, fmt.Errorf("invalid or duplicate source identity")
 		}
 		ids[item.ID] = true
+		if item.LicensePaths == nil || item.BuildInputPaths == nil || item.PreferredSourcePaths == nil {
+			return result, fmt.Errorf("source legal/build path inventory is missing")
+		}
 		if err := checkFile(item.Original); err != nil {
 			return result, err
 		}
@@ -196,6 +203,24 @@ func Decode(raw []byte) (Inventory, error) {
 		for _, f := range item.Auxiliary {
 			if err := checkFile(f); err != nil {
 				return result, err
+			}
+		}
+		for label, f := range item.NoticeFiles {
+			if label == "" || len(label) > 4096 || strings.IndexFunc(label, func(r rune) bool { return r < 32 || r == 127 }) >= 0 {
+				return result, fmt.Errorf("invalid source notice label")
+			}
+			if err := checkFile(f); err != nil {
+				return result, err
+			}
+		}
+		if recipe := item.Recipe; recipe != nil {
+			if item.Ecosystem != "apk" || !commitRE.MatchString(recipe.Commit) || (recipe.Repository != "main" && recipe.Repository != "community") || len(recipe.Files) == 0 || len(recipe.Files) > 2048 || len(recipe.DeclaredPackages) == 0 || len(recipe.DeclaredPackages) > 2048 || recipe.SourceSHA512 == nil {
+				return result, fmt.Errorf("runtime origin recipe inventory is incomplete")
+			}
+			for _, f := range recipe.Files {
+				if err := checkFile(f); err != nil {
+					return result, err
+				}
 			}
 		}
 		for _, paths := range [][]string{item.LicensePaths, item.BuildInputPaths, item.PreferredSourcePaths} {
@@ -244,7 +269,37 @@ func Decode(raw []byte) (Inventory, error) {
 			}
 		}
 	}
+	components := map[string]bool{}
+	for _, graph := range result.Runtime {
+		if components[graph.Component] || (graph.Component != "backend" && graph.Component != "web") || (graph.Platform != "linux/amd64" && graph.Platform != "linux/arm64") || !digestRE.MatchString(graph.Config) || !digestRE.MatchString(graph.RuntimeConfigSHA256) || !goVersionRE.MatchString(graph.GoVersion) || len(graph.RootFS) == 0 || len(graph.RootFS) > 128 || len(graph.Layers) == 0 || len(graph.Packages) == 0 {
+			return result, fmt.Errorf("runtime source graph inventory is incomplete")
+		}
+		components[graph.Component] = true
+		for _, f := range append([]File{graph.Binary, graph.Notices}, graphLayerFiles(graph)...) {
+			if err := checkFile(f); err != nil {
+				return result, err
+			}
+		}
+		seen := map[string]bool{}
+		for _, id := range graph.SourceIDs {
+			if !ids[id] || seen[id] {
+				return result, fmt.Errorf("runtime image references missing or duplicate source")
+			}
+			seen[id] = true
+		}
+	}
 	return result, nil
+}
+
+func graphLayerFiles(graph RuntimeGraph) []File {
+	files := make([]File, 0, len(graph.Layers)+1)
+	for _, layer := range graph.Layers {
+		files = append(files, layer.File)
+	}
+	if graph.WebRelease != nil {
+		files = append(files, *graph.WebRelease)
+	}
+	return files
 }
 func encode(result Inventory) ([]byte, error) {
 	sort.Slice(result.Sources, func(i, j int) bool { return result.Sources[i].ID < result.Sources[j].ID })
@@ -311,4 +366,25 @@ func jsonObject(raw []byte) (map[string]json.RawMessage, error) {
 		return nil, fmt.Errorf("source metadata must be an object")
 	}
 	return value, nil
+}
+
+// SourceMembers returns a retained original member inventory after the enclosing
+// collection has been verified. Browser/source consumers can compare actual
+// observed bytes against this index without decompressing the original again.
+func SourceMembers(source Source, files map[string][]byte) ([]Member, error) {
+	if source.MemberInventory == nil {
+		return nil, fmt.Errorf("original source has no member inventory")
+	}
+	raw := files[source.MemberInventory.Path]
+	if fact(source.MemberInventory.Path, raw) != *source.MemberInventory {
+		return nil, fmt.Errorf("original member inventory changed")
+	}
+	var inventory memberInventory
+	if err := contract.Decode(raw, MetadataLimit, &inventory); err != nil {
+		return nil, err
+	}
+	if inventory.SchemaVersion != 1 || inventory.Kind != "retained-original-source-members" || len(inventory.Members) == 0 {
+		return nil, fmt.Errorf("invalid original member inventory")
+	}
+	return inventory.Members, nil
 }

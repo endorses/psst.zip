@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"path"
@@ -30,6 +32,7 @@ type archivePolicy struct {
 	Selected         map[string]bool
 	Capture          func(string) bool
 	Original         bool
+	OriginalMetadata bool // Safe interpreted PAX paths in npm distribution inputs.
 }
 
 // inspectArchive never extracts or follows original source links. It bounds the
@@ -61,6 +64,9 @@ func inspectArchive(raw []byte, p archivePolicy) ([]Member, map[string][]byte, e
 			return nil, nil, err
 		}
 		if h.Typeflag == tar.TypeXGlobalHeader {
+			if p.Original && p.OriginalMetadata && h.Size <= 8<<20 {
+				continue
+			}
 			if !p.Original || h.Size > 128 || len(h.PAXRecords) != 1 || h.PAXRecords["comment"] != p.Commit {
 				return nil, nil, fmt.Errorf("unsupported original global metadata")
 			}
@@ -77,6 +83,9 @@ func inspectArchive(raw []byte, p archivePolicy) ([]Member, map[string][]byte, e
 			return nil, nil, fmt.Errorf("duplicate source archive member")
 		}
 		for key, value := range h.PAXRecords {
+			if p.Original && p.OriginalMetadata {
+				continue // The resulting name, link, size and mode are checked here.
+			}
 			if !p.Original || key != "comment" || value != p.Commit {
 				return nil, nil, fmt.Errorf("unreviewed source archive metadata rewrite")
 			}
@@ -92,17 +101,21 @@ func inspectArchive(raw []byte, p archivePolicy) ([]Member, map[string][]byte, e
 		switch h.Typeflag {
 		case tar.TypeReg, tar.TypeRegA:
 			member.Kind = "file"
-			data, err := io.ReadAll(io.LimitReader(reader, p.Member+1))
-			if err != nil {
-				return nil, nil, err
-			}
-			if int64(len(data)) != h.Size {
-				return nil, nil, fmt.Errorf("source member size differs")
-			}
-			member.SHA256 = hash(data)
 			relative := strings.TrimPrefix(name, p.Prefix+"/")
 			if p.Selected[relative] || p.Selected[name] || p.Capture != nil && p.Capture(relative) {
+				data, err := io.ReadAll(io.LimitReader(reader, p.Member+1))
+				if err != nil || int64(len(data)) != h.Size {
+					return nil, nil, fmt.Errorf("source member read failed or size differs")
+				}
+				member.SHA256 = hash(data)
 				selected[relative] = data
+			} else {
+				digest := sha256.New()
+				count, err := io.Copy(digest, reader)
+				if err != nil || count != h.Size {
+					return nil, nil, fmt.Errorf("source member read failed or size differs")
+				}
+				member.SHA256 = "sha256:" + hex.EncodeToString(digest.Sum(nil))
 			}
 		case tar.TypeDir:
 			if !p.Original || h.Size != 0 {

@@ -394,16 +394,16 @@ func CollectCommon(ctx context.Context, o CommonOptions) (Inventory, error) {
 		files[name] = raw
 	}
 	files["SOURCE.md"] = commonSourceNote(o.Source)
+	rawInventory, err := encode(inventory)
+	if err != nil {
+		return inventory, err
+	}
+	files["source-inventory.json"] = rawInventory
 	payload, err := offering(files)
 	if err != nil {
 		return inventory, err
 	}
 	assetName := "psst.zip-upstream-inputs-" + o.Source.Version + ".tar.gz"
-	inventory.Artifacts = []File{fact(assetName, payload)}
-	rawInventory, err := encode(inventory)
-	if err != nil {
-		return inventory, err
-	}
 	if err = os.Mkdir(o.Output, 0700); err != nil {
 		return inventory, err
 	}
@@ -416,44 +416,41 @@ func CollectCommon(ctx context.Context, o CommonOptions) (Inventory, error) {
 	return inventory, nil
 }
 func VerifyCommon(ctx context.Context, o CommonOptions) (Inventory, error) {
+	inventory, _, err := ReadCommon(ctx, o)
+	return inventory, err
+}
+func ReadCommon(ctx context.Context, o CommonOptions) (Inventory, map[string][]byte, error) {
 	inputs, catalog, err := commonInputs(ctx, o)
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, nil, err
 	}
 	raw, err := readRegular(filepath.Join(o.Collection, "source-inventory.json"), MetadataLimit)
 	if err != nil {
-		return Inventory{}, err
+		return Inventory{}, nil, err
 	}
 	inventory, err := Decode(raw)
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	npmInputs, err := lockedNpm(inputs[lockPath])
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
-	if inventory.Source != o.Source || len(inventory.Images) != 0 || len(inventory.Artifacts) != 1 || len(inventory.Sources) != len(catalog.Upstreams)+len(npmInputs) || len(inventory.Inputs) != len(inputs) {
-		return inventory, fmt.Errorf("upstream source inventory scope differs")
+	if inventory.Source != o.Source || len(inventory.Images) != 0 || len(inventory.Artifacts) != 0 || len(inventory.Sources) != len(catalog.Upstreams)+len(npmInputs) || len(inventory.Inputs) != len(inputs) {
+		return inventory, nil, fmt.Errorf("upstream source inventory scope differs")
 	}
-	asset := inventory.Artifacts[0]
-	if asset.Path != "psst.zip-upstream-inputs-"+o.Source.Version+".tar.gz" {
-		return inventory, fmt.Errorf("upstream asset identity differs")
-	}
-	payload, err := readRegular(filepath.Join(o.Collection, asset.Path), OfferingLimit)
+	payload, err := readRegular(filepath.Join(o.Collection, "psst.zip-upstream-inputs-"+o.Source.Version+".tar.gz"), OfferingLimit)
 	if err != nil {
-		return inventory, err
-	}
-	if hash(payload) != asset.SHA256 || int64(len(payload)) != asset.Size {
-		return inventory, fmt.Errorf("retained upstream offering changed")
+		return inventory, nil, err
 	}
 	entries, err := os.ReadDir(o.Collection)
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	if len(entries) != 2 {
-		return inventory, fmt.Errorf("unexpected source collection files")
+		return inventory, nil, fmt.Errorf("unexpected source collection files")
 	}
-	selected := map[string]bool{"SOURCE.md": true}
+	selected := map[string]bool{"SOURCE.md": true, "source-inventory.json": true}
 	for name := range inputs {
 		selected["inputs/"+name] = true
 	}
@@ -463,22 +460,29 @@ func VerifyCommon(ctx context.Context, o CommonOptions) (Inventory, error) {
 	}
 	for _, item := range inventory.Sources {
 		if item.Ecosystem == "npm" {
+			if item.MemberInventory == nil {
+				return inventory, nil, fmt.Errorf("npm original member inventory missing")
+			}
 			selected[item.Original.Path] = true
+			selected[item.MemberInventory.Path] = true
 		}
 	}
 	members, files, err := inspectArchive(payload, archivePolicy{Expanded: OfferingLimit, Member: OriginalLimit, Members: 100000, Selected: selected})
 	if err != nil {
-		return inventory, err
+		return inventory, nil, err
 	}
 	if len(members) != len(selected) || len(files) != len(selected) {
-		return inventory, fmt.Errorf("missing or unexpected retained source payload")
+		return inventory, nil, fmt.Errorf("missing or unexpected retained source payload")
+	}
+	if !bytes.Equal(files["source-inventory.json"], raw) {
+		return inventory, nil, fmt.Errorf("source offering canonical inventory differs")
 	}
 	if !bytes.Equal(files["SOURCE.md"], commonSourceNote(o.Source)) {
-		return inventory, fmt.Errorf("source offering explanation differs")
+		return inventory, nil, fmt.Errorf("source offering explanation differs")
 	}
 	for name, original := range inputs {
 		if !bytes.Equal(files["inputs/"+name], original) || inventory.Inputs[name] != fact("inputs/"+name, original) {
-			return inventory, fmt.Errorf("source offering locks differ from committed inputs")
+			return inventory, nil, fmt.Errorf("source offering locks differ from committed inputs")
 		}
 	}
 	byID := map[string]Source{}
@@ -488,31 +492,44 @@ func VerifyCommon(ctx context.Context, o CommonOptions) (Inventory, error) {
 	for _, record := range catalog.Upstreams {
 		item, members, err := inspectUpstream(files["archives/"+record.ID+"/"+record.Archive.File], record)
 		if err != nil {
-			return inventory, err
+			return inventory, nil, err
 		}
 		got, err := contract.JSON(byID[record.ID])
 		if err != nil {
-			return inventory, err
+			return inventory, nil, err
 		}
 		want, _ := contract.JSON(item)
 		if !bytes.Equal(got, want) || !bytes.Equal(files[item.MemberInventory.Path], members) {
-			return inventory, fmt.Errorf("source inventory differs from retained originals")
+			return inventory, nil, fmt.Errorf("source inventory differs from retained originals")
 		}
 	}
+	checkedNpm := map[string]Source{}
 	for _, input := range npmInputs {
 		id := npmID(input)
 		existing := byID[id]
-		item, err := inspectNpm(files[existing.Original.Path], input)
+		original, ok := checkedNpm[existing.Original.Path]
+		if !ok {
+			var members []byte
+			original, members, err = inspectNpm(files[existing.Original.Path], input)
+			if err != nil {
+				return inventory, nil, err
+			}
+			if !bytes.Equal(files[original.MemberInventory.Path], members) {
+				return inventory, nil, fmt.Errorf("npm member inventory differs from authenticated original")
+			}
+			checkedNpm[existing.Original.Path] = original
+		}
+		item, err := npmLockedSource(original, input)
 		if err != nil {
-			return inventory, err
+			return inventory, nil, err
 		}
 		got, _ := contract.JSON(existing)
 		want, _ := contract.JSON(item)
 		if !bytes.Equal(got, want) {
-			return inventory, fmt.Errorf("npm inventory differs from locked original")
+			return inventory, nil, fmt.Errorf("npm inventory differs from locked original")
 		}
 	}
-	return inventory, nil
+	return inventory, files, nil
 }
 
 func commonSourceNote(source Context) []byte {

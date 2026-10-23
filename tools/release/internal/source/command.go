@@ -12,6 +12,8 @@ func Run(ctx context.Context, root string, args []string) error {
 		return fmt.Errorf("sources requires a command: common collect|verify")
 	}
 	switch args[0] {
+	case "runtime":
+		return runtimeCommand(ctx, root, args[1:])
 	case "modules":
 		if len(args) < 2 {
 			return fmt.Errorf("sources modules requires collect or verify")
