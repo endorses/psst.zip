@@ -9,10 +9,10 @@ The trusted workflow must authenticate the returned gate before consuming it.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import os
-from pathlib import Path, PurePosixPath
 import re
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
 from generate_release_gate_reports import (
     MeasurementAuthenticator,
@@ -27,6 +27,7 @@ from measure_release_recovery import (
     EXPERIMENTS,
     FIXTURE_FILES,
     checked_experiment,
+    current_source_details,
     flow_policy,
 )
 from prepare_release_candidate import IMAGE_TYPES
@@ -56,6 +57,21 @@ from release_artifacts import (
 ROOT = Path(__file__).resolve().parents[1]
 MAX_OUTPUT = 16 * 1024**2
 CHECKS = list(RECOVERY_CHECKS)
+PREPARED_COMMON_FIELDS = {
+    "schema_version",
+    "kind",
+    "source_kind",
+    "tagged_source_ci_gate_verified",
+    "signer_identity_verified",
+    "repository",
+    "version",
+    "source_commit",
+    "binding_sha256",
+    "assets",
+    "subjects",
+    "publication_authorized",
+    "measurement_authentication_required",
+}
 SCOPE_FLAGS = (
     "public_provenance_verified",
     "off_host_provider_verified",
@@ -384,8 +400,6 @@ def aggregate_recovery(
 
 def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
     """Use a signed corresponding-source gate to bind retained small assembly files."""
-    from generate_corresponding_source_review import PREPARED_RECORD_FIELDS
-    from measure_browser_source_inventory import root_directory
     from publish_container_release import SOURCE_NAME, source_review_details
 
     root_directory(args.root)
@@ -394,12 +408,24 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
         args.repository, args.version, args.commit, PLATFORMS[0]
     ).checked()
     record_raw = read_bounded_file(args.prepared / "release-inputs.json")
-    record = fields(
-        read_json(record_raw), PREPARED_RECORD_FIELDS, "prepared recovery binding"
+    record = read_json(record_raw)
+    require(isinstance(record, dict), "Invalid prepared recovery binding")
+    schema = record.get("schema_version")
+    require(
+        type(schema) is int and schema in {1, 2}, "Unsupported prepared recovery schema"
+    )
+    fields(
+        record,
+        PREPARED_COMMON_FIELDS
+        | (
+            {"dependency_replays", "upstream_replay"}
+            if schema == 1
+            else {"inputs", "native"}
+        ),
+        "prepared recovery binding",
     )
     require(
         type(record["schema_version"]) is int
-        and record["schema_version"] == 1
         and record["kind"] == "prepared-release-inputs"
         and record["source_kind"] == "version-tag"
         and record["repository"] == args.repository
@@ -409,13 +435,26 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
         and record["signer_identity_verified"] is False
         and record["publication_authorized"] is False
         and record["measurement_authentication_required"] is True
-        and isinstance(record["dependency_replays"], dict)
-        and set(record["dependency_replays"]) == set(PLATFORMS)
-        and isinstance(record["upstream_replay"], dict)
         and isinstance(record["subjects"], dict)
         and 0 < len(record["subjects"]) <= 100,
         "Prepared recovery binding context/policy differs",
     )
+    if schema == 1:
+        require(
+            isinstance(record["dependency_replays"], dict)
+            and set(record["dependency_replays"]) == set(PLATFORMS)
+            and isinstance(record["upstream_replay"], dict),
+            "Legacy prepared recovery replay inventory differs",
+        )
+    else:
+        inputs = fields(
+            record["inputs"],
+            {"candidate_bases", "common_inventory"},
+            "prepared recovery input hashes",
+        )
+        for digest in inputs.values():
+            matches(digest, DIGEST, "Missing prepared input checksum")
+        fields(record["native"], set(PLATFORMS), "prepared native replay inventory")
     require(
         all(
             isinstance(k, str) and isinstance(v, str)
@@ -513,7 +552,10 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
             "Source binding gate is noncanonical or belongs to another release",
         )
         source_details = source_gate["details"]
-    source_review_details(source_details, binding)
+    if schema == 2:
+        current_source_details(source_details, binding)
+    else:
+        source_review_details(source_details, binding)
     snapshots = {
         manifest_path: sha256(manifest_raw),
         bundle: bundle_digest,
@@ -527,9 +569,15 @@ def authenticated_command_inputs(args, authenticator: MeasurementAuthenticator):
     return binding, record_raw, names, snapshots
 
 
+def root_directory(path: Path) -> None:
+    require(
+        path.is_dir()
+        and not any(p.is_symlink() for p in (path, *path.absolute().parents)),
+        "Recovery requires a real directory tree",
+    )
+
+
 def run_command(args) -> dict:
-    from generate_corresponding_source_review import command_inputs
-    from measure_browser_source_inventory import root_directory
 
     root_directory(args.output.parent)
     require(
@@ -541,18 +589,13 @@ def run_command(args) -> dict:
         run_id=args.run_id,
         run_attempt=args.run_attempt,
     )
-    if args.source_report is not None:
-        binding, record_raw, names, snapshots = authenticated_command_inputs(
-            args, authenticator
-        )
-    else:
-        binding, _, record_raw, names, snapshots = command_inputs(
-            root=args.root,
-            prepared=args.prepared,
-            repository=args.repository,
-            version=args.version,
-            commit=args.commit,
-        )
+    require(
+        args.source_report is not None,
+        "Recovery gate requires an authenticated parent source result",
+    )
+    binding, record_raw, names, snapshots = authenticated_command_inputs(
+        args, authenticator
+    )
     manifest = args.prepared / "release-manifest.json"
     assembled = read_json(read_bounded_file(manifest))
     trees = {"linux/amd64": args.amd64_inputs, "linux/arm64": args.arm64_inputs}
@@ -603,6 +646,7 @@ def main(argv=None) -> None:
     parser.add_argument(
         "--source-report",
         type=Path,
+        required=True,
         help="Authenticate the exact corresponding-source gate and use only the three small prepared binding files",
     )
     args = parser.parse_args(argv)

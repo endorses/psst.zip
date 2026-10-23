@@ -20,8 +20,11 @@ func Run(ctx context.Context, root string, args []string, stdout io.Writer) erro
 }
 
 func run(ctx context.Context, b Builder, args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "transfer" {
+		return RunTransfer(ctx, args[1:], stdout)
+	}
 	if len(args) == 0 {
-		return fmt.Errorf("container-build requires validate-tag, validate-source, resolve-bases, record-build, validate-candidate, defaults or bundle")
+		return fmt.Errorf("container-build requires validate-tag, validate-source, resolve-bases, record-build, validate-candidate, defaults, bundle, assemble or transfer")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -31,6 +34,20 @@ func run(ctx context.Context, b Builder, args []string, stdout io.Writer) error 
 	var output, githubOutput string
 	var execute func() (any, map[string]string, error)
 	switch args[0] {
+	case "assemble":
+		inputs := flags.String("inputs", "", "bounded exact assembly input paths and source identity")
+		execute = func() (any, map[string]string, error) {
+			raw, err := readJSONFile(*inputs)
+			if err != nil {
+				return nil, nil, err
+			}
+			var options AssembleOptions
+			if err := contract.Decode(raw, maxJSON, &options); err != nil {
+				return nil, nil, err
+			}
+			foundation, err := b.Assemble(ctx, options)
+			return foundation, nil, err
+		}
 	case "validate-tag", "validate-source":
 		ref := flags.String("ref", "", "exact Git ref")
 		event := flags.String("event-sha", "", "exact trigger object")
@@ -167,6 +184,9 @@ func readJSONFile(name string) ([]byte, error) {
 }
 
 func writeRecord(name string, raw []byte) error {
+	if len(raw) == 0 || len(raw) > maxJSON {
+		return fmt.Errorf("candidate JSON output exceeds its byte bound")
+	}
 	if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
 		return err
 	}

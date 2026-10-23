@@ -5,37 +5,38 @@ from __future__ import annotations
 import copy
 import io
 import json
-from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import aggregate_release_recovery as aggregation
+import assemble_release_oci as oci
 import measure_release_recovery as recovery
+from generate_release_gate_reports import CHECKS
 from publish_container_release import (
+    SOURCE_COVERAGE,
     Binding,
     VerifiedEvidence,
-    SOURCE_COVERAGE,
     image_subjects,
     recovery_review_details,
     sha256,
 )
 from release_artifacts import (
-    InvalidRelease,
     PLATFORMS,
     REQUIRED_FILES,
+    InvalidRelease,
     build_bundle,
     git,
     json_bytes,
     require,
 )
-from generate_release_gate_reports import CHECKS
-from test_release_oci import fixture as oci_fixture
-import assemble_release_oci as oci
 from test_release_artifacts import digest, manifest
+from test_release_oci import fixture as oci_fixture
 
 START = "2020-01-01T00:00:00+00:00"
 OBSERVED = "2020-01-01T00:01:00+00:00"
@@ -580,9 +581,13 @@ class RecoveryGateChecks(unittest.TestCase):
             patch.object(
                 aggregation, "GhEvidenceVerifier", return_value=auth
             ) as verifier,
-            patch(
-                "generate_corresponding_source_review.command_inputs",
-                side_effect=AssertionError("full replay"),
+            patch.dict(
+                sys.modules,
+                {
+                    "generate_corresponding_source_review": None,
+                    "measure_browser_source_inventory": None,
+                    "measure_native_browser_inputs": None,
+                },
             ),
         ):
             report = aggregation.run_command(args)
@@ -931,6 +936,353 @@ class AuthenticatedRecoveryInputs(unittest.TestCase):
             verifier=self,
             root=self.root,
         )
+
+    def current_source(self):
+        subjects = {
+            key: value
+            for key, value in self.binding.subjects
+            if not key.startswith("source:")
+        }
+        subjects.update(
+            {
+                "source:" + name: "file:" + name + "@" + digest("f")
+                for name in recovery.source_asset_names(self.context.version)
+            }
+        )
+        self.binding = Binding(
+            self.context.repository,
+            self.context.version,
+            self.commit,
+            tuple(sorted(subjects.items())),
+        )
+        record = json.loads(self.source_report.read_bytes())
+        details = record["details"]
+        details["schema_version"] = 2
+        details["source_subjects"] = {
+            key: value for key, value in subjects.items() if key.startswith("source:")
+        }
+        details["coverage"] = {}
+        for target, image in self.images.items():
+            arch = target.rsplit("-", 1)[1]
+            descriptor = self.descriptor_values["linux/" + arch]
+            details["coverage"][target] = {
+                "application_source_asset": "psst.zip-source-"
+                + self.context.version
+                + ".tar.gz",
+                "common_source_asset": "psst.zip-upstream-inputs-"
+                + self.context.version
+                + ".tar.gz",
+                "runtime_source_asset": "psst.zip-"
+                + self.context.version
+                + "-runtime-sources-"
+                + arch
+                + ".tar.gz",
+                "module_source_asset": "psst.zip-dependency-inputs-"
+                + self.context.version
+                + "-"
+                + arch
+                + ".tar.gz",
+                "runtime_inventory_sha256": descriptor["artifacts"]["runtime_pack"][
+                    "sha256"
+                ],
+                "backend_preferred_key": digest("c"),
+                "notice_inventory_digest": details["images"][target][
+                    "notice_inventory_digest"
+                ],
+                "tested_config": image["config_digest"],
+                "manifest_sha256": image["manifest_digest"],
+                "archive_sha256": image["archive_digest"],
+                "preferred_form_verified": True,
+            }
+        for path in (self.source_report, self.smoke_report):
+            value = (
+                record if path == self.source_report else json.loads(path.read_bytes())
+            )
+            value["binding_digest"] = self.binding.digest
+            path.write_bytes(json_bytes(value))
+        self.trusted = {
+            sha256(path.read_bytes())
+            for path in (self.source_report, self.smoke_report)
+        }
+        return details
+
+    def test_current_authenticated_source_binds_native_preferred_coverage(self):
+        self.current_source()
+        observed = self.validate()
+        self.assertEqual(observed.images, self.images)
+        self.assertEqual(self.calls, ["corresponding-source", "final-image-smoke"])
+        original = self.source_report.read_bytes()
+        for key, value in (
+            ("preferred_form_verified", False),
+            ("preferred_form_verified", "true"),
+            ("runtime_inventory_sha256", digest("a")),
+            ("tested_config", digest("a")),
+            ("archive_sha256", digest("a")),
+            ("notice_inventory_digest", digest("a")),
+            ("runtime_source_asset", "psst.zip-v1.2.3-runtime-sources-arm64.tar.gz"),
+        ):
+            with self.subTest(key=key, value=value):
+                record = json.loads(original)
+                record["details"]["coverage"]["backend-amd64"][key] = value
+                self.source_report.write_bytes(json_bytes(record))
+                self.trusted = {
+                    sha256(path.read_bytes())
+                    for path in (self.source_report, self.smoke_report)
+                }
+                with self.assertRaises(InvalidRelease):
+                    self.validate()
+        self.source_report.write_bytes(original)
+        self.trusted = {
+            sha256(path.read_bytes())
+            for path in (self.source_report, self.smoke_report)
+        }
+        self.trusted.remove(sha256(original))
+        with self.assertRaisesRegex(InvalidRelease, "authenticated"):
+            self.validate()
+
+    def planned_foundation(self):
+        """Real saved/OCI/Git/bundle bytes; transfer policy has its own Go tests."""
+        version = self.context.version
+        assets = {name: digest("f") for name in recovery.source_asset_names(version)}
+        assets.update(
+            {
+                self.manifest.name: sha256(self.manifest.read_bytes()),
+                self.bundle.name: sha256(self.bundle.read_bytes()),
+            }
+        )
+        facts = {}
+        for platform in PLATFORMS:
+            arch = platform.split("/")[1]
+            native = self.natives[platform].parent
+            tree = native.parent
+            descriptor = self.descriptor_values[platform]
+            for component in ("backend", "web"):
+                self.archive(
+                    native / "export" / (component + "-" + arch + ".oci.tar"),
+                    self.oci_files[arch, component],
+                )
+            self.archive(
+                native / "final-images.docker.tar",
+                {name: raw for (a, name), raw in self.saved_files.items() if a == arch},
+            )
+            names = {
+                "build_record": "build-record.json",
+                "native_measurement": "native-measurement.json",
+                "smoke_report": "smoke-report.json",
+                "source_verification": "source-completeness-verification.json",
+                "runtime_pack": "pack/source-inventory.json",
+                "runtime_source": "pack/psst.zip-"
+                + version
+                + "-runtime-sources-"
+                + arch
+                + ".tar.gz",
+                "browser_inputs": "browser/browser-inputs.tar",
+                "browser_verification": "browser/browser-verification.json",
+                "original_archive": "original/pair.tar",
+            }
+            for key, name in names.items():
+                path = native / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes((key + " opaque fixture").encode())
+                descriptor["artifacts"][key] = recovery.file_record(path, native)
+            self.natives[platform].write_bytes(json_bytes(descriptor))
+            extras = {
+                "source-scans/source-scan-measurement.json": b"{}",
+                "application-dependencies/source-inventory.json": b"{}",
+                "application-dependencies/psst.zip-dependency-inputs-"
+                + version
+                + "-"
+                + arch
+                + ".tar.gz": b"module offering",
+                "source-scans/empty.stderr": b"",
+            }
+            for name, raw in extras.items():
+                path = tree / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(raw)
+            files = {
+                path.relative_to(tree).as_posix(): {
+                    "sha256": sha256(path.read_bytes()),
+                    "size": path.stat().st_size,
+                }
+                for path in tree.rglob("*")
+                if path.is_file()
+            }
+            metadata = {
+                "schema_version": 1,
+                "kind": "native-candidate-transfer",
+                "source": descriptor["source"],
+                "source_kind": "planned-main-dispatch",
+                "files": files,
+                "publication_authorized": False,
+                "measurement_authentication_required": True,
+            }
+            (tree / "candidate-transfer.json").write_bytes(json_bytes(metadata))
+            input_paths = {
+                "build_record": "native/build-record.json",
+                "measurement": "native/native-measurement.json",
+                "source_scan": "source-scans/source-scan-measurement.json",
+                "browser_verification": "native/browser/browser-verification.json",
+                "browser_capture": "native/browser/browser-inputs.tar",
+                "module_inventory": "application-dependencies/source-inventory.json",
+                "runtime_inventory": "native/pack/source-inventory.json",
+            }
+            facts[platform] = {
+                "inputs": {
+                    key: files[name]["sha256"] for key, name in input_paths.items()
+                },
+                "tested_configs": descriptor["tested_configs"],
+                "images": {c: self.images[c + "-" + arch] for c in ("backend", "web")},
+                "source_scan": {},
+                "browser": {},
+                "preferred_sources": {},
+            }
+            for name in (
+                "psst.zip-" + version + "-runtime-sources-" + arch + ".tar.gz",
+                "psst.zip-dependency-inputs-" + version + "-" + arch + ".tar.gz",
+            ):
+                prefix = (
+                    "native/pack/"
+                    if "runtime-sources" in name
+                    else "application-dependencies/"
+                )
+                assets[name] = files[prefix + name]["sha256"]
+        subjects = image_subjects(json.loads(self.manifest.read_bytes()))
+        subjects.update(
+            {
+                (
+                    "manifest"
+                    if name == self.manifest.name
+                    else "bundle"
+                    if name == self.bundle.name
+                    else "source:" + name
+                ): "file:" + name + "@" + value
+                for name, value in assets.items()
+            }
+        )
+        binding = Binding(
+            self.context.repository,
+            version,
+            self.commit,
+            tuple(sorted(subjects.items())),
+        )
+        foundation = {
+            "schema_version": 2,
+            "kind": "planned-candidate-inputs",
+            "repository": self.context.repository,
+            "version": version,
+            "source_commit": self.commit,
+            "source_kind": "planned-main-dispatch",
+            "binding_sha256": binding.digest,
+            "assets": assets,
+            "subjects": subjects,
+            "inputs": {"candidate_bases": digest("a"), "common_inventory": digest("b")},
+            "native": facts,
+            "tagged_source_ci_gate_verified": False,
+            "signer_identity_verified": False,
+            "publication_authorized": False,
+            "measurement_authentication_required": True,
+        }
+        path = self.prepared / "release-inputs.json"
+        path.write_bytes(json_bytes(foundation))
+
+        def verified_transfer(context, tree, source_kind):
+            self.assertEqual(source_kind, "planned-main-dispatch")
+            value = json.loads((tree / "candidate-transfer.json").read_bytes())
+            self.assertEqual(value["source"], context.checked())
+            return value
+
+        return path, verified_transfer
+
+    def test_planned_v2_requires_parent_assembly_and_binds_all_transferred_bytes(self):
+        path, transfer = self.planned_foundation()
+        args = {
+            "natives": self.natives,
+            "manifest_path": self.manifest,
+            "bundle": self.bundle,
+            "root": self.root,
+        }
+        with self.assertRaisesRegex(InvalidRelease, "parent assembly"):
+            recovery.validate_inputs(self.context, **args)
+        with patch(
+            "prepare_candidate_transfer.verify_native", side_effect=transfer
+        ) as verify:
+            # The Go transfer seam is injected here; actual saved layer checks
+            # execute, and no historical browser/runtime replay may execute.
+            with patch.object(
+                recovery, "runtime_inputs", side_effect=AssertionError("runtime replay")
+            ):
+                inputs = recovery.validate_inputs(
+                    self.context, parent_foundation=path, **args
+                )
+            self.assertEqual(verify.call_count, 2)
+            self.assertEqual(inputs.images, self.images)
+            empty = (
+                self.natives[PLATFORMS[1]].parent.parent / "source-scans/empty.stderr"
+            )
+            empty.write_bytes(b"changed")
+            with self.assertRaisesRegex(InvalidRelease, "changed"):
+                inputs.unchanged()
+            empty.write_bytes(b"")
+            original = path.read_bytes()
+            value = json.loads(original)
+            value["native"][PLATFORMS[1]]["inputs"]["browser_capture"] = digest("a")
+            path.write_bytes(json_bytes(value))
+            with self.assertRaisesRegex(InvalidRelease, "hashes"):
+                recovery.validate_inputs(self.context, parent_foundation=path, **args)
+            value = json.loads(original)
+            value.update(kind="prepared-release-inputs", source_kind="version-tag")
+            path.write_bytes(json_bytes(value))
+            with self.assertRaisesRegex(InvalidRelease, "tags require authenticated"):
+                recovery.validate_inputs(self.context, parent_foundation=path, **args)
+
+    def test_small_recovery_binding_accepts_current_authenticated_source_only(self):
+        path, _ = self.planned_foundation()
+        foundation = json.loads(path.read_bytes())
+        foundation.update(kind="prepared-release-inputs", source_kind="version-tag")
+        path.write_bytes(json_bytes(foundation))
+        details = self.current_source()
+        self.binding = Binding(
+            self.context.repository,
+            self.context.version,
+            self.commit,
+            tuple(sorted(foundation["subjects"].items())),
+        )
+        details["source_subjects"] = {
+            key: value
+            for key, value in foundation["subjects"].items()
+            if key.startswith("source:")
+        }
+        source = json.loads(self.source_report.read_bytes())
+        source.update(binding_digest=self.binding.digest, details=details)
+        self.source_report.write_bytes(json_bytes(source))
+        for component in ("backend", "web"):
+            (self.prepared / (component + "-index.json")).unlink()
+        args = SimpleNamespace(
+            root=self.root,
+            prepared=self.prepared,
+            repository=self.context.repository,
+            version=self.context.version,
+            commit=self.commit,
+            source_report=self.source_report,
+        )
+        auth = ExactAttemptAuthenticator(
+            self.binding, [self.source_report.read_bytes()]
+        )
+        with patch.dict(
+            sys.modules,
+            {
+                "generate_corresponding_source_review": None,
+                "measure_browser_source_inventory": None,
+                "measure_native_browser_inputs": None,
+            },
+        ):
+            observed, _, names, _ = aggregation.authenticated_command_inputs(args, auth)
+        self.assertEqual(observed, self.binding)
+        self.assertEqual(names, {path.name, self.manifest.name, self.bundle.name})
+        auth.records.clear()
+        with self.assertRaisesRegex(InvalidRelease, "authenticated"):
+            aggregation.authenticated_command_inputs(args, auth)
 
     def test_one_canonical_source_result_drives_native_recovery_projection(self):
         import publish_container_release as publication
