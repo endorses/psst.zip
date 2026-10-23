@@ -333,6 +333,19 @@ source review does not establish a runtime pass.
       small disposable transfer. Document OS runtime validation limits; app-store
       publication, container images, package-manager repositories and background
       daemons are outside this first delivery.
+- [x] Provide shared `make build`, `install`, `uninstall`, `clean` and `help`
+      targets from the repository root and `client/`. Default to the user's
+      `~/.local/bin`, support prefix/binary-directory/staging overrides, and embed
+      the development version and current Git revision.
+
+Makefile follow-up (2026-10-23): Linux build and staged installation were verified
+from both entry points, including paths with spaces, `PREFIX`, `BINDIR` and
+`DESTDIR` overrides, version/revision overrides, executable mode 0755, installed
+binary equality, uninstall and clean/rebuild. `make build install` builds once
+within the invocation. Checks used an isolated temporary Go build cache and
+staging directories. No real user installation was performed. Native Windows
+keeps the documented direct Go-build path; these Make targets require GNU Make
+and standard Unix shell/install tools.
 
 ## Completion criteria and record
 

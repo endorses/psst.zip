@@ -9,7 +9,32 @@ cannot send files or create Receive links.
 ## Install and build
 
 The CLI has an independent Go module in `client/`. Before a public CLI release is
-published, build the checked-out source:
+published, build the checked-out source. From the repository root or `client/`:
+
+```sh
+make build       # plain make also builds the CLI
+make install     # builds and installs ~/.local/bin/psst
+psst --version
+psst help
+```
+
+Add `~/.local/bin` to your shell's `PATH` if it is not already present. The default
+installation does not require root permissions. To select a different destination or stage a
+package, use the same overrides when uninstalling:
+
+```sh
+make install PREFIX=/your/install/prefix
+make install BINDIR=/your/bin
+make install DESTDIR=/your/staging/root PREFIX=/usr/local
+make uninstall PREFIX=/your/install/prefix
+```
+
+`make help` lists targets and overrides. `make clean` removes only the built
+`client/psst` executable; account state and local encryption keys are stored
+elsewhere. Development builds embed `dev` and the current Git revision (or
+`unknown` outside a Git checkout); `VERSION` and `REVISION` can be overridden.
+The Make targets use GNU Make and standard Unix shell/install tools. A direct Go
+build also works without Make, including on native Windows:
 
 ```sh
 cd client
@@ -17,6 +42,8 @@ go build -o psst ./cmd/psst
 ./psst --version
 ./psst help
 ```
+
+On native Windows, use `go build -o psst.exe ./cmd/psst` and run `.\psst.exe`.
 
 Use the stable Go version declared in `client/go.mod` (currently 1.27.3). Planned
 release tags use `client/vX.Y.Z`, independently of server and Android releases.

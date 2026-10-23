@@ -29,6 +29,9 @@ The [Go library and CLI](docs/cli.md) provide the same encrypted Send/Receive
 workflows for terminal use, scripts and agents. The `psst` executable can display
 share QR codes directly or render them offline from saved CLI JSON results.
 
+Build it with `make build` and install it to `~/.local/bin` with `make install`,
+from the repository root or `client/`. Run `make help` for targets and overrides.
+
 Creating transfers and receive links requires an account. Administrators create
 accounts; there is no public registration. Generated download links and uploads
 into a receive link remain accessible without signing in.
