@@ -317,7 +317,10 @@ jobs:
       - name: Install Chromium for two LAN browser scenarios
         if: steps.scope.outputs.run == 'true'
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        # The Ubuntu runner already supplies Chromium's shared libraries.
+        # These headless scenarios need neither full Chrome nor the extra fonts
+        # and X server packages installed by --with-deps.
+        run: npx playwright install --only-shell chromium
 
       - name: Embedded LAN Send and Receive browser interoperability
         if: steps.scope.outputs.run == 'true'

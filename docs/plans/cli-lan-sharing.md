@@ -332,7 +332,10 @@ has been exercised for the actual LAN build and check. Browser builds are cached
 by source inputs, while Go-notice inputs include the resolved toolchain/legal
 texts. Unchanged CLI Go edits do not cause a new browser bundle build. Release
 packaging builds the assets once for all targets and reuses executed CI checks;
-only two LAN browser scenarios were added to CI. Shared web inputs select CLI
+only two LAN browser scenarios were added to CI. Their Chromium setup downloads
+only the headless shell and uses the Ubuntu runner's existing shared libraries;
+it does not reinstall OS dependencies or extra font packages within the bounded
+five-minute CLI job. Shared web inputs select CLI
 checks; hosted-only routes/tests do not. Existing native checks are not release
 publication prerequisites for these CLI artifacts.
 
