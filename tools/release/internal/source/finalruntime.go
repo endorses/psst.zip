@@ -20,6 +20,7 @@ type RuntimeVerification struct {
 	Images        map[string]oci.Image
 	Files         map[string]map[string][]byte
 	NoticeFiles   map[string][]File
+	GoLicenses    map[string]File
 }
 
 func CheckRuntimeImage(graph RuntimeGraph, image SavedImage, expected map[string][]byte) error {
@@ -76,7 +77,7 @@ func CheckRuntimeImage(graph RuntimeGraph, image SavedImage, expected map[string
 func VerifyRuntimeImages(ctx context.Context, o RuntimeOptions, archives, configs map[string]string) (RuntimeVerification, error) {
 	o = o.defaults()
 	inventory, sourceFiles, err := ReplayRuntimeRetained(ctx, o)
-	result := RuntimeVerification{Inventory: inventory, Images: map[string]oci.Image{}, Files: map[string]map[string][]byte{}, NoticeFiles: map[string][]File{}}
+	result := RuntimeVerification{Inventory: inventory, Images: map[string]oci.Image{}, Files: map[string]map[string][]byte{}, NoticeFiles: map[string][]File{}, GoLicenses: map[string]File{}}
 	if err != nil {
 		return result, err
 	}
@@ -128,6 +129,7 @@ func VerifyRuntimeImages(ctx context.Context, o RuntimeOptions, archives, config
 			for label, file := range goSource.NoticeFiles {
 				if strings.Count(label, "/") == 1 && strings.HasSuffix(label, "/LICENSE") {
 					found = true
+					result.GoLicenses[component] = fact("app/licenses/go/LICENSE", sourceFiles[file.Path])
 					if !bytes.Equal(sourceFiles[file.Path], image.Files["app/licenses/go/LICENSE"]) {
 						return result, fmt.Errorf("distributed Go runtime license differs from exact compiler original")
 					}

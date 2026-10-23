@@ -462,3 +462,13 @@ then retains a private incident receipt on partial failure. Offline fixtures cov
 success, partial registry publication and failed final readback. Focused race/vet
 checks pass. Workflow/legacy-adapter cutover is a separate integration slice;
 these command implementations do not establish a successful live release.
+
+The backend preferred-source checker now consumes the shared originals and a
+reviewed generator catalog, using Go AST comparison for SQLite rather than
+compiling another helper per architecture. A real check of five pinned upstream
+originals and authenticated proxy inputs passed in 7.96 seconds: 5,476 proxy
+members, both Linux SQLite translations, 622 libc recipe/overlay/header members
+and three generator tools. Application-source and final-notice APIs reuse one Git
+snapshot and the runtime verifier's image bytes. Their small mutation fixtures
+pass; replacing the higher source-gate callers remains pending. See the
+[source tooling evidence](../testing/container-source-tooling.md).

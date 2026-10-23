@@ -468,3 +468,24 @@ func AuthenticateCaddyForCompiler(ctx context.Context, item Source, files map[st
 	result, _, err := verifyCaddySignatures(ctx, cosign, item.Version, revision, arch, retained)
 	return result, err
 }
+
+// CaddyCompilerModules reads only the two authenticated vendor graph inputs.
+func CaddyCompilerModules(original []byte) (goSum, vendorModules []byte, err error) {
+	files, err := originalTarFiles(original, func(name string) bool { return name == "go.sum" || name == "vendor/modules.txt" })
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(files["go.sum"]) == 0 || len(files["vendor/modules.txt"]) == 0 {
+		return nil, nil, fmt.Errorf("Caddy original lacks compiler graph inputs")
+	}
+	return files["go.sum"], files["vendor/modules.txt"], nil
+}
+
+// CaddyVerifierPolicy shares one reviewed executable identity across consumers.
+func CaddyVerifierPolicy(platform string) (version, commit, digest string, err error) {
+	digest = caddyCosignHashes[platform]
+	if digest == "" {
+		return "", "", "", fmt.Errorf("unsupported Caddy verifier platform")
+	}
+	return caddyCosignVersion, caddyCosignCommit, digest, nil
+}

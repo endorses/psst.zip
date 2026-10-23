@@ -342,7 +342,7 @@ func commonInputs(ctx context.Context, o CommonOptions) (map[string][]byte, upst
 		return nil, upstreamCatalog{}, fmt.Errorf("source checkout origin differs")
 	}
 	inputs := map[string][]byte{}
-	for _, name := range []string{catalogPath, lockPath, "web/package.json", "backend/go.mod", "backend/go.sum"} {
+	for _, name := range []string{catalogPath, backendRecipeCatalog, lockPath, "web/package.json", "backend/go.mod", "backend/go.sum"} {
 		raw, err := committed(ctx, o.Root, o.Source.Commit, name)
 		if err != nil {
 			return nil, upstreamCatalog{}, err
@@ -534,4 +534,13 @@ func ReadCommon(ctx context.Context, o CommonOptions) (Inventory, map[string][]b
 
 func commonSourceNote(source Context) []byte {
 	return []byte("# psst.zip retained common dependency sources\n\nVersion: " + source.Version + "\nSource commit: " + source.Commit + "\n\nOriginal full-commit archives, npm distributions, catalog and build locks are retained unchanged.\nEach npm content identity is retained once and mapped to every locked dependency path.\nThe sibling source-inventory.json records exact hashes and legal/build paths.\nOriginal upstream symbolic links are retained as source metadata only and never followed.\nSource associations are reviewed catalog relationships, not a claim of byte-for-byte binary reproduction.\n")
+}
+
+// CommonAsset describes the unchanged public asset name after source replay.
+func CommonAsset(collection string, source Context) (File, error) {
+	if err := source.Validate(); err != nil {
+		return File{}, err
+	}
+	name := "psst.zip-upstream-inputs-" + source.Version + ".tar.gz"
+	return streamFact(filepath.Join(collection, name), name, OfferingLimit)
 }

@@ -83,7 +83,7 @@ func upstreamFixture(t *testing.T) (CommonOptions, []byte) {
 	rawCatalog, _ := contract.JSON(catalog)
 	sum := sha512.Sum512(archive)
 	lock, _ := json.Marshal(map[string]any{"lockfileVersion": 3, "packages": map[string]any{"": map[string]any{"name": "fixture-app"}, "node_modules/fixture": map[string]any{"version": "1.2.3", "resolved": "https://registry.npmjs.org/fixture/-/fixture-1.2.3.tgz", "integrity": "sha512-" + base64.StdEncoding.EncodeToString(sum[:])}}})
-	root, sourceCommit := gitFixture(t, map[string][]byte{catalogPath: rawCatalog, lockPath: lock, "web/package.json": []byte(`{"name":"fixture-app"}`), "backend/go.mod": []byte("module example.invalid/fixture\n\ngo 1.23.0\n"), "backend/go.sum": {}})
+	root, sourceCommit := gitFixture(t, map[string][]byte{backendRecipeCatalog: []byte(`{"schema_version":1,"kind":"reviewed-backend-generator-associations","generated_output_reproduction_verified":false}`), catalogPath: rawCatalog, lockPath: lock, "web/package.json": []byte(`{"name":"fixture-app"}`), "backend/go.mod": []byte("module example.invalid/fixture\n\ngo 1.23.0\n"), "backend/go.sum": {}})
 	return CommonOptions{Root: root, Output: filepath.Join(t.TempDir(), "collected"), Source: Context{"endorses/psst.zip", "v1.2.3", sourceCommit}}, archive
 }
 func TestCollectAndVerifyRetainOriginalsAndRejectSubstitution(t *testing.T) {

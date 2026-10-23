@@ -163,3 +163,8 @@ func runtimeReplayReport(o RuntimeOptions, verified RuntimeVerification, smoke [
 	}
 	return map[string]any{"schema_version": 1, "kind": "runtime-source-completeness", "verified_at": time.Now().UTC().Format(time.RFC3339Nano), "repository": o.Source.Repository, "version": o.Source.Version, "revision": o.Source.Commit, "platform": o.Platform, "runtime_source_asset_sha256": verified.Asset.SHA256, "runtime_pack_sha256": verified.InventoryFile.SHA256, "native_smoke_report_sha256": hash(smoke), "images": images, "coverage": map[string]any{"backend_origins": origins["backend"], "web_origins": origins["web"], "retained_package_versions": packageCount, "go_runtime": map[string]any{"sources": goSources, "executables": executables}}, "caddy_signature_verification": map[string]any{"legacy_sigstore_signatures_verified": true, "verification_source": "authenticated-native-producer", "verifications": verified.Inventory.Signatures}, "runtime_source_inputs_verified": true, "application_source_verified": false, "apk_binary_signatures_verified": false, "source_publication_verified": false, "distribution_authorized": false}
 }
+
+// CheckRuntimeSmoke shares the exact completed native smoke policy with assembly.
+func CheckRuntimeSmoke(raw []byte, o RuntimeOptions, inventoryDigest string) error {
+	return checkRuntimeSmoke(raw, o, inventoryDigest)
+}

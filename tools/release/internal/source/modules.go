@@ -609,3 +609,15 @@ func ReadModules(ctx context.Context, o ModuleOptions) (Inventory, map[string][]
 	}
 	return inventory, files, nil
 }
+
+// ModuleAsset describes one architecture's exact retained original module ZIPs.
+func ModuleAsset(collection string, source Context, platform string) (File, error) {
+	if err := source.Validate(); err != nil {
+		return File{}, err
+	}
+	if platform != "linux/amd64" && platform != "linux/arm64" {
+		return File{}, fmt.Errorf("unsupported module source platform")
+	}
+	name := "psst.zip-dependency-inputs-" + source.Version + "-" + strings.TrimPrefix(platform, "linux/") + ".tar.gz"
+	return streamFact(filepath.Join(collection, name), name, OfferingLimit)
+}

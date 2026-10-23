@@ -19,10 +19,28 @@ import (
 // original module ZIPs. The normalization recipe is the maintained Go code,
 // rather than an executable old-generator hash pinned into another parser.
 func VerifyBackendNotices(ctx context.Context, root string, source Context, modules Inventory, files map[string][]byte) (map[string]File, error) {
+	return verifyBackendNotices(ctx, source, modules, files, func(name string) ([]byte, error) { return committed(ctx, root, source.Commit, name) })
+}
+
+// VerifyBackendSnapshot reuses the exact application Git snapshot for every
+// original/distributed notice check, avoiding one Git process per notice.
+func VerifyBackendSnapshot(ctx context.Context, source Context, application ApplicationVerification, modules Inventory, files map[string][]byte) (map[string]File, error) {
+	if application.Source != source {
+		return nil, fmt.Errorf("backend notices belong to another application snapshot")
+	}
+	return verifyBackendNotices(ctx, source, modules, files, func(name string) ([]byte, error) {
+		raw, ok := application.Files[name]
+		if !ok {
+			return nil, fmt.Errorf("committed backend notice input missing")
+		}
+		return raw, nil
+	})
+}
+func verifyBackendNotices(ctx context.Context, source Context, modules Inventory, files map[string][]byte, read func(string) ([]byte, error)) (map[string]File, error) {
 	if modules.Source != source {
 		return nil, fmt.Errorf("backend module collection belongs to another release")
 	}
-	raw, err := committed(ctx, root, source.Commit, "backend/licenses/dependency-inventory.json")
+	raw, err := read("backend/licenses/dependency-inventory.json")
 	if err != nil {
 		return nil, err
 	}
@@ -30,11 +48,11 @@ func VerifyBackendNotices(ctx context.Context, root string, source Context, modu
 	if err = contract.Decode(raw, MetadataLimit, &inventory); err != nil {
 		return nil, err
 	}
-	mod, err := committed(ctx, root, source.Commit, "backend/go.mod")
+	mod, err := read("backend/go.mod")
 	if err != nil {
 		return nil, err
 	}
-	sums, err := committed(ctx, root, source.Commit, "backend/go.sum")
+	sums, err := read("backend/go.sum")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +133,7 @@ func VerifyBackendNotices(ctx context.Context, root string, source Context, modu
 			}
 			distributed := []byte(strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n")
 			name := path.Join("dependencies", module.Module+"@"+module.Version, relative)
-			actual, err := committed(ctx, root, source.Commit, "backend/licenses/"+name)
+			actual, err := read("backend/licenses/" + name)
 			if err != nil {
 				return nil, err
 			}
