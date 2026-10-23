@@ -23,11 +23,22 @@ func imageCommand(ctx context.Context, root string, args []string, output io.Wri
 	flags.StringVar(&o.ToolBundle, "tool-bundle", "", "pinned official Trivy signature bundle")
 	flags.StringVar(&o.Cosign, "cosign", "", "pinned native signature verifier")
 	flags.StringVar(&o.Output, "output", "", "new private measurement directory")
+	native := flags.String("native-artifacts", "", "local native descriptor supplying tested configuration")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("invalid scan image arguments")
 	}
 	if flags.NArg() != 0 || o.Output == "" || o.Archive == "" || o.ToolArchive == "" || o.ToolBundle == "" || o.Cosign == "" {
 		return fmt.Errorf("scan image requires exact image, pinned scanner inputs and new output")
+	}
+	if *native != "" {
+		if o.TestedConfig != "" {
+			return fmt.Errorf("native descriptor configuration cannot be overridden")
+		}
+		config, _, err := nativeScanInputs(*native, o.Source, o.Component)
+		if err != nil {
+			return err
+		}
+		o.TestedConfig = config
 	}
 	for _, value := range []*string{&o.Archive, &o.ToolArchive, &o.ToolBundle, &o.Cosign, &o.Output} {
 		absolute, err := filepath.Abs(*value)

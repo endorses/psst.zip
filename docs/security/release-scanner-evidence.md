@@ -31,7 +31,7 @@ partial graphs, test-only packages and differing module checksums fail closed.
 Repeat `--advisory-input` to collect Go advisory references from scanner JSON;
 those identifiers only request evidence and never suppress a finding.
 
-The assembler authenticates the exact measurement bytes against the repository,
+The evaluator authenticates the exact measurement bytes against the repository,
 source, version-tag workflow, hosted runner, run and attempt. `DecodeCompiler`
 validates those same bytes and re-derives the graph summary from retained raw
 reports. The assembler shares its existing runtime source and OCI replay rather
@@ -52,12 +52,12 @@ boundary rechecks the policy and its expiration before mutations and publication
 An unused expired exception does not block a repaired image with no accepted
 findings. This migration neither broadens nor renews that exception.
 
-The `ReadSourceMeasurement` API supplies structural binding for existing native
-Go and shared npm measurements. It does not itself establish source finding
-dispositions. The remaining source-scanner analyzer and its independent policy
-replay retain their existing responsibility until their Go consumer cutover is
-complete. Likewise, older Python compiler/image aggregation modules are removed
-only when their last active consumer switches to these APIs.
+The `ReadSourceMeasurement` API supplies structural binding for native Go and
+shared npm measurements. `AggregateSources` separately replays the raw reports,
+module checksums and affected-package evidence against the verified application
+snapshot. Both native Go measurements are required; the shared npm receipt must
+be identical across consumers. Older Python aggregation modules are removed only
+when their last active recovery or publication consumer switches to these APIs.
 
 Focused offline verification covers substituted tools, failed signatures,
 uncertain databases, omitted findings, incomplete compiler graphs, unsafe source

@@ -3,10 +3,13 @@ package scanning
 import (
 	"archive/tar"
 	"bytes"
+	"debug/buildinfo"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -173,5 +176,26 @@ func TestCompilerExtractsExactGitSnapshotWithItsGlobalCommitMetadata(t *testing.
 	}
 	if err := extractCompilerTar(bytes.NewReader(archive), t.TempDir(), 1<<20, strings.Repeat("f", 40)); err == nil {
 		t.Fatal("accepted different Git global commit metadata")
+	}
+}
+
+func TestCompilerMetadataMatchesIndependentGoELFInspector(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	build, err := buildinfo.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "version", "-m", "-json", executable)
+	command.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOENV=off", "GOWORK=off")
+	raw, err := command.Output()
+	if err != nil {
+		t.Fatalf("independent compiler metadata inspection failed: %v", err)
+	}
+	var actual debug.BuildInfo
+	if err = json.Unmarshal(raw, &actual); err != nil || !reflect.DeepEqual(actual, *build) {
+		t.Fatalf("actual Go JSON and direct ELF metadata differ: %v", err)
 	}
 }

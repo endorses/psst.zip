@@ -102,6 +102,47 @@ func TestPublicationRechecksCommittedExceptionExpiryAndExactScope(t *testing.T) 
 	}
 }
 
+func TestCorrespondingPolicyFactPermitsRemovingAnUnusedException(t *testing.T) {
+	root, _, _, _ := policyFixture(t)
+	name := filepath.Join(root, filepath.FromSlash(policyPath))
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy map[string]any
+	if err = json.Unmarshal(raw, &policy); err != nil {
+		t.Fatal(err)
+	}
+	delete(policy, "temporary_caddy_exception")
+	raw, err = contract.JSON(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(name, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		command := exec.Command("git", append([]string{"-C", root}, args...)...)
+		command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+		value, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("disposable policy commit: %v", err)
+		}
+		return strings.TrimSpace(string(value))
+	}
+	git("add", "tools")
+	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath="+os.DevNull, "commit", "-qm", "Remove unused disposable exception")
+	commit := git("rev-parse", "HEAD")
+	fact, err := PublicationPolicyFact(context.Background(), root, "endorses/psst.zip", commit)
+	if err != nil || fact["record_digest"] != hash(raw) {
+		t.Fatalf("optional policy fact rejected: %v", err)
+	}
+	if _, _, err := committedPolicy(context.Background(), root, "endorses/psst.zip", commit); err == nil {
+		t.Fatal("active acceptance silently used policy without exception")
+	}
+}
+
 func TestLegacyScannerHashPreservesNonASCIIJSONContract(t *testing.T) {
 	got := string(legacyJSON(map[string]any{"name": "é😀<"}))
 	want := "{\n  \"name\": \"\\u00e9\\ud83d\\ude00<\"\n}\n"

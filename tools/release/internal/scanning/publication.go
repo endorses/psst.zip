@@ -51,6 +51,21 @@ func legacyJSON(value any) []byte {
 }
 
 func committedPolicy(ctx context.Context, root, repository, commit string) (map[string]any, map[string]any, error) {
+	return readPublicationPolicy(ctx, root, repository, commit, true)
+}
+
+// PublicationPolicyFact binds corresponding-source coverage to the exact
+// committed publication policy. Expiry is checked only when an exception is
+// actually used; a repaired release may remove the optional exception entirely.
+func PublicationPolicyFact(ctx context.Context, root, repository, commit string) (map[string]any, error) {
+	if !repositoryPattern.MatchString(repository) || !commitPattern.MatchString(commit) {
+		return nil, fmt.Errorf("invalid publication policy source")
+	}
+	_, fact, err := readPublicationPolicy(ctx, root, repository, commit, false)
+	return fact, err
+}
+
+func readPublicationPolicy(ctx context.Context, root, repository, commit string, requireException bool) (map[string]any, map[string]any, error) {
 	runner := process.Runner{Dir: root}
 	listing, err := runner.Output(ctx, 15*time.Second, "git", "ls-tree", commit, "--", policyPath)
 	if err != nil {
@@ -68,7 +83,8 @@ func committedPolicy(ctx context.Context, root, repository, commit string) (map[
 	if err := contract.Decode(raw, 16384, &policy); err != nil {
 		return nil, nil, err
 	}
-	if !exactFields(policy, "schema_version", "kind", "environment", "authorized_exception_owners", "temporary_caddy_exception") || policy["schema_version"] != float64(1) || text(policy["kind"]) != "container-publication-policy" || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`).MatchString(text(policy["environment"])) {
+	complete := exactFields(policy, "schema_version", "kind", "environment", "authorized_exception_owners", "temporary_caddy_exception") || !requireException && exactFields(policy, "schema_version", "kind", "environment", "authorized_exception_owners")
+	if !complete || policy["schema_version"] != float64(1) || text(policy["kind"]) != "container-publication-policy" || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`).MatchString(text(policy["environment"])) {
 		return nil, nil, fmt.Errorf("invalid committed container publication policy")
 	}
 	owners, ok := policy["authorized_exception_owners"].([]any)
@@ -82,6 +98,10 @@ func committedPolicy(ctx context.Context, root, repository, commit string) (map[
 			return nil, nil, fmt.Errorf("invalid exception owner")
 		}
 		seen[name] = true
+	}
+	fact := map[string]any{"path": policyPath, "source_commit": commit, "record_digest": hash(raw), "git_blob": string(match[1])}
+	if _, exists := policy["temporary_caddy_exception"]; !exists && !requireException {
+		return nil, fact, nil
 	}
 	node := object(policy["temporary_caddy_exception"])
 	if !exactFields(node, "schema_version", "kind", "id", "repository", "authorized_by", "authorized_at", "expires_at", "reason", "caddy_version", "source_revision", "go_version", "base_image", "platforms", "findings") || node["schema_version"] != float64(1) || text(node["kind"]) != "temporary-caddy-vulnerability-acceptance" || text(node["repository"]) != repository || !seen[text(node["authorized_by"])] || len(text(node["reason"])) < 20 || len(text(node["reason"])) > 2048 || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`).MatchString(text(node["id"])) || !commitPattern.MatchString(text(node["source_revision"])) || !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(text(node["caddy_version"])) || !regexp.MustCompile(`^go\d+\.\d+\.\d+$`).MatchString(text(node["go_version"])) || !strings.HasPrefix(text(node["base_image"]), "docker.io/library/caddy@") || !digestPattern.MatchString(strings.TrimPrefix(text(node["base_image"]), "docker.io/library/caddy@")) {
@@ -115,7 +135,6 @@ func committedPolicy(ctx context.Context, root, repository, commit string) (map[
 		}
 		seen[key] = true
 	}
-	fact := map[string]any{"path": policyPath, "source_commit": commit, "record_digest": hash(raw), "git_blob": string(match[1])}
 	return node, fact, nil
 }
 

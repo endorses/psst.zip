@@ -33,6 +33,7 @@ func compilerCommand(ctx context.Context, root string, args []string, output io.
 	flags.StringVar(&o.GoImage, "go-image", "", "immutable actual executable compiler image")
 	flags.StringVar(&o.Cosign, "cosign", "", "pinned native Caddy signature verifier")
 	flags.StringVar(&o.Output, "output", "", "new private output directory")
+	native := flags.String("native-artifacts", "", "local native descriptor supplying tested configuration/source digest")
 	var ids, inputs repeatedValues
 	flags.Var(&ids, "advisory-id", "official Go advisory identifier")
 	flags.Var(&inputs, "advisory-input", "bounded scanner JSON containing Go advisory identifiers")
@@ -41,6 +42,16 @@ func compilerCommand(ctx context.Context, root string, args []string, output io.
 	}
 	if flags.NArg() != 0 || o.Collection == "" || o.Output == "" || o.Archive == "" {
 		return fmt.Errorf("scan compiler requires exact source, runtime offering, native image and new output")
+	}
+	if *native != "" {
+		if o.TestedConfig != "" || o.SourceSHA256 != "" {
+			return fmt.Errorf("native descriptor inputs cannot be overridden")
+		}
+		config, sha, err := nativeScanInputs(*native, NativeIdentity{o.Source, o.Platform}, o.Component)
+		if err != nil {
+			return err
+		}
+		o.TestedConfig, o.SourceSHA256 = config, sha
 	}
 	for _, name := range inputs {
 		raw, err := bounded(name, scannerRawLimit)

@@ -504,3 +504,15 @@ changes through repository security and tooling regressions without triggering
 unrelated Android/iOS builds. Unknown inputs and executable fixture changes still
 select affected application jobs. Six boundary/selection tests pass in 1.59 seconds;
 the CLI job's five-minute limit remains unchanged.
+
+The Go tagged evaluator now authenticates exact transfer inventories and native
+descriptors before reading their claims, then reuses one shared assembly for the
+six source checks. It writes one direct release result and one useful raw source
+replay record, preserving the measured browser approval boundary. Focused
+authentication/run-attempt/mutation tests pass. One positive source-data rehearsal
+passed in 23.86 seconds with actual Git, common originals, 18 H1-authenticated
+modules, an offline-built backend and normalized legal bytes; final runtime and
+browser facts were explicitly synthetic. That rehearsal rejected altered AGPL
+bytes and removed its temporary fixture. Complete hosted/native-pair evaluation,
+recovery-result integration and live publication remain separate pending checks.
+See [evaluation boundaries](../security/container-release-evaluation.md).

@@ -14,6 +14,7 @@ import (
 	"github.com/endorses/psst.zip/tools/release/internal/browser"
 	"github.com/endorses/psst.zip/tools/release/internal/clibuild"
 	"github.com/endorses/psst.zip/tools/release/internal/containerbuild"
+	"github.com/endorses/psst.zip/tools/release/internal/evaluation"
 	"github.com/endorses/psst.zip/tools/release/internal/github"
 	"github.com/endorses/psst.zip/tools/release/internal/interop"
 	"github.com/endorses/psst.zip/tools/release/internal/notices"
@@ -68,6 +69,7 @@ Usage: psst-release [--root CHECKOUT] COMMAND
   scan                Measure common exact-lock scanner inputs
   github              Verify source CI or publish immutable CLI artifacts
   publication-result  Consolidate exact container release evidence
+  evaluate            Authenticate and evaluate both native container inputs
   container-publish   Publish verified immutable container release artifacts
   container-build     Bind source, resolve bases and prepare deployment bundles
 
@@ -79,6 +81,8 @@ Project: https://psst.zip`)
 		return err
 	}
 	switch args[0] {
+	case "evaluate":
+		return evaluation.Run(ctx, absolute, args[1:], os.Stdout)
 	case "browser":
 		return browser.Run(ctx, absolute, args[1:], os.Stdout, os.Stderr)
 	case "github":
