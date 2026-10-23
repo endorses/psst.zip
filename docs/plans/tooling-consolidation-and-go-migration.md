@@ -295,7 +295,7 @@ Keep the current installed helper operational until the replacement is verified.
 - [x] Preserve disk reserves and bounded, retryable image/checkpoint cleanup on
       the 40 GB VPS. Protect active, retained and foreign images/containers;
       remove only expired owned references and report incomplete cleanup durably.
-- [ ] Exercise one disposable Docker update/recovery/retention scenario and old
+- [x] Exercise one disposable Docker update/recovery/retention scenario and old
       state import. Verify root ownership, sudo/forced SSH restrictions and secret-
       safe diagnostics before preparing the installation cutover.
 - [ ] Prepare a concrete installation/cutover with no unresolved transaction,

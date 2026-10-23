@@ -23,8 +23,8 @@ func Run(ctx context.Context, args []string, input *os.File, output io.Writer) (
 			return 1, err
 		}
 	}
-	if len(args) == 0 || !has([]string{"update", "status", "verify", "restore", "recover-safe", "retention"}, args[0]) || len(args) > 2 {
-		return 1, fmt.Errorf("usage: psst-deploy update VERSION | status | verify | restore | recover-safe | retention")
+	if len(args) == 0 || !has([]string{"update", "status", "verify", "restore", "recover-safe", "retention", "cutover-check"}, args[0]) || len(args) > 2 {
+		return 1, fmt.Errorf("usage: psst-deploy update VERSION | status | verify | restore | recover-safe | retention | cutover-check (local only)")
 	}
 	command := args[0]
 	if command == "update" {
@@ -83,12 +83,21 @@ func Run(ctx context.Context, args []string, input *os.File, output io.Writer) (
 		}
 	}
 	for _, path := range []string{StatePath, BackupPath, filepath.Join(StatePath, "transactions")} {
+		if command == "cutover-check" {
+			if err = existingPrivateDirectory(path); err != nil {
+				return 1, err
+			}
+			continue
+		}
 		if err = privateDirectory(path); err != nil {
 			return 1, err
 		}
 	}
 	host := NewHost(config, StatePath, BackupPath)
 	u := New(config, host, StatePath, BackupPath)
+	if command == "cutover-check" {
+		return 0, cutoverCheck(ctx, u, host, executable, output)
+	}
 	if command != "status" {
 		unlock, e := lock(StatePath)
 		if e != nil {

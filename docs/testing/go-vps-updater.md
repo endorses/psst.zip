@@ -2,8 +2,10 @@
 
 `tools/release/cmd/psst-deploy` is the standalone Linux replacement for the
 installed Python updater. It uses the existing `deployment.json`, `transaction.json`,
-`active.json`, per-transaction Compose records and stopped-checkpoint schema. It
-never invokes Python or imports code downloaded inside a release bundle.
+`active.json`, per-transaction Compose records and stopped-checkpoint schema.
+Updates never invoke Python or import code downloaded inside a release bundle.
+The explicit local `cutover-check` migration command compares status with the
+retained, protected Python helper; it is unavailable through forced SSH.
 
 ## Available verification
 
@@ -101,14 +103,101 @@ incompatible schema migration or old CLI refusal against that newer schema.
 
 The executable tested for mutation is the compiled Go integration test, running
 the production `Updater` and `Host` methods. The installed `psst-deploy` command's
-fixed paths, restricted SSH entry point and production cutover still require the
-installation checks below. Unit tests additionally cover restricted SSH syntax,
+fixed paths and production cutover still require the host checks below. Unit
+tests additionally cover restricted SSH syntax,
 secret-safe diagnostics and legacy transaction/checkpoint formats.
+
+## Root installation and restricted entry point
+
+`deploy/install-go-updater.sh` is a local root tool with exactly two operations:
+`prepare EXPECTED_SHA256` and `activate EXPECTED_SHA256`. Install the reviewed
+script at `/usr/local/lib/psst.zip/install-go-updater.sh` and the reviewed native
+Go executable at `/usr/local/lib/psst.zip/psst-deploy.next`, root-owned mode 0755.
+Pass the independently reviewed build's full 64-character SHA-256; the installer
+accepts no binary, configuration, host, executable or state path argument.
+
+Preparation leaves the Python entry point active. Under the existing
+`/var/lib/psst.zip-deploy/deployment.lock`, it verifies protected real paths,
+private existing state directories, native executable identity, terminal
+transaction state, and exact semantic agreement of Python/Go v1 status. It
+retains the old helper, parser, SSH/sudo restrictions and their checksums in
+`/usr/local/lib/psst.zip/updater-cutover/`. A previous Go binary is retained if
+one exists. The original Python files remain at their existing paths.
+
+Activation rechecks the retained hashes, unchanged original helper/restrictions
+and resolved state. It validates the candidate sudoers with `visudo -cf` and the
+candidate's effective SSH policy with `sshd -t` and `sshd -T -C`. It atomically
+replaces the regular executable at `/usr/local/lib/psst.zip/psst-deploy`, then
+separately replaces the two restriction files. This is **not** one atomic
+multi-file transaction: a short deny/reload boundary is covered by the shared
+lock, so neither updater can mutate state during the switch. Failed validation
+or reload restores the retained restriction files and previous binary where
+possible and leaves protected records for local inspection. It never starts an
+application update or rewrites manifest/bundle requirements.
+
+Before signalling the fixed root-owned `/run/sshd.pid`, the installer rechecks
+the complete installed SSH/sudo configuration, allows only the helper's `ssh`
+sudo argument, and checks that direct `status`, arbitrary `id` and malformed
+release requests fail for the restricted account. It verifies the PID's actual
+sshd executable before sending SIGHUP. The Go restriction examples are
+`deploy/ssh/psst-deploy.go.conf` and `psst-deploy.go.sudoers`; the existing Python
+examples remain unchanged. Both profiles accept only `status` or
+`update vMAJOR.MINOR.PATCH` remotely. The local installer also requires Bash,
+GNU coreutils, `flock`, and protected `sshd`/`visudo` executables in `/usr/sbin` or
+`/usr/bin`, plus the retained Python runtime for its one migration comparison.
+
+The protected check records include helper SHA-256, native platform, Go version,
+embedded source revision/dirty flag, and matched v1 status. A reload signal alone
+does not establish successful login through the operator's actual SSH route.
+Inspect the complete effective sudo policy and check `sshd -T -C` using the
+actual deployment source address before production approval; the automated
+policy context uses `psst-deploy` from loopback.
+
+The opt-in local installation scenario runs from `tools/release/`:
+
+```sh
+PSST_GO=/path/to/go bash internal/deployment/testdata/install-cutover.sh
+```
+
+It compiles the real helper and imports an owned scratch root made from installed
+public executables, Python standard-library files and their runtime libraries.
+It downloads nothing, creates no shared builder cache, mounts no host directory
+or socket, publishes no port and uses a disposable account and generated SSH
+keys with networking disabled except the container's loopback. Cleanup removes
+its exact container, image and temporary root; an existing caller-selected Go
+cache is preserved. The test uses the real OpenSSH daemon/client and sudoers
+plugin, including a live restricted SSH status request. Setup failures and mocks
+are not installation passes.
+
+On 2026-10-24 the disposable installation scenario passed with Go 1.27.3 on
+linux/amd64, OpenSSH 10.5p1/OpenSSL 3.6.4, and sudo 1.9.17p2. It used a synthetic
+completed v1 transaction and generated fixture keys. The real Python restricted
+status request matched the real Go restricted status request after activation.
+Preparation used the installed tools at `/usr/bin`; activation and the daemon
+reload ran with only `/usr/sbin/sshd` and `/usr/sbin/visudo` present, exercising
+the Ubuntu-style layout with the same real installed executables.
+Bad hash/path/ownership/symlink inputs, a held shared lock and pending verification
+were refused. An earlier conflicting effective SSH Match rule caused rollback to
+the previous SSH/sudo files with no Go entrypoint left active. Real sudo rejected
+direct `status`, arbitrary `id` and malformed versions; real SSH rejected empty,
+shell-syntax, arbitrary-version/path, extra-argument and administrator-only
+requests. The actual daemon accepted SIGHUP and a subsequent public-key session
+used the Go helper. The retained helper/parser, private configuration and v1
+transaction hashes stayed unchanged. All exact fixture containers, images and
+temporary roots were removed; the shared caller Go cache was preserved.
+
+This was a local development build with `source_modified: true`, not a reviewed
+production binary. The scratch scenario tests installation and restrictions; the
+separate Docker update/recovery/retention scenario above provides application
+integration evidence. Neither scenario proves the production account, network
+route, complete effective host sudo policy, backup provider or operator cutover.
 
 ## Remaining integration and installation evidence
 
 - [x] Run the bounded disposable Go/Docker update, post-start failure, separate
       restore, legacy v1 state import and retention scenario documented above.
+- [x] Run the disposable root installation, v1 status comparison, rollback,
+      effective SSH/sudo configuration and live restricted-account scenario.
 - [ ] Check the actual VPS has SQLite JSON support, compatible official CLIs,
       adequate disk reserves and no unresolved deployment transaction. Preserve
       existing operator configuration and volume identities.
@@ -128,7 +217,7 @@ secret-safe diagnostics and legacy transaction/checkpoint formats.
 - [ ] Preserve the existing manifest/bundle and provenance contract until every
       supported installation has migrated. Existing immutable releases still
       include `deploy/update.py` and `tools/release_artifacts.py`; the Go v1 reader
-      deliberately accepts/requires their inert compatibility payloads. Retire the
+      accepts the optional updater and requires the inert parser payload. Retire the
       Python code and adjust future bundle requirements only together with the
       final supported consumer switch; do not rewrite published assets.
 
