@@ -291,8 +291,14 @@ func reportsBounded(directory string) error {
 }
 
 func Run(ctx context.Context, root string, args []string, output io.Writer) error {
+	if len(args) > 0 && args[0] == "image" {
+		return imageCommand(ctx, root, args[1:], output)
+	}
+	if len(args) > 0 && args[0] == "compiler" {
+		return compilerCommand(ctx, root, args[1:], output)
+	}
 	if len(args) == 0 || args[0] != "npm" {
-		return errors.New("scan requires npm")
+		return errors.New("scan requires npm, compiler or image")
 	}
 	flags := flag.NewFlagSet("scan npm", flag.ContinueOnError)
 	var source Source

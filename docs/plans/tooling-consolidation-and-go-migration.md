@@ -482,3 +482,11 @@ originals, icon SVG/metadata equality and finite virtual/generated associations;
 unknown rendered inputs fail. Browser/source race checks pass in 1.3 seconds and
 the affected CI workflows pass actionlint. Routine web CI now uses the Go
 observation verifier. Container source-result integration remains pending.
+
+Go image/compiler scanner producers and image aggregation now retain the existing
+raw findings, native/compiler identities, database/tool verification and exact
+advisory-applicability policy. Focused offline/race checks pass in about one
+second, including injected download/signature/OCI failure boundaries. They do not
+claim a fresh live scanner/database run. The source-scanner policy and final
+workflow cutover are still being connected. See the
+[scanner contract](../security/release-scanner-evidence.md).
