@@ -603,3 +603,13 @@ container release/recovery qualification and comparable upload measurements rema
 unrun. Actual VPS inspection, installation and eventual legacy-helper/bundle
 retirement require the separate production rollout. Existing immutable releases,
 operator configuration and deferred backup policy remain unchanged.
+
+A subsequent read-only VPS preflight confirmed Debian 13/amd64, a completed
+`v0.1.6` transaction, completed cleanup, expected protected-path ownership/modes
+and about 34 GB free. It found the SQLite CLI prerequisite absent; installation
+and JSON verification remain pending host changes. A 4,526,240-byte static helper
+was built from clean commit `ad4d836` for the observed architecture and checksummed,
+without staging it on the VPS. See the [updater evidence](../testing/go-vps-updater.md)
+for the exact checksum, observed CLI versions and proposed prerequisite commands.
+The temporary build worktree/cache were removed. Push approval and actual
+production installation remain pending; these checks do not close either gate.

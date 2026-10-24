@@ -192,18 +192,59 @@ separate Docker update/recovery/retention scenario above provides application
 integration evidence. Neither scenario proves the production account, network
 route, complete effective host sudo policy, backup provider or operator cutover.
 
+## Read-only production preflight
+
+A read-only SSH preflight on 2026-10-24 reached the existing Debian 13 VPS. It
+reported `x86_64`, 39,990,112,256 total root-disk bytes and 34,094,055,424 free
+bytes. The current transaction is completed on `v0.1.6`, with cleanup completed,
+`runtime-v1` verification, local-only checkpoint protection and retention count
+three. Existing helper/parser, private configuration/state/backup directories and
+SSH/sudo restriction files have the expected root ownership, regular-file types
+and modes. No files, packages, permissions, containers or daemon configuration
+were changed by these checks.
+
+Installed commands reported Docker 29.8.2, Compose 5.6.0, Buildx 0.37.1, GitHub CLI
+2.102.0 and curl 8.14.1. `sshd` and `visudo` are under `/usr/sbin`. The SQLite CLI
+is **absent**. The configured package metadata offered Debian's
+`3.46.1-7+deb13u2`; that is the observed candidate, not a fresh upstream-version
+claim. Package metadata must be refreshed and SQLite's JSON capability checked
+before production activation. The Go updater already refuses updates before
+pausing production when this prerequisite is unavailable.
+
+The proposed prerequisite commands, for the separately authorized host rollout,
+are:
+
+```sh
+apt-get update
+apt-get install --no-install-recommends sqlite3
+sqlite3 -readonly -batch :memory: "SELECT json_valid('{}');"
+```
+
+The query must return `1`. Neither package command has been run.
+
+A stripped static Linux/amd64 helper was built from a clean detached worktree at
+`ad4d8361e9c248f98a20c2b738b99d0a1d538b47`, with Go 1.27.3 and
+`vcs.modified=false`. It is 4,526,240 bytes; SHA-256:
+`c16085ed8698660c134bcb177c6f73542b6e53a40a65cee17306f3c760d2906a`.
+Its local build receipt records `installed_on_vps: false`. The temporary source
+worktree and compiler cache were removed. Staging this reviewed binary and
+activating the installer remain separate pending host operations.
+
 ## Remaining integration and installation evidence
 
 - [x] Run the bounded disposable Go/Docker update, post-start failure, separate
       restore, legacy v1 state import and retention scenario documented above.
 - [x] Run the disposable root installation, v1 status comparison, rollback,
       effective SSH/sudo configuration and live restricted-account scenario.
-- [ ] Check the actual VPS has SQLite JSON support, compatible official CLIs,
-      adequate disk reserves and no unresolved deployment transaction. Preserve
-      existing operator configuration and volume identities.
-- [ ] Build and checksum the Go helper for the actual Linux architecture. Stage it
-      root-owned without replacing the current helper; retain the old Python
-      helper/parser and their checksums as the pre-cutover implementation.
+- [x] Inspect actual VPS architecture, disk, tools, protected paths and completed
+      transaction without changing the existing deployment; record the missing
+      SQLite prerequisite above.
+- [ ] Install the supported Debian SQLite CLI and verify JSON support before
+      activation; preserve operator configuration and volume identities.
+- [x] Build and checksum the reviewed Go helper for the observed Linux/amd64
+      architecture from an exact clean source snapshot.
+- [ ] Stage it root-owned without replacing the current helper; retain the old
+      Python helper/parser and their checksums as the pre-cutover implementation.
 - [ ] Validate candidate sudoers with `visudo -cf`, and SSH configuration with
       `sshd -t`. The proposed restricted command is
       `/usr/local/lib/psst.zip/psst-deploy ssh`; it still accepts exactly `status` or
