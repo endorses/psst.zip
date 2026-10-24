@@ -68,6 +68,16 @@ class Selection:
 
 
 def classify_path(path: str) -> frozenset[str]:
+    if path in {
+        "docs/README.md",
+        "docs/usage.md",
+        "docs/self-hosting.md",
+        "docs/development.md",
+        "docs/administration.md",
+        "docs/protocol/transfers.md",
+    }:
+        # Reviewed prose moved from README; protocol vectors still run all jobs.
+        return frozenset()
     if path.startswith("tools/release/"):
         if path.startswith(
             (
