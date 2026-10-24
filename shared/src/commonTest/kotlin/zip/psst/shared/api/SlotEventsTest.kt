@@ -15,6 +15,7 @@ import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -32,14 +34,23 @@ import zip.psst.shared.model.ServerConfig
 class SlotEventsTest {
     private val slot = "11111111-1111-1111-1111-111111111111"
 
-    private fun client(channel: ByteReadChannel): HttpClient =
-        HttpClient(
-            MockEngine { request ->
-                assertEquals("/api/v1/slots/$slot/events", request.url.encodedPath)
-                assertEquals("Bearer owner-token", request.headers[HttpHeaders.Authorization])
-                respond(channel, headers = headersOf(HttpHeaders.ContentType, "text/event-stream"))
-            },
-        )
+    private fun client(
+        channel: ByteReadChannel,
+        testDispatcher: CoroutineDispatcher? = null,
+    ): HttpClient =
+        HttpClient(MockEngine) {
+            engine {
+                dispatcher = testDispatcher
+                addHandler { request ->
+                    assertEquals("/api/v1/slots/$slot/events", request.url.encodedPath)
+                    assertEquals("Bearer owner-token", request.headers[HttpHeaders.Authorization])
+                    respond(
+                        channel,
+                        headers = headersOf(HttpHeaders.ContentType, "text/event-stream"),
+                    )
+                }
+            }
+        }
 
     private fun api(http: HttpClient) =
         SlotApi(http, ServerConfig("https://owner.test"), "owner-token")
@@ -129,32 +140,32 @@ class SlotEventsTest {
     }
 
     private fun readFailureIsPropagated(cause: Throwable) = runTest {
-        withContext(Dispatchers.Default) {
-            supervisorScope {
-                val channel = ByteChannel(autoFlush = true)
-                val reading = CompletableDeferred<Unit>()
-                val readFailure = CompletableDeferred<Throwable>()
-                val observed =
-                    object : ByteReadChannel by channel {
-                        override suspend fun awaitContent(min: Int): Boolean {
-                            reading.complete(Unit)
-                            throw readFailure.await()
-                        }
+        supervisorScope {
+            val channel = ByteChannel(autoFlush = true)
+            val reading = CompletableDeferred<Unit>()
+            val readFailure = CompletableDeferred<Throwable>()
+            val observed =
+                object : ByteReadChannel by channel {
+                    override suspend fun awaitContent(min: Int): Boolean {
+                        reading.complete(Unit)
+                        throw readFailure.await()
                     }
-                val http = client(observed)
-                val reader = async { api(http).events(slot).collect() }
-                try {
-                    withTimeout(5_000) { reading.await() }
-                    readFailure.complete(cause)
-                    val failure = assertFails { withTimeout(5_000) { reader.await() } }
-                    assertFalse(failure is TimeoutCancellationException)
-                    assertEquals(cause.message, failure.message)
-                    assertTrue(channel.isClosedForWrite)
-                } finally {
-                    reader.cancelAndJoin()
-                    channel.cancel()
-                    http.close()
                 }
+            // Keep the mock engine and reader on one scheduler. These deadlines bound
+            // the protocol handshake, not how quickly a loaded CI worker gets CPU time.
+            val http = client(observed, StandardTestDispatcher(testScheduler))
+            val reader = async { api(http).events(slot).collect() }
+            try {
+                withTimeout(5_000) { reading.await() }
+                readFailure.complete(cause)
+                val failure = assertFails { withTimeout(5_000) { reader.await() } }
+                assertFalse(failure is TimeoutCancellationException)
+                assertEquals(cause.message, failure.message)
+                assertTrue(channel.isClosedForWrite)
+            } finally {
+                reader.cancelAndJoin()
+                channel.cancel()
+                http.close()
             }
         }
     }
