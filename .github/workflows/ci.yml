@@ -371,6 +371,18 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: ./android/gradlew -p android :app:checkPsstNativeNotices :shared:checkPsstNativeNotices :shared:testPsstNativeTooling --no-daemon
 
+      - name: Preserve Android and shared test failures
+        if: failure() && steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          archive: true
+          name: android-unit-test-results
+          path: |
+            android/app/build/test-results/testDebugUnitTest/*.xml
+            shared/build/test-results/testAndroidHostTest/*.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
   ios:
     name: Native iOS app, extension and XCTest
     if: ${{ !inputs.container_release && !inputs.cli_only }}
