@@ -629,6 +629,13 @@ the altered layer. Its 14-case suite passes locally in 9.37s, with the opt-in re
 Docker scenario skipped. The superseded hosted attempt was stopped before the
 corrected run to avoid concurrent duplicate native builds.
 
+The corrected run passed both those retained Python suites, then reached an
+obsolete CI invocation for the retired Android Python tests. Empty discovery now
+fails on the hosted runner. Removing that invocation leaves the replacement Go
+Android regressions in the required shared-tooling test step; no placeholder test
+or ignored failure replaces it. The remaining workflow discovery patterns were
+checked against the retained test files.
+
 The PR checks track the corrected revision's final hosted outcome. These ordinary
 application checks do not exercise the separate two-architecture container
 publication/recovery workflow or authorize production installation. The first-run
