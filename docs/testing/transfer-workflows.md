@@ -44,10 +44,10 @@ From `backend/`, run `go test -race ./...` and `golangci-lint run ./...` with a 
 version supported by the installed linter. Do not downgrade the project or skip
 lint to work around a linter binary built against an older compiler.
 
-From the repository root, with the README's JDK/Android SDK setup:
+From the repository root, with the [development guide's JDK/Android SDK setup](../development.md#native-builds-and-verification):
 
 ```sh
-./android/gradlew -p android :app:testDebugUnitTest :shared:testDebugUnitTest \
+./android/gradlew -p android :app:testDebugUnitTest :shared:testAndroidHostTest \
   :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
 python3 ios/scripts/check_sources.py
 ios/scripts/test-portable.sh

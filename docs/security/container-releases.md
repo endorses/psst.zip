@@ -2,14 +2,17 @@
 
 The release stack runs published backend and web/Caddy images. Main-branch pushes
 run CI; publishing a version makes it available to install. Production updates
-are a separate manual action. The release publishing and updater tooling are
-implemented, with first publication and production adoption still pending. No
-tagged container release has been published through this release process yet.
+are a separate manual action. Versioned container releases are available through
+[GitHub Releases](https://github.com/endorses/psst.zip/releases?q=v&expanded=true).
+The first production rollout and successful Actions deployment of `v0.1.6` are
+recorded in the [production deployment guide](actions-production-deployment.md).
+The Go tooling refactor still needs its own hosted container-release qualification;
+see the [implementation plan](../plans/tooling-consolidation-and-go-migration.md).
 
 Routine pushes and pull requests retain security/history checks and select
 application steps from their source, build and fixture dependencies. Prose-only
 documentation and reviewed release-tooling changes can omit unrelated app builds.
-The five existing check names remain present; each scope step explains its
+The named checks remain present; each scope step explains their
 selection. An omitted application suite has not executed. Unknown changes or
 unavailable Git baselines run everything. Manual CI requests the full application
 suite. The container release caller requires complete security/backend/web
@@ -60,8 +63,8 @@ failed publisher preflight. These candidate outputs are not installable releases
 
 Docker's local `--load` exporter can report a configuration digest in its
 `containerimage.digest` field. Candidate records retain that raw metadata, but
-those values must not be used as registry manifest or index digests. The future
-publisher must resolve and verify the digests actually stored in the registry.
+those values must not be used as registry manifest or index digests. The publisher
+resolves and verifies the digests actually stored in the registry.
 
 The workflow defaults to read-only repository permissions. Tagged evidence jobs
 receive scoped OIDC/attestation permissions; only the guarded publication job can
@@ -80,9 +83,8 @@ guides.
 
 Choose an unused patch version for each changed publication candidate. Preserve
 `v0.0.0` and the failed `v0.1.0` and `v0.1.1` tags. A main push runs source CI.
-The guarded publication
-transport and signing bridge are enabled in the tag workflow; each candidate
-still needs its exact signed gates and the configured human approvals.
+The protected publication job is enabled in the tag workflow; each candidate
+still needs its exact signed gates and the configured protected approval.
 
 - [x] Review and commit the complete release source and workflow. Push the
       reviewed checkpoint only with authorization, then verify routine CI on

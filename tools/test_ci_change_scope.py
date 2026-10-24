@@ -96,6 +96,15 @@ class ChangeScopeTests(unittest.TestCase):
         return values
 
     def test_docs_skip_but_explicit_release_validation_runs_all(self) -> None:
+        for path in (
+            "docs/README.md",
+            "docs/usage.md",
+            "docs/self-hosting.md",
+            "docs/development.md",
+            "docs/administration.md",
+            "docs/protocol/transfers.md",
+        ):
+            self.write(path)
         self.write("docs/plans/ci.md")
         self.write("docs/releases/android.md")
         self.write(".github/workflows/release.yml")
@@ -165,6 +174,8 @@ class ChangeScopeTests(unittest.TestCase):
             "assets/brand/logo.svg": selector.JOBS,
             "LICENSE": selector.JOBS,
             "docs/protocol/chunked-files.md": selector.JOBS,
+            "docs/protocol/transfers.json": selector.JOBS,
+            "docs/unreviewed-guide.md": selector.JOBS,
             "docs/testing/fixtures/vector.json": selector.JOBS,
             "docs/security/fixtures/vector.json": selector.JOBS,
             ".github/workflows/ci.yml": selector.JOBS,
