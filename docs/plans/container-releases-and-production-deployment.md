@@ -1329,15 +1329,18 @@ public-delivery, provider and browser/mobile checks. Retained experiments are
 validated within their signed measurement interval; immediate experiment
 execution keeps its existing freshness requirement.
 
-`tools/aggregate_release_recovery.py` authenticates both native terminal records
-and validates their structured scenarios, exact manifest/bundle/configurations,
+`psst-release evaluate recovery` authenticates both native terminal records and
+validates their structured scenarios, exact manifest/bundle/configurations,
 committed execution helpers, historical ancestry and measurement time interval.
-Its `--source-report` mode requires the current attempt's authenticated complete
-source report before accepting the full binding from the three small retained
-prepared files. It checks exact source-asset metadata coverage and rechecks
-retained small bytes. `--verify-only` authenticates the resulting canonical gate
-without another experiment or archive replay. Host runner and isolated daemon
-tool versions are validated independently, since they can legitimately differ.
+Its `--source-result` input requires the current attempt's authenticated complete
+source result before accepting the full binding from the three small retained
+prepared files. The source result binds the exact schema2 artifact foundation by
+digest. Recovery checks exact source-asset metadata coverage and rechecks retained
+small bytes, then extends the same release result directly. Standard GitHub
+attestation verification authenticates that result without another experiment or
+archive replay. Host runner and isolated daemon tool versions are validated
+independently, since they can legitimately differ. Historical published v1 input
+readers remain supported by the native measurement controller.
 
 The tagged workflow now signs native recovery measurements and the joined gate.
 Small native-descriptor and prepared-binding artifacts avoid downloading all

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Authenticate release gate reports with GitHub's artifact attestation verifier.
 
 This adapter reads evidence; it cannot sign, upload, or publish anything. Report
@@ -9,28 +8,29 @@ exact reviewed repository, workflow commit, version ref, and hosted issuer.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import selectors
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 
 from publish_container_release import (
-    Binding,
     GATES,
-    READBACK_GATES,
-    VerifiedEvidence,
     WORKFLOW,
+    Binding,
+    VerifiedEvidence,
     sha256,
+    source_digest,
 )
 from release_artifacts import (
     COMMIT,
+    MAX_BUNDLE_BYTES,
     VERSION,
     InvalidRelease,
-    MAX_BUNDLE_BYTES,
     fields,
+    json_bytes,
     matches,
     read_bounded_file,
     read_json,
@@ -67,8 +67,9 @@ def matching_invocation(statement: dict, binding: Binding, invocation: tuple) ->
     build, run = predicate.get("buildDefinition"), predicate.get("runDetails")
     if not isinstance(build, dict) or not isinstance(run, dict):
         return False
-    external, internal = build.get("externalParameters"), build.get(
-        "internalParameters"
+    external, internal = (
+        build.get("externalParameters"),
+        build.get("internalParameters"),
     )
     builder, metadata = run.get("builder"), run.get("metadata")
     if not all(
@@ -277,8 +278,18 @@ class GhEvidenceVerifier:
         self._authenticated: dict[tuple, None] = {}
 
     def verify(self, gate: str, report: Path, binding: Binding) -> VerifiedEvidence:
-        require(gate in GATES | READBACK_GATES, "Unknown release evidence gate")
+        require(gate in GATES, "Unknown release evidence gate")
         content = read_bounded_file(report)
+        value = read_json(content)
+        if isinstance(value, dict) and value.get("kind") == "container-release-result":
+            from release_result import checked_result
+
+            result = checked_result(value, binding, self.invocation)
+            require(gate in result["checks"], "Release result lacks required check")
+            self.authenticate(content, binding)
+            return VerifiedEvidence(
+                gate, binding.digest, sha256(content), True, result["checks"][gate]
+            )
         record = fields(
             read_json(content),
             {"schema_version", "gate", "binding_digest", "passed", "details"},
@@ -350,3 +361,87 @@ class GhEvidenceVerifier:
         if len(self._authenticated) >= MAX_AUTHENTICATION_CACHE:
             self._authenticated.pop(next(iter(self._authenticated)))
         self._authenticated[key] = None
+
+
+def verify_final_subjects(
+    plan, assets: dict[str, Path], verifier: GhEvidenceVerifier
+) -> dict:
+    """Authenticate the single standard statement covering every final subject.
+
+    The manifest lookup verifies the signature/certificate once. Every exact
+    name/digest pair must occur in that same verified statement, including the
+    index and child digests sharing an OCI repository name. Registry bytes are
+    independently measured by the transport; retained files are rehashed here.
+    """
+    require(
+        set(assets) == set(dict(plan.assets)), "Final provenance asset coverage differs"
+    )
+    expected = set()
+    manifest_name, manifest_digest = (
+        dict(plan.binding.subjects)["manifest"].removeprefix("file:").split("@")
+    )
+    for _, subject in plan.binding.subjects:
+        name, digest = subject.split("@")
+        expected.add(
+            (
+                name.removeprefix("file:").removeprefix("oci://"),
+                digest.removeprefix("sha256:"),
+            )
+        )
+        if name.startswith("file:"):
+            require(
+                source_digest(assets[name.removeprefix("file:")]) == digest,
+                "Final attested file changed",
+            )
+    with tempfile.TemporaryDirectory(prefix="psst-final-provenance-") as temporary:
+        environment = {
+            "PATH": os.defpath,
+            "HOME": temporary,
+            "LANG": "C",
+            "GH_CONFIG_DIR": str(Path(temporary) / "gh-config"),
+            "GH_PROMPT_DISABLED": "1",
+        }
+        if verifier.token:
+            environment["GH_TOKEN"] = verifier.token
+        output = bounded_verify(
+            verification_arguments(verifier.gh, assets[manifest_name], plan.binding),
+            environment,
+        )
+        run_id, attempt = verifier.invocation or (None, None)
+        verified_subject(
+            output,
+            manifest_digest,
+            binding=plan.binding,
+            run_id=run_id,
+            run_attempt=attempt,
+        )
+        complete = False
+        for candidate in read_json(output):
+            try:
+                verified_subject(
+                    json_bytes([candidate]),
+                    manifest_digest,
+                    binding=plan.binding,
+                    run_id=run_id,
+                    run_attempt=attempt,
+                )
+            except InvalidRelease:
+                continue
+            subjects = candidate["verificationResult"]["statement"]["subject"]
+            pairs = {
+                (item["name"], item["digest"].get("sha256"))
+                for item in subjects
+                if isinstance(item.get("name"), str)
+            }
+            if pairs == expected and len(pairs) == len(subjects):
+                complete = True
+                break
+        require(
+            complete, "Verified final statement lacks the exact complete subject set"
+        )
+        for name, digest in plan.assets:
+            require(
+                source_digest(assets[name]) == digest,
+                "Final attested file changed during verification",
+            )
+    return {"subjects": dict(plan.binding.subjects)}

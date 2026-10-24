@@ -1,0 +1,3 @@
+# Go cutover candidate; validate before replacing the installed restriction.
+Defaults:psst-deploy env_keep += "SSH_ORIGINAL_COMMAND"
+psst-deploy ALL=(root) NOPASSWD: /usr/local/lib/psst.zip/psst-deploy ssh

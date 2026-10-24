@@ -1,8 +1,7 @@
 {
   "schema_version": 1,
-  "kind": "container-distribution-review-policy",
+  "kind": "container-publication-policy",
   "environment": "container-release",
-  "reviewers": ["endorses"],
   "temporary_caddy_exception": {
     "schema_version": 1,
     "kind": "temporary-caddy-vulnerability-acceptance",
@@ -172,5 +171,6 @@
         "advisory_sha256": "sha256:197efc1b2f05e891ab3dad2127b7ea3997dc80dc39b21294ab93e11333c4c08b"
       }
     ]
-  }
+  },
+  "authorized_exception_owners": ["endorses"]
 }

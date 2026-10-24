@@ -3,6 +3,7 @@ backend/tmp/
 backend/data/
 /client/psst
 /client/psst.exe
+/tools/release/.build/
 
 # Node
 web/node_modules/

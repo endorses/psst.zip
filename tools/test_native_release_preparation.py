@@ -7,15 +7,16 @@ approval. The actual source/smoke/OCI helpers have their separate live evidence.
 from __future__ import annotations
 
 import copy
-import hashlib
 import gzip
-import os
+import hashlib
 import io
 import json
-from pathlib import Path
+import os
+import subprocess
 import tarfile
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import generate_release_gate_reports as reports
@@ -67,30 +68,32 @@ class FixtureOperations(native.Operations):
     def preflight(self, context):
         self.event("preflight")
 
-    def collect_apk(self, image, helper, output):
-        self.event("collect")
-        output.mkdir()
-        self.test.assertIn(image, self.test.originals.values())
-        self.test.assertEqual(helper, self.test.helper)
-
-    def collect_caddy(self, image, base, output):
-        self.event("caddy")
-        output.mkdir()
-        self.test.assertEqual(image, self.test.originals["web"])
-        self.test.assertEqual(base, self.test.candidate["base_images"]["caddy"])
-
-    def package(self, collections, cosign, context, output):
+    def package(self, original, originals, helper, caddy_base, cosign, context, output):
         self.event("signed-package")
+        self.test.assertEqual(originals, self.test.originals)
+        self.test.assertEqual(helper, self.test.helper)
+        self.test.assertEqual(caddy_base, self.test.candidate["base_images"]["caddy"])
         self.test.assertEqual(cosign, self.test.cosign)
         output.mkdir()
         name = "psst.zip-v1.2.3-runtime-sources-amd64.tar.gz"
         source = b"unsigned runtime source fixture; never published"
         (output / name).write_bytes(source)
+        inventory = {
+            "schema_version": 2,
+            "kind": "container-source-inventory",
+            "source": {
+                key: context.checked()[key]
+                for key in ("repository", "version", "commit")
+            },
+        }
+        (output / "source-inventory.json").write_bytes(json_bytes(inventory))
         record = {
-            "schema_version": 1,
+            "schema_version": 2,
+            "kind": "native-runtime-source-description",
             "version": context.version,
             "revision": context.commit,
             "architecture": "amd64",
+            "source_inventory_sha256": reports.sha256(json_bytes(inventory)),
             "source_asset": {
                 "file": name,
                 "sha256": hashlib.sha256(source).hexdigest(),
@@ -99,21 +102,22 @@ class FixtureOperations(native.Operations):
             },
             "bindings": {
                 component: {"original_image_id": config}
-                for component, config in self.test.originals.items()
+                for component, config in originals.items()
             },
             "overlays": {
                 component: {
                     key: "1" * 64
-                    for key in [
+                    for key in (
                         "THIRD_PARTY_NOTICES.txt",
                         "runtime-inventory.json",
                         "SOURCE.txt",
-                    ]
+                    )
                 }
                 for component in native.COMPONENTS
             },
+            "additional_files": {},
         }
-        (output / "runtime-pack.json").write_bytes(json_bytes(record))
+        self.test.descriptions[str(output)] = record
         return record
 
     def overlay(self, image, alias, output_alias, folder, platform, iidfile):
@@ -125,7 +129,7 @@ class FixtureOperations(native.Operations):
         iidfile.write_text(config)
         return config
 
-    def overlays(self, pack, configs):
+    def overlays(self, context, pack, configs):
         self.event("overlay-check")
         return {"fixture_verified_configs": configs}
 
@@ -192,18 +196,28 @@ class FixtureOperations(native.Operations):
         context,
         builder_config,
         source_root,
-        dependency_collection,
-        archive,
-        tested_config,
+        common_collection,
+        archives,
+        configs,
         runtime_pack,
+        cosign,
+        smoke,
+        asset_digest,
+        runtime_report,
         output,
     ):
+        replay = self.replay(
+            context, runtime_pack, archives, smoke, cosign, asset_digest
+        )
+        runtime_report.write_bytes(json_bytes(replay))
         self.event("browser-replay")
         output.mkdir()
         (output / "browser-inputs.tar").write_bytes(b"selective browser fixture")
         value = {
+            "schema_version": 2,
+            "kind": "native-browser-input-measurement",
             "source": context.checked(),
-            "tested_web_config": tested_config,
+            "tested_web_config": configs["web"],
             "builder_config": builder_config,
             "oci_image_verified": True,
             "git_source_binding_verified": True,
@@ -329,6 +343,18 @@ class NativePreparation(unittest.TestCase):
         self.cosign.write_bytes(b"pinned executable fixture")
         self.ops = FixtureOperations(self)
         self.output = self.folder / "prepared"
+        self.descriptions = {}
+
+        def describe(context, mode, *args):
+            self.assertEqual(mode, "describe")
+            self.assertEqual(args[0], "--collection")
+            return json_bytes(self.descriptions[args[1]])
+
+        self.description_patch = patch.object(
+            reports, "source_command", side_effect=describe
+        )
+        self.description_patch.start()
+        self.addCleanup(self.description_patch.stop)
 
     def write_record(self):
         self.record_path.write_bytes(json_bytes(self.record))
@@ -344,7 +370,7 @@ class NativePreparation(unittest.TestCase):
                     "cosign": self.cosign,
                     "web_builder_config": "sha256:" + "8" * 64,
                     "source_root": self.folder,
-                    "dependency_collection": self.folder / "dependencies",
+                    "common_collection": self.folder / "common",
                     "output": self.output,
                     "operations": self.ops,
                 }
@@ -466,18 +492,17 @@ class NativePreparation(unittest.TestCase):
         ]:
             original = self.images[config][field]
             self.images[config][field] = value
-            with self.subTest(config=config, field=field), self.assertRaises(
-                InvalidRelease
+            with (
+                self.subTest(config=config, field=field),
+                self.assertRaises(InvalidRelease),
             ):
                 self.prepare()
             self.images[config][field] = original
             self.assertFalse(self.output.exists())
-            self.assertNotIn("collect", self.ops.events)
+            self.assertNotIn("signed-package", self.ops.events)
 
     def test_stage_failures_never_emit_completion_and_cleanup_only_owned_aliases(self):
         for stage in [
-            "collect",
-            "caddy",
             "signed-package",
             "overlay",
             "overlay-check",
@@ -557,11 +582,13 @@ class RealAdapterPolicy(unittest.TestCase):
             with self.assertRaisesRegex(InvalidRelease, "forbids emulation"):
                 self.ops.preflight(self.context)
             self.assertEqual(run.call_count, 1)
-        with patch.object(
-            self.ops, "run", side_effect=[b"x86_64", b"Driver: docker-container"]
+        with (
+            patch.object(
+                self.ops, "run", side_effect=[b"x86_64", b"Driver: docker-container"]
+            ),
+            self.assertRaisesRegex(InvalidRelease, "Docker driver"),
         ):
-            with self.assertRaisesRegex(InvalidRelease, "Docker driver"):
-                self.ops.preflight(self.context)
+            self.ops.preflight(self.context)
         arm = reports.NativeSourceContext(
             self.context.repository,
             self.context.version,
@@ -575,33 +602,29 @@ class RealAdapterPolicy(unittest.TestCase):
 
     def test_concrete_helpers_receive_exact_context_and_do_not_publish(self):
         with patch.object(
-            native.package_runtime_sources, "package", return_value={}
-        ) as package:
+            native, "source_command", side_effect=[b"", b"", b"{}"]
+        ) as command:
             self.ops.package(
-                Path("collection"), Path("cosign"), self.context, Path("pack")
-            )
-        self.assertEqual(
-            package.call_args.args[3:7],
-            (
+                Path("original.tar"),
+                {"backend": "backend-config", "web": "web-config"},
+                "helper",
+                "caddy-base",
                 Path("cosign"),
-                self.context.version,
-                self.context.commit,
-                "https://github.com/endorses/psst.zip/releases/download/v1.2.3",
-            ),
-        )
-        with patch.object(
-            native.verify_runtime_source_pack, "verify", return_value={}
-        ) as replay:
-            self.ops.replay(
                 self.context,
                 Path("pack"),
-                {},
-                Path("actual-smoke.json"),
-                Path("cosign"),
-                "sha256:" + "5" * 64,
             )
-        self.assertEqual(replay.call_args.kwargs["repository"], self.context.repository)
-        self.assertEqual(replay.call_args.kwargs["revision"], self.context.commit)
+        self.assertEqual(
+            [call.args[1] for call in command.call_args_list],
+            ["collect", "overlays", "describe"],
+        )
+        collect = command.call_args_list[0].args
+        self.assertEqual(collect[0], self.context)
+        self.assertEqual(collect[collect.index("--images-tar") + 1], "original.tar")
+        self.assertEqual(
+            collect[collect.index("--backend-config") + 1], "backend-config"
+        )
+        self.assertEqual(collect[collect.index("--web-config") + 1], "web-config")
+        self.assertEqual(collect[collect.index("--cosign") + 1], "cosign")
         with patch.object(
             native, "collect_native_measurement", return_value={}
         ) as measure:
@@ -691,7 +714,7 @@ class SavedOciExport(unittest.TestCase):
         for number, (arch, compressed) in enumerate(
             [("amd64", True), ("arm64", False), ("arm64", True)]
         ):
-            configs, unused = saved_oci_fixture(
+            configs, _unused = saved_oci_fixture(
                 self.archive, arch, compressed=compressed
             )
             context = reports.NativeSourceContext(
@@ -715,8 +738,42 @@ class SavedOciExport(unittest.TestCase):
             self.export(tested_config=self.configs["web"])
         wrong = {**self.files, "backend/layer.tar": b"different layer bytes"}
         write_tar(self.archive, wrong)
-        with self.assertRaisesRegex(InvalidRelease, "layer differs"):
-            self.export(output=self.root / "wrong-layer.tar")
+        altered = self.root / "wrong-layer.tar"
+        with self.assertRaises(InvalidRelease):
+            self.export(output=altered)
+        # Production deliberately keeps subprocess stderr private. Independently
+        # inspect this disposable export to prove the actual layer/configuration
+        # mismatch was rejected, rather than accepting an unrelated tool failure.
+        rejected = subprocess.run(
+            [
+                native._release_tool(),
+                "container-build",
+                "inspect-oci",
+                "--archive",
+                str(altered),
+                "--platform",
+                self.context.platform,
+                "--repository",
+                self.context.repository,
+                "--version",
+                self.context.version,
+                "--commit",
+                self.context.commit,
+                "--tested-config",
+                self.configs["backend"],
+                "--component",
+                "backend",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        self.assertEqual(rejected.returncode, 1)
+        self.assertEqual(rejected.stdout, b"")
+        self.assertEqual(
+            rejected.stderr,
+            b"psst-release: OCI layer differs from the tested image configuration\n",
+        )
         write_tar(self.archive, {**self.files, "../escape": b"escape"})
         with self.assertRaises(InvalidRelease):
             self.export(output=self.root / "unsafe.tar")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sample macOS build resources without changing the build or its exit status."""
+"""Time native builds, with optional bounded process/VM incident sampling."""
 
 import os
 import re
@@ -71,9 +71,11 @@ def snapshot():
             pid, parent, state, cpu, rss, cpu_time, executable = fields
             row = (
                 float(cpu),
-                f"{os.path.basename(executable)} pid={int(pid)} parent={int(parent)} "
-                f"state={state} cpu={float(cpu):.1f}% rss={int(rss)}KiB "
-                f"cpu_time={cpu_time}",
+                (
+                    f"{os.path.basename(executable)} pid={int(pid)} parent={int(parent)} "
+                    f"state={state} cpu={float(cpu):.1f}% rss={int(rss)}KiB "
+                    f"cpu_time={cpu_time}"
+                ),
             )
             rows.append(row)
         except ValueError:
@@ -111,7 +113,7 @@ def monitor(stop, started):
                 + "\n".join(lines),
                 flush=True,
             )
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - optional diagnostics must not fail the build
             # Diagnostics are best effort and must never fail the build.
             print(f"Build resources unavailable: {type(error).__name__}", flush=True)
         if stop.wait(INTERVAL_SECONDS):
@@ -119,11 +121,21 @@ def monitor(stop, started):
 
 
 def main():
-    if len(sys.argv) < 2:
-        raise SystemExit("Usage: diagnose_build.py xcodebuild [arguments...]")
+    command = sys.argv[1:]
+    sample_resources = bool(command and command[0] == "--sample-resources")
+    if sample_resources:
+        command.pop(0)
+    if not command:
+        raise SystemExit(
+            "Usage: diagnose_build.py [--sample-resources] xcodebuild [arguments...]"
+        )
     started = time.monotonic()
-    print("Starting native build with bounded resource sampling", flush=True)
-    child = subprocess.Popen(sys.argv[1:], start_new_session=True)
+    print(
+        "Starting native build"
+        + (" with bounded resource sampling" if sample_resources else ""),
+        flush=True,
+    )
+    child = subprocess.Popen(command, start_new_session=True)
     interrupted = None
     cancellation = None
 
@@ -150,8 +162,10 @@ def main():
     for number in (signal.SIGINT, signal.SIGTERM):
         signal.signal(number, forward_signal)
     stop = threading.Event()
-    sampler = threading.Thread(target=monitor, args=(stop, started), daemon=True)
-    sampler.start()
+    sampler = None
+    if sample_resources:
+        sampler = threading.Thread(target=monitor, args=(stop, started), daemon=True)
+        sampler.start()
     try:
         status = child.wait()
     finally:
@@ -160,7 +174,8 @@ def main():
             force_stop()
         stop.set()
         # No temporary logs are created; any outstanding diagnostic has a 2s limit.
-        sampler.join(timeout=7)
+        if sampler is not None:
+            sampler.join(timeout=7)
     print(
         f"Native build finished elapsed={time.monotonic() - started:.1f}s status={status}",
         flush=True,

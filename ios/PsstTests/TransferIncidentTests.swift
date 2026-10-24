@@ -1,6 +1,10 @@
 import Foundation
-@testable import Psst
 import XCTest
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class TransferIncidentTests: XCTestCase {
     func testOnlyExactStatusAndCodePairsAreRecognized() {

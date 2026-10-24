@@ -103,9 +103,8 @@ class ChangeScopeTests(unittest.TestCase):
         self.write(".github/workflows/cli-release.yml")
         self.write("docs/cli.md")
         self.write("tools/android_build_timings.gradle")
-        self.write("tools/check_android_update.py")
-        self.write("tools/test_android_update.py")
-        self.write("tools/android_signing_bridge.py")
+        self.write("tools/release/internal/publication/result.go")
+        self.write("tools/release/internal/deployment/update.go")
         self.commit()
         self.push_event()
         for job in sorted(selector.JOBS):
@@ -120,7 +119,7 @@ class ChangeScopeTests(unittest.TestCase):
             "backend/go.sum": {"backend", "web", "cli"},
             "client/go.sum": {"cli"},
             "client/internal/cli/run.go": {"cli"},
-            "client/scripts/check-integration.py": {"cli"},
+            "client/scripts/source-version.sh": {"cli"},
             "web/tests/check.ts": {"web"},
             "web/tests/lan/transfers.spec.ts": {"web", "cli"},
             "web/src/routes/admin/+page.svelte": {"web"},
@@ -135,7 +134,9 @@ class ChangeScopeTests(unittest.TestCase):
             "web/src/lib/i18n/messages.ts": {"web", "cli"},
             "web/package.json": {"web", "cli"},
             "web/package-lock.json": {"web", "cli"},
-            "tools/measure_browser_source_inventory.py": {"web", "cli"},
+            "tools/measure_browser_source_inventory.py": selector.JOBS,
+            "tools/collect_caddy_sources.py": selector.JOBS,
+            "tools/sqlite_vendoring.go": selector.JOBS,
             "shared/build.gradle.kts": {"android", "ios"},
             "android/gradle/wrapper/gradle-wrapper.properties": {"android", "ios"},
             "android/app/build.gradle.kts": {"android", "ios"},
@@ -143,8 +144,24 @@ class ChangeScopeTests(unittest.TestCase):
             "android/app/src/main/assets/licenses/notice.txt": {"android", "ios"},
             "ios/Shared/LegalResources/notice.txt": {"android", "ios"},
             "ios/PsstShare/ShareViewController.swift": {"ios"},
-            "tools/generate_native_notices.py": {"android", "ios"},
-            "tools/android_release.py": {"android"},
+            "shared/gradle/native-tooling.gradle.kts": {"android", "ios"},
+            "tools/release/internal/clibuild/assets.go": {"cli"},
+            "tools/release/internal/androidrelease/apk.go": {"android"},
+            "tools/release/internal/publication/result.go": set(),
+            "tools/release/internal/deployment/update.go": set(),
+            "tools/release/internal/github/ci.go": set(),
+            "tools/release/internal/source/runtime.go": set(),
+            "tools/release/internal/scanning/npm.go": set(),
+            "tools/release/internal/oci/archive.go": set(),
+            "tools/release/internal/containerbuild/candidate.go": set(),
+            "tools/release/internal/browser/inventory.go": {"web", "cli"},
+            "tools/release/internal/evaluation/evaluate.go": set(),
+            "tools/backend-source-recipes.json": set(),
+            "tools/go-runtime-sources.json": set(),
+            "tools/upstream-application-sources.json": set(),
+            "tools/release_process.py": set(),
+            "tools/release_http.py": set(),
+            "tools/release/internal/androidrelease/command.go": {"android"},
             "assets/brand/logo.svg": selector.JOBS,
             "LICENSE": selector.JOBS,
             "docs/protocol/chunked-files.md": selector.JOBS,
@@ -161,14 +178,15 @@ class ChangeScopeTests(unittest.TestCase):
             "AGENTS.md": set(),
             "docs/security/guide.md": set(),
             "docs/research/study.md": set(),
+            "docs/testing/container-source-tooling.md": set(),
             "docs/releases/android.md": set(),
             "docs/cli.md": set(),
             "docs/releases/new-guide.md": selector.JOBS,
             "deploy/updater/Dockerfile": set(),
-            "tools/publish_verified_release.py": set(),
+            "tools/release/internal/publication/publish.go": set(),
             "tools/temporary_caddy_acceptance.py": set(),
             "tools/container-distribution-policy.json": set(),
-            "tools/test_release_transport.py": set(),
+            "tools/release/internal/publication/transport_test.go": set(),
             "tools/runtime-legal/verify.py": set(),
             "tools/fixtures/release-updater/controller.py": set(),
             "tools/new_tool.py": selector.JOBS,

@@ -637,11 +637,13 @@ its own hosted native validation.
 [Read-only Wireless debugging instructions](../releases/android.md#read-the-installed-identity-without-usb)
 were used for the actual phone check; no phone update has run.
 
-Implemented: [release workflow](../../.github/workflows/android-release.yml),
-[artifact/signing checks](../../tools/android_release.py),
-[exact-source CI reuse](../../tools/android_release_ci.py),
-[private signing bridge](../../tools/android_signing_bridge.py),
+Current tooling: [release workflow](../../.github/workflows/android-release.yml),
+[shared Go Android release command](../../tools/release/internal/androidrelease/command.go),
+[exact-source CI reuse](../../tools/release/internal/androidrelease/ci.go),
 and [actual-storage emulator update fixture](../../docs/testing/android-release-updates.md).
+The private signing bridge used for the historical transition was retired under
+[the tooling consolidation plan](tooling-consolidation-and-go-migration.md);
+normal same-signer updates remain supported.
 The workflow defaults to an unsigned preview, reuses relevant executed checks,
 builds/lints once and signs only behind the Android environment. Publication and
 private device evidence remain disabled until readiness is established. There are

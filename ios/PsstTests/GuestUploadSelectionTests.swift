@@ -1,6 +1,10 @@
 import XCTest
 
-@testable import Psst
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class GuestUploadSelectionTests: XCTestCase {
     func testManifestEnvelopeFitsReservedSpace() throws {

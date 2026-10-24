@@ -8,35 +8,36 @@ they do not establish a live Docker, migration, provenance or backup-provider ga
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
 import gzip
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import unittest
+from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 import assemble_release_oci as oci
 import generate_release_gate_reports as reports
 import measure_release_recovery as recovery
+import prepare_release_candidate as candidate
 from prepare_native_release import file_record
 from prepare_release_candidate import BASES
 from release_artifacts import (
-    InvalidRelease,
     PLATFORMS,
     REQUIRED_FILES,
+    InvalidRelease,
     build_bundle,
     json_bytes,
     read_json,
 )
+from test_native_release_preparation import write_tar
 from test_release_artifacts import manifest as fixture_manifest
 from test_release_oci import fixture as oci_fixture
-from test_native_release_preparation import write_tar
 
 
 def digest(character):
@@ -78,6 +79,24 @@ class RecoveryMeasurements(unittest.TestCase):
         self.context = reports.NativeSourceContext(
             "endorses/psst.zip", "v1.2.3", self.commit, "linux/amd64"
         )
+        self.runtime_descriptions = {}
+
+        def describe(context, mode, *args):
+            # The source implementation has its own substantive Go replay tests.
+            # These historical recovery fixtures simulate that boundary only;
+            # allow_legacy_browser=True remains explicit in every recovery call.
+            self.assertEqual(mode, "describe")
+            self.assertEqual(args[0], "--collection")
+            pack = Path(args[1])
+            record = self.runtime_descriptions[str(pack)]
+            source = pack / record["source_asset"]["file"]
+            if file_record(source)["sha256"][7:] != record["source_asset"]["sha256"]:
+                raise InvalidRelease("Fixture runtime source bytes changed")
+            return json_bytes(record)
+
+        source_boundary = patch.object(reports, "source_command", side_effect=describe)
+        source_boundary.start()
+        self.addCleanup(source_boundary.stop)
         self.bases = {
             key: value.rsplit(":", 1)[0] + "@" + digest("1")
             for key, value in BASES.items()
@@ -139,9 +158,9 @@ class RecoveryMeasurements(unittest.TestCase):
             old_manifest = index["manifests"][0]["digest"]
             image = read_json(files.pop("blobs/sha256/" + old_manifest[7:]))
             config = read_json(files.pop("blobs/sha256/" + old_config[7:]))
-            config["config"]["Labels"][
-                "org.opencontainers.image.revision"
-            ] = self.commit
+            config["config"]["Labels"]["org.opencontainers.image.revision"] = (
+                self.commit
+            )
             config["config"]["Labels"]["zip.psst.source.archive"] = (
                 "https://github.com/endorses/psst.zip/archive/"
                 + self.commit
@@ -193,7 +212,8 @@ class RecoveryMeasurements(unittest.TestCase):
             gzip.compress(b"Fixture source, not distribution approval", mtime=0)
         )
         record = {
-            "schema_version": 1,
+            "schema_version": 2,
+            "kind": "native-runtime-source-description",
             "version": self.context.version,
             "revision": self.commit,
             "architecture": arch,
@@ -216,8 +236,22 @@ class RecoveryMeasurements(unittest.TestCase):
                 for component in ("backend", "web")
             },
         }
-        pack_path = pack / "runtime-pack.json"
-        pack_path.write_bytes(json_bytes(record))
+        pack_path = pack / "source-inventory.json"
+        pack_path.write_bytes(
+            json_bytes(
+                {
+                    "schema_version": 2,
+                    "kind": "container-source-inventory",
+                    "source": {
+                        "repository": self.context.repository,
+                        "version": self.context.version,
+                        "commit": self.commit,
+                    },
+                }
+            )
+        )
+        record["source_inventory_sha256"] = file_record(pack_path)["sha256"]
+        self.runtime_descriptions[str(pack)] = record
         context = reports.NativeSourceContext(
             self.context.repository, self.context.version, self.commit, platform
         )
@@ -513,9 +547,10 @@ class RecoveryMeasurements(unittest.TestCase):
             value = copy.deepcopy(original)
             mutate(value)
             self.natives["linux/arm64"].write_bytes(json_bytes(value))
-            with self.assertRaises(InvalidRelease), patch.object(
-                recovery.integration, "execute_experiment"
-            ) as execute:
+            with (
+                self.assertRaises(InvalidRelease),
+                patch.object(recovery.integration, "execute_experiment") as execute,
+            ):
                 recovery.measure_recovery(
                     self.context, **self.args, execute=self.command
                 )
@@ -523,9 +558,10 @@ class RecoveryMeasurements(unittest.TestCase):
             self.assertFalse(self.output.exists())
         self.natives["linux/arm64"].write_bytes(json_bytes(original))
         self.args["natives"] = {"linux/amd64": self.natives["linux/amd64"]}
-        with self.assertRaisesRegex(InvalidRelease, "both retained"), patch.object(
-            recovery.integration, "execute_experiment"
-        ) as execute:
+        with (
+            self.assertRaisesRegex(InvalidRelease, "both retained"),
+            patch.object(recovery.integration, "execute_experiment") as execute,
+        ):
             recovery.measure_recovery(self.context, **self.args, execute=self.command)
         execute.assert_not_called()
 
@@ -602,12 +638,10 @@ class RecoveryMeasurements(unittest.TestCase):
     def test_dirty_execution_helper_is_refused_before_any_docker_command(self):
         helper = self.root / "tools/fixtures/release-updater/controller.py"
         helper.write_bytes(helper.read_bytes() + b"\n# different current helper\n")
-        with patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(
-            recovery.integration, "execute_experiment"
-        ) as experiment, self.assertRaisesRegex(
-            InvalidRelease, "helper differs"
+        with (
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(recovery.integration, "execute_experiment") as experiment,
+            self.assertRaisesRegex(InvalidRelease, "helper differs"),
         ):
             recovery.measure_recovery(self.context, **self.args, execute=self.command)
         experiment.assert_not_called()
@@ -646,14 +680,17 @@ class RecoveryMeasurements(unittest.TestCase):
                         "sha256"
                     ][7:]
                     self.manifest_path.write_bytes(json_bytes(self.manifest))
-                    with patch.object(
-                        recovery, "native_platform", return_value="linux/amd64"
-                    ), patch.object(
-                        recovery.integration, "execute_experiment"
-                    ) as experiment, patch.object(
-                        recovery, "command"
-                    ) as docker, self.assertRaisesRegex(
-                        InvalidRelease, "bundle (source differs|omits)"
+                    with (
+                        patch.object(
+                            recovery, "native_platform", return_value="linux/amd64"
+                        ),
+                        patch.object(
+                            recovery.integration, "execute_experiment"
+                        ) as experiment,
+                        patch.object(recovery, "command") as docker,
+                        self.assertRaisesRegex(
+                            InvalidRelease, "bundle (source differs|omits)"
+                        ),
                     ):
                         recovery.measure_recovery(
                             self.context, **self.args, execute=docker
@@ -781,11 +818,12 @@ class RecoveryMeasurements(unittest.TestCase):
                 failure=kwargs["failure_after_start"], paused=kwargs["initially_paused"]
             )
 
-        with patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(
-            recovery.integration, "execute_experiment", side_effect=simulated
-        ) as experiment:
+        with (
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(
+                recovery.integration, "execute_experiment", side_effect=simulated
+            ) as experiment,
+        ):
             value = recovery.measure_recovery(
                 self.context, **self.args, execute=self.command
             )
@@ -801,6 +839,9 @@ class RecoveryMeasurements(unittest.TestCase):
             self.assertFalse(call.kwargs["exact_candidate"].bundle_root.exists())
 
     def test_default_executor_retains_native_connection_without_workflow_secrets(self):
+        # Bootstrap trusted tooling before replacing HOME with a deliberately
+        # nonexistent Docker-client fixture; the fake host is not a build cache.
+        candidate._release_tool()
         environment = {
             "PATH": "/selected/docker/bin:" + os.environ.get("PATH", os.defpath),
             "HOME": "/selected/home",
@@ -823,42 +864,45 @@ class RecoveryMeasurements(unittest.TestCase):
                 failure=kwargs["failure_after_start"], paused=kwargs["initially_paused"]
             )
 
-        with patch.dict(
-            os.environ,
-            {
-                **environment,
-                "GH_TOKEN": "private",
-                "GITHUB_TOKEN": "private",
-                "PSST_IMMUTABLE_INSPECTION_TOKEN": "private",
-            },
-            clear=True,
-        ), patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(
-            recovery, "command", autospec=True, side_effect=transported
-        ), patch.object(
-            recovery.integration, "execute_experiment", side_effect=simulated
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    **environment,
+                    "GH_TOKEN": "private",
+                    "GITHUB_TOKEN": "private",
+                    "PSST_IMMUTABLE_INSPECTION_TOKEN": "private",
+                },
+                clear=True,
+            ),
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(recovery, "command", autospec=True, side_effect=transported),
+            patch.object(
+                recovery.integration, "execute_experiment", side_effect=simulated
+            ),
         ):
             # Omit execute so the actual production adapter is exercised.
             recovery.measure_recovery(self.context, **self.args)
         self.assertEqual(observed, [(environment, 55)] * 3)
 
     def test_failure_changed_inputs_and_wrong_daemon_never_emit_terminal_record(self):
-        with patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(
-            recovery.integration,
-            "execute_experiment",
-            side_effect=RuntimeError("fixture migration/flow failed"),
+        with (
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(
+                recovery.integration,
+                "execute_experiment",
+                side_effect=RuntimeError("fixture migration/flow failed"),
+            ),
         ):
             with self.assertRaises(RuntimeError):
                 recovery.measure_recovery(
                     self.context, **self.args, execute=self.command
                 )
         self.assertFalse(self.output.exists())
-        with patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(recovery.integration, "execute_experiment") as experiment:
+        with (
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(recovery.integration, "execute_experiment") as experiment,
+        ):
             with self.assertRaisesRegex(InvalidRelease, "Docker daemon differs"):
                 recovery.measure_recovery(
                     self.context, **self.args, execute=lambda *a, **kw: b"aarch64\n"
@@ -872,12 +916,12 @@ class RecoveryMeasurements(unittest.TestCase):
             self.manifest_path.write_bytes(self.manifest_path.read_bytes() + b"\n")
             return actual
 
-        with patch.object(
-            recovery, "native_platform", return_value="linux/amd64"
-        ), patch.object(
-            recovery.integration, "execute_experiment", side_effect=changed
-        ) as experiment, self.assertRaisesRegex(
-            InvalidRelease, "inputs changed"
+        with (
+            patch.object(recovery, "native_platform", return_value="linux/amd64"),
+            patch.object(
+                recovery.integration, "execute_experiment", side_effect=changed
+            ) as experiment,
+            self.assertRaisesRegex(InvalidRelease, "inputs changed"),
         ):
             recovery.measure_recovery(self.context, **self.args, execute=self.command)
         self.assertEqual(experiment.call_count, 1)

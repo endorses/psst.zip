@@ -3,9 +3,9 @@
 
 This producer has no publication, attestation, VPS or operator-approval path.
 It requires both native identities and the real assembled manifest/bundle.
-Tagged measurements can authenticate completed source/smoke gates and retain
-only the selected architecture's exact images. Unsigned local measurements
-still replay both complete native input trees. Only the selected native
+Tagged measurements authenticate completed source/smoke gates and retain
+only the selected architecture's exact images. Planned measurements bind both
+complete transfer trees to their parent assembly. Only the selected native
 architecture executes the disposable Docker experiment. Registry acquisition
 is replaced with the exact loaded saved
 pair, and encrypted export uses a separate store inside the same fixture daemon.
@@ -16,18 +16,19 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import os
 import platform as host_platform
-from pathlib import Path, PurePosixPath
 import re
+import stat
 import tarfile
 import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
+import test_release_updater_integration as integration
 from assemble_release_oci import IMAGE_TYPES, StrictTarInfo, inspect_archive
-import measure_native_browser_inputs
 from generate_release_gate_reports import (
     NativeSourceContext,
     checked_binding,
@@ -35,9 +36,9 @@ from generate_release_gate_reports import (
     timestamp,
     validate_smoke,
 )
-from github_release_transport import command
 from prepare_native_release import build_inputs, file_record, saved_pair
 from publish_container_release import (
+    SOURCE_REVIEW_POLICY,
     Binding,
     EvidenceVerifier,
     VerifiedEvidence,
@@ -65,7 +66,7 @@ from release_artifacts import (
     validate_bundle,
     validate_manifest,
 )
-import test_release_updater_integration as integration
+from release_process import command
 
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = {
@@ -231,10 +232,279 @@ class Inputs:
     def unchanged(self) -> None:
         require(
             all(
-                source_digest(path) == digest for path, digest in self.snapshots.items()
+                recovery_input_digest(path) == digest
+                for path, digest in self.snapshots.items()
             ),
             "Recovery inputs changed during experiment",
         )
+
+
+def recovery_input_digest(path: Path) -> str:
+    """Hash retained transfer inputs, including empty scanner output, stably."""
+    for parent in (path, *path.absolute().parents):
+        require(not parent.is_symlink(), "Linked recovery input")
+    before = path.lstat()
+    require(
+        stat.S_ISREG(before.st_mode) and 0 <= before.st_size <= 8 * 1024**3,
+        "Invalid recovery input",
+    )
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
+        opened = os.fstat(stream.fileno())
+        require(
+            (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            == (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns),
+            "Recovery input changed before hashing",
+        )
+        digest = "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+        after = os.fstat(stream.fileno())
+    require(
+        (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+        == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns),
+        "Recovery input changed while hashing",
+    )
+    return digest
+
+
+def validate_foundation_inputs(
+    context: NativeSourceContext,
+    *,
+    natives: dict[str, Path],
+    manifest_path: Path,
+    bundle: Path,
+    parent_foundation: Path,
+    root: Path = ROOT,
+) -> Inputs:
+    """Bind a planned experiment to parent-replayed v2 bytes, granting no trust.
+
+    Tagged releases must use validate_authenticated_inputs. A planned assembly
+    remains unsigned and cannot substitute for an authenticated publication gate.
+    """
+    from prepare_candidate_transfer import verify_native
+
+    context.checked()
+    fields(natives, set(PLATFORMS), "both planned native descriptors")
+    foundation_raw = read_bounded_file(parent_foundation)
+    foundation = fields(
+        read_json(foundation_raw),
+        {
+            "schema_version",
+            "kind",
+            "repository",
+            "version",
+            "source_commit",
+            "source_kind",
+            "binding_sha256",
+            "assets",
+            "subjects",
+            "inputs",
+            "native",
+            "tagged_source_ci_gate_verified",
+            "signer_identity_verified",
+            "publication_authorized",
+            "measurement_authentication_required",
+        },
+        "parent planned assembly",
+    )
+    require(
+        type(foundation["schema_version"]) is int
+        and foundation["schema_version"] == 2
+        and foundation["kind"] == "planned-candidate-inputs"
+        and foundation["source_kind"] == "planned-main-dispatch"
+        and foundation["repository"] == context.repository
+        and foundation["version"] == context.version
+        and foundation["source_commit"] == context.commit
+        and foundation["tagged_source_ci_gate_verified"] is False
+        and foundation["signer_identity_verified"] is False
+        and foundation["publication_authorized"] is False
+        and foundation["measurement_authentication_required"] is True,
+        "Recovery parent must be an unapproved planned v2 assembly; tags require authenticated source results",
+    )
+    manifest_raw = read_bounded_file(manifest_path)
+    manifest = validate_manifest(read_json(manifest_raw), context.repository)
+    require(
+        manifest_path.name == "release-manifest.json"
+        and manifest["payload_profile"] == "deployment-ready"
+        and manifest["version"] == context.version
+        and manifest["source"]["commit"] == context.commit
+        and manifest["bundle"]["name"] == bundle.name,
+        "Planned recovery manifest source/profile/name differs",
+    )
+    validate_bundle(manifest, bundle)
+    validate_bundle_source(context, bundle, root)
+    assets = foundation["assets"]
+    require(
+        isinstance(assets, dict)
+        and set(assets)
+        == source_asset_names(context.version) | {manifest_path.name, bundle.name},
+        "Parent assembly must retain every exact source asset",
+    )
+    subjects = image_subjects(manifest)
+    for name, digest in assets.items():
+        require(
+            isinstance(name, str) and name == PurePosixPath(name).name,
+            "Invalid parent asset name",
+        )
+        matches(digest, DIGEST, "Invalid parent asset checksum")
+        key = (
+            "manifest"
+            if name == manifest_path.name
+            else "bundle"
+            if name == bundle.name
+            else "source:" + name
+        )
+        subjects[key] = "file:" + name + "@" + digest
+    require(
+        assets.get(manifest_path.name) == sha256(manifest_raw)
+        and assets.get(bundle.name) == recovery_input_digest(bundle)
+        and foundation["subjects"] == subjects,
+        "Parent assembly does not bind exact recovery artifacts",
+    )
+    binding = Binding(
+        context.repository,
+        context.version,
+        context.commit,
+        tuple(sorted(subjects.items())),
+    )
+    checked_binding(binding)
+    require(
+        foundation["binding_sha256"] == binding.digest,
+        "Parent assembly binding differs",
+    )
+    parent_inputs = fields(
+        foundation["inputs"],
+        {"candidate_bases", "common_inventory"},
+        "parent input hashes",
+    )
+    for digest in parent_inputs.values():
+        matches(digest, DIGEST, "Missing parent input checksum")
+    native_facts = fields(
+        foundation["native"], set(PLATFORMS), "both parent native replays"
+    )
+    snapshots = {
+        parent_foundation: sha256(foundation_raw),
+        manifest_path: sha256(manifest_raw),
+        bundle: assets[bundle.name],
+    }
+    descriptors, paths, images = {}, {}, {}
+    expected_inputs = {
+        "build_record": "native/build-record.json",
+        "measurement": "native/native-measurement.json",
+        "source_scan": "source-scans/source-scan-measurement.json",
+        "browser_verification": "native/browser/browser-verification.json",
+        "browser_capture": "native/browser/browser-inputs.tar",
+        "module_inventory": "application-dependencies/source-inventory.json",
+        "runtime_inventory": "native/pack/source-inventory.json",
+    }
+    for platform in PLATFORMS:
+        path = natives[platform]
+        require(
+            path.name == "native-artifacts.json" and path.parent.name == "native",
+            "Unexpected planned descriptor path",
+        )
+        tree = path.parent.parent
+        local_context = NativeSourceContext(
+            context.repository, context.version, context.commit, platform
+        )
+        transfer = verify_native(local_context, tree, "planned-main-dispatch")
+        transfer_raw = read_bounded_file(tree / "candidate-transfer.json")
+        require(
+            read_json(transfer_raw) == transfer,
+            "Planned transfer metadata changed after verification",
+        )
+        descriptor_raw = read_bounded_file(path)
+        descriptor = read_json(descriptor_raw)
+        require(
+            sha256(descriptor_raw)
+            == transfer["files"]["native/native-artifacts.json"]["sha256"],
+            "Planned native descriptor changed after hash verification",
+        )
+        descriptors[platform] = descriptor
+        facts = fields(
+            native_facts[platform],
+            {
+                "inputs",
+                "tested_configs",
+                "images",
+                "source_scan",
+                "browser",
+                "preferred_sources",
+            },
+            "parent native replay",
+        )
+        inputs = fields(
+            facts["inputs"], set(expected_inputs), "parent native input hashes"
+        )
+        require(
+            all(
+                inputs[key] == transfer["files"][name]["sha256"]
+                for key, name in expected_inputs.items()
+            )
+            and facts["tested_configs"] == descriptor["tested_configs"],
+            "Parent native replay hashes/configurations differ from transferred bytes",
+        )
+        measured_images = fields(
+            facts["images"], {"backend", "web"}, "parent measured native images"
+        )
+        arch = platform.split("/")[1]
+        for component, image in measured_images.items():
+            require(
+                isinstance(image, dict)
+                and image.get("platform") == platform
+                and image.get("config_digest")
+                == descriptor["tested_configs"][component]
+                and image.get("manifest_digest")
+                == manifest["images"][component]["platform_digests"][platform]
+                and image.get("archive_digest")
+                == descriptor["artifacts"][component + "_archive"]["sha256"],
+                "Parent planned image differs from manifest/native transfer",
+            )
+            images[component + "-" + arch] = image
+        for asset_name in (
+            descriptor["artifacts"]["runtime_source"]["file"].split("/")[-1],
+            "psst.zip-dependency-inputs-" + context.version + "-" + arch + ".tar.gz",
+        ):
+            payload = (
+                "native/pack/" + asset_name
+                if "runtime-sources" in asset_name
+                else "application-dependencies/" + asset_name
+            )
+            require(
+                assets.get(asset_name) == transfer["files"][payload]["sha256"],
+                "Parent source offering differs from transfer",
+            )
+        paths[platform] = {
+            key: path.parent / record["file"]
+            for key, record in descriptor["artifacts"].items()
+        }
+        snapshots[tree / "candidate-transfer.json"] = sha256(transfer_raw)
+        snapshots.update(
+            {tree / name: fact["sha256"] for name, fact in transfer["files"].items()}
+        )
+    for component in ("backend", "web"):
+        index = manifest_path.parent / (component + "-index.json")
+        raw = read_bounded_file(index)
+        validate_registry_index(raw, manifest["images"][component])
+        parsed = read_json(raw)
+        require(len(parsed["manifests"]) == 2, "Planned index lacks exact native pair")
+        for child in parsed["manifests"]:
+            image = images[component + "-" + child["platform"]["architecture"]]
+            require(
+                child["size"] == image["manifest_size"]
+                and child["mediaType"] == image["manifest_media_type"],
+                "Planned index child metadata differs",
+            )
+        snapshots[index] = sha256(raw)
+    # This is the saved pair the isolated daemon actually loads, so its layers
+    # remain independently checked even though source/browser replay is shared.
+    saved_layers(
+        paths[context.platform]["final_archive"],
+        descriptors[context.platform]["tested_configs"],
+    )
+    result = Inputs(
+        context, manifest, manifest_path, bundle, descriptors, paths, images, snapshots
+    )
+    result.unchanged()
+    return result
 
 
 def validate_inputs(
@@ -245,8 +515,23 @@ def validate_inputs(
     bundle: Path,
     root: Path = ROOT,
     allow_legacy_browser: bool = False,
+    parent_foundation: Path | None = None,
 ) -> Inputs:
     """Replay real four-image inputs; missing ARM evidence is never manufactured."""
+    if parent_foundation is not None:
+        require(not allow_legacy_browser, "Current recovery refuses legacy replay")
+        return validate_foundation_inputs(
+            context,
+            natives=natives,
+            manifest_path=manifest_path,
+            bundle=bundle,
+            parent_foundation=parent_foundation,
+            root=root,
+        )
+    require(
+        allow_legacy_browser,
+        "Current recovery requires parent assembly or authenticated source/smoke results",
+    )
     context.checked()
     fields(natives, set(PLATFORMS), "both retained native descriptors")
     raw = read_bounded_file(manifest_path)
@@ -274,11 +559,7 @@ def validate_inputs(
         )
         require(
             type(descriptor["schema_version"]) is int
-            and (
-                descriptor["schema_version"] == 2
-                or allow_legacy_browser
-                and descriptor["schema_version"] == 1
-            )
+            and descriptor["schema_version"] == 1
             and descriptor["kind"] == "native-release-artifacts"
             and descriptor["source"] == local_context.checked()
             and descriptor["oci_exporter"] == "docker-save-byte-preserving-oci-v1"
@@ -298,12 +579,7 @@ def validate_inputs(
         )
         fields(
             descriptor["artifacts"],
-            ARTIFACTS
-            | (
-                {"browser_inputs", "browser_verification"}
-                if descriptor["schema_version"] == 2
-                else set()
-            ),
+            ARTIFACTS,
             "retained native artifacts",
         )
         paths[platform] = {
@@ -323,9 +599,7 @@ def validate_inputs(
             and candidate_build["base_images"] == manifest["build"]["base_images"],
             "Retained original native build/bases differ from assembly",
         )
-        raw_runtime_pack, runtime = runtime_inputs(
-            local_context, local["runtime_pack"].parent
-        )
+        _, runtime = runtime_inputs(local_context, local["runtime_pack"].parent)
         require(
             local["runtime_source"]
             == local["runtime_pack"].parent / runtime["source_asset"]["name"]
@@ -395,26 +669,6 @@ def validate_inputs(
                 "Recovery OCI bytes differ from actual native measurement/manifest",
             )
             images[component + "-" + platform.split("/")[1]] = actual
-        if descriptor["schema_version"] == 2:
-            browser = read_json(read_bounded_file(local["browser_verification"]))
-            matches(
-                browser.get("builder_config"),
-                DIGEST,
-                "Missing original browser builder configuration",
-            )
-            expected_browser = measure_native_browser_inputs.replay(
-                local_context,
-                local["browser_inputs"],
-                local["web_archive"],
-                descriptor["tested_configs"]["web"],
-                raw_runtime_pack,
-                source_root=root,
-            )
-            require(
-                browser
-                == {**expected_browser, "builder_config": browser["builder_config"]},
-                "Recovery browser evidence differs from exact Git/npm/final OCI replay",
-            )
         saved_layers(local["final_archive"], descriptor["tested_configs"])
         descriptors[platform] = descriptor
     for component in ("backend", "web"):
@@ -440,6 +694,198 @@ def validate_inputs(
     )
     result.unchanged()
     return result
+
+
+def checked_artifact(value: object) -> dict:
+    record = fields(
+        value, {"file", "sha256", "size"}, "retained native artifact metadata"
+    )
+    name = record["file"]
+    require(isinstance(name, str), "Invalid retained artifact filename")
+    path = PurePosixPath(name)
+    require(
+        name == path.as_posix()
+        and not path.is_absolute()
+        and path.parts
+        and all(part not in {".", ".."} for part in path.parts)
+        and "\\" not in name,
+        "Unsafe retained artifact filename",
+    )
+    matches(record["sha256"], DIGEST, "Missing retained artifact hash")
+    require(
+        type(record["size"]) is int and 0 < record["size"] <= 2 * 1024**3,
+        "Invalid retained artifact size",
+    )
+    return record
+
+
+def checked_descriptor(value: object, context: NativeSourceContext) -> dict:
+    descriptor = fields(value, DESCRIPTOR_FIELDS, "retained native recovery descriptor")
+    require(
+        type(descriptor["schema_version"]) is int
+        and descriptor["schema_version"] == 2
+        and descriptor["kind"] == "native-release-artifacts"
+        and descriptor["source"] == context.checked()
+        and descriptor["oci_exporter"] == "docker-save-byte-preserving-oci-v1"
+        and descriptor["publication_authorized"] is False
+        and descriptor["measurement_authentication_required"] is True,
+        "Recovery native descriptor identity/policy differs",
+    )
+    for key in ("tested_configs", "original_tested_configs"):
+        pair = fields(
+            descriptor[key], {"backend", "web"}, "native recovery configuration pair"
+        )
+        for config in pair.values():
+            matches(config, DIGEST, "Invalid native recovery configuration")
+        require(
+            len(set(pair.values())) == 2, "Overlapping native recovery configurations"
+        )
+    matches(
+        descriptor["source_helper_config"],
+        DIGEST,
+        "Missing source helper configuration",
+    )
+    artifacts = fields(
+        descriptor["artifacts"],
+        ARTIFACTS | {"browser_inputs", "browser_verification"},
+        "retained native artifact inventory",
+    )
+    for artifact in artifacts.values():
+        checked_artifact(artifact)
+    return descriptor
+
+
+def source_asset_names(version: str) -> set[str]:
+    return {
+        "psst.zip-source-" + version + ".tar.gz",
+        "psst.zip-upstream-inputs-" + version + ".tar.gz",
+        *(
+            "psst.zip-" + version + "-runtime-sources-" + arch + ".tar.gz"
+            for arch in ("amd64", "arm64")
+        ),
+        *(
+            "psst.zip-dependency-inputs-" + version + "-" + arch + ".tar.gz"
+            for arch in ("amd64", "arm64")
+        ),
+    }
+
+
+def current_source_details(details: dict, binding: Binding) -> None:
+    """Check the current authenticated source result without rerunning its replay."""
+    fields(
+        details,
+        {"schema_version", "source_subjects", "images", "policy", "coverage"},
+        "current complete source details",
+    )
+    require(
+        type(details["schema_version"]) is int and details["schema_version"] == 2,
+        "Unsupported current source review schema",
+    )
+    subjects = dict(binding.subjects)
+    names = source_asset_names(binding.version)
+    sources = {
+        key: value for key, value in subjects.items() if key.startswith("source:")
+    }
+    require(
+        set(sources) == {"source:" + name for name in names}
+        and details["source_subjects"] == sources,
+        "Current source review must cover every exact offered source asset",
+    )
+    policy = fields(
+        details["policy"],
+        {"path", "source_commit", "record_digest", "git_blob"},
+        "current committed distribution policy",
+    )
+    require(
+        policy["path"] == SOURCE_REVIEW_POLICY
+        and policy["source_commit"] == binding.commit,
+        "Current distribution policy differs from reviewed source",
+    )
+    matches(policy["record_digest"], DIGEST, "Missing exact policy digest")
+    matches(policy["git_blob"], COMMIT, "Missing exact policy Git blob")
+    targets = {c + "-" + a for c in ("backend", "web") for a in ("amd64", "arm64")}
+    images = fields(details["images"], targets, "current reviewed native images")
+    coverage = fields(details["coverage"], targets, "current source coverage")
+    for target in targets:
+        image = fields(
+            images[target],
+            {"subject", "notice_inventory_digest"},
+            "current image notices",
+        )
+        require(image["subject"] == subjects[target], "Current image subject differs")
+        record = fields(
+            coverage[target],
+            {
+                "application_source_asset",
+                "common_source_asset",
+                "runtime_source_asset",
+                "runtime_inventory_sha256",
+                "module_source_asset",
+                "backend_preferred_key",
+                "notice_inventory_digest",
+                "tested_config",
+                "manifest_sha256",
+                "archive_sha256",
+                "preferred_form_verified",
+            },
+            "current preferred source coverage",
+        )
+        arch = target.rsplit("-", 1)[1]
+        expected = {
+            "application_source_asset": "psst.zip-source-"
+            + binding.version
+            + ".tar.gz",
+            "common_source_asset": "psst.zip-upstream-inputs-"
+            + binding.version
+            + ".tar.gz",
+            "runtime_source_asset": "psst.zip-"
+            + binding.version
+            + "-runtime-sources-"
+            + arch
+            + ".tar.gz",
+            "module_source_asset": "psst.zip-dependency-inputs-"
+            + binding.version
+            + "-"
+            + arch
+            + ".tar.gz",
+        }
+        require(
+            all(record[key] == value for key, value in expected.items())
+            and record["preferred_form_verified"] is True
+            and image["notice_inventory_digest"] == record["notice_inventory_digest"],
+            "Current preferred source assets/notices remain incomplete or differ",
+        )
+        for key in (
+            "runtime_inventory_sha256",
+            "backend_preferred_key",
+            "notice_inventory_digest",
+            "tested_config",
+            "manifest_sha256",
+            "archive_sha256",
+        ):
+            matches(record[key], DIGEST, "Missing current preferred source digest")
+        require(
+            subjects[target].endswith("@" + record["manifest_sha256"]),
+            "Current coverage describes another native image",
+        )
+
+
+def source_image_coverage(details: dict, images: dict, descriptors: dict) -> None:
+    if details["schema_version"] != 2:
+        return
+    for target, record in details["coverage"].items():
+        component, arch = target.rsplit("-", 1)
+        image = images[target]
+        descriptor = descriptors["linux/" + arch]
+        require(
+            record["tested_config"] == image["config_digest"]
+            and record["manifest_sha256"] == image["manifest_digest"]
+            and record["archive_sha256"] == image["archive_digest"]
+            and record["runtime_inventory_sha256"]
+            == descriptor["artifacts"]["runtime_pack"]["sha256"]
+            and record["tested_config"] == descriptor["tested_configs"][component],
+            "Current source coverage differs from authenticated native image/runtime facts",
+        )
 
 
 def validate_bundle_source(
@@ -501,10 +947,6 @@ def validate_authenticated_inputs(
     and OCI hashes must match the signed smoke report; the loaded saved pair's
     configurations and every layer are checked independently below.
     """
-    # The aggregate module imports this producer. Import its existing descriptor
-    # validator only at execution time, after both modules can initialize.
-    from aggregate_release_recovery import checked_descriptor
-
     context.checked()
     fields(natives, set(PLATFORMS), "both retained native descriptors")
     require(
@@ -530,11 +972,18 @@ def validate_authenticated_inputs(
     validate_bundle_source(context, bundle, root)
     snapshots[bundle] = source_digest(bundle)
     source_raw = snapshot(source_report)
-    source = fields(
-        read_json(source_raw),
-        {"schema_version", "gate", "binding_digest", "passed", "details"},
-        "complete source recovery gate",
-    )
+    source_value = read_json(source_raw)
+    if (
+        isinstance(source_value, dict)
+        and source_value.get("kind") == "container-release-result"
+    ):
+        source = {"details": source_value.get("checks", {}).get("corresponding-source")}
+    else:
+        source = fields(
+            source_value,
+            {"schema_version", "gate", "binding_digest", "passed", "details"},
+            "complete source recovery gate",
+        )
     require(isinstance(source["details"], dict), "Missing complete source details")
     source_subjects = source["details"].get("source_subjects")
     require(
@@ -563,21 +1012,27 @@ def validate_authenticated_inputs(
     checked_binding(binding)
 
     def authenticate(gate: str, path: Path, raw: bytes) -> dict:
-        record = fields(
-            read_json(raw),
-            {"schema_version", "gate", "binding_digest", "passed", "details"},
-            "authenticated recovery input gate",
-        )
-        require(
-            type(record["schema_version"]) is int
-            and record["schema_version"] == 1
-            and record["gate"] == gate
-            and record["binding_digest"] == binding.digest
-            and record["passed"] is True
-            and isinstance(record["details"], dict)
-            and json_bytes(record) == raw,
-            "Recovery input gate is stale, incomplete or noncanonical",
-        )
+        value = read_json(raw)
+        if isinstance(value, dict) and value.get("kind") == "container-release-result":
+            from release_result import checked_result
+
+            record = {"details": checked_result(value, binding)["checks"][gate]}
+        else:
+            record = fields(
+                value,
+                {"schema_version", "gate", "binding_digest", "passed", "details"},
+                "authenticated recovery input gate",
+            )
+            require(
+                type(record["schema_version"]) is int
+                and record["schema_version"] == 1
+                and record["gate"] == gate
+                and record["binding_digest"] == binding.digest
+                and record["passed"] is True
+                and isinstance(record["details"], dict)
+                and json_bytes(record) == raw,
+                "Recovery input gate is stale, incomplete or noncanonical",
+            )
         receipt = verifier.verify(gate, path, binding)
         require(
             isinstance(receipt, VerifiedEvidence)
@@ -591,7 +1046,11 @@ def validate_authenticated_inputs(
         return receipt.details
 
     source_details = authenticate("corresponding-source", source_report, source_raw)
-    source_review_details(source_details, binding, distribution=False)
+    if source_details.get("schema_version") == 2:
+        current_source_details(source_details, binding)
+    else:
+        # Published schema1 evidence retains its original semantic reader.
+        source_review_details(source_details, binding)
     smoke_details = authenticate(
         "final-image-smoke", smoke_report, snapshot(smoke_report)
     )
@@ -735,6 +1194,7 @@ def validate_authenticated_inputs(
             actual_files == expected_files,
             "Unexpected or missing native recovery projection input",
         )
+    source_image_coverage(source_details, images, descriptors)
     for component in ("backend", "web"):
         index = manifest_path.parent / (component + "-index.json")
         raw = snapshot(index)
@@ -1158,6 +1618,7 @@ def measure_recovery(
     source_report: Path | None = None,
     smoke_report: Path | None = None,
     verifier: EvidenceVerifier | None = None,
+    parent_foundation: Path | None = None,
 ) -> dict:
     context.checked()
     matches(
@@ -1183,7 +1644,8 @@ def measure_recovery(
     )
     if source_report is not None:
         require(
-            not allow_legacy_browser, "Signed recovery refuses legacy browser scope"
+            not allow_legacy_browser and parent_foundation is None,
+            "Signed recovery refuses legacy browser scope or unsigned parent assembly",
         )
         inputs = validate_authenticated_inputs(
             context,
@@ -1203,6 +1665,7 @@ def measure_recovery(
             bundle=bundle,
             root=root,
             allow_legacy_browser=allow_legacy_browser,
+            parent_foundation=parent_foundation,
         )
     previous = (
         git(root, "rev-parse", "--verify", previous_source + "^{commit}")
@@ -1343,6 +1806,7 @@ def main() -> None:
         required=True,
         help="PLATFORM=retained native-artifacts.json, both platforms required",
     )
+    parser.add_argument("--parent-foundation", type=Path)
     args = parser.parse_args()
     measure_recovery(
         NativeSourceContext(args.repository, args.version, args.commit, args.platform),
@@ -1352,6 +1816,7 @@ def main() -> None:
         previous_source=args.previous_source,
         output=args.output,
         root=args.root,
+        parent_foundation=args.parent_foundation,
     )
 
 

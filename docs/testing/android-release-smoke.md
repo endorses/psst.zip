@@ -7,7 +7,7 @@ documentation/container change.
 
 Test the normal public APK, without `PSST_ANDROID_DEVICE_TEST_*` inputs or diagnostic
 classes. Verify its source, version, native alignment and disposable signature with
-`tools/android_release.py` before installation. A temporary signer exercises the
+`psst-release android verify-apk` before installation. A temporary signer exercises the
 release configuration but does not establish production-key custody or the
 operator's installed certificate. Keep those decisions separate from this check.
 

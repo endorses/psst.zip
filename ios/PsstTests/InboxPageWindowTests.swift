@@ -1,7 +1,11 @@
 import Foundation
 import XCTest
 
-@testable import Psst
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class InboxPageWindowTests: XCTestCase {
     func testEmptyPagesStillAdvanceAndFailedNavigationPreservesCurrentPage() throws {
@@ -25,13 +29,15 @@ final class InboxPageWindowTests: XCTestCase {
 
     func testTrailStaysBoundedWithoutPreventingFurtherPages() throws {
         var current = InboxPageWindow()
-        for index in 1...5000 {
+        for index in 1 ... 5000 {
             try current.accept(next: "cursor-\(index)")
             current = try current.forward()
             XCTAssertLessThanOrEqual(current.previous.count, 100)
         }
         XCTAssertEqual(current.number, 5001)
-        for _ in 0..<100 { current = try current.backward() }
+        for _ in 0 ..< 100 {
+            current = try current.backward()
+        }
         XCTAssertFalse(current.canGoBack)
         XCTAssertEqual(current.number, 4901)
         current = InboxPageWindow()
@@ -64,7 +70,7 @@ final class InboxPageWindowTests: XCTestCase {
         XCTAssertFalse(scope.accepts(pageID: page, cursor: nil, available: ["a", "b"]))
         XCTAssertFalse(scope.accepts(pageID: page, cursor: "page", available: ["a"]))
         XCTAssertFalse(InboxSaveScope(pageID: page, cursor: nil, transferIDs: []).accepts(pageID: page, cursor: nil, available: []))
-        let oversized = Set((0...50).map(String.init))
+        let oversized = Set((0 ... 50).map(String.init))
         XCTAssertFalse(InboxSaveScope(pageID: page, cursor: nil, transferIDs: oversized).accepts(pageID: page, cursor: nil, available: oversized))
     }
 

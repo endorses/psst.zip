@@ -155,7 +155,7 @@ def active(node):
 
 def committed_acceptance(binding, root=None):
     # Import at use time: the distribution loader calls our schema validator.
-    from generate_distribution_review import committed_policy
+    from container_release_policy import committed_policy
 
     policy, fact = committed_policy(
         root or Path(__file__).resolve().parent.parent, binding

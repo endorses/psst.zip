@@ -1,6 +1,10 @@
 import Foundation
-@testable import Psst
 import XCTest
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 
 final class HistorySnapshotTests: XCTestCase {
     private var priorLanguage = AppLanguage.system
@@ -54,14 +58,14 @@ final class HistorySnapshotTests: XCTestCase {
 
     func testRejectsMissingFieldsContradictoryCountersAndDuplicateIdentities() async throws {
         let valid = try XCTUnwrap(String(data: page(slot), encoding: .utf8))
-        let invalid = [
+        let invalid = try [
             valid.replacingOccurrences(of: "\"paginated\":true,", with: ""),
             valid.replacingOccurrences(of: ",\"next_cursor\":null", with: ""),
             valid.replacingOccurrences(of: "\"total_size\":999,\"summary\"", with: "\"summary\""),
             valid.replacingOccurrences(of: "\"state\":\"ready\"", with: "\"state\":\"updating\""),
             valid.replacingOccurrences(of: "\"file_count\":130", with: "\"file_count\":100"),
             valid.replacingOccurrences(of: "\"status\":\"has_uploads\"", with: "\"status\":\"unknown\""),
-            String(data: page(slot + "," + slot), encoding: .utf8)!,
+            XCTUnwrap(String(data: page(slot + "," + slot), encoding: .utf8)),
         ]
         for json in invalid {
             do {

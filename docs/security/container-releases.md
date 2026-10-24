@@ -532,64 +532,36 @@ selector-policy changes still require all application checks. Container tags and
 planned release dispatches always run security/backend/web validation regardless
 of change selection. Other full-validation callers retain mobile checks by default.
 
-After CI and both native jobs finish, `tools/prepare_release_inputs.py` assembles their
-actual final OCI exports, measurements, source packs and build records. Each job
-can complete its local measurements before the release manifest exists. The
-assembly step checks both native platforms, shared immutable bases, matching
-actual Go/Node versions, exact smoke-tested configurations and OCI bytes, and
-source asset hashes. Both architecture-specific dependency collections are
-independently replayed against committed locks and complete source-scanner
-receipts. Assembly also requires the common upstream source collection, replayed
-against its catalog and lock from the exact Git tree. It copies both runtime,
-both dependency and the common upstream archives into its output, pinning retained
-bytes to the verified hashes. It creates deterministic paired indexes, the
-deployment bundle, detached manifest and an application source archive from the
-exact tagged Git tree: eight release assets and fourteen bound subjects in total. Untracked operator files and research are excluded by
-`git archive`. Package integrity does not establish that every upstream package
-contains complete preferred-form source; that review remains required.
+The shared Go tooling now assembles the exact native OCI exports, runtime and
+module inventories, common originals and browser captures. It verifies shared
+immutable bases, actual compiler versions, smoke-tested configurations, source
+archive hashes and final notice bytes. Browser/source checks reuse those verified
+image bytes. The source offering contains the exact Git application archive,
+common originals and each platform's module/runtime archive. Untracked operator
+files and research remain excluded by `git archive`.
 
-Use a new private output directory and the actual selected version/commit:
+For an existing tagged release attempt, the workflow runs `psst-release evaluate`
+once. It authenticates the current exact-source CI, resolved bases, both native
+transfer descriptors and their measurement records before interpreting claims;
+then it performs shared assembly, source review and scanner disposition. It writes
+one result for the normal attestation action. See the
+[evaluation contract](container-release-evaluation.md) and
+[native input handoff](container-native-preparation.md) for flags and boundaries.
+The public deployment manifest and bundle retain their compatible v1 contracts.
 
-```sh
-python3 tools/prepare_release_inputs.py \
-  --root . --repository endorses/psst.zip \
-  --ref "refs/tags/$PSST_RELEASE_VERSION" --event-sha "$PSST_SOURCE_COMMIT" \
-  --reviewed-commit "$PSST_SOURCE_COMMIT" \
-  --candidate "$REVIEW_DIR/candidate-bases.json" \
-  --build "linux/amd64=$REVIEW_DIR/amd64/build-record.json" \
-  --build "linux/arm64=$REVIEW_DIR/arm64/build-record.json" \
-  --measurement "linux/amd64=$REVIEW_DIR/amd64/native-measurement.json" \
-  --measurement "linux/arm64=$REVIEW_DIR/arm64/native-measurement.json" \
-  --pack "linux/amd64=$REVIEW_DIR/amd64/pack" \
-  --pack "linux/arm64=$REVIEW_DIR/arm64/pack" \
-  --archive "backend-amd64=$REVIEW_DIR/amd64/export/backend-amd64.oci.tar" \
-  --archive "web-amd64=$REVIEW_DIR/amd64/export/web-amd64.oci.tar" \
-  --archive "backend-arm64=$REVIEW_DIR/arm64/export/backend-arm64.oci.tar" \
-  --archive "web-arm64=$REVIEW_DIR/arm64/export/web-arm64.oci.tar" \
-  --dependencies "linux/amd64=$REVIEW_DIR/amd64/application-dependencies" \
-  --dependencies "linux/arm64=$REVIEW_DIR/arm64/application-dependencies" \
-  --source-scan "linux/amd64=$REVIEW_DIR/amd64/source-scans/source-scan-measurement.json" \
-  --source-scan "linux/arm64=$REVIEW_DIR/arm64/source-scans/source-scan-measurement.json" \
-  --upstream "$REVIEW_DIR/upstream-sources" \
-  --migration-notes "$PSST_MIGRATION_NOTES" --rollback-notes "$PSST_ROLLBACK_NOTES" \
-  --output "$REVIEW_DIR/prepared"
-```
+Planned main dispatches use `psst-release container-build assemble --inputs FILE`
+with the typed `AssembleOptions` paths shown in the
+[release workflow](../../.github/workflows/release.yml). This creates an unused
+planned version without creating a tag, remote release or signed release result.
+The new schema2 `release-inputs.json` is a completion inventory; its
+`publication_authorized` stays false and `measurement_authentication_required`
+stays true. Tagged recovery and publication consume the authenticated result,
+rather than accepting that unsigned inventory as authority.
 
-For a read-only planned main candidate, use the actual main ref/event SHA and add
-`--planned-version "$PSST_RELEASE_VERSION" --event-name workflow_dispatch`.
-The planned version must be unused. This mode creates no tag and writes
-`planned-candidate-inputs`; it cannot satisfy tagged source CI or signer identity.
-The actual publishing entry point still requires a reviewed tag. The hosted
-candidate workflow now assembles both native results and runs native recovery;
-see [retained inputs across jobs](container-native-preparation.md).
-
-`release-inputs.json` records every image/file/source subject for subsequent
-authenticated aggregation. Its `publication_authorized` remains false and
-`measurement_authentication_required` remains true. The `deployment-ready`
-payload profile means the bundle contains the updater; publication still requires
-the authenticated completed checks and reviews in the
-[publication guide](container-publication.md). A failed partial preparation is
-kept for inspection and cannot be resumed by overwriting the directory.
+Assembly creates deterministic paired indexes, the compatible deployment bundle,
+manifest and six source archives. A failed partial output cannot be resumed by
+overwriting it. Completed checks and one protected publication approval are still
+required by the [publication guide](container-publication.md).
 
 ## Disposable final-image smoke check
 

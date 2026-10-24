@@ -12,10 +12,10 @@ under `/licenses/`, including runtime code declared as development dependencies
 in the build project. Regenerate the committed notices after dependency changes:
 
 ```sh
-cd backend
-go mod download
-python3 scripts/generate-third-party-notices.py
-cd ../web
+go -C backend mod download
+release_tool=$(sh tools/release/build.sh)
+"$release_tool" --root . backend-notices
+cd web
 npm ci
 node scripts/generate-third-party-notices.mjs
 ```
@@ -27,6 +27,9 @@ and the hash of the distributed text. These
 inventories cover application dependencies. The selected Alpine/Caddy runtime
 distribution and native applications require separate release licensing review;
 these snapshots do not establish that all distribution obligations are complete.
+The Go release tool retains exact module originals and independently compares
+their notices with the committed normalized bytes. The application source archive
+includes this tool, its module files and the notice recipes used for a release.
 
 ## Administrator authenticator codes
 

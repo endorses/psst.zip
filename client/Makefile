@@ -11,7 +11,8 @@ REVISION ?= $(shell git -C "$(CLIENT_DIR)" rev-parse HEAD 2>/dev/null || printf 
 .PHONY: build build-release install install-release uninstall clean help lan-assets
 
 lan-assets:
-	python3 "$(CLIENT_DIR)/scripts/prepare-lan-assets.py"
+	@tool=$$(GO="$(GO)" sh "$(CLIENT_DIR)/../tools/release/build.sh"); \
+		"$$tool" --root "$(CLIENT_DIR)/.." assets
 
 build build-release: lan-assets
 	CGO_ENABLED=0 $(GO) -C "$(CLIENT_DIR)" build -trimpath -buildvcs=false \

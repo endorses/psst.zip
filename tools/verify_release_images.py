@@ -5,13 +5,12 @@ No image pulls, production access, TLS/ACME claims or global Docker cleanup.
 """
 
 import argparse
-from datetime import datetime, timezone
 import hashlib
+import http.cookiejar
 import io
 import ipaddress
 import json
 import os
-from pathlib import Path, PurePosixPath
 import re
 import secrets
 import subprocess
@@ -20,7 +19,8 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-import http.cookiejar
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV = {
@@ -200,32 +200,37 @@ def main():
         overlay_proof = None
         tested_configs = {}
         if args.runtime_pack:
-            from package_runtime_sources import verify_overlays
+            from generate_release_gate_reports import (
+                NativeSourceContext,
+                runtime_inputs,
+                source_command,
+            )
             from release_artifacts import read_bounded_file, read_json
 
-            runtime_pack_bytes = read_bounded_file(
-                args.runtime_pack / "runtime-pack.json"
+            context = NativeSourceContext(
+                args.source_url.removeprefix("https://github.com/"),
+                args.version,
+                args.revision,
+                args.platform,
             )
-            runtime_pack = read_json(runtime_pack_bytes)
-            require(
-                isinstance(runtime_pack, dict)
-                and runtime_pack.get("version") == args.version
-                and runtime_pack.get("revision") == args.revision
-                and runtime_pack.get("architecture") == architecture,
-                "Runtime pack belongs to another tested release/platform",
-            )
-            overlay_proof = verify_overlays(
-                args.runtime_pack, args.backend_image, args.web_image
-            )
-            runtime_pack_hash = (
-                "sha256:" + hashlib.sha256(runtime_pack_bytes).hexdigest()
+            runtime_pack, runtime_record = runtime_inputs(context, args.runtime_pack)
+            runtime_pack_hash = runtime_record["runtime_pack_sha256"]
+            overlay_proof = read_json(
+                source_command(
+                    context,
+                    "verify-live",
+                    "--collection",
+                    str(args.runtime_pack),
+                    "--backend-config",
+                    args.backend_image,
+                    "--web-config",
+                    args.web_image,
+                )
             )
             require(
                 overlay_proof["runtime_pack_sha256"]
-                == runtime_pack_hash.removeprefix("sha256:")
-                and read_bounded_file(args.runtime_pack / "runtime-pack.json")
-                == runtime_pack_bytes,
-                "Runtime pack changed during overlay verification",
+                == runtime_pack_hash.removeprefix("sha256:"),
+                "Runtime inventory changed during overlay verification",
             )
         for image, title in ((args.backend_image, "backend"), (args.web_image, "web")):
             # Load/pull the selected platform beforehand. Plain inspect supports

@@ -39,20 +39,34 @@ From the repository root:
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_localization.py
 PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/check_sources.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_localization.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_notification_observers.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_pages.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_history_sync.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_abuse_report.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_guest_store.py
-PYTHONDONTWRITEBYTECODE=1 python3 ios/scripts/test_receive_checkpoints.py
+ios/scripts/test-portable.sh
 ```
 
-The portable tests compile actual Foundation presentation/storage helpers with
-explicit platform boundary stubs in an offline Swift Docker container. They
-validate catalog lookup, plurals, regional formatting, preference sharing,
-deferred failures and unchanged user data; they do not build SwiftUI, UIKit or
-the Kotlin framework bridge. Temporary test workspaces are removed afterward.
+`test-portable.sh` uses an installed Swift toolchain, or the official stable
+`swift:6.4.0-noble` Docker image when Swift is absent. Select `--native` or
+`--docker` explicitly when needed. Linux needs SQLite development headers;
+`PSST_SQLITE_HEADER` can select the header for Docker. The package pins
+[Apple swift-crypto 5.0.1](https://github.com/apple/swift-crypto/releases/tag/5.0.1),
+compatible with Swift 6.2 and newer. Current stable Swift is documented by
+[Swift.org](https://www.swift.org/install/). Ordinary native app/extension builds
+continue to use Xcode and do not depend on this portable package.
+
+The explicit [SwiftPM package](portable/Package.swift) compiles actual Foundation
+production sources and original XCTest files. An explicit source map stages exact
+whole files because SwiftPM rejects overlapping physical source paths across
+targets with different platform boundaries. It does not generate packages, modify
+source text or slice extensions.
+Use the runner rather than calling `swift test` in the unstaged package directly.
+One package builds shared dependencies once; the Inbox and feed parser suites
+run once. Tests execute offline in Docker after dependency resolution, and the
+runner removes its scratch/cache directory on exit. Pass ordinary Swift test
+flags such as `--filter ReceiveCheckpointTests` for a focused check.
+
+Boundary fixtures are explicit for Apple protection/Keychain, network and Kotlin
+exports. Real SQLite, crypto and production parsers/presenters execute in the
+portable package. They do not compile SwiftUI/UIKit or the generated Kotlin
+framework, or validate native signing, resource packaging and device behavior.
+The production app/share-extension/XCTest job remains the native build gate.
 
 The localization harness additionally builds a minimal fake `Shared` target so
 the production error presenter's conditional shared-bridge path is compiled.
@@ -252,7 +266,12 @@ Both scanned downloads and owner inbox saves preflight manifests and free space.
 
 ### Receive encryption validation
 
-Run `python3 ios/scripts/test_receive_crypto.py` on Linux with Docker to compile the exact portable adapter, safety policy, limit parser, history collector and incident error mapper against pinned Apple `swift-crypto` 3.12.3. This harness uses the official `swift:6.2-noble` image (verified with Swift 6.2.4); the other portable harnesses retain `swift:6.0-noble`. Swift 6.2 resolves a Swift 6.0 Observation runtime linker failure exposed by the crypto dependency. The harness uses temporary workspaces and removes its caches. It tests browser/Tink/Swift ciphertext fixtures, context and ciphertext mutation, low-order X25519 input rejection, framing bounds, disk reserve, integer limits, bounded history and strict pause/revocation status-code matching. This verifies portable implementations; it does **not** compile the app's SwiftUI or Kotlin bridge or establish native CryptoKit behavior.
+Run `ios/scripts/test-portable.sh --filter "ReceiveCryptoTests|ReceiveSafetyTests|LinkLimitTests"`
+for independent browser/Tink/Swift ciphertext fixtures, context/ciphertext mutations,
+low-order X25519 rejection, framing bounds, disk reserve and integer limits.
+The unified package also covers bounded history and incident status-code mapping.
+This verifies the exact portable adapters with swift-crypto; native CryptoKit,
+SwiftUI and Kotlin bridge checks require the Xcode build/test job.
 
 - [x] All 19 receive-crypto harness tests passed, including independent provider fixtures, low-order inputs, history and incident mapping. Across all 12 portable harnesses, 171 tests passed. All iOS Swift files also passed compiler syntax parsing and the source/configuration gate; localization validation passed for 398 keys, 19 plurals and both permission bundles.
 - [x] Run the macOS Xcode build and XCTest commands above for both the app and share extension. `ReceiveCryptoTests` includes the same bundled fixtures and invalid-point checks against native CryptoKit.
@@ -327,7 +346,7 @@ The scanner and downloaded-file details offer a local **Report abuse** sheet. Se
 
 Reports contain only the instance origin, resource type and UUID. Report context is extracted independently of encryption-key validation, so an unreadable or unavailable link can still be identified without including its fragment, query, filename or key. **Write email** opens a draft for the user to review and send; it does not submit a report or revoke anything. The address and safe context can also be copied when no mail app is available.
 
-Run `python3 ios/scripts/test_abuse_report.py` on Linux with the existing `swift:6.0-noble` Docker image. This offline harness compiles the exact Foundation helper and its XCTest tests and removes its temporary workspace and caches. It does not validate SwiftUI, Kotlin framework bridging, or device mail handling.
+Run `ios/scripts/test-portable.sh --filter AbuseReportTests` to compile the exact Foundation helper and original XCTest suite in the unified portable package. It does not validate SwiftUI, Kotlin framework bridging or device mail handling.
 
 - [x] On macOS, build the app and share extension using the Xcode workflow above; execute `AbuseReportTests` with the app test suite.
 - [ ] On an iPhone, verify valid and invalid-key scanned links, unavailable metadata, switching between two origins during contact lookup, configured-server Help, copy actions, and explicit mail composition with and without a mail app.
@@ -343,7 +362,7 @@ A request generation prevents an old response from changing another invitation,
 including two links on the same server. Source sizes are rechecked before
 streaming; server admission remains authoritative if capacity changes afterward.
 
-Run `python3 ios/scripts/test_guest_upload_selection.py` for the offline portable
+Run `ios/scripts/test-portable.sh --filter GuestUploadSelectionTests` for the offline portable
 Swift tests of empty-file overhead, aggregate overflow, manifest reserve and
 changed-file rejection. The harness cleans its temporary workspace. It does not
 build SwiftUI or the Kotlin framework bridge. On macOS, run the build/test commands
@@ -359,7 +378,7 @@ and preferences remain as migration sources; import is resumable and account
 writes wait for completion. See [local history storage](../docs/security/local-history-storage.md)
 for record/page bounds, migration exceptions and remaining guest/checkpoint work.
 
-Run `python3 ios/scripts/test_history_database.py` for the offline portable
+Run `ios/scripts/test-portable.sh --filter HistoryRecordDatabaseTests` for the offline portable
 SQLite and streaming-import XCTest harness. It removes its temporary workspace.
 This validates the exact Foundation database/parser, not the iOS application.
 
@@ -380,9 +399,9 @@ history rows; removing an item keeps saved files and pending delivery confirmati
 Owner receipts and unfinished guest uploads use separate indexed retry queues,
 with cleanup capabilities retained only in Keychain.
 
-Run `python3 ios/scripts/test_guest_store.py` for the actual guest storage and
+Run `ios/scripts/test-portable.sh --filter GuestStoreTests` for the actual guest storage and
 local-page models against real SQLite with explicit Apple/crypto/network boundary
-stubs. Run `python3 ios/scripts/test_device_retry_queue.py` for the actual queue
+stubs. Run `ios/scripts/test-portable.sh --filter DeviceRetryQueueTests` for the actual queue
 and legacy-array parser. These offline harnesses clean their temporary workspaces;
 they do not prove Keychain/protection, networking, cryptography or native UI behavior.
 
@@ -410,7 +429,7 @@ Normal status refreshes cannot replace already committed saves. New file entries
 also retain their expected length; legacy entries without a length keep their
 previous existence-only check.
 
-Run `python3 ios/scripts/test_receive_checkpoints.py` for the actual account store,
+Run `ios/scripts/test-portable.sh --filter ReceiveCheckpointTests` for the actual account store,
 checkpoint storage and local-link page model using real SQLite with explicit
 Apple/account/crypto boundary stubs. It covers large inboxes, bounded child pages,
 restart, concurrent updates, scoping, truncation and malformed preserved sources.
@@ -421,3 +440,34 @@ restart, concurrent updates, scoping, truncation and malformed preserved sources
       exhaust storage and fail a page metadata write. Verify the previous page
       keeps matching save state, successful files are skipped on retry, truncated
       files need saving again and delivery confirmation survives interruption.
+
+## Portable harness consolidation verification
+
+- [x] On 2026-10-23, `ios/scripts/test-portable.sh --docker` passed all **152 unique
+      XCTest cases**, four real observer-lifetime checks, and the deliberately
+      failing Swift 6 strict-concurrency control using Swift 6.4 and swift-crypto
+      5.0.1. The container image was already pulled; the clean Swift build took
+      32.2 seconds and XCTest execution totalled 70.7 seconds, excluding dependency
+      resolution. Temporary build and dependency caches were removed by the runner.
+- [x] The 99 source/resource mappings reference complete original files/resources;
+      every changed native XCTest file retains its original test methods. Inbox,
+      snapshot and feed parser tests execute once instead of via duplicate launchers.
+- [x] Identity/entitlement/extension configuration checks, 409 English/German keys,
+      19 plural messages and both permission bundles passed. SwiftFormat 0.64.1,
+      Ruff and shell syntax checks passed.
+- [ ] Run the native macOS SwiftPM path with an installed supported Swift toolchain.
+- [ ] Run the macOS Xcode app, embedded share-extension and XCTest commands above
+      against this exact source factoring. Linux checks cannot prove native bridges,
+      Apple file protection/coordination, resource packaging or UI behavior.
+
+## Build incident diagnostics
+
+`python3 ios/scripts/diagnose_build.py xcodebuild ...` reports elapsed time and
+preserves the child exit/signal status. Add `--sample-resources` before the build
+command only when investigating a slow native build; bounded process/VM samples
+are otherwise disabled. Portable package consolidation does not speed up Xcode
+startup or simulator boot and is not evidence about native CI runtime.
+
+After changes to portable boundaries or shared source factoring, native validation
+remains pending until the macOS app, embedded share-extension and XCTest commands
+above run against the exact revision. Linux portable success is recorded separately.

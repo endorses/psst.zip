@@ -52,3 +52,5 @@ kotlin {
         }
     }
 }
+
+apply(from = "gradle/native-tooling.gradle.kts")

@@ -33,6 +33,14 @@
       "url": "https://codeload.github.com/golang/go/tar.gz/022c8636110ebac86a9b88724cda168ed713c21f",
       "sha256": "67e7cc3698341f50a19a0c36610d08945cdf841ea82c90fd576ae69ba3df9be5",
       "size": 35527204
+    },
+    {
+      "version": "go1.27.3",
+      "commit": "2aae1000ea1d4b28923b96db28acf4e3b99d6aff",
+      "file": "go-2aae1000ea1d4b28923b96db28acf4e3b99d6aff.tar.gz",
+      "url": "https://codeload.github.com/golang/go/tar.gz/2aae1000ea1d4b28923b96db28acf4e3b99d6aff",
+      "sha256": "7d8518ab8bb4c9a0c58c4762422d3d4d05d1fad12666f4fca133201231d22c46",
+      "size": 35526415
     }
   ]
 }

@@ -66,13 +66,9 @@ jobs:
         run: |
           python3 -m unittest discover -s tools -p 'test_release_*.py' -v
           python3 -m unittest discover -s tools -p 'test_native_release_preparation.py' -v
-          python3 -m unittest discover -s tools -p 'test_native_browser_inputs.py' -v
-          python3 -m unittest discover -s tools -p 'test_runtime_source_replay.py' -v
-          python3 -m unittest discover -s tools -p 'test_android*.py' -v
 
-      - name: SQLite vendoring syntax regressions
-        # Two tiny standard-library cases; no dependency downloads or generators.
-        run: GOTOOLCHAIN=local GO111MODULE=off go test ./tools/sqlite_vendoring.go ./tools/sqlite_vendoring_test.go
+      - name: Shared development tooling regressions
+        run: GOWORK=off go -C tools/release test -count=1 -timeout 1m ./...
 
       - name: Check distributed project licenses
         run: |
@@ -80,13 +76,8 @@ jobs:
           cmp LICENSE web/static/licenses/AGPL-3.0-only.txt
           cmp LICENSE client/LICENSE
 
-      - name: Check native notice inputs and archive boundaries
+      - name: Check retained runtime legal policy
         run: |
-          python3 tools/generate_native_notices.py --check-inputs-only
-          python3 -m unittest discover -s tools -p 'test_native_notices.py' -v
-          python3 -m unittest discover -s tools -p 'test_runtime_notices.py' -v
-          python3 -m unittest discover -s tools -p 'test_runtime_source_packaging.py' -v
-          python3 -m unittest discover -s tools -p 'test_caddy_source_signatures.py' -v
           python3 tools/runtime-legal/verify.py
           python3 tools/runtime-legal/test_verify.py
 
@@ -127,7 +118,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           go mod download
-          python3 scripts/generate-third-party-notices.py --check
+          release_tool=$(sh "$GITHUB_WORKSPACE/tools/release/build.sh")
+          "$release_tool" --root "$GITHUB_WORKSPACE" backend-notices --check
 
       - name: Test
         if: steps.scope.outputs.run == 'true'
@@ -162,7 +154,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "26.12.0"
+          node-version: "26.12.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -217,8 +209,9 @@ jobs:
         run: |
           proof_dir=$(mktemp -d "$RUNNER_TEMP/psst-browser-source.XXXXXX")
           trap 'rm -rf -- "$proof_dir"' EXIT
-          python3 ../tools/measure_browser_source_inventory.py \
-            --root . --output-directory build --version dev \
+          release_tool=$(sh ../tools/release/build.sh)
+          "$release_tool" browser verify \
+            --inputs-root . --output-directory build --version dev \
             --revision "$GITHUB_SHA" --output "$proof_dir/measurement.json"
 
   cli:
@@ -254,7 +247,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
-          node-version: "26.12.0"
+          node-version: "26.12.1"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -270,8 +263,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           started=$SECONDS
-          python3 scripts/test-lan-assets.py
-          python3 scripts/prepare-lan-assets.py
+          tool=$(sh ../tools/release/build.sh)
+          printf 'PSST_RELEASE_TOOL=%s\n' "$tool" >> "$GITHUB_ENV"
+          "$tool" --root "$GITHUB_WORKSPACE" assets
           printf 'LAN static build and source inventory: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Vet Go client
@@ -285,7 +279,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           started=$SECONDS
-          python3 scripts/generate-notices.py --output "$RUNNER_TEMP/cli-notices"
+          # Asset preparation already collected the exact six-target graph.
+          # Verify its input and legal-byte hashes without resolving it again.
+          "$PSST_RELEASE_TOOL" --root "$GITHUB_WORKSPACE" assets --check
           printf 'CLI dependency notice inventory: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Client and CLI race tests
@@ -311,7 +307,7 @@ jobs:
         # One compact compatibility scenario; no browser/mobile suites here.
         run: |
           started=$SECONDS
-          python3 client/scripts/check-integration.py --binary "$RUNNER_TEMP/psst"
+          "$PSST_RELEASE_TOOL" --root "$GITHUB_WORKSPACE" interop --binary "$RUNNER_TEMP/psst"
           printf 'CLI interoperability: %ss\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Chromium for two LAN browser scenarios
@@ -373,7 +369,7 @@ jobs:
         run: ./android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :shared:testAndroidHostTest --no-daemon
       - name: Verify actual resolved native dependency notices
         if: steps.scope.outputs.run == 'true'
-        run: python3 tools/generate_native_notices.py --check
+        run: ./android/gradlew -p android :app:checkPsstNativeNotices :shared:checkPsstNativeNotices :shared:testPsstNativeTooling --no-daemon
 
   ios:
     name: Native iOS app, extension and XCTest

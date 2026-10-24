@@ -14,6 +14,8 @@ web/*
 web/scripts/*
 !web/scripts/browser-module-inventory.mjs
 !web/scripts/browser-source-recipes.json
+!web/scripts/browser-preferred-sources.json
+!web/scripts/pack-browser-builder-inputs.mjs
 !web/src/
 !web/src/**
 !web/static/

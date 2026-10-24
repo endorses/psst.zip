@@ -118,19 +118,24 @@ def main():
     for key, entry in inventory.items():
         assert entry["english"] == english[key], f"Inventory text drift {key}"
         assert entry["purpose"] and entry["translator_note"]
-    source = (SOURCES / "zip/psst/android/viewmodel/ScanViewModel.kt").read_text()
-    assert not re.search(r'stage\s*[!=]=\s*"', source), (
-        "Rendered captions drive scanner behavior"
+    # Validate actual resource configuration; Kotlin compilation/native behavior
+    # checks own the scanner enum and activity implementation.
+    namespace = {"android": "http://schemas.android.com/apk/res/android"}
+    attribute = "{" + namespace["android"] + "}"
+    manifest = ET.parse(ROOT / "android/app/src/main/AndroidManifest.xml").getroot()
+    application = manifest.find("application")
+    assert application is not None
+    assert application.attrib[attribute + "localeConfig"] == "@xml/locales_config"
+    main = application.find("activity[@android:name='.MainActivity']", namespace)
+    assert main is not None
+    assert {"locale", "layoutDirection"} <= set(
+        main.attrib[attribute + "configChanges"].split("|")
     )
-    assert "val stage: ScanStage" in source
-    main = (SOURCES / "zip/psst/android/MainActivity.kt").read_text()
-    assert "AppCompatActivity()" in main and "onConfigurationChanged" in main
-    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text()
-    assert (
-        "locale|layoutDirection" in manifest
-        and "autoStoreLocales" in manifest
-        and "locales_config" in manifest
+    locales = application.find(
+        "service[@android:name='androidx.appcompat.app.AppLocalesMetadataHolderService']/meta-data[@android:name='autoStoreLocales']",
+        namespace,
     )
+    assert locales is not None and locales.attrib[attribute + "value"] == "true"
     supported = [
         element.attrib["{http://schemas.android.com/apk/res/android}name"]
         for element in ET.parse(RES / "xml/locales_config.xml").getroot()

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 @Observable
 @MainActor
@@ -29,11 +30,16 @@ final class HistoryPageViewModel {
     private var activeSession: DeviceSession?
     private var cacheRecoveryRequested = false
 
-    init(now: @escaping () -> Date = { Date() }) { self.now = now }
+    init(now: @escaping () -> Date = { Date() }) {
+        self.now = now
+    }
 
     /// One visible-view scheduler observes this deadline after every completed
     /// manual, mutation, filter/navigation or routine request.
-    func routineDelay() -> TimeInterval { max(0, (nextRefreshAt ?? now()).timeIntervalSince(now())) }
+    func routineDelay() -> TimeInterval {
+        max(0, (nextRefreshAt ?? now()).timeIntervalSince(now()))
+    }
+
     func resumeRoutine() {
         nextRefreshAt = now()
         scheduleID = UUID()
@@ -46,6 +52,7 @@ final class HistoryPageViewModel {
             kind = next
         }
     }
+
     func cancel() {
         activeTaskID = UUID()
         activeTask?.cancel()
@@ -55,6 +62,7 @@ final class HistoryPageViewModel {
         loading = false
         pendingRefresh = false
     }
+
     func invalidate() {
         cancel()
         window = InboxPageWindow()
@@ -68,13 +76,16 @@ final class HistoryPageViewModel {
         failures = 0
         scheduleID = UUID()
     }
+
     func contains(_ record: TransferRecord, session: DeviceSession?) -> Bool {
         session == loadedSession && session != nil
             && identities.contains(record.id + (record.isSlot == true ? "|slot" : "|transfer"))
     }
+
     func hasLoadedPage(for session: DeviceSession?) -> Bool {
         session != nil && loadedSession == session
     }
+
     /// Restore presentation before scheduling HTTP, including when a view is rebuilt.
     func restoreCachedPage(
         history: TransferHistoryStore, session: DeviceSession?, filter: HistoryFilter
@@ -83,21 +94,26 @@ final class HistoryPageViewModel {
             invalidate()
             return
         }
-        if let loadedSession, loadedSession != session { invalidate() }
+        if let loadedSession, loadedSession != session {
+            invalidate()
+        }
         setFilter(filter)
         showCache(history: history, session: session, target: window)
     }
+
     func refreshLocal(history: TransferHistoryStore, session: DeviceSession?) {
         guard let session, loadedSession == session else { return }
         showCache(history: history, session: session, target: window)
     }
+
     private func showCache(
         history: TransferHistoryStore, session: DeviceSession, target: InboxPageWindow
     ) {
         do {
             guard
                 let (coverage, rows) = try history.cachedServerPage(
-                    session: session, kind: kind, after: target.cursor)
+                    session: session, kind: kind, after: target.cursor
+                )
             else { return }
             var committed = target
             try committed.accept(next: coverage.next)
@@ -108,15 +124,19 @@ final class HistoryPageViewModel {
             navigationStale = coverage.navigationStale == true
         } catch { stale = true }
     }
+
     @discardableResult
     func refresh(history: TransferHistoryStore, session: DeviceSession) async -> Bool {
-        if let activeSession, activeSession != session { invalidate() }
+        if let activeSession, activeSession != session {
+            invalidate()
+        }
         if activeTask != nil {
             pendingRefresh = true
             return true
         }
         return await run(window, history: history, session: session, sync: true)
     }
+
     func next(history: TransferHistoryStore, session: DeviceSession) async {
         guard !loading, loadedSession == session else { return }
         if window.cursor == nil, navigationStale {
@@ -125,13 +145,16 @@ final class HistoryPageViewModel {
         guard let target = try? window.forward() else { return }
         _ = await run(target, history: history, session: session, sync: false)
     }
+
     func previous(history: TransferHistoryStore, session: DeviceSession) async {
         guard !loading, loadedSession == session, let target = try? window.backward() else { return }
         _ = await run(target, history: history, session: session, sync: false)
     }
+
     func first(history: TransferHistoryStore, session: DeviceSession) async {
         _ = await run(InboxPageWindow(), history: history, session: session, sync: false)
     }
+
     /// Own cancellation of every entry point, including manual and mutation refreshes.
     private func run(
         _ target: InboxPageWindow, history: TransferHistoryStore, session: DeviceSession, sync: Bool
@@ -142,7 +165,9 @@ final class HistoryPageViewModel {
             return false
         }
         let target = loadedSession != nil && loadedSession != session ? InboxPageWindow() : target
-        if loadedSession != nil, loadedSession != session { invalidate() }
+        if loadedSession != nil, loadedSession != session {
+            invalidate()
+        }
         if let deadline = Self.retryDeadlines.deadline(for: session.accountID, now: now()) {
             showCache(history: history, session: session, target: target)
             retryAfter = max(0, deadline.timeIntervalSince(now()))
@@ -156,14 +181,17 @@ final class HistoryPageViewModel {
         activeSession = session
         let task = Task { @MainActor in
             var result = false
-            for attempt in 0..<2 {
+            for attempt in 0 ..< 2 {
                 pendingRefresh = false
                 cacheRecoveryRequested = false
                 result = await load(
                     attempt == 0 ? target : window, history: history, session: session,
-                    sync: attempt == 0 ? sync : true)
+                    sync: attempt == 0 ? sync : true
+                )
                 guard !Task.isCancelled, activeTaskID == id else { return false }
-                if !cacheRecoveryRequested && (!pendingRefresh || !result) { break }
+                if !cacheRecoveryRequested, !pendingRefresh || !result {
+                    break
+                }
                 await Task.yield()
             }
             return result
@@ -179,12 +207,13 @@ final class HistoryPageViewModel {
             activeSession = nil
             failures = result ? 0 : min(4, failures + 1)
             let backoff = result ? 10.0 : min(60.0, 10.0 * pow(2.0, Double(max(0, failures - 1))))
-            let jitter = result ? 0.0 : Double.random(in: 0...1)
+            let jitter = result ? 0.0 : Double.random(in: 0 ... 1)
             nextRefreshAt = now().addingTimeInterval(max(backoff + jitter, retryAfter))
             scheduleID = UUID()
         }
         return result
     }
+
     private func load(
         _ target: InboxPageWindow, history: TransferHistoryStore, session: DeviceSession, sync: Bool
     ) async -> Bool {
@@ -195,7 +224,11 @@ final class HistoryPageViewModel {
         retryAfter = 0
         // No HTTP is needed before presenting a known page.
         showCache(history: history, session: session, target: target)
-        defer { if requestID == id { loading = false } }
+        defer {
+            if requestID == id {
+                loading = false
+            }
+        }
         func current() -> Bool {
             requestID == id && SecretStore.session == session && !Task.isCancelled
         }
@@ -206,7 +239,8 @@ final class HistoryPageViewModel {
             }
             if capability == nil {
                 let config = try await AccountHTTP.request(
-                    server: session.serverURL, path: "config", maximumBytes: 65_536, timeout: 10)
+                    server: session.serverURL, path: "config", maximumBytes: 65536, timeout: 10
+                )
                 guard current() else { return false }
                 capability = try HistorySync.supports(config)
             }
@@ -215,13 +249,14 @@ final class HistoryPageViewModel {
             if sync, capability == true, let original = state {
                 do {
                     var cursor = original
-                    for _ in 0..<3 {
+                    for _ in 0 ..< 3 {
                         let batch = try await HistorySync.load(
                             cursor: cursor.cursor, generation: cursor.generation
                         ) { path in
                             try await AccountHTTP.request(
                                 server: session.serverURL, path: path, token: session.token,
-                                maximumBytes: HistorySync.maximumBytes, timeout: 10)
+                                maximumBytes: HistorySync.maximumBytes, timeout: 10
+                            )
                         }
                         guard current() else { return false }
                         if !batch.changes.isEmpty || batch.next_cursor != cursor.cursor {
@@ -229,7 +264,9 @@ final class HistoryPageViewModel {
                         }
                         cursor = .init(generation: batch.generation, cursor: batch.next_cursor)
                         showCache(history: history, session: session, target: target)
-                        if !batch.has_more { break }
+                        if !batch.has_more {
+                            break
+                        }
                         await Task.yield()
                     }
                     state = cursor
@@ -243,9 +280,12 @@ final class HistoryPageViewModel {
                 }
                 let firstSync = state == nil
                 try history.cacheServerPage(
-                    bootstrap, session: session, kind: nil, after: nil, expected: state, reset: reset)
+                    bootstrap, session: session, kind: nil, after: nil, expected: state, reset: reset
+                )
                 state = try history.historySyncState(session: session)
-                if firstSync, state != nil { pendingRefresh = true }
+                if firstSync, state != nil {
+                    pendingRefresh = true
+                }
             }
             // Older/matching pages load only on explicit navigation or absent coverage.
             let cached = try history.cachedServerPage(session: session, kind: kind, after: target.cursor)
@@ -256,7 +296,8 @@ final class HistoryPageViewModel {
                 let list = try await snapshot(after: target.cursor, kind: kind, session: session)
                 guard current() else { return false }
                 try history.cacheServerPage(
-                    list, session: session, kind: kind, after: target.cursor, expected: state)
+                    list, session: session, kind: kind, after: target.cursor, expected: state
+                )
             }
             showCache(history: history, session: session, target: target)
             guard current() else { return false }
@@ -265,7 +306,7 @@ final class HistoryPageViewModel {
             return true
         } catch {
             guard current() else { return false }
-            if case HistorySync.Failure.retryAfter(let seconds) = error {
+            if case let HistorySync.Failure.retryAfter(seconds) = error {
                 retryAfter = seconds
                 Self.retryDeadlines.record(scope: session.accountID, until: now().addingTimeInterval(seconds), now: now())
             }
@@ -279,13 +320,15 @@ final class HistoryPageViewModel {
             return false
         }
     }
+
     private func snapshot(after: String?, kind: String?, session: DeviceSession) async throws
         -> ResourceList
     {
         try await HistorySnapshot.load(after: after, kind: kind) { path in
             try await AccountHTTP.request(
                 server: session.serverURL, path: path, token: session.token,
-                maximumBytes: HistorySnapshot.maximumBytes, timeout: 10)
+                maximumBytes: HistorySnapshot.maximumBytes, timeout: 10
+            )
         }
     }
 }

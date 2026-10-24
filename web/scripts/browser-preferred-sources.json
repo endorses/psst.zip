@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "kind": "reviewed-browser-preferred-source-associations",
+  "generated_byte_reproduction_verified": false,
+  "rules": [
+    {
+      "package": "svelte",
+      "match": "compiler/index.js",
+      "method": "generated",
+      "upstream": "svelte",
+      "inputs": ["packages/svelte/src/compiler/index.js"],
+      "recipes": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "packages/svelte/package.json",
+        "packages/svelte/rollup.config.js",
+        "packages/svelte/scripts/generate-version.js",
+        "packages/svelte/scripts/process-messages/index.js"
+      ]
+    },
+    {
+      "package": "svelte",
+      "method": "direct",
+      "upstream": "svelte",
+      "source_prefix": "packages/svelte/"
+    },
+    {
+      "package": "@sveltejs/kit",
+      "method": "direct",
+      "upstream": "sveltekit",
+      "source_prefix": "packages/kit/"
+    },
+    {
+      "package": "@sveltejs/adapter-static",
+      "method": "direct",
+      "upstream": "sveltekit",
+      "source_prefix": "packages/adapter-static/"
+    },
+    { "package": "qrcode", "method": "direct", "upstream": "qrcode" },
+    { "package": "dijkstrajs", "match": "dijkstra.js", "method": "npm-original" },
+    {
+      "package": "esm-env",
+      "matches": ["true.js", "false.js", "dev-browser.js", "dev-server.js"],
+      "method": "npm-original"
+    },
+    {
+      "package": "@sveltejs/vite-plugin-svelte",
+      "match_prefix": "src/",
+      "match_suffix": ".js",
+      "method": "npm-original"
+    },
+    {
+      "package": "qr-scanner",
+      "matches": ["qr-scanner.min.js", "qr-scanner-worker.min.js"],
+      "method": "qr-embedded",
+      "upstream": "qr-scanner",
+      "recipes": ["package.json", "rollup.config.js", "tsconfig.json", "yarn.lock"]
+    },
+    {
+      "package": "@noble/curves",
+      "match_suffix": ".js",
+      "method": "typescript",
+      "upstream": "noble-curves",
+      "source_prefix": "src/",
+      "source_suffix": ".ts",
+      "recipes": ["package.json", "tsconfig.json", "package-lock.json"]
+    },
+    {
+      "package": "@noble/hashes",
+      "match_suffix": ".js",
+      "method": "typescript",
+      "upstream": "noble-hashes",
+      "source_prefix": "src/",
+      "source_suffix": ".ts",
+      "recipes": ["package.json", "tsconfig.json", "package-lock.json"]
+    },
+    {
+      "package": "@noble/ciphers",
+      "match_suffix": ".js",
+      "method": "typescript",
+      "upstream": "noble-ciphers",
+      "source_prefix": "src/",
+      "source_suffix": ".ts",
+      "recipes": ["package.json", "tsconfig.json", "package-lock.json"]
+    },
+    {
+      "package": "hpke",
+      "match": "index.js",
+      "method": "generated-direct",
+      "upstream": "hpke",
+      "inputs": ["index.ts", "index.js"],
+      "recipes": [
+        "package.json",
+        "build.cjs",
+        "tools/clean-javascript.cjs",
+        "tsconfig.json",
+        "package-lock.json"
+      ]
+    },
+    {
+      "package": "@panva/hpke-noble",
+      "match": "index.js",
+      "method": "generated",
+      "upstream": "hpke",
+      "inputs": ["examples/noble-suite/index.ts"],
+      "recipes": [
+        "package.json",
+        "build.cjs",
+        "tools/clean-javascript.cjs",
+        "tsconfig.json",
+        "package-lock.json",
+        "examples/noble-suite/package.json",
+        "examples/noble-suite/tsconfig.json"
+      ]
+    },
+    {
+      "package": "fflate",
+      "match": "esm/browser.js",
+      "method": "generated",
+      "upstream": "fflate",
+      "inputs": ["src/index.ts", "src/worker.ts"],
+      "recipes": [
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "tsconfig.esm.json",
+        "scripts/rewriteBuilds.ts"
+      ]
+    },
+    {
+      "package": "clsx",
+      "match": "dist/clsx.mjs",
+      "method": "generated",
+      "upstream": "clsx",
+      "inputs": ["src/index.js"],
+      "recipes": ["package.json", "bin/index.js"]
+    },
+    {
+      "package": "@lucide/svelte",
+      "match_prefix": "dist/icons/",
+      "match_suffix": ".svelte",
+      "method": "lucide-icon",
+      "upstream": "lucide",
+      "recipes": [
+        "packages/svelte/package.json",
+        "packages/svelte/svelte.config.js",
+        "packages/svelte/tsconfig.json",
+        "packages/svelte/scripts/license.mts",
+        "packages/svelte/scripts/appendBlockComments.mts",
+        "pnpm-lock.yaml",
+        "packages/svelte/scripts/exportTemplate.mts",
+        "tools/build-icons/index.ts",
+        "tools/build-icons/building/generateIconFiles.ts",
+        "tools/build-icons/render/renderIconsObject.ts",
+        "tools/build-icons/utils/getIconMetaData.ts",
+        "tools/build-icons/package.json"
+      ]
+    },
+    {
+      "package": "@lucide/svelte",
+      "method": "generated-mapping",
+      "upstream": "lucide",
+      "mapping": {
+        "dist/Icon.svelte": "packages/svelte/src/Icon.svelte",
+        "dist/context.js": "packages/svelte/src/context.ts",
+        "dist/utils/buildLucideIconNode.js": "packages/shared/src/build/buildLucideIconNode.ts",
+        "dist/utils/defaultAttributes.js": "packages/shared/src/build/defaultAttributes.ts",
+        "dist/utils/hasA11yProp.js": "packages/shared/src/utils/hasA11yProp.ts",
+        "dist/utils/mergeClasses.js": "packages/shared/src/utils/mergeClasses.ts"
+      },
+      "recipes": [
+        "packages/svelte/package.json",
+        "packages/svelte/svelte.config.js",
+        "packages/svelte/tsconfig.json",
+        "packages/svelte/scripts/license.mts",
+        "packages/svelte/scripts/appendBlockComments.mts",
+        "pnpm-lock.yaml",
+        "packages/svelte/scripts/patchCopiedUtils.mts"
+      ]
+    },
+    {
+      "package": "vite",
+      "match_prefix": "dist/node/chunks/",
+      "match_suffix": ".js",
+      "method": "generated",
+      "upstream": "vite",
+      "inputs": [
+        "packages/vite/src/node/build.ts",
+        "packages/vite/src/node/plugins/importAnalysisBuild.ts"
+      ],
+      "recipes": ["packages/vite/package.json", "packages/vite/rollup.config.ts", "pnpm-lock.yaml"],
+      "additional": {
+        "rollup-commonjs": [
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "packages/commonjs/package.json",
+          "packages/commonjs/rollup.config.mjs",
+          "shared/rollup.config.mjs",
+          "packages/commonjs/src/index.js",
+          "packages/commonjs/src/helpers.js",
+          "packages/commonjs/src/proxies.js",
+          "packages/commonjs/src/utils.js"
+        ]
+      }
+    },
+    { "package": "vite", "match": "LICENSE.md", "method": "npm-original" }
+  ]
+}

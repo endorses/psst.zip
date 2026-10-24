@@ -1,5 +1,5 @@
-ARG NODE_IMAGE=node:26.10.0-alpine3.24
-ARG CADDY_IMAGE=caddy:2-alpine
+ARG NODE_IMAGE=node:26.12.1-alpine3.24
+ARG CADDY_IMAGE=caddy:2.11.7-alpine
 
 FROM ${NODE_IMAGE} AS web-build
 

@@ -11,16 +11,16 @@ return current display state without creating a retained mirror or tombstone.
 SQLite WAL, full synchronous commits and writer transactions coordinate both
 processes; the extension writes private history but never starts a feed poller.
 
-## Executed locally
+## Historical local coverage (before harness consolidation)
 
-- [x] `python3 ios/scripts/test_history_pages.py`: 30 tests passed; strict snapshot/feed decoding,
+- [x] Snapshot/feed/presentation suite: 30 tests passed; strict snapshot/feed decoding,
       cursor validation, empty/removal replies, capability and byte bounds,
       existing pagination/filter/presentation tests.
-- [x] `python3 ios/scripts/test_history_database.py`: 27 tests passed; actual SQLite migration,
+- [x] SQLite history/migration suite: 27 tests passed; actual SQLite migration,
       atomic batch/cursor rollback and replay, old revisions, resets, scoped
       reads, eviction, retained device records, concurrent app/extension writers,
       and schema-3 upgrade preserving metadata while correcting descending ties.
-- [x] `python3 ios/scripts/test_history_sync.py`: 26 tests passed; production metadata cache
+- [x] Sync/model suite: 26 tests passed; production metadata cache
       reconciliation and `HistoryPageViewModel` compiled in Swift with offline
       network/Keychain/private-record boundaries. Cached rows precede a suspended
       HTTP reply; cancellation rejects it; changed and removed rows reconcile
@@ -37,20 +37,20 @@ processes; the extension writes private history but never starts a feed poller.
       polling, finite cooldown overflow/reconstruction, and unknown versus known
       empty state before hydration or on an offline cache miss. Eight parser tests include the frozen backend fixture,
       required nullable summary round trips, deadlines and `Retry-After`.
-- [x] `python3 ios/scripts/check_sources.py`: source/project gates passed only,
-      including routine refresh bypassing the view's mutation busy state while
-      preserving authentication/device guards and the manual disabled state.
+- [x] `python3 ios/scripts/check_sources.py`: identity, entitlements, extension
+      wiring and configuration validation. Implementation-snippet assertions were
+      retired; behavior belongs to Swift compilation and XCTest.
 - [x] `python3 ios/scripts/check_localization.py`: 398 keys and 19 plural messages
       passed in English/German, including both permission bundles; no new
       presentation strings.
-- [x] `python3 ios/scripts/test_localization.py`: 14 tests passed, including both
+- [x] Localization/presentation suite: 14 tests passed, including both
       transferred and total sizes using localized English/German KB/MB/GB values.
       Scan, account-send and share-extension progress retain the existing formatter.
 
 These results were recorded on 2026-10-05. The database suite also covers the
 2,000-row account budget, 10,000-row global budget and 500-scope global state
-budget without deleting private history. All temporary harnesses used
-`PYTHONDONTWRITEBYTECODE=1` for the final runs.
+budget without deleting private history. The historical Python launchers have been replaced by the unified SwiftPM
+runner; the original Swift tests remain.
 Fact/tombstone eviction invalidates affected sync checkpoints as well as page
 coverage, so losing removal evidence requires a bounded authoritative bootstrap.
 Server facts use the backend's descending creation time, ID and kind order;
@@ -61,8 +61,10 @@ Shared server cooldowns retain at most 500 active account deadlines plus one
 conservative overflow deadline. When those slots are full, untracked scopes may
 wait until the overflow deadline rather than losing an active restriction.
 
-The portable runners use the existing `swift:6.0-noble` Docker image with
-`--network=none`. Temporary harnesses are removed automatically. They do not
+Rerun these checks together with `ios/scripts/test-portable.sh`; the explicit
+SwiftPM package uses the stable Swift image documented in the iOS README.
+Docker tests use `--network=none` after dependency resolution; the runner removes
+its scratch/cache directory. Historical counts above precede consolidation. These checks do not
 prove UIKit/SwiftUI integration, actual URLSession behavior, Keychain/App Group
 entitlements, extension signing or an iOS app build.
 

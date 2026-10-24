@@ -38,6 +38,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Build trusted Android release tool once
+        run: printf 'PSST_RELEASE=%s\n' "$(./tools/release/build.sh)" >> "$GITHUB_ENV"
       - name: Validate tag, source identity and protected-main ancestry
         id: source
         env:
@@ -45,34 +51,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test "$GITHUB_REF" = refs/heads/main
-          python3 tools/android_release_ci.py protected-main --repository "$GITHUB_REPOSITORY"
-          python3 - <<'PY'
-          import os,re
-          if not re.fullmatch(r'android-v[0-9]+\.[0-9]+\.[0-9]+', os.environ['ANDROID_TAG']):
-              raise SystemExit('Select an existing android-vX.Y.Z tag.')
-          PY
+          "$PSST_RELEASE" android protected-main --repository "$GITHUB_REPOSITORY"
+          [[ "$ANDROID_TAG" =~ ^android-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           revision=$(git rev-parse --verify "refs/tags/$ANDROID_TAG^{commit}")
           # Eligibility is checked by the trusted dispatcher before executing
           # any tool from the selected tag.
           git merge-base --is-ancestor "$revision" origin/main
           git checkout --detach "$revision"
           mkdir -p "$RUNNER_TEMP/android-source"
-          python3 tools/android_release.py validate-source --tag "$ANDROID_TAG" \
+          "$PSST_RELEASE" android validate-source --tag "$ANDROID_TAG" \
             --expected-commit "$revision" --output "$RUNNER_TEMP/android-source/source.json"
-          python3 - <<'PY'
-          import json,os,pathlib
-          value=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'android-source/source.json').read_text())
-          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              for key,field in [('revision','sourceRevision'),('version','versionName'),('code','versionCode')]:
-                  output.write(f'{key}={value[field]}\n')
-          PY
+          jq -r '"revision=\(.sourceRevision)\nversion=\(.versionName)\ncode=\(.versionCode)"' \
+            "$RUNNER_TEMP/android-source/source.json" >> "$GITHUB_OUTPUT"
       - name: Inspect executed exact-source Android and security checks
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
           REVISION: ${{ steps.source.outputs.revision }}
         run: |
-          python3 tools/android_release_ci.py evidence --repository "$GITHUB_REPOSITORY" \
+          "$PSST_RELEASE" android evidence --repository "$GITHUB_REPOSITORY" \
             --revision "$REVISION" --output "$RUNNER_TEMP/android-source/ci-evidence.json" \
             --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -115,11 +112,19 @@ jobs:
         with:
           cache-provider: basic
           cache-read-only: true
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: needs.source.outputs.security_reused != 'true'
+      - name: Check out trusted Android release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version: "1.27.2"
+          ref: ${{ github.sha }}
+          path: .release-dispatcher
+          sparse-checkout: tools/release
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
           cache: false
+      - name: Build trusted Android release tool once
+        run: printf 'PSST_RELEASE=%s\n' "$(./.release-dispatcher/tools/release/build.sh)" >> "$GITHUB_ENV"
       - name: Run missing source security checks once
         if: needs.source.outputs.security_reused != 'true'
         run: |
@@ -128,8 +133,7 @@ jobs:
           python3 tools/check_repository.py history
           python3 tools/check_source_bidi.py
           cmp LICENSE android/app/src/main/assets/licenses/AGPL-3.0-only.txt
-          python3 tools/generate_native_notices.py --check-inputs-only
-          python3 -m unittest discover -s tools -p 'test_android*.py' -v
+          go -C .release-dispatcher/tools/release test ./internal/androidrelease
           python3 -m unittest discover -s tools -p 'test_source_bidi.py' -v
       - name: Assemble release, lint and any missing app/shared tests once
         env:
@@ -148,21 +152,29 @@ jobs:
           printf 'Release build total wall time: %ss (exit %s).\n' \
             "$(($(date +%s)-started))" "$build_status" >> "$GITHUB_STEP_SUMMARY"
           report_status=0
-          python3 tools/android_release.py report-timings --input "$PSST_ANDROID_TASK_TIMINGS" \
+          "$PSST_RELEASE" android report-timings --input "$PSST_ANDROID_TASK_TIMINGS" \
             --summary "$GITHUB_STEP_SUMMARY" --output "$RUNNER_TEMP/android-build-timings.json" || report_status=$?
           if [ "$build_status" -ne 0 ]; then
             exit "$build_status"
           fi
           exit "$report_status"
       - name: Verify resolved dependency notices
-        run: python3 tools/generate_native_notices.py --check
+        run: |
+          if [ -f shared/gradle/native-tooling.gradle.kts ]; then
+            ./android/gradlew -p android :app:checkPsstNativeNotices :shared:checkPsstNativeNotices \
+              :shared:testPsstNativeTooling --no-daemon
+          else
+            # Read-only compatibility for previews of already immutable old tags.
+            # New Android sources use Gradle; no legacy generator is retained on main.
+            python3 tools/generate_native_notices.py --check
+          fi
       - name: Verify actual unsigned APK and present preview
         run: |
           started=$(date +%s)
           mkdir -p "$RUNNER_TEMP/android-preview"
           cp "$RUNNER_TEMP/android-build-timings.json" "$RUNNER_TEMP/android-preview/build-timings.json"
           cp android/app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/android-preview/unsigned.apk"
-          python3 tools/android_release.py verify-apk --unsigned \
+          "$PSST_RELEASE" android verify-apk --unsigned \
             --apk "$RUNNER_TEMP/android-preview/unsigned.apk" \
             --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" --revision "$REVISION" \
             --output "$RUNNER_TEMP/android-preview/verification.json"
@@ -170,7 +182,7 @@ jobs:
             printf 'Unsigned optimized APK preview; no production signer or device verification is implied.\n\n'
             printf 'Source: `%s`; tag: `%s`; versionCode: `%s`.\n' "$REVISION" '${{ inputs.tag }}' '${{ needs.source.outputs.code }}'
             printf 'Android source CI reused: %s; security reused: %s.\n' '${{ needs.source.outputs.android_reused }}' '${{ needs.source.outputs.security_reused }}'
-            printf 'First-install, same-signer update and debug transition require separate actual-device evidence before publication.\n'
+            printf 'Initial publication readiness includes fresh-install and same-signer update evidence; signing bridges are retired.\n'
             printf 'Unsigned APK verification: %ss.\n' "$(($(date +%s)-started))"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Encrypt private R8 mapping for operator retention
@@ -225,6 +237,19 @@ jobs:
           ref: ${{ needs.source.outputs.revision }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Check out trusted Android release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-dispatcher
+          sparse-checkout: tools/release
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Build trusted Android release tool once
+        run: printf 'PSST_RELEASE=%s\n' "$(./.release-dispatcher/tools/release/build.sh)" >> "$GITHUB_ENV"
       - name: Enforce protected readiness and immutable tag policy before secrets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -234,13 +259,13 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$MAPPING_RETAINED" = true
           test -n "$ANDROID_RELEASE_INSPECTION_TOKEN"
-          GH_TOKEN="$ANDROID_RELEASE_INSPECTION_TOKEN" python3 tools/android_release_ci.py publication-policy \
+          GH_TOKEN="$ANDROID_RELEASE_INSPECTION_TOKEN" "$PSST_RELEASE" android publication-policy \
             --repository "$GITHUB_REPOSITORY" --tag "$ANDROID_TAG"
           unset ANDROID_RELEASE_INSPECTION_TOKEN
-          python3 tools/android_release.py validate-source --tag "$ANDROID_TAG" --expected-commit "$REVISION" --output "$RUNNER_TEMP/source.json"
+          "$PSST_RELEASE" android validate-source --tag "$ANDROID_TAG" --expected-commit "$REVISION" --output "$RUNNER_TEMP/source.json"
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             | jq 'add // []' > "$RUNNER_TEMP/releases.json"
-          python3 tools/android_release.py check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
+          "$PSST_RELEASE" android check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -273,23 +298,14 @@ jobs:
             "$(($(date +%s)-TRANSFER_STARTED))" "$TRANSFER_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
       - name: Recheck selected unsigned artifact before opening signing key
         run: |
-          python3 tools/android_release.py verify-apk --unsigned \
+          "$PSST_RELEASE" android verify-apk --unsigned \
             --apk "$RUNNER_TEMP/android-preview/unsigned.apk" \
             --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" --revision "$REVISION" \
             --output "$RUNNER_TEMP/reverified.json"
           cmp "$RUNNER_TEMP/reverified.json" "$RUNNER_TEMP/android-preview/verification.json"
           test -s "$RUNNER_TEMP/android-preview/mapping.txt.age"
-      # Use the reviewed dispatcher signing helper without changing the tagged
-      # app checkout or rebuilding its APK. Only sign-apk runs from this sparse
-      # checkout; source/asset verification and packaging stay on the exact tag.
-      - name: Check out trusted dispatcher signing helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          path: .release-dispatcher
-          sparse-checkout: tools/android_release.py
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
+      # The compiled tool comes from the reviewed dispatcher; the app payload,
+      # verification resources and source package remain bound to the exact tag.
       - name: Sign, verify and package exact release artifact
         env:
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
@@ -300,28 +316,17 @@ jobs:
           started=$(date +%s)
           private=$(mktemp -d "$RUNNER_TEMP/android-signing.XXXXXX")
           trap 'rm -rf -- "$private"' EXIT
-          export ANDROID_RELEASE_KEYSTORE="$private/release.keystore"
-          python3 - <<'PY'
-          import base64,os,pathlib
-          value=os.environ.pop('ANDROID_RELEASE_KEYSTORE_BASE64','')
-          if not value or len(value)>1048576:
-              raise SystemExit('A private signing keystore is required.')
-          path=pathlib.Path(os.environ['ANDROID_RELEASE_KEYSTORE'])
-          path.write_bytes(base64.b64decode(value,validate=True))
-          path.chmod(0o600)
-          PY
-          unset ANDROID_RELEASE_KEYSTORE_BASE64
           signing_started=$(date +%s)
-          python3 .release-dispatcher/tools/android_release.py sign-apk --unsigned "$RUNNER_TEMP/android-preview/unsigned.apk" \
+          "$PSST_RELEASE" android sign-apk --unsigned "$RUNNER_TEMP/android-preview/unsigned.apk" \
             --output "$private/signed.apk" --sdk-tools "$ANDROID_HOME/build-tools/37.0.0"
           printf 'APK alignment and signing: %ss.\n' "$(($(date +%s)-signing_started))" >> "$GITHUB_STEP_SUMMARY"
-          unset ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_STORE_PASSWORD ANDROID_RELEASE_KEY_PASSWORD
+          unset ANDROID_RELEASE_KEYSTORE_BASE64 ANDROID_RELEASE_KEY_ALIAS ANDROID_RELEASE_STORE_PASSWORD ANDROID_RELEASE_KEY_PASSWORD
           verification_started=$(date +%s)
-          python3 tools/android_release.py verify-apk --apk "$private/signed.apk" \
+          "$PSST_RELEASE" android verify-apk --apk "$private/signed.apk" \
             --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" --revision "$REVISION" \
             --signer-sha256 "$ANDROID_RELEASE_SIGNER_SHA256" --output "$private/verification.json"
           printf 'Final signed APK verification: %ss.\n' "$(($(date +%s)-verification_started))" >> "$GITHUB_STEP_SUMMARY"
-          python3 tools/android_release.py package --apk "$private/signed.apk" \
+          "$PSST_RELEASE" android package --apk "$private/signed.apk" \
             --verification "$private/verification.json" --tag "$ANDROID_TAG" --revision "$REVISION" \
             --output-dir "$RUNNER_TEMP/android-publication"
           printf 'Signing, final APK verification and packaging: %ss.\n' "$(($(date +%s)-started))" >> "$GITHUB_STEP_SUMMARY"
@@ -331,12 +336,12 @@ jobs:
           ANDROID_RELEASE_INSPECTION_TOKEN: ${{ secrets.ANDROID_RELEASE_INSPECTION_TOKEN }}
         run: |
           test -n "$ANDROID_RELEASE_INSPECTION_TOKEN"
-          GH_TOKEN="$ANDROID_RELEASE_INSPECTION_TOKEN" python3 tools/android_release_ci.py publication-policy \
+          GH_TOKEN="$ANDROID_RELEASE_INSPECTION_TOKEN" "$PSST_RELEASE" android publication-policy \
             --repository "$GITHUB_REPOSITORY" --tag "$ANDROID_TAG"
           unset ANDROID_RELEASE_INSPECTION_TOKEN
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             | jq 'add // []' > "$RUNNER_TEMP/releases.json"
-          python3 tools/android_release.py check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
+          "$PSST_RELEASE" android check-publication --releases-json "$RUNNER_TEMP/releases.json" --tag "$ANDROID_TAG"
           cp "$RUNNER_TEMP/android-publication/INSTALL.md" "$RUNNER_TEMP/android-notes.md"
           printf '\nPublication readiness was reviewed through the protected Android environment; private device records are not distributed.\n' >> "$RUNNER_TEMP/android-notes.md"
           gh release create "$ANDROID_TAG" "$RUNNER_TEMP/android-publication/"* \
@@ -355,7 +360,7 @@ jobs:
               -o "$RUNNER_TEMP/android-public-readback/$name"
             cmp "$file" "$RUNNER_TEMP/android-public-readback/$name"
           done
-          python3 tools/android_release.py verify-apk --apk "$RUNNER_TEMP/android-public-readback/psst.zip-$VERSION.apk" \
+          "$PSST_RELEASE" android verify-apk --apk "$RUNNER_TEMP/android-public-readback/psst.zip-$VERSION.apk" \
             --sdk-tools "$ANDROID_HOME/build-tools/37.0.0" --revision "$REVISION" \
             --signer-sha256 "$ANDROID_RELEASE_SIGNER_SHA256" --output "$RUNNER_TEMP/public-verification.json"
           printf 'Published APK and every release asset downloaded anonymously and matched the signed originals.\n' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "kind": "reviewed-backend-generator-associations",
+  "generated_output_reproduction_verified": false,
+  "sqlite": {
+    "project": "backend-sqlite-project",
+    "module": "modernc.org/sqlite",
+    "version": "v1.37.0",
+    "original": "backend-sqlite-c",
+    "c_version": "3.49.1",
+    "c_version_number": "3049001",
+    "source_id": "2025-02-18 13:38:58 873d4e274b4988d260ba8354a9718324a1c26187a4ab4c1cc0227c03d0f10e70",
+    "fossil_commit": "873d4e274b4988d260ba8354a9718324a1c26187a4ab4c1cc0227c03d0f10e70",
+    "recipe": "vendor_libsqlite3/main.go",
+    "recipe_sha256": "sha256:619a55071e22cac99a8583858379a2c52f6504c38bec049ccb6f6f138ed8d223",
+    "recipe_inputs": [
+      "LICENSE",
+      "Makefile",
+      "go.mod",
+      "go.sum",
+      "vendor_libsqlite3/main.go",
+      "vendor_libsqlite3/go.mod",
+      "vendor_libsqlite3/go.sum"
+    ],
+    "translator": "backend-libsqlite3-project",
+    "translator_version": "v1.9.0",
+    "translator_inputs": [
+      "LICENSE",
+      "Makefile",
+      "builder.json",
+      "go.mod",
+      "go.sum",
+      "generator.go",
+      "internal/sqlite_issue173.patch",
+      "internal/issue1.patch",
+      "include/sqlite3.h",
+      "include/sqlite3ext.h"
+    ],
+    "translator_tools": {
+      "modernc.org/cc/v4": "v4.25.2",
+      "modernc.org/ccgo/v4": "v4.25.2",
+      "modernc.org/fileutil": "v1.3.0"
+    },
+    "platforms": [
+      {
+        "platform": "linux/amd64",
+        "original": "ccgo_linux_amd64.go",
+        "output": "lib/sqlite_linux_amd64.go"
+      },
+      {
+        "platform": "linux/arm64",
+        "original": "ccgo_linux_arm64.go",
+        "output": "lib/sqlite_linux_arm64.go"
+      }
+    ]
+  },
+  "libc": {
+    "project": "backend-libc-project",
+    "module": "modernc.org/libc",
+    "version": "v1.65.0",
+    "original": "backend-libc-musl",
+    "recipe_inputs": [
+      "LICENSE",
+      "COPYRIGHT-MUSL",
+      "Makefile",
+      "builder.json",
+      "go.mod",
+      "go.sum",
+      "generator.go",
+      "internal/archive/archive.go"
+    ],
+    "recipe_prefixes": [
+      "internal/overlay/musl/",
+      "internal/overlay/linux/amd64/",
+      "internal/overlay/linux/arm64/",
+      "include/linux/amd64/",
+      "include/linux/arm64/"
+    ],
+    "required_inputs": [
+      "include/linux/amd64/stdlib.h",
+      "include/linux/arm64/stdlib.h"
+    ],
+    "outputs": [
+      "ccgo_linux_amd64.go",
+      "ccgo_linux_arm64.go",
+      "capi_linux_amd64.go",
+      "capi_linux_arm64.go"
+    ],
+    "generator_tools": [
+      {
+        "module": "modernc.org/cc/v4",
+        "version": "v4.26.0",
+        "entrypoints": ["cc.go"]
+      },
+      {
+        "module": "modernc.org/ccgo/v4",
+        "version": "v4.26.0",
+        "entrypoints": ["lib/ccgo.go", "lib/compile.go"]
+      },
+      {
+        "module": "modernc.org/fileutil",
+        "version": "v1.3.1",
+        "entrypoints": ["ccgo/util.go"]
+      }
+    ]
+  }
+}

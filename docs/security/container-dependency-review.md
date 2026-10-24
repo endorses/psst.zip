@@ -1,5 +1,7 @@
 # Container dependency vulnerability review
 
+This is a historical inspection of the exact revisions named below, not a current release approval or operational runbook. Maintained collection and verification use the Go release tool described in [native release preparation](container-native-preparation.md) and [runtime source collection](runtime-source-collection.md). Current local verification evidence is recorded in [container source tooling verification](../testing/container-source-tooling.md). Historical script names and temporary paths below describe that inspection only.
+
 Reviewed on 2026-10-07. The backend source scan found no known vulnerable symbols
 reachable from the analyzed code and no vulnerabilities in imported packages.
 It reported 21 advisories at module level; their applicability is documented

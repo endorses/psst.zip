@@ -2,7 +2,11 @@ import Foundation
 import SQLite3
 import XCTest
 
-@testable import Psst
+#if SWIFT_PACKAGE
+    @testable import HistoryDatabaseHarness
+#else
+    @testable import Psst
+#endif
 
 final class HistoryRecordDatabaseTests: XCTestCase {
     private typealias Database = HistoryRecordDatabase
@@ -10,32 +14,40 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let id: String
         let note: String
     }
+
     private func directory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return url
     }
+
     private func record(
         _ id: String, scope: String = "account", kind: String = "transfer", created: Double = 10,
         body: Data = Data("value".utf8)
     ) -> Database.Record {
         Database.Record(id: id, scope: scope, kind: kind, created: created, body: body)
     }
+
     private func decode(_ data: Data) throws -> Database.Record {
         let old = try JSONDecoder().decode(Legacy.self, from: data)
         return record(old.id, body: data)
     }
+
     private func legacy(_ count: Int, at source: URL) throws {
-        try JSONEncoder().encode((0..<count).map { Legacy(id: "item-\($0)", note: "original") }).write(
-            to: source)
+        try JSONEncoder().encode((0 ..< count).map { Legacy(id: "item-\($0)", note: "original") }).write(
+            to: source
+        )
     }
+
     private func rawSQL(_ url: URL, _ sql: String) throws {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
         defer { sqlite3_close_v2(db) }
         let code = sqlite3_exec(db, sql, nil, nil, nil)
-        if code != SQLITE_OK { throw Database.Failure.sqlite(code) }
+        if code != SQLITE_OK {
+            throw Database.Failure.sqlite(code)
+        }
     }
 
     func testSnapshotResumesAcrossBothArraysAndPreservesNewerRowsAndDeletes() throws {
@@ -43,8 +55,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let source = folder.appendingPathComponent("guest.json")
         let url = folder.appendingPathComponent("records.sqlite")
         let snapshot = [
-            "records": (0..<103).map { Legacy(id: "record-\($0)", note: "old") },
-            "receipts": (0..<104).map { Legacy(id: "receipt-\($0)", note: "old") },
+            "records": (0 ..< 103).map { Legacy(id: "record-\($0)", note: "old") },
+            "receipts": (0 ..< 104).map { Legacy(id: "receipt-\($0)", note: "old") },
         ]
         try JSONEncoder().encode(snapshot).write(to: source)
         let original = try Data(contentsOf: source)
@@ -63,7 +75,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertFalse(first.complete)
         let reopened = try Database(url: url)
         let second = try reopened.migrateJSONSnapshotBatch(
-            source: source, key: "guest", decode: convert)
+            source: source, key: "guest", decode: convert
+        )
         XCTAssertEqual(second.processed, 200)
         XCTAssertEqual(calls, 200)
         let last = try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert)
@@ -76,7 +89,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), original)
         try FileManager.default.removeItem(at: source)
         XCTAssertEqual(
-            try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert), last)
+            try db.migrateJSONSnapshotBatch(source: source, key: "guest", decode: convert), last
+        )
         XCTAssertEqual(calls, 207)
     }
 
@@ -135,9 +149,12 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertThrowsError(
             try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, data in
                 try db.importIfAbsent(self.record("derived"))
-                if try JSONDecoder().decode(Legacy.self, from: data).id == "item-1" { throw Expected.stop }
+                if try JSONDecoder().decode(Legacy.self, from: data).id == "item-1" {
+                    throw Expected.stop
+                }
                 return try self.decode(data)
-            })
+            }
+        )
         XCTAssertNil(try db.read("derived"))
         XCTAssertNil(try db.read("item-0"))
         XCTAssertNil(try db.migrationProgress(key: "guest"))
@@ -166,7 +183,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertThrowsError(
             try db.migrateJSONSnapshotBatch(source: source, key: "guest") { _, data in
                 try self.decode(data)
-            })
+            }
+        )
         XCTAssertEqual(try db.migrationProgress(key: "guest")?.processed, 1)
         XCTAssertNil(try db.read("b"))
     }
@@ -196,11 +214,13 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let url = try directory().appendingPathComponent("records.sqlite")
         let db = try Database(url: url)
         try db.transaction { db in
-            for index in 0..<251 {
+            for index in 0 ..< 251 {
                 try db.write(
                     record(
                         String(format: "id-%04d", index), scope: "scope-\(index)",
-                        kind: index % 2 == 0 ? "slot" : "transfer"))
+                        kind: index % 2 == 0 ? "slot" : "transfer"
+                    )
+                )
             }
         }
         // Discovery reads metadata only, including a row whose body cannot decode.
@@ -247,7 +267,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
                 try tx.write(record("one", body: Data("changed".utf8)))
                 try tx.remove("missing")
                 throw Failed.expected
-            })
+            }
+        )
         XCTAssertEqual(try db.read("one")?.body, Data("value".utf8))
         try db.transaction { tx in
             try tx.write(record("outer"))
@@ -275,14 +296,16 @@ final class HistoryRecordDatabaseTests: XCTestCase {
             DispatchQueue.global().async {
                 defer { group.leave() }
                 do {
-                    for _ in 0..<50 {
+                    for _ in 0 ..< 50 {
                         try database.transaction { tx in
                             let old = try XCTUnwrap(tx.read("counter"))
                             let count = Int(String(decoding: old.body, as: UTF8.self))!
                             try tx.write(
                                 Database.Record(
                                     id: old.id, scope: old.scope, kind: old.kind, created: old.created,
-                                    body: Data(String(count + 1).utf8)))
+                                    body: Data(String(count + 1).utf8)
+                                )
+                            )
                         }
                     }
                 } catch { failures.append(error) }
@@ -307,7 +330,9 @@ final class HistoryRecordDatabaseTests: XCTestCase {
                 try first.transaction { tx in
                     try tx.write(
                         Database.Record(
-                            id: "held", scope: "account", kind: "transfer", created: 1, body: Data()))
+                            id: "held", scope: "account", kind: "transfer", created: 1, body: Data()
+                        )
+                    )
                     entered.signal()
                     _ = release.wait(timeout: .now() + 10)
                 }
@@ -329,34 +354,40 @@ final class HistoryRecordDatabaseTests: XCTestCase {
 
     func testPagesUseStableTieOrderAndScopeBoundCursors() throws {
         let db = try Database(url: directory().appendingPathComponent("records.sqlite"))
-        for index in 0..<130 {
+        for index in 0 ..< 130 {
             try db.write(
                 record(
                     String(format: "%03d", index), scope: index % 2 == 0 ? "account" : "legacy",
-                    kind: index % 3 == 0 ? "slot" : "transfer", created: Double(index / 10)))
+                    kind: index % 3 == 0 ? "slot" : "transfer", created: Double(index / 10)
+                )
+            )
         }
         try db.write(record("private", scope: "another", created: 100))
         var after: Database.Cursor?
         var seen: [Database.Record] = []
         repeat {
             let page = try db.page(
-                scopes: ["legacy", "account"], kinds: ["slot", "transfer"], after: after, limit: 17)
+                scopes: ["legacy", "account"], kinds: ["slot", "transfer"], after: after, limit: 17
+            )
             XCTAssertLessThanOrEqual(page.records.count, 17)
             seen += page.records
             after = page.next
             if let cursor = after {
                 let decoded = try JSONDecoder().decode(
-                    Database.Cursor.self, from: JSONEncoder().encode(cursor))
+                    Database.Cursor.self, from: JSONEncoder().encode(cursor)
+                )
                 XCTAssertEqual(cursor, decoded)
                 XCTAssertThrowsError(
-                    try db.page(scopes: ["another"], kinds: ["slot", "transfer"], after: cursor))
+                    try db.page(scopes: ["another"], kinds: ["slot", "transfer"], after: cursor)
+                )
             }
         } while after != nil
         XCTAssertEqual(seen.count, 130)
         XCTAssertEqual(Set(seen.map(\.id)).count, 130)
         for (left, right) in zip(seen, seen.dropFirst()) {
             XCTAssertTrue(
-                left.created > right.created || (left.created == right.created && left.id < right.id))
+                left.created > right.created || (left.created == right.created && left.id < right.id)
+            )
         }
         XCTAssertThrowsError(try db.page(scopes: ["account"], kinds: ["transfer"], limit: 0))
         XCTAssertThrowsError(try db.page(scopes: ["account"], kinds: ["transfer"], limit: 101))
@@ -396,7 +427,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let db = try Database(url: url)
         let first = try db.migrateJSONBatch(source: source, key: "legacy", decode: decode)
         XCTAssertEqual(
-            first, Database.MigrationProgress(processed: 100, inserted: 100, complete: false))
+            first, Database.MigrationProgress(processed: 100, inserted: 100, complete: false)
+        )
         let second = try Database(url: url)
         try second.write(record("item-101", body: Data("new checkpoint".utf8)))
         try second.remove("item-150")
@@ -430,9 +462,12 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertThrowsError(
             try db.migrateJSONBatch(source: source, key: "legacy") { data in
                 calls += 1
-                if calls == 3 { throw Failed.expected }
+                if calls == 3 {
+                    throw Failed.expected
+                }
                 return try self.decode(data)
-            })
+            }
+        )
         XCTAssertFalse(try db.hasAny(scopes: ["account"], kinds: ["transfer"]))
         let progress = try db.migrateJSONBatch(source: source, key: "legacy", decode: decode)
         XCTAssertEqual(progress.processed, 4)
@@ -459,7 +494,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
                     try Data("[]".utf8).write(to: during, options: .atomic)
                 }
                 return try self.decode(data)
-            })
+            }
+        )
         XCTAssertNil(try db.read("item-2"))
         XCTAssertEqual(try Data(contentsOf: during), Data("[]".utf8))
     }
@@ -481,7 +517,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
             let bad = folder.appendingPathComponent("bad-\(index).json")
             try Data(invalid.utf8).write(to: bad)
             XCTAssertThrowsError(
-                try db.migrateJSONBatch(source: bad, key: "bad-\(index)", decode: decode))
+                try db.migrateJSONBatch(source: bad, key: "bad-\(index)", decode: decode)
+            )
             XCTAssertEqual(try String(contentsOf: bad), invalid)
         }
     }
@@ -491,7 +528,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let source = folder.appendingPathComponent("large.json")
         let bytes = Data(
             ("[{\"id\":\"large\",\"note\":\"" + String(repeating: "x", count: Database.maximumRecordBytes)
-                + "\"}]").utf8)
+                + "\"}]").utf8
+        )
         try bytes.write(to: source)
         let db = try Database(url: folder.appendingPathComponent("records.sqlite"))
         XCTAssertThrowsError(try db.migrateJSONBatch(source: source, key: "large", decode: decode))
@@ -542,7 +580,9 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let url = try directory().appendingPathComponent("records.sqlite")
         let database = try Database(url: url)
         try database.transaction { tx in
-            for index in 0..<2_000 { try tx.write(record("row-\(index)", created: Double(index))) }
+            for index in 0 ..< 2000 {
+                try tx.write(record("row-\(index)", created: Double(index)))
+            }
         }
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
@@ -553,11 +593,14 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         ] {
             var statement: OpaquePointer?
             XCTAssertEqual(
-                sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN " + query, -1, &statement, nil), SQLITE_OK)
+                sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN " + query, -1, &statement, nil), SQLITE_OK
+            )
             defer { sqlite3_finalize(statement) }
             var plan = ""
             while sqlite3_step(statement) == SQLITE_ROW {
-                if let detail = sqlite3_column_text(statement, 3) { plan += String(cString: detail) }
+                if let detail = sqlite3_column_text(statement, 3) {
+                    plan += String(cString: detail)
+                }
             }
             XCTAssertTrue(plan.contains("SEARCH records USING COVERING INDEX records_page"), plan)
             XCTAssertFalse(plan.contains("TEMP B-TREE"), plan)
@@ -567,7 +610,9 @@ final class HistoryRecordDatabaseTests: XCTestCase {
     func testUnicodeTieOrderMatchesSQLiteBinarySeekOrder() throws {
         let db = try Database(url: directory().appendingPathComponent("records.sqlite"))
         let ids = ["é", "e\u{301}", "z"]
-        for id in ids { try db.write(record(id)) }
+        for id in ids {
+            try db.write(record(id))
+        }
         var after: Database.Cursor?
         var actual: [Data] = []
         repeat {
@@ -576,7 +621,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
             after = page.next
         } while after != nil
         XCTAssertEqual(
-            actual, ids.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }.map { Data($0.utf8) })
+            actual, ids.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }.map { Data($0.utf8) }
+        )
     }
 
     func testServerMetadataBatchAndCursorCommitAtomicallyAndKeepPrivateRecords() throws {
@@ -587,35 +633,42 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let next = Database.SyncState(generation: "generation", cursor: "two")
         let fact = Database.ServerFact(
             identity: "one|transfer", kind: "transfer", revision: 2, created: 5,
-            body: Data("summary".utf8))
+            body: Data("summary".utf8)
+        )
         try db.applyServerFacts(
             scope: "account", expected: nil, state: first, facts: [fact], page: "first",
-            coverage: Data("coverage".utf8))
+            coverage: Data("coverage".utf8)
+        )
         enum Interrupted: Error { case crash }
         XCTAssertThrowsError(
             try db.applyServerFacts(
                 scope: "account", expected: first, state: next,
                 facts: [
-                    .init(identity: fact.identity, kind: "transfer", revision: 3, created: 5, body: nil)
+                    .init(identity: fact.identity, kind: "transfer", revision: 3, created: 5, body: nil),
                 ]
-            ) { throw Interrupted.crash })
+            ) { throw Interrupted.crash }
+        )
         XCTAssertEqual(try db.syncState(scope: "account"), first)
         XCTAssertNotNil(try db.serverFact(scope: "account", identity: fact.identity)?.body)
         try db.applyServerFacts(
             scope: "account", expected: first, state: next,
-            facts: [.init(identity: fact.identity, kind: "transfer", revision: 3, created: 5, body: nil)])
+            facts: [.init(identity: fact.identity, kind: "transfer", revision: 3, created: 5, body: nil)]
+        )
         XCTAssertNil(try db.serverFact(scope: "account", identity: fact.identity)?.body)
         XCTAssertEqual(try db.read("private")?.body, Data("keys-files-checkpoints".utf8))
         XCTAssertNil(try db.syncState(scope: "other-account"))
         XCTAssertThrowsError(
-            try db.applyServerFacts(scope: "account", expected: first, state: next, facts: [fact]))
+            try db.applyServerFacts(scope: "account", expected: first, state: next, facts: [fact])
+        )
         try db.applyServerFacts(scope: "account", expected: next, state: next, facts: [fact])
         XCTAssertNil(
             try db.serverFact(scope: "account", identity: fact.identity)?.body,
-            "Late older snapshot must not resurrect removal")
+            "Late older snapshot must not resurrect removal"
+        )
         try db.applyServerFacts(
             scope: "account", expected: next, state: .init(generation: "restart", cursor: "new"),
-            facts: [], reset: true)
+            facts: [], reset: true
+        )
         XCTAssertNil(try db.serverCoverage(scope: "account", page: "first"))
         XCTAssertEqual(try db.syncState(scope: "account"), .init(generation: "restart", cursor: "new"))
         XCTAssertEqual(try db.read("private")?.body, Data("keys-files-checkpoints".utf8))
@@ -625,18 +678,21 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let db = try Database(url: directory().appendingPathComponent("records.sqlite"))
         try db.write(record("private"))
         let state = Database.SyncState(generation: "generation", cursor: "cursor")
-        for batch in 0..<21 {
+        for batch in 0 ..< 21 {
             var facts: [Database.ServerFact] = []
-            for index in 0..<100 {
+            for index in 0 ..< 100 {
                 let number = batch * 100 + index
                 facts.append(
                     Database.ServerFact(
                         identity: "identity-\(number)", kind: "slot", revision: Int64(number),
-                        created: Double(number), body: Data("summary".utf8)))
+                        created: Double(number), body: Data("summary".utf8)
+                    )
+                )
             }
             try db.applyServerFacts(
                 scope: "account", expected: batch == 0 ? nil : state, state: state, facts: facts,
-                page: "first", coverage: Data("coverage".utf8))
+                page: "first", coverage: Data("coverage".utf8)
+            )
         }
         XCTAssertNil(try db.serverFact(scope: "account", identity: "identity-0"))
         XCTAssertNotNil(try db.serverFact(scope: "account", identity: "identity-2099"))
@@ -652,12 +708,14 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         try db.write(record("private"))
         let state = Database.SyncState(generation: "generation", cursor: "cursor")
         var facts: [Database.ServerFact] = []
-        for number in 1...31 {
+        for number in 1 ... 31 {
             for kind in ["transfer", "slot"] {
                 facts.append(
                     .init(
                         identity: String(format: "%03d|%@", number, kind), kind: kind,
-                        revision: 1, created: 100, body: Data("summary".utf8)))
+                        revision: 1, created: 100, body: Data("summary".utf8)
+                    )
+                )
             }
         }
         try db.applyServerFacts(scope: "account", expected: nil, state: state, facts: facts)
@@ -670,7 +728,8 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         XCTAssertEqual(try upgraded.newestServerFacts(scope: "account", kind: nil, limit: 50).map(\.identity), Array(expected.prefix(50)))
         XCTAssertEqual(
             try upgraded.newestServerFacts(scope: "account", kind: "transfer", limit: 50).map(\.identity),
-            facts.filter { $0.kind == "transfer" }.map(\.identity).sorted(by: >))
+            facts.filter { $0.kind == "transfer" }.map(\.identity).sorted(by: >)
+        )
         XCTAssertEqual(try upgraded.syncState(scope: "account"), state)
         XCTAssertNotNil(try upgraded.read("private"))
     }
@@ -678,10 +737,11 @@ final class HistoryRecordDatabaseTests: XCTestCase {
     func testGlobalScopeBudgetOnlyEvictsDisposableMetadata() throws {
         let db = try Database(url: directory().appendingPathComponent("records.sqlite"))
         try db.write(record("private", scope: "scope-0", body: Data("saved-files-and-keys".utf8)))
-        for index in 0..<501 {
+        for index in 0 ..< 501 {
             try db.applyServerFacts(
                 scope: "scope-\(index)", expected: nil,
-                state: .init(generation: "generation", cursor: "cursor"), facts: [])
+                state: .init(generation: "generation", cursor: "cursor"), facts: []
+            )
         }
         XCTAssertNil(try db.syncState(scope: "scope-0"))
         XCTAssertNotNil(try db.syncState(scope: "scope-500"))
@@ -692,20 +752,23 @@ final class HistoryRecordDatabaseTests: XCTestCase {
         let db = try Database(url: directory().appendingPathComponent("records.sqlite"))
         try db.write(record("private", scope: "scope-0"))
         var sequence = 0
-        for account in 0..<6 {
+        for account in 0 ..< 6 {
             let scope = "scope-\(account)"
             let state = Database.SyncState(generation: "generation", cursor: "cursor")
-            for batch in 0..<20 {
+            for batch in 0 ..< 20 {
                 var facts: [Database.ServerFact] = []
-                for _ in 0..<100 {
+                for _ in 0 ..< 100 {
                     facts.append(
                         .init(
                             identity: "identity-\(sequence)", kind: "transfer", revision: Int64(sequence),
-                            created: Double(sequence), body: Data("summary".utf8)))
+                            created: Double(sequence), body: Data("summary".utf8)
+                        )
+                    )
                     sequence += 1
                 }
                 try db.applyServerFacts(
-                    scope: scope, expected: batch == 0 ? nil : state, state: state, facts: facts)
+                    scope: scope, expected: batch == 0 ? nil : state, state: state, facts: facts
+                )
             }
         }
         XCTAssertNil(try db.serverFact(scope: "scope-0", identity: "identity-0"))
@@ -726,6 +789,7 @@ final class HistoryRecordDatabaseTests: XCTestCase {
             defer { lock.unlock() }
             return errors.count
         }
+
         func append(_ error: Error) {
             lock.lock()
             defer { lock.unlock() }

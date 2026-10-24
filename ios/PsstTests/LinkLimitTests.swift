@@ -1,4 +1,8 @@
-@testable import Psst
+#if SWIFT_PACKAGE
+    @testable import FoundationHarness
+#else
+    @testable import Psst
+#endif
 import XCTest
 
 final class LinkLimitTests: XCTestCase {

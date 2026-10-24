@@ -23,52 +23,26 @@ SECURITY_ONLY_TOOLS = frozenset(
     "tools/" + name
     for name in (
         "android_build_timings.gradle",
-        "android_release_ci.py",
-        "android_signing_bridge.py",
-        "check_android_update.py",
-        "backend_preferred_source_relationships.py",
-        "browser_preferred_source_relationships.py",
         "check_repository.py",
         "check_source_bidi.py",
-        "collect_caddy_sources.py",
-        "collect_runtime_notices.py",
         "container-distribution-policy.json",
-        "final_image_notice_inventory.py",
-        "generate_corresponding_source_review.py",
-        "generate_distribution_review.py",
-        "measure_native_browser_inputs.py",
-        "package_application_dependencies.py",
-        "package_runtime_sources.py",
-        "package_upstream_application_sources.py",
+        "backend-source-recipes.json",
+        "go-runtime-sources.json",
+        "upstream-application-sources.json",
+        "container_release_policy.py",
         "prepare_candidate_transfer.py",
         "prepare_native_release.py",
-        "prepare_publication_inputs.py",
-        "publication_diagnostics.py",
         "publish_container_release.py",
-        "publish_verified_release.py",
+        "release_http.py",
+        "release_process.py",
         "release_artifacts.py",
+        "release_result.py",
         "request_production_deployment.py",
-        "sqlite_vendoring.py",
-        "sqlite_vendoring.go",
-        "sqlite_vendoring_test.go",
         "temporary_caddy_acceptance.py",
-        "test_caddy_source_signatures.py",
-        "test_android_release.py",
-        "test_android_release_ci.py",
-        "test_android_signing_bridge.py",
-        "test_android_update.py",
         "test_external_proxy.py",
-        "test_native_browser_inputs.py",
-        "test_native_notices.py",
         "test_native_release_preparation.py",
         "test_repository_checks.py",
         "test_source_bidi.py",
-        "test_runtime_notices.py",
-        "test_runtime_source_packaging.py",
-        "test_runtime_source_replay.py",
-        "verify_application_dependency_inputs.py",
-        "verify_caddy_source_signatures.py",
-        "verify_runtime_source_pack.py",
     )
 )
 RELEASE_TOOL_PREFIXES = (
@@ -94,6 +68,27 @@ class Selection:
 
 
 def classify_path(path: str) -> frozenset[str]:
+    if path.startswith("tools/release/"):
+        if path.startswith(
+            (
+                "tools/release/internal/publication/",
+                "tools/release/internal/deployment/",
+                "tools/release/internal/github/",
+                "tools/release/internal/source/",
+                "tools/release/internal/scanning/",
+                "tools/release/internal/oci/",
+                "tools/release/internal/containerbuild/",
+                "tools/release/internal/evaluation/",
+                "tools/release/cmd/psst-deploy/",
+            )
+        ):
+            # Repository security always executes the development-tool tests.
+            return frozenset()
+        if path.startswith("tools/release/internal/androidrelease/"):
+            return frozenset({"android"})
+        if path.startswith("tools/release/internal/browser/"):
+            return frozenset({"web", "cli"})
+        return frozenset({"cli"})
     # Reviewed release orchestration is covered by repository security checks.
     # Tags/dispatch/full-validation still force every application check in select().
     if path in {
@@ -132,7 +127,7 @@ def classify_path(path: str) -> frozenset[str]:
     }:
         # CLI compatibility checks exercise the existing browser providers.
         return frozenset({"web", "cli"})
-    if path.startswith("web/") or path == "tools/measure_browser_source_inventory.py":
+    if path.startswith("web/"):
         # The CLI embeds the standalone build, including shared browser screens.
         # Hosted-only routes and browser tests do not change that executable.
         if path.startswith("web/tests/") and not path.startswith("web/tests/lan/"):
@@ -142,10 +137,7 @@ def classify_path(path: str) -> frozenset[str]:
         ):
             return frozenset({"web"})
         return frozenset({"web", "cli"})
-    if path == "tools/android_release.py":
-        # Gradle executes source-revision to embed the APK's source identity.
-        return frozenset({"android"})
-    if path.startswith("shared/") or path in {"tools/generate_native_notices.py"}:
+    if path.startswith("shared/"):
         return NATIVE_JOBS
     if path.startswith("android/app/src/main/assets/licenses/"):
         return NATIVE_JOBS
@@ -164,7 +156,9 @@ def classify_path(path: str) -> frozenset[str]:
         "docs/releases/android.md",
         "docs/cli.md",
     } or (
-        path.startswith(("docs/plans/", "docs/security/", "docs/research/"))
+        path.startswith(
+            ("docs/plans/", "docs/security/", "docs/research/", "docs/testing/")
+        )
         and path.endswith(".md")
     ):
         return frozenset()
