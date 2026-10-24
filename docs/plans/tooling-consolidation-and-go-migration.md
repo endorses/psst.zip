@@ -611,5 +611,25 @@ and JSON verification remain pending host changes. A 4,526,240-byte static helpe
 was built from clean commit `ad4d836` for the observed architecture and checksummed,
 without staging it on the VPS. See the [updater evidence](../testing/go-vps-updater.md)
 for the exact checksum, observed CLI versions and proposed prerequisite commands.
-The temporary build worktree/cache were removed. Push approval and actual
-production installation remain pending; these checks do not close either gate.
+The temporary build worktree/cache were removed. Actual production installation
+remains pending; these checks do not authorize that host change.
+
+## Hosted validation handoff
+
+On 2026-10-24 the user approved pushing the implementation branch, opening a draft
+PR and monitoring/fixing hosted CI. [Draft PR #45](https://github.com/endorses/psst.zip/pull/45)
+contains the implementation; release publication and the VPS cutover remain separate.
+
+The first hosted attempt at `9d9009b` passed the CLI job in 1m23s and Android/shared
+in 4m35s, with no annotations on those jobs. Repository security passed all 168
+retained Python release cases in 40.44s, then exposed an obsolete native-preparation
+assertion that expected private subprocess stderr. Commit `a2c119a` preserves that
+redaction and directly verifies that the real Go OCI reader specifically rejects
+the altered layer. Its 14-case suite passes locally in 9.37s, with the opt-in real
+Docker scenario skipped. The superseded hosted attempt was stopped before the
+corrected run to avoid concurrent duplicate native builds.
+
+The PR checks track the corrected revision's final hosted outcome. These ordinary
+application checks do not exercise the separate two-architecture container
+publication/recovery workflow or authorize production installation. The first-run
+timings are individual observations, not a controlled cold/warm performance claim.
