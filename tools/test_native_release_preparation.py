@@ -12,6 +12,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -737,8 +738,42 @@ class SavedOciExport(unittest.TestCase):
             self.export(tested_config=self.configs["web"])
         wrong = {**self.files, "backend/layer.tar": b"different layer bytes"}
         write_tar(self.archive, wrong)
-        with self.assertRaisesRegex(InvalidRelease, "layer differs"):
-            self.export(output=self.root / "wrong-layer.tar")
+        altered = self.root / "wrong-layer.tar"
+        with self.assertRaises(InvalidRelease):
+            self.export(output=altered)
+        # Production deliberately keeps subprocess stderr private. Independently
+        # inspect this disposable export to prove the actual layer/configuration
+        # mismatch was rejected, rather than accepting an unrelated tool failure.
+        rejected = subprocess.run(
+            [
+                native._release_tool(),
+                "container-build",
+                "inspect-oci",
+                "--archive",
+                str(altered),
+                "--platform",
+                self.context.platform,
+                "--repository",
+                self.context.repository,
+                "--version",
+                self.context.version,
+                "--commit",
+                self.context.commit,
+                "--tested-config",
+                self.configs["backend"],
+                "--component",
+                "backend",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        self.assertEqual(rejected.returncode, 1)
+        self.assertEqual(rejected.stdout, b"")
+        self.assertEqual(
+            rejected.stderr,
+            b"psst-release: OCI layer differs from the tested image configuration\n",
+        )
         write_tar(self.archive, {**self.files, "../escape": b"escape"})
         with self.assertRaises(InvalidRelease):
             self.export(output=self.root / "unsafe.tar")
